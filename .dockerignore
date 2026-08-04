@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+.runtime
+.pytest_cache
+.ruff_cache
+artifacts
+docs
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+apps/*/tests
+.env
+.env.*
+docker-compose.yml
+evaluation-results.json

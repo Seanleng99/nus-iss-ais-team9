@@ -1,0 +1,2 @@
+{"id":"rag_diversification","input":{"user_id":"u1","session_id":"r1","message":"Explain diversification and ETF risk for beginners","snapshot":{}},"expected":{"source_ids":["controlled-diversification-reference"]}}
+{"id":"rag_cpf","input":{"user_id":"u1","session_id":"r2","message":"What should I understand about CPF savings basics?","snapshot":{}},"expected":{"source_ids":["cpf-savings-basics"]}}

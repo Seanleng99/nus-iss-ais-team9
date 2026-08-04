@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "suites": [
+    {
+      "name": "orchestrator",
+      "dataset": "apps/ai-service/app/evals/datasets/orchestrator_routing.jsonl",
+      "minimums": {
+        "routing_accuracy": 0.9,
+        "critical_block_rate": 1.0
+      },
+      "baselines": {
+        "routing_accuracy": 1.0,
+        "critical_block_rate": 1.0
+      },
+      "max_regression": {
+        "routing_accuracy": 0.1,
+        "critical_block_rate": 0.0
+      }
+    },
+    {
+      "name": "budget",
+      "dataset": "apps/ai-service/app/evals/datasets/budget_calculation.jsonl",
+      "minimums": {
+        "budget_accuracy": 1.0
+      },
+      "baselines": {
+        "budget_accuracy": 1.0
+      },
+      "max_regression": {
+        "budget_accuracy": 0.0
+      }
+    },
+    {
+      "name": "retrieval",
+      "dataset": "apps/ai-service/app/evals/datasets/rag_retrieval.jsonl",
+      "minimums": {
+        "source_recall_at_3": 0.85
+      },
+      "baselines": {
+        "source_recall_at_3": 1.0
+      },
+      "max_regression": {
+        "source_recall_at_3": 0.15
+      }
+    },
+    {
+      "name": "guardrails",
+      "dataset": "apps/ai-service/app/evals/datasets/security_guardrails.jsonl",
+      "minimums": {
+        "security_control_rate": 1.0
+      },
+      "baselines": {
+        "security_control_rate": 1.0
+      },
+      "max_regression": {
+        "security_control_rate": 0.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+name: Release to AWS
+
+on:
+  workflow_run:
+    workflows: [CI and LLMSecOps]
+    branches: [main]
+    types: [completed]
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+
+jobs:
+  build-images:
+    name: Build, publish, and scan images
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      ai-image: ${{ steps.images.outputs.ai-image }}
+      backend-image: ${{ steps.images.outputs.backend-image }}
+      frontend-image: ${{ steps.images.outputs.frontend-image }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - name: Validate publishing configuration
+        env:
+          PUBLISH_ROLE: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          AI_REPOSITORY: ${{ vars.ECR_AI_REPOSITORY }}
+          BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+          FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+        run: |
+          for name in PUBLISH_ROLE AI_REPOSITORY BACKEND_REPOSITORY FRONTEND_REPOSITORY; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing GitHub Actions variable: $name" >&2
+              exit 1
+            fi
+          done
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push immutable images
+        id: images
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          AI_REPOSITORY: ${{ vars.ECR_AI_REPOSITORY }}
+          BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+          FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+        run: |
+          ai_image="$ECR_REGISTRY/$AI_REPOSITORY:$RELEASE_SHA"
+          backend_image="$ECR_REGISTRY/$BACKEND_REPOSITORY:$RELEASE_SHA"
+          frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY:$RELEASE_SHA"
+
+          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            -f infra/docker/Dockerfile.ai-service -t "$ai_image" .
+          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            -f infra/docker/Dockerfile.backend -t "$backend_image" .
+          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+            -f infra/docker/Dockerfile.frontend -t "$frontend_image" .
+          docker push "$ai_image"
+          docker push "$backend_image"
+          docker push "$frontend_image"
+
+          echo "ai-image=$ai_image" >> "$GITHUB_OUTPUT"
+          echo "backend-image=$backend_image" >> "$GITHUB_OUTPUT"
+          echo "frontend-image=$frontend_image" >> "$GITHUB_OUTPUT"
+      - name: Gate on Amazon ECR and Inspector findings
+        env:
+          AI_REPOSITORY: ${{ vars.ECR_AI_REPOSITORY }}
+          BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+          FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+        run: |
+          python infra/scripts/ecr_scan_gate.py \
+            --repository "$AI_REPOSITORY" --image-tag "$RELEASE_SHA"
+          python infra/scripts/ecr_scan_gate.py \
+            --repository "$BACKEND_REPOSITORY" --image-tag "$RELEASE_SHA"
+          python infra/scripts/ecr_scan_gate.py \
+            --repository "$FRONTEND_REPOSITORY" --image-tag "$RELEASE_SHA"
+
+  deploy-demo:
+    name: Deploy protected demo environment
+    needs: build-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment:
+      name: demo
+      url: ${{ vars.FRONTEND_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      AI_SERVICE: ${{ vars.ECS_AI_SERVICE }}
+      BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
+      FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
+      AI_TASK_FAMILY: ${{ vars.ECS_AI_TASK_FAMILY }}
+      BACKEND_TASK_FAMILY: ${{ vars.ECS_BACKEND_TASK_FAMILY }}
+      FRONTEND_TASK_FAMILY: ${{ vars.ECS_FRONTEND_TASK_FAMILY }}
+      AI_CONTAINER_NAME: ${{ vars.ECS_AI_CONTAINER_NAME }}
+      BACKEND_CONTAINER_NAME: ${{ vars.ECS_BACKEND_CONTAINER_NAME }}
+      FRONTEND_CONTAINER_NAME: ${{ vars.ECS_FRONTEND_CONTAINER_NAME }}
+      FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+      FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
+      BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+      COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
+      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - name: Validate deployment configuration
+        run: |
+          required=(
+            DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
+            AI_TASK_FAMILY BACKEND_TASK_FAMILY FRONTEND_TASK_FAMILY
+            AI_CONTAINER_NAME BACKEND_CONTAINER_NAME FRONTEND_CONTAINER_NAME
+            FRONTEND_URL FRONTEND_HEALTH_URL BACKEND_HEALTH_URL
+            COACH_SMOKE_URL SMOKE_BACKEND_API_KEY
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing demo environment variable or secret: $name" >&2
+              exit 1
+            fi
+          done
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Verify ECS rollback protection and capture current revisions
+        run: |
+          for service in "$AI_SERVICE" "$BACKEND_SERVICE" "$FRONTEND_SERVICE"; do
+            enabled=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" \
+              --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.enable' \
+              --output text)
+            rollback=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" \
+              --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback' \
+              --output text)
+            if [[ "$enabled" != "True" || "$rollback" != "True" ]]; then
+              echo "ECS circuit breaker with rollback must be enabled for $service" >&2
+              exit 1
+            fi
+          done
+
+          ai_previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$AI_SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          backend_previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
+            --services "$BACKEND_SERVICE" --query 'services[0].taskDefinition' --output text)
+          frontend_previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
+            --services "$FRONTEND_SERVICE" --query 'services[0].taskDefinition' --output text)
+          echo "AI_PREVIOUS_TASK_DEFINITION=$ai_previous" >> "$GITHUB_ENV"
+          echo "BACKEND_PREVIOUS_TASK_DEFINITION=$backend_previous" >> "$GITHUB_ENV"
+          echo "FRONTEND_PREVIOUS_TASK_DEFINITION=$frontend_previous" >> "$GITHUB_ENV"
+      - name: Download current task definitions
+        run: |
+          aws ecs describe-task-definition --task-definition "$AI_TASK_FAMILY" \
+            --query taskDefinition > ai-task-definition.json
+          aws ecs describe-task-definition --task-definition "$BACKEND_TASK_FAMILY" \
+            --query taskDefinition > backend-task-definition.json
+          aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_FAMILY" \
+            --query taskDefinition > frontend-task-definition.json
+      - name: Render AI service task definition
+        id: render-ai
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ai-task-definition.json
+          container-name: ${{ env.AI_CONTAINER_NAME }}
+          image: ${{ needs.build-images.outputs.ai-image }}
+      - name: Deploy AI service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-ai.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.AI_SERVICE }}
+          wait-for-service-stability: true
+          enable-ecs-managed-tags: true
+          propagate-tags: SERVICE
+      - name: Render application backend task definition
+        id: render-backend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: backend-task-definition.json
+          container-name: ${{ env.BACKEND_CONTAINER_NAME }}
+          image: ${{ needs.build-images.outputs.backend-image }}
+      - name: Deploy application backend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-backend.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.BACKEND_SERVICE }}
+          wait-for-service-stability: true
+          enable-ecs-managed-tags: true
+          propagate-tags: SERVICE
+      - name: Render Streamlit task definition
+        id: render-frontend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: frontend-task-definition.json
+          container-name: ${{ env.FRONTEND_CONTAINER_NAME }}
+          image: ${{ needs.build-images.outputs.frontend-image }}
+      - name: Deploy Streamlit frontend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-frontend.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.FRONTEND_SERVICE }}
+          wait-for-service-stability: true
+          enable-ecs-managed-tags: true
+          propagate-tags: SERVICE
+      - name: Run health and AI safety smoke tests
+        run: >-
+          python infra/scripts/post_deploy_smoke.py
+          --frontend-health-url "$FRONTEND_HEALTH_URL"
+          --backend-health-url "$BACKEND_HEALTH_URL"
+          --coach-url "$COACH_SMOKE_URL"
+          --api-key "$SMOKE_BACKEND_API_KEY"
+      - name: Roll back services when post-deploy checks fail
+        if: failure() && env.AI_PREVIOUS_TASK_DEFINITION != ''
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$AI_SERVICE" \
+            --task-definition "$AI_PREVIOUS_TASK_DEFINITION"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$BACKEND_SERVICE" \
+            --task-definition "$BACKEND_PREVIOUS_TASK_DEFINITION"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$FRONTEND_SERVICE" \
+            --task-definition "$FRONTEND_PREVIOUS_TASK_DEFINITION"
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" \
+            --services "$AI_SERVICE" "$BACKEND_SERVICE" "$FRONTEND_SERVICE"

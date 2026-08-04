@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: financial_wellness
+      POSTGRES_USER: coach
+      POSTGRES_PASSWORD: coach
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coach -d financial_wellness"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.10.1
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.ai-service
+    env_file:
+      - .env.example
+    environment:
+      MODEL_PROVIDER: local_fixture
+    ports:
+      - "8001:8001"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      - qdrant
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    env_file:
+      - .env.example
+    environment:
+      AI_SERVICE_BASE_URL: http://ai-service:8001
+      POSTGRES_URL: postgresql://coach:coach@postgres:5432/financial_wellness
+    ports:
+      - "8080:8080"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      ai-service:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.frontend
+    env_file:
+      - .env.example
+    environment:
+      BACKEND_BASE_URL: http://backend:8080
+    ports:
+      - "8501:8501"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  qdrant-data:

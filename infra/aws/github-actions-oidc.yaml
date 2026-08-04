@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Least-privilege GitHub Actions OIDC roles for the financial wellness coach pipeline.
+
+Parameters:
+  ExistingGitHubOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: Existing token.actions.githubusercontent.com provider ARN; leave blank to create it.
+  PublishSubjectClaim:
+    Type: String
+    Description: Exact GitHub OIDC sub claim allowed to publish main-branch images.
+  DeploySubjectClaim:
+    Type: String
+    Description: Exact GitHub OIDC sub claim for the protected demo environment.
+  EcrAiRepository:
+    Type: String
+  EcrBackendRepository:
+    Type: String
+  EcrFrontendRepository:
+    Type: String
+  EcsClusterName:
+    Type: String
+  EcsAiServiceName:
+    Type: String
+  EcsBackendServiceName:
+    Type: String
+  EcsFrontendServiceName:
+    Type: String
+  EcsTaskExecutionRoleArn:
+    Type: String
+  EcsAppTaskRoleArn:
+    Type: String
+  EcsAiTaskRoleArn:
+    Type: String
+
+Conditions:
+  CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, ""]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      Tags:
+        - Key: Project
+          Value: ai-financial-wellness-coach
+
+  PublishRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ai-financial-wellness-coach-github-publish
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Ref PublishSubjectClaim
+      Policies:
+        - PolicyName: PublishAndScanImages
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImageScanFindings
+                  - ecr:DescribeImages
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrAiRepository}
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrBackendRepository}
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrFrontendRepository}
+              - Effect: Allow
+                Action: inspector2:ListFindings
+                Resource: "*"
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ai-financial-wellness-coach-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Ref DeploySubjectClaim
+      Policies:
+        - PolicyName: DeployApplication
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                  - ecs:TagResource
+                Resource: "*"
+              - Effect: Allow
+                Action: ecs:UpdateService
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${EcsClusterName}/${EcsAiServiceName}
+                  - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${EcsClusterName}/${EcsBackendServiceName}
+                  - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${EcsClusterName}/${EcsFrontendServiceName}
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Ref EcsTaskExecutionRoleArn
+                  - !Ref EcsAppTaskRoleArn
+                  - !Ref EcsAiTaskRoleArn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+
+Outputs:
+  PublishRoleArn:
+    Value: !GetAtt PublishRole.Arn
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn

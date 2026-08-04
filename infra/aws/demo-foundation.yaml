@@ -1,0 +1,387 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Minimum shared AWS infrastructure for the synthetic financial wellness coach demo.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ai-financial-wellness-coach
+  AiRepositoryName:
+    Type: String
+    Default: nus-iss-ais-team9-ai
+  BackendRepositoryName:
+    Type: String
+    Default: nus-iss-ais-team9-backend
+  FrontendRepositoryName:
+    Type: String
+    Default: nus-iss-ais-team9-frontend
+  BedrockInferenceProfileId:
+    Type: String
+    Default: apac.amazon.nova-lite-v1:0
+  BedrockFoundationModelId:
+    Type: String
+    Default: amazon.nova-lite-v1:0
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-vpc
+        - Key: Project
+          Value: !Ref ProjectName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.42.0.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-a
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.42.1.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-b
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  PublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP entry point for the synthetic demo
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-alb
+
+  FrontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Streamlit ingress only from the ALB
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8501
+          ToPort: 8501
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-frontend
+
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Backend ingress from the ALB and Streamlit
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref FrontendSecurityGroup
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-backend
+
+  AiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: AI service ingress only from the backend
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+          SourceSecurityGroupId: !Ref BackendSecurityGroup
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ai
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Type: application
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${ProjectName}-demo
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Description: Private service discovery for the financial wellness coach
+      Name: coach.internal
+      Vpc: !Ref Vpc
+
+  AiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${ProjectName}/ai
+      RetentionInDays: 7
+
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${ProjectName}/backend
+      RetentionInDays: 7
+
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${ProjectName}/frontend
+      RetentionInDays: 7
+
+  BackendApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Synthetic demo frontend-to-backend API key
+      GenerateSecretString:
+        ExcludePunctuation: true
+        GenerateStringKey: value
+        PasswordLength: 40
+        SecretStringTemplate: '{"purpose":"backend-api-key"}'
+      Name: !Sub ${ProjectName}/demo/backend-api-key
+
+  AiServiceApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Synthetic demo backend-to-AI API key
+      GenerateSecretString:
+        ExcludePunctuation: true
+        GenerateStringKey: value
+        PasswordLength: 40
+        SecretStringTemplate: '{"purpose":"ai-service-api-key"}'
+      Name: !Sub ${ProjectName}/demo/ai-service-api-key
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-ecs-execution
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadDemoServiceSecrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref BackendApiKeySecret
+                  - !Ref AiServiceApiKeySecret
+
+  AppTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-app-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  AiTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-ai-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeApprovedApacBedrockProfile
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeInferenceProfile
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: !Ref AWS::Region
+              - Sid: InvokeApacDestinationModelsThroughProfile
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:ap-south-1::foundation-model/${BedrockFoundationModelId}
+                  - !Sub arn:${AWS::Partition}:bedrock:ap-northeast-1::foundation-model/${BedrockFoundationModelId}
+                  - !Sub arn:${AWS::Partition}:bedrock:ap-northeast-2::foundation-model/${BedrockFoundationModelId}
+                  - !Sub arn:${AWS::Partition}:bedrock:ap-northeast-3::foundation-model/${BedrockFoundationModelId}
+                  - !Sub arn:${AWS::Partition}:bedrock:ap-southeast-1::foundation-model/${BedrockFoundationModelId}
+                  - !Sub arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/${BedrockFoundationModelId}
+                Condition:
+                  StringEquals:
+                    bedrock:InferenceProfileArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}
+
+  AiRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: !Ref AiRepositoryName
+
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: !Ref BackendRepositoryName
+
+  FrontendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      EmptyOnDelete: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      RepositoryName: !Ref FrontendRepositoryName
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+  FrontendSecurityGroupId:
+    Value: !Ref FrontendSecurityGroup
+  BackendSecurityGroupId:
+    Value: !Ref BackendSecurityGroup
+  AiSecurityGroupId:
+    Value: !Ref AiSecurityGroup
+  LoadBalancerArn:
+    Value: !Ref LoadBalancer
+  LoadBalancerDnsName:
+    Value: !GetAtt LoadBalancer.DNSName
+  EcsClusterName:
+    Value: !Ref EcsCluster
+  ServiceDiscoveryNamespaceId:
+    Value: !Ref ServiceDiscoveryNamespace
+  TaskExecutionRoleArn:
+    Value: !GetAtt TaskExecutionRole.Arn
+  AppTaskRoleArn:
+    Value: !GetAtt AppTaskRole.Arn
+  AiTaskRoleArn:
+    Value: !GetAtt AiTaskRole.Arn
+  BackendApiKeySecretArn:
+    Value: !Ref BackendApiKeySecret
+  AiServiceApiKeySecretArn:
+    Value: !Ref AiServiceApiKeySecret
+  AiLogGroupName:
+    Value: !Ref AiLogGroup
+  BackendLogGroupName:
+    Value: !Ref BackendLogGroup
+  FrontendLogGroupName:
+    Value: !Ref FrontendLogGroup
+  AiRepositoryName:
+    Value: !Ref AiRepository
+  BackendRepositoryName:
+    Value: !Ref BackendRepository
+  FrontendRepositoryName:
+    Value: !Ref FrontendRepository
+  AiRepositoryUri:
+    Value: !GetAtt AiRepository.RepositoryUri
+  BackendRepositoryUri:
+    Value: !GetAtt BackendRepository.RepositoryUri
+  FrontendRepositoryUri:
+    Value: !GetAtt FrontendRepository.RepositoryUri

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-financial-wellness-coach-frontend"
+version = "0.1.0"
+description = "Streamlit interface for the AI Financial Wellness Coach"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "streamlit>=1.37",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "ruff>=0.5",
+]
+
+[tool.setuptools]
+py-modules = ["client"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100

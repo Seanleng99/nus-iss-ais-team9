@@ -1,0 +1,387 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Three minimum-size ECS Fargate services for the synthetic financial wellness coach demo.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: ai-financial-wellness-coach
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  FrontendSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  BackendSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  AiSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  LoadBalancerArn:
+    Type: String
+  EcsClusterName:
+    Type: String
+  ServiceDiscoveryNamespaceId:
+    Type: String
+  TaskExecutionRoleArn:
+    Type: String
+  AppTaskRoleArn:
+    Type: String
+  AiTaskRoleArn:
+    Type: String
+  BackendApiKeySecretArn:
+    Type: String
+  AiServiceApiKeySecretArn:
+    Type: String
+  AiLogGroupName:
+    Type: String
+  BackendLogGroupName:
+    Type: String
+  FrontendLogGroupName:
+    Type: String
+  AiImageUri:
+    Type: String
+  BackendImageUri:
+    Type: String
+  FrontendImageUri:
+    Type: String
+  BedrockModelId:
+    Type: String
+    Default: apac.amazon.nova-lite-v1:0
+  AiServiceName:
+    Type: String
+    Default: coach-ai
+  BackendServiceName:
+    Type: String
+    Default: coach-backend
+  FrontendServiceName:
+    Type: String
+    Default: coach-frontend
+
+Resources:
+  AiDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Description: Private DNS record for the AI service
+      DnsConfig:
+        DnsRecords:
+          - TTL: 10
+            Type: A
+        NamespaceId: !Ref ServiceDiscoveryNamespaceId
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: ai
+
+  BackendDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Description: Private DNS record for the application backend
+      DnsConfig:
+        DnsRecords:
+          - TTL: 10
+            Type: A
+        NamespaceId: !Ref ServiceDiscoveryNamespaceId
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: backend
+
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /_stcore/health
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200"
+      Port: 8501
+      Protocol: HTTP
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VpcId
+
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200"
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VpcId
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+      LoadBalancerArn: !Ref LoadBalancerArn
+      Port: 80
+      Protocol: HTTP
+
+  BackendListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - /api/*
+              - /health
+      ListenerArn: !Ref HttpListener
+      Priority: 10
+
+  AiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Cpu: "256"
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      Family: coach-ai
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref AiTaskRoleArn
+      ContainerDefinitions:
+        - Name: ai-service
+          Essential: true
+          Image: !Ref AiImageUri
+          PortMappings:
+            - ContainerPort: 8001
+              Name: ai-http
+              Protocol: tcp
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: MODEL_PROVIDER
+              Value: bedrock
+            - Name: MODEL_ID
+              Value: !Ref BedrockModelId
+            - Name: PROMPT_SET_VERSION
+              Value: v1
+            - Name: ROUTER_TEMPERATURE
+              Value: "0.2"
+            - Name: AGENT_TEMPERATURE
+              Value: "0.35"
+            - Name: COMPLIANCE_TEMPERATURE
+              Value: "0.1"
+            - Name: MODEL_MAX_TOKENS
+              Value: "800"
+          Secrets:
+            - Name: AI_SERVICE_API_KEY
+              ValueFrom: !Sub "${AiServiceApiKeySecretArn}:value::"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AiLogGroupName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ai
+
+  BackendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Cpu: "256"
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      Family: coach-backend
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref AppTaskRoleArn
+      ContainerDefinitions:
+        - Name: backend
+          Essential: true
+          Image: !Ref BackendImageUri
+          PortMappings:
+            - ContainerPort: 8080
+              Name: backend-http
+              Protocol: tcp
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: AI_SERVICE_BASE_URL
+              Value: http://ai.coach.internal:8001
+            - Name: AI_SERVICE_TIMEOUT_SECONDS
+              Value: "45"
+            - Name: POSTGRES_URL
+              Value: postgresql://not-provisioned
+          Secrets:
+            - Name: BACKEND_API_KEY
+              ValueFrom: !Sub "${BackendApiKeySecretArn}:value::"
+            - Name: AI_SERVICE_API_KEY
+              ValueFrom: !Sub "${AiServiceApiKeySecretArn}:value::"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroupName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+
+  FrontendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Cpu: "256"
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      Family: coach-frontend
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref AppTaskRoleArn
+      ContainerDefinitions:
+        - Name: frontend
+          Essential: true
+          Image: !Ref FrontendImageUri
+          PortMappings:
+            - ContainerPort: 8501
+              Name: frontend-http
+              Protocol: tcp
+          Environment:
+            - Name: APP_ENV
+              Value: demo
+            - Name: BACKEND_BASE_URL
+              Value: http://backend.coach.internal:8080
+          Secrets:
+            - Name: BACKEND_API_KEY
+              ValueFrom: !Sub "${BackendApiKeySecretArn}:value::"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FrontendLogGroupName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+
+  AiService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref EcsClusterName
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+        MinimumHealthyPercent: 0
+      DesiredCount: 1
+      EnableECSManagedTags: true
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref AiSecurityGroupId
+          Subnets:
+            - !Ref PublicSubnetAId
+            - !Ref PublicSubnetBId
+      PropagateTags: SERVICE
+      ServiceName: !Ref AiServiceName
+      ServiceRegistries:
+        - RegistryArn: !GetAtt AiDiscoveryService.Arn
+      TaskDefinition: !Ref AiTaskDefinition
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  BackendService:
+    Type: AWS::ECS::Service
+    DependsOn: BackendListenerRule
+    Properties:
+      Cluster: !Ref EcsClusterName
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+        MinimumHealthyPercent: 0
+      DesiredCount: 1
+      EnableECSManagedTags: true
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: backend
+          ContainerPort: 8080
+          TargetGroupArn: !Ref BackendTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref BackendSecurityGroupId
+          Subnets:
+            - !Ref PublicSubnetAId
+            - !Ref PublicSubnetBId
+      PropagateTags: SERVICE
+      ServiceName: !Ref BackendServiceName
+      ServiceRegistries:
+        - RegistryArn: !GetAtt BackendDiscoveryService.Arn
+      TaskDefinition: !Ref BackendTaskDefinition
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  FrontendService:
+    Type: AWS::ECS::Service
+    DependsOn: HttpListener
+    Properties:
+      Cluster: !Ref EcsClusterName
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+        MinimumHealthyPercent: 0
+      DesiredCount: 1
+      EnableECSManagedTags: true
+      HealthCheckGracePeriodSeconds: 90
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: 8501
+          TargetGroupArn: !Ref FrontendTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref FrontendSecurityGroupId
+          Subnets:
+            - !Ref PublicSubnetAId
+            - !Ref PublicSubnetBId
+      PropagateTags: SERVICE
+      ServiceName: !Ref FrontendServiceName
+      TaskDefinition: !Ref FrontendTaskDefinition
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  AiServiceName:
+    Value: !GetAtt AiService.Name
+  BackendServiceName:
+    Value: !GetAtt BackendService.Name
+  FrontendServiceName:
+    Value: !GetAtt FrontendService.Name
+  AiTaskFamily:
+    Value: coach-ai
+  BackendTaskFamily:
+    Value: coach-backend
+  FrontendTaskFamily:
+    Value: coach-frontend
+  AiContainerName:
+    Value: ai-service
+  BackendContainerName:
+    Value: backend
+  FrontendContainerName:
+    Value: frontend

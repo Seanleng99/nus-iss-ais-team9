@@ -1,0 +1,195 @@
+name: CI and LLMSecOps
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 1"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ai-service:
+    name: FastAPI tests and AI evals
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/ai-service/pyproject.toml
+      - name: Install FastAPI service
+        run: python -m pip install -e "apps/ai-service[dev]"
+      - name: Lint
+        run: ruff check apps/ai-service infra/scripts
+      - name: Unit and API tests
+        run: pytest apps/ai-service/tests
+      - name: Enforce LLMSecOps evaluation policy
+        run: >-
+          python -m app.evals.gate
+          --policy infra/llmsecops/evaluation-policy.json
+          --output artifacts/llm-evaluation-results.json
+      - name: Upload evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: llm-evaluation-results
+          path: artifacts/llm-evaluation-results.json
+          if-no-files-found: error
+          retention-days: 30
+
+  frontend:
+    name: Streamlit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/frontend/pyproject.toml
+      - name: Install Streamlit frontend
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Unit tests
+        run: pytest
+
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/pyproject.toml
+      - name: Install application backend
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Unit and API tests
+        run: pytest
+
+  service-integration:
+    name: Backend to AI integration and load smoke
+    needs: [ai-service, backend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/ai-service/pyproject.toml
+      - name: Install shared runtime dependencies
+        run: python -m pip install -e "apps/ai-service[dev]"
+      - name: Start private services
+        env:
+          MODEL_PROVIDER: local_fixture
+        run: |
+          uvicorn app.main:app --app-dir apps/ai-service --host 127.0.0.1 --port 8001 \
+            > ai-service.log 2>&1 &
+          echo $! > ai-service.pid
+          uvicorn app.main:app --app-dir apps/backend --host 127.0.0.1 --port 8080 \
+            > backend.log 2>&1 &
+          echo $! > backend.pid
+      - name: Verify end-to-end safety boundary
+        run: >-
+          python infra/scripts/post_deploy_smoke.py
+          --backend-health-url http://127.0.0.1:8080/health
+          --ai-health-url http://127.0.0.1:8001/health
+          --coach-url http://127.0.0.1:8080/api/coach
+          --api-key change-me-locally
+      - name: Verify bounded concurrency
+        run: >-
+          python infra/scripts/load_smoke.py
+          --url http://127.0.0.1:8080/api/coach
+          --api-key change-me-locally
+          --requests 20
+          --concurrency 4
+          --maximum-p95-ms 5000
+      - name: Upload service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-service-logs
+          path: "*.log"
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container-build:
+    name: Build hardened containers
+    needs: [frontend, backend, ai-service]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build AI service image
+        run: docker build -f infra/docker/Dockerfile.ai-service -t coach-ai:ci .
+      - name: Build backend image
+        run: docker build -f infra/docker/Dockerfile.backend -t coach-backend:ci .
+      - name: Build frontend image
+        run: docker build -f infra/docker/Dockerfile.frontend -t coach-frontend:ci .
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+
+  codeql:
+    name: CodeQL (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: python
+          build-mode: none
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:python
