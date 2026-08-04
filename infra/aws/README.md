@@ -2,7 +2,7 @@
 
 The repository includes a minimum-size, synthetic-data deployment for AWS account `902552928492` in `ap-southeast-1`:
 
-- `demo-foundation.yaml` creates two public subnets, an internet-facing HTTP ALB, security groups, three ECR repositories, an ECS cluster, Cloud Map, generated service secrets, seven-day log groups, and separate application and AI task roles.
+- `demo-foundation.yaml` creates two public subnets, an internet-facing HTTP ALB, security groups, three scan-on-push ECR repositories with ten-image retention, an ECS cluster, Cloud Map, generated service secrets, seven-day log groups, and separate application and AI task roles.
 - `demo-application.yaml` creates three one-task Fargate services, private DNS for backend-to-AI and frontend-to-backend calls, task definitions, target groups, and ALB routing.
 - `github-actions-oidc.yaml` creates narrowly scoped image-publishing and ECS-deployment roles using GitHub OIDC.
 

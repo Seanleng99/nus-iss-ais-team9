@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,8 +9,11 @@ COPY apps/ai-service/pyproject.toml ./pyproject.toml
 COPY apps/ai-service/app ./app
 COPY apps/ai-service/prompts ./prompts
 RUN pip install --no-cache-dir .
+# The service does not invoke Perl; remove it from the runtime attack surface.
 RUN groupadd --system app && \
-    useradd --system --gid app --create-home --home-dir /home/app app
+    useradd --system --gid app --create-home --home-dir /home/app app && \
+    apt-get purge -y --allow-remove-essential perl-base && \
+    rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
