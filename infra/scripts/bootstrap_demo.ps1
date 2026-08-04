@@ -10,9 +10,13 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Aws = "C:\Program Files\Amazon\AWSCLIV2\aws.exe"
+$Gh = "C:\Program Files\GitHub CLI\gh.exe"
 
 if (-not (Test-Path -LiteralPath $Aws)) {
     throw "AWS CLI was not found at $Aws"
+}
+if (-not (Test-Path -LiteralPath $Gh)) {
+    throw "GitHub CLI was not found at $Gh"
 }
 
 function Invoke-Aws {
@@ -20,6 +24,14 @@ function Invoke-Aws {
     & $Aws @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "AWS CLI command failed: aws $($Arguments -join ' ')"
+    }
+}
+
+function Invoke-Gh {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+    & $Gh @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "GitHub CLI command failed: gh $($Arguments -join ' ')"
     }
 }
 
@@ -40,6 +52,23 @@ function Get-StackOutputs {
 $identity = (Invoke-Aws sts get-caller-identity --output json | ConvertFrom-Json)
 if ($identity.Account -ne $AccountId) {
     throw "Authenticated AWS account $($identity.Account) does not match expected account $AccountId"
+}
+
+Invoke-Gh auth status
+$viewer = (Invoke-Gh api user | ConvertFrom-Json).login
+if ($viewer -ne $Repository.Split("/")[0]) {
+    throw "GitHub CLI is authenticated as $viewer, not $($Repository.Split('/')[0])."
+}
+
+$oidcBody = @{ use_default = $true } | ConvertTo-Json -Compress
+$oidcBody | & $Gh api --method PUT "repos/$Repository/actions/oidc/customization/sub" --input -
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not enforce the default GitHub OIDC subject format."
+}
+$oidcConfig = Invoke-Gh api "repos/$Repository/actions/oidc/customization/sub" | ConvertFrom-Json
+$subjectPrefix = $oidcConfig.sub_claim_prefix
+if (-not $subjectPrefix -or -not $subjectPrefix.StartsWith("repo:")) {
+    throw "GitHub did not return a usable OIDC subject prefix."
 }
 
 & docker info *> $null
@@ -126,8 +155,8 @@ if ($providerArn -eq "None") { $providerArn = "" }
 Write-Host "Deploying GitHub OIDC roles..."
 $oidcParameters = @(
     "ExistingGitHubOidcProviderArn=$providerArn",
-    "PublishSubjectClaim=repo:$Repository`:ref:refs/heads/main",
-    "DeploySubjectClaim=repo:$Repository`:environment:demo",
+    "PublishSubjectClaim=$subjectPrefix`:ref:refs/heads/main",
+    "DeploySubjectClaim=$subjectPrefix`:environment:demo",
     "EcrAiRepository=$($foundation.AiRepositoryName)",
     "EcrBackendRepository=$($foundation.BackendRepositoryName)",
     "EcrFrontendRepository=$($foundation.FrontendRepositoryName)",

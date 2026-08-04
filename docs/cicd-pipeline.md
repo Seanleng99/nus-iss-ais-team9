@@ -49,11 +49,11 @@ AWS Cloud Map provides private DNS between services. The deployment smoke test e
 Deploy `infra/aws/github-actions-oidc.yaml` once to create separate publishing and deployment roles. Pass the exact OIDC subject claims used by the repository:
 
 ```text
-repo:ORG/REPOSITORY:ref:refs/heads/main
-repo:ORG/REPOSITORY:environment:demo
+SUBJECT_PREFIX:ref:refs/heads/main
+SUBJECT_PREFIX:environment:demo
 ```
 
-Repositories using immutable GitHub OIDC subjects include numeric owner and repository IDs. Inspect the repository OIDC configuration and pass the exact claim. If the AWS account already has the GitHub OIDC provider, pass its ARN through `ExistingGitHubOidcProviderArn`. Deploy with `CAPABILITY_NAMED_IAM`.
+Read `SUBJECT_PREFIX` from the repository OIDC configuration; repositories using immutable subjects include numeric owner and repository IDs. The bootstrap script discovers this value and passes both exact claims. If the AWS account already has the GitHub OIDC provider, pass its ARN through `ExistingGitHubOidcProviderArn`. Deploy with `CAPABILITY_NAMED_IAM`.
 
 ## GitHub Configuration
 
