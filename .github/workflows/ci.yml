@@ -128,6 +128,7 @@ jobs:
           --ai-health-url http://127.0.0.1:8001/health
           --coach-url http://127.0.0.1:8080/api/coach
           --api-key change-me-locally
+          --expected-model-provider local_fixture
       - name: Verify bounded concurrency
         run: >-
           python infra/scripts/load_smoke.py

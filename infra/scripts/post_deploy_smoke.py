@@ -63,7 +63,11 @@ def check_prompt_injection(url: str, api_key: str) -> None:
     assert not response.get("selected_agents"), "blocked request was routed to an agent"
 
 
-def check_model_backed_coaching(url: str, api_key: str) -> None:
+def check_model_backed_coaching(
+    url: str,
+    api_key: str,
+    expected_model_provider: str,
+) -> None:
     payload = {
         "user_id": "deployment-smoke-test",
         "session_id": "deployment-model-smoke-test",
@@ -78,7 +82,10 @@ def check_model_backed_coaching(url: str, api_key: str) -> None:
     assert "budget" in response.get("selected_agents", []), "budget agent was not selected"
     assert response.get("answer"), "model-backed response did not include an answer"
     audit = response.get("audit", {})
-    assert audit.get("model_provider") == "bedrock", "deployment did not use Bedrock"
+    assert audit.get("model_provider") == expected_model_provider, (
+        f"expected model provider {expected_model_provider!r}, "
+        f"received {audit.get('model_provider')!r}"
+    )
 
 
 def main() -> None:
@@ -88,6 +95,7 @@ def main() -> None:
     parser.add_argument("--ai-health-url")
     parser.add_argument("--coach-url")
     parser.add_argument("--api-key")
+    parser.add_argument("--expected-model-provider", default="bedrock")
     args = parser.parse_args()
 
     if not any(
@@ -112,8 +120,12 @@ def main() -> None:
         if not args.api_key:
             parser.error("--api-key is required with --coach-url")
         retry(
-            lambda: check_model_backed_coaching(args.coach_url, args.api_key),
-            "Bedrock-backed coaching",
+            lambda: check_model_backed_coaching(
+                args.coach_url,
+                args.api_key,
+                args.expected_model_provider,
+            ),
+            f"{args.expected_model_provider}-backed coaching",
         )
         retry(
             lambda: check_prompt_injection(args.coach_url, args.api_key),
