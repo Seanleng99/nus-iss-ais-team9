@@ -9,6 +9,8 @@ WORKDIR /app
 COPY apps/frontend/pyproject.toml ./pyproject.toml
 COPY apps/frontend/client.py ./client.py
 COPY apps/frontend/app.py ./app.py
+COPY apps/frontend/ui ./ui
+COPY apps/frontend/.streamlit ./.streamlit
 RUN pip install --no-cache-dir .
 # The service does not invoke Perl; remove it from the runtime attack surface.
 RUN groupadd --system app && \

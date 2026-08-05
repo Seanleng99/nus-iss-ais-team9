@@ -30,6 +30,10 @@ In AWS, send ECS stdout/stderr to encrypted CloudWatch log groups with explicit 
 - Scheduled evaluation failure or metric regression.
 - RAG source freshness/checksum failure after ingestion exists.
 
+## Database Changes
+
+CI applies every Alembic migration to PostgreSQL and runs `alembic check` for model drift. Releases run `alembic upgrade head` as one ECS task before updating the backend service. Treat migration failure as a failed release. Use expand-and-contract changes because rolling back an ECS task definition does not reverse a successful schema migration.
+
 Route deployment failures through EventBridge and operational alerts through SNS or the team incident channel. Every alert needs an owner, severity, runbook link, and tested notification path.
 
 ## Drift Detection

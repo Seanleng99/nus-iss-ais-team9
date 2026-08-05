@@ -44,7 +44,7 @@ The implementation replaces Angular and Spring Boot with three Python services:
 - FastAPI application backend on ECS Fargate.
 - Private FastAPI multi-agent service on ECS Fargate.
 
-This preserves independent presentation, application, and AI boundaries while reducing language overhead. The backend owns future identity, transaction, goal, and persistence features; the AI service owns orchestration, RAG, model access, guardrails, and evaluation. It is consistent with the module FAQ, which permits a simple UI and expects architecture choices to be justified.
+This preserves independent presentation, application, and AI boundaries while reducing language overhead. The backend owns profiles, transactions, monthly budgets, goals, dashboard summaries, coaching snapshots, and persistence, with end-user identity still planned. The Streamlit frontend exposes those workflows as a multipage financial workspace. The AI service owns orchestration, RAG, model access, guardrails, and evaluation. This is consistent with the module FAQ, which permits a simple UI and expects architecture choices to be justified.
 
 ## Agents
 

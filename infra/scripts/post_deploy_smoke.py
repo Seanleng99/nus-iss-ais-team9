@@ -88,12 +88,81 @@ def check_model_backed_coaching(
     )
 
 
+def check_persistence(base_url: str, api_key: str) -> None:
+    user_url = f"{base_url.rstrip('/')}/users/deployment-smoke-test"
+    status, _ = request(
+        f"{user_url}/profile",
+        method="PUT",
+        body={
+            "monthly_income": {"currency": "SGD", "amount": 4100},
+            "risk_tolerance": "moderate",
+            "preferences": {"source": "deployment-smoke"},
+        },
+        api_key=api_key,
+    )
+    assert status == 200, f"profile upsert returned HTTP {status}"
+
+    transaction_id: str | None = None
+    try:
+        status, body = request(
+            f"{user_url}/transactions",
+            method="POST",
+            body={
+                "description": "Deployment smoke transaction",
+                "category": "verification",
+                "amount": {"currency": "SGD", "amount": 1},
+                "occurred_on": "2026-08-05",
+            },
+            api_key=api_key,
+        )
+        assert status == 201, f"transaction creation returned HTTP {status}"
+        transaction_id = json.loads(body)["id"]
+
+        status, _ = request(
+            f"{user_url}/budget",
+            method="PUT",
+            body={
+                "period_start": "2026-08-01",
+                "currency": "SGD",
+                "categories": [{"category": "verification", "limit_amount": 10}],
+            },
+            api_key=api_key,
+        )
+        assert status == 200, f"budget upsert returned HTTP {status}"
+
+        status, body = request(f"{user_url}/snapshot", api_key=api_key)
+        assert status == 200, f"snapshot read returned HTTP {status}"
+        snapshot = json.loads(body)
+        assert snapshot.get("monthly_income", {}).get("amount") == 4100
+        assert any(
+            item.get("description") == "Deployment smoke transaction"
+            for item in snapshot.get("recent_transactions", [])
+        ), "persisted transaction was absent from the snapshot"
+
+        status, body = request(
+            f"{user_url}/dashboard?period_start=2026-08-01", api_key=api_key
+        )
+        assert status == 200, f"dashboard read returned HTTP {status}"
+        dashboard = json.loads(body)
+        assert dashboard.get("transaction_count") >= 1
+        assert dashboard.get("budget", {}).get("total_limit") == 10
+    finally:
+        if transaction_id:
+            status, _ = request(
+                f"{user_url}/transactions/{transaction_id}",
+                method="DELETE",
+                api_key=api_key,
+            )
+            assert status == 204, f"transaction cleanup returned HTTP {status}"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smoke-test an AWS deployment")
     parser.add_argument("--frontend-health-url")
     parser.add_argument("--backend-health-url")
     parser.add_argument("--ai-health-url")
     parser.add_argument("--coach-url")
+    parser.add_argument("--persistence-base-url")
     parser.add_argument("--api-key")
     parser.add_argument("--expected-model-provider", default="bedrock")
     args = parser.parse_args()
@@ -104,6 +173,7 @@ def main() -> None:
             args.backend_health_url,
             args.ai_health_url,
             args.coach_url,
+            args.persistence_base_url,
         )
     ):
         parser.error("provide at least one endpoint")
@@ -130,6 +200,13 @@ def main() -> None:
         retry(
             lambda: check_prompt_injection(args.coach_url, args.api_key),
             "prompt-injection blocking",
+        )
+    if args.persistence_base_url:
+        if not args.api_key:
+            parser.error("--api-key is required with --persistence-base-url")
+        retry(
+            lambda: check_persistence(args.persistence_base_url, args.api_key),
+            "PostgreSQL persistence",
         )
 
 

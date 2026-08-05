@@ -20,6 +20,20 @@ Parameters:
   BedrockFoundationModelId:
     Type: String
     Default: amazon.nova-lite-v1:0
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues:
+      - db.t4g.micro
+      - db.t3.micro
+  DatabaseName:
+    Type: String
+    Default: financial_wellness
+    AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
+  DatabaseMasterUsername:
+    Type: String
+    Default: coachadmin
+    AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
 
 Resources:
   Vpc:
@@ -68,6 +82,32 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-public-b
+
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.42.10.0/24
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-database-a
+        - Key: Project
+          Value: !Ref ProjectName
+
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.42.11.0/24
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-database-b
+        - Key: Project
+          Value: !Ref ProjectName
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -157,6 +197,22 @@ Resources:
         - Key: Name
           Value: !Sub ${ProjectName}-ai
 
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL ingress only from the application backend
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref BackendSecurityGroup
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-database
+        - Key: Project
+          Value: !Ref ProjectName
+
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -230,6 +286,47 @@ Resources:
         SecretStringTemplate: '{"purpose":"ai-service-api-key"}'
       Name: !Sub ${ProjectName}/demo/ai-service-api-key
 
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private database subnets for the synthetic demo
+      SubnetIds:
+        - !Ref DatabaseSubnetA
+        - !Ref DatabaseSubnetB
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      AllocatedStorage: "20"
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 1
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Sub ${ProjectName}-demo
+      DBName: !Ref DatabaseName
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      EnableIAMDatabaseAuthentication: false
+      Engine: postgres
+      ManageMasterUserPassword: true
+      MasterUsername: !Ref DatabaseMasterUsername
+      MaxAllocatedStorage: 100
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      StorageType: gp3
+      VPCSecurityGroups:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: demo
+
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -253,6 +350,7 @@ Resources:
                 Resource:
                   - !Ref BackendApiKeySecret
                   - !Ref AiServiceApiKeySecret
+                  - !GetAtt Database.MasterUserSecret.SecretArn
 
   AppTaskRole:
     Type: AWS::IAM::Role
@@ -352,12 +450,18 @@ Outputs:
     Value: !Ref PublicSubnetA
   PublicSubnetBId:
     Value: !Ref PublicSubnetB
+  DatabaseSubnetAId:
+    Value: !Ref DatabaseSubnetA
+  DatabaseSubnetBId:
+    Value: !Ref DatabaseSubnetB
   FrontendSecurityGroupId:
     Value: !Ref FrontendSecurityGroup
   BackendSecurityGroupId:
     Value: !Ref BackendSecurityGroup
   AiSecurityGroupId:
     Value: !Ref AiSecurityGroup
+  DatabaseSecurityGroupId:
+    Value: !Ref DatabaseSecurityGroup
   LoadBalancerArn:
     Value: !Ref LoadBalancer
   LoadBalancerDnsName:
@@ -376,6 +480,14 @@ Outputs:
     Value: !Ref BackendApiKeySecret
   AiServiceApiKeySecretArn:
     Value: !Ref AiServiceApiKeySecret
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabasePort:
+    Value: !GetAtt Database.Endpoint.Port
+  DatabaseName:
+    Value: !Ref DatabaseName
+  DatabaseSecretArn:
+    Value: !GetAtt Database.MasterUserSecret.SecretArn
   AiLogGroupName:
     Value: !Ref AiLogGroup
   BackendLogGroupName:

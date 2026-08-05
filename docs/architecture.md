@@ -49,16 +49,16 @@ flowchart TB
 
 The target architecture terminates TLS at the ALB and keeps ECS tasks and data stores in private subnets. Its security groups permit only ALB-to-service, backend-to-AI, backend-to-PostgreSQL, and AI-to-vector traffic.
 
-The provisioned minimum demo intentionally differs: it uses an HTTP ALB and three single-task Fargate services in public subnets to avoid NAT Gateway cost. Each task receives a public IP for outbound AWS service access, but security groups deny direct internet ingress. PostgreSQL and a managed vector store are deferred because their adapters are not yet implemented. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. Use synthetic data only until TLS and the target private network are implemented.
+The provisioned minimum demo intentionally differs: it uses an HTTP ALB and three single-task Fargate services in public subnets to avoid NAT Gateway cost. Each task receives a public IP for outbound AWS service access, but security groups deny direct internet ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. A managed vector store remains deferred. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. Use synthetic data only until TLS, end-user identity, and the target private application network are implemented.
 
 The synthetic demo uses a backend service key. Before real users, the public application boundary moves to OIDC/JWT identity and authorization while the independent backend-to-AI credential remains a service secret.
 
 ## Service Boundaries
 
-- Streamlit frontend: captures financial inputs, calls the application backend server-side, and presents answers, agent rationale, confidence, disclaimers, and audit metadata.
-- FastAPI application backend: owns user-facing APIs, access control, application workflows, and future user, transaction, goal, and PostgreSQL persistence features. It is the only application service allowed to call the AI service.
+- Streamlit frontend: provides Overview, Transactions, Budget, Goals, Coach, and Profile workflows; calls the application backend server-side; and presents answers, rationale, confidence, disclaimers, and audit metadata.
+- FastAPI application backend: owns user-facing APIs, access control, profiles, transactions, monthly budgets, goals, dashboard summaries, coaching snapshots, and PostgreSQL persistence workflows. It is the only application service allowed to call the AI service.
 - FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, performs controlled retrieval, and integrates with Bedrock.
-- Data services: PostgreSQL stores transactional and audit records; the vector store contains curated MAS, CPF, and financial literacy content.
+- Data services: PostgreSQL stores the synthetic financial workspace records; the future vector store will contain curated MAS, CPF, and financial literacy content.
 - AWS boundary: ECS runs all three services, Secrets Manager supplies separate frontend-to-backend and backend-to-AI credentials, Bedrock supplies models, and CloudWatch captures operational telemetry.
 
 Each FastAPI health endpoint is available for load balancer checks. Both coaching boundaries require an `X-API-Key`: Streamlit receives only `BACKEND_API_KEY`, while the backend receives `AI_SERVICE_API_KEY`. The AI service remains on private networking and is not exposed to the browser or public load balancer.
@@ -67,7 +67,7 @@ Each FastAPI health endpoint is available for load balancer checks. Both coachin
 
 The original proposal specified Angular, Spring Boot, and a separate Python AI service. The implementation uses Streamlit for presentation, FastAPI for the application backend, and FastAPI for the private multi-agent service. Python reduces language overhead while the explicit backend/AI boundary preserves separate ownership, scaling, security, and deployment concerns.
 
-Streamlit scales for concurrent UI sessions, the backend scales for application traffic, and the AI service scales for model-bound workloads. The backend is ready to add identity, transactions, goals, persistence, and audit workflows without coupling those concerns to agent orchestration.
+Streamlit scales for concurrent UI sessions, the backend scales for application traffic, and the AI service scales for model-bound workloads. The backend persistence boundary can add identity and audit workflows without coupling those concerns to agent orchestration.
 
 ECS Fargate remains preferable to EKS for the initial scope because there are only three independently scalable services and no Kubernetes-specific platform requirement. The minimum demo uses two-AZ subnet placement, health checks, managed rolling deployment, circuit-breaker rollback, and stateless service design with less operational overhead. Its desired count of one per service is cost-minimal, not highly available; raise the count to at least two and add autoscaling for an availability test or production. Revisit EKS if independently owned agent workloads require Kubernetes scheduling, policy, or ecosystem capabilities.
 

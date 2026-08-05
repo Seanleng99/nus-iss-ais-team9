@@ -2,14 +2,14 @@
 
 Multi-agent financial education platform for young adults in Singapore. The system provides budgeting guidance, spending insights, goal planning, and investment education while avoiding regulated financial advice.
 
-This repository is an executable architecture skeleton for a synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls; durable user data, end-user identity, and production RAG ingestion are later gates. See `docs/requirements-traceability.md` before treating a scaffolded capability as complete.
+This repository is an executable synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. End-user identity, consent controls, and production RAG ingestion remain later gates. See `docs/requirements-traceability.md` before treating a scaffolded capability as complete.
 
 ## Repository Layout
 
 ```text
 apps/
   frontend/          Streamlit user interface
-  backend/           FastAPI application API and future domain persistence boundary
+  backend/           FastAPI application API, persistence, and Alembic migrations
   ai-service/        Private FastAPI agent orchestration, guardrails, RAG hooks, and evals
 docs/                Architecture, security, evaluation, and deployment documentation
 infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
@@ -29,10 +29,10 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 ## Target Architecture
 
 - Presentation tier: Streamlit deployed as an ECS Fargate service.
-- Application tier: FastAPI backend for access control, user-facing APIs, and future user, transaction, and goal management.
+- Application tier: FastAPI backend for access control, profiles, transactions, monthly budgets, goals, dashboard summaries, and backend-built financial snapshots.
 - AI tier: private FastAPI service with a model-driven LangGraph orchestrator and five agents.
 - Data tier: PostgreSQL for transactional records and a vector database for controlled financial education content.
-- AWS services: Bedrock, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch.
+- AWS services: Bedrock, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch.
 
 Streamlit calls the application backend from the server side, and the backend calls the private AI service. Separate service keys are injected from Secrets Manager and never sent to the browser. All three services can scale and roll back independently.
 
@@ -54,6 +54,15 @@ docker compose up --build
 ```
 
 Open Streamlit at `http://localhost:8501`. Backend health is available at `http://localhost:8080/health`, and AI service health at `http://localhost:8001/health`.
+
+The Streamlit workspace includes Overview, Transactions, Budget, Goals, Coach, and Profile pages. The sidebar profile ID is a synthetic demo identifier, not end-user authentication.
+
+Compose runs `alembic upgrade head` as a one-shot task before starting the backend. When running the backend separately, start PostgreSQL and apply migrations first:
+
+```powershell
+cd C:\ai-financial-wellness-coach\apps\backend
+alembic upgrade head
+```
 
 Compose explicitly uses `MODEL_PROVIDER=local_fixture` so local integration tests do not require AWS credentials or incur model charges. This fixture is deterministic and permitted only when `APP_ENV` is `local` or `test`; deployed environments fail configuration validation unless `MODEL_PROVIDER=bedrock`.
 

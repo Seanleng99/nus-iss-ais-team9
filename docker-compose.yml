@@ -74,6 +74,22 @@ services:
     depends_on:
       ai-service:
         condition: service_healthy
+      backend-migrate:
+        condition: service_completed_successfully
+
+  backend-migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    env_file:
+      - .env.example
+    environment:
+      POSTGRES_URL: postgresql://coach:coach@postgres:5432/financial_wellness
+    command: ["alembic", "upgrade", "head"]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
       postgres:
         condition: service_healthy
 

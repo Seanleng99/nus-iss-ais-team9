@@ -26,6 +26,8 @@ Parameters:
     Type: String
   EcsFrontendServiceName:
     Type: String
+  EcsBackendTaskFamily:
+    Type: String
   EcsTaskExecutionRoleArn:
     Type: String
   EcsAppTaskRoleArn:
@@ -120,10 +122,17 @@ Resources:
               - Effect: Allow
                 Action:
                   - ecs:DescribeServices
+                  - ecs:DescribeTasks
                   - ecs:DescribeTaskDefinition
                   - ecs:RegisterTaskDefinition
                   - ecs:TagResource
                 Resource: "*"
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${EcsBackendTaskFamily}:*
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${EcsClusterName}
               - Effect: Allow
                 Action: ecs:UpdateService
                 Resource:

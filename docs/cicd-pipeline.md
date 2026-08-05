@@ -15,7 +15,9 @@ flowchart LR
   BUILD --> ECR["Amazon ECR"]
   ECR --> SCAN["ECR and Inspector vulnerability gate"]
   SCAN --> APPROVAL["Protected demo approval"]
-  APPROVAL --> ECS["Three ECS Fargate services"]
+  APPROVAL --> MIGRATE["One-shot Alembic migration task"]
+  MIGRATE --> RDS["Private RDS PostgreSQL"]
+  MIGRATE --> ECS["Three ECS Fargate services"]
   ECS --> SMOKE["Health and prompt-injection smoke tests"]
   SMOKE -->|failure| ROLLBACK["Restore all previous task definitions"]
 ```
@@ -24,8 +26,8 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 
 ## Workflow Files
 
-- `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; service integration and load smoke; hardened container builds; CodeQL; dependency review; and LLMSecOps threshold/regression gates. It also runs weekly for drift observation.
-- `.github/workflows/release.yml`: immutable container builds, ECR publishing and scanning, protected ECS deployment, smoke testing, and coordinated rollback.
+- `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; hardened container builds; CodeQL; dependency review; and LLMSecOps threshold/regression gates. It also runs weekly for drift observation.
+- `.github/workflows/release.yml`: immutable container builds, ECR publishing and scanning, a one-shot Alembic migration, protected ECS deployment, smoke testing, and coordinated service rollback.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
 
@@ -39,10 +41,11 @@ The minimum demo resources are implemented as CloudFormation in `infra/aws`. Run
 - An ECS cluster with one minimum-size task per service, health checks, and deployment circuit-breaker rollback.
 - Existing ECS task definitions whose container names match the GitHub variables below.
 - Secrets Manager values for `BACKEND_API_KEY` and `AI_SERVICE_API_KEY`. Streamlit receives only the backend key; the backend receives both; the AI service receives only its internal key.
+- An encrypted, non-public, Single-AZ RDS PostgreSQL instance with an RDS-managed master secret and backend-only security-group ingress.
 - CloudWatch logs, service alarms, and deployment-failure EventBridge notifications.
 - Bedrock access restricted to the configured APAC inference profile and its destination foundation models for the AI task role.
 
-The current executable demo does not use PostgreSQL or an external vector store, so those cost-bearing resources are deferred until their adapters exist.
+The executable demo uses PostgreSQL for profiles, transactions, monthly budgets, goals, and backend-built snapshots. Dashboard summaries are computed by the backend from those persisted records. An external vector store remains deferred until its managed adapter exists.
 
 AWS Cloud Map provides private DNS between services. The deployment smoke test enters through the runner-reachable backend route and proves the private AI hop without exposing the AI service.
 
@@ -84,7 +87,7 @@ Create a `demo` environment, restrict it to `main`, and add required reviewers. 
 
 Add `SMOKE_BACKEND_API_KEY` as a `demo` environment secret. Its value must match the backend key in Secrets Manager. Do not place `AI_SERVICE_API_KEY`, application AWS credentials, or runtime model credentials in GitHub.
 
-Protect `main` with required checks for the backend, AI service, Streamlit, service integration, container builds, dependency review, and CodeQL. Enable GitHub secret scanning and push protection when supported by the repository plan.
+Protect `main` with required checks for the backend, AI service, Streamlit, infrastructure validation, service integration, container builds, dependency review, and CodeQL. Enable GitHub secret scanning and push protection when supported by the repository plan.
 
 ## Release Gates
 
@@ -103,6 +106,6 @@ The versioned policy also records metric baselines and maximum permitted regress
 
 ## Operational Notes
 
-The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads the current task definitions, changes only the images, and records all three previous revisions for rollback. AWS credentials are short-lived OIDC sessions.
+The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads the current task definitions, changes only the images, applies migrations before updating the backend, and records all three previous revisions for rollback. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
 
 The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. Inspector and CloudWatch continue monitoring after release because new vulnerabilities and behavioral drift can appear later.

@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY apps/backend/pyproject.toml ./pyproject.toml
 COPY apps/backend/app ./app
+COPY apps/backend/alembic.ini ./alembic.ini
+COPY apps/backend/migrations ./migrations
 RUN pip install --no-cache-dir .
 # The service does not invoke Perl; remove it from the runtime attack surface.
 RUN groupadd --system app && \

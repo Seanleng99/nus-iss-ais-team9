@@ -76,6 +76,22 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: financial_wellness
+          POSTGRES_USER: coach
+          POSTGRES_PASSWORD: coach
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coach -d financial_wellness"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_URL: postgresql://coach:coach@localhost:5432/financial_wellness
     defaults:
       run:
         working-directory: apps/backend
@@ -92,14 +108,52 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Apply and verify database migrations
+        run: |
+          alembic upgrade head
+          alembic check
       - name: Unit and API tests
         run: pytest
+
+  infrastructure:
+    name: CloudFormation and Compose validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install CloudFormation linter
+        run: python -m pip install "cfn-lint>=1.53,<2"
+      - name: Validate AWS templates
+        run: cfn-lint infra/aws/*.yaml
+      - name: Validate local service graph
+        run: docker compose config --quiet
 
   service-integration:
     name: Backend to AI integration and load smoke
     needs: [ai-service, backend]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: financial_wellness
+          POSTGRES_USER: coach
+          POSTGRES_PASSWORD: coach
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coach -d financial_wellness"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_URL: postgresql://coach:coach@localhost:5432/financial_wellness
     steps:
       - uses: actions/checkout@v6
         with:
@@ -110,7 +164,12 @@ jobs:
           cache: pip
           cache-dependency-path: apps/ai-service/pyproject.toml
       - name: Install shared runtime dependencies
-        run: python -m pip install -e "apps/ai-service[dev]"
+        run: |
+          python -m pip install -e "apps/ai-service[dev]"
+          python -m pip install -e "apps/backend"
+      - name: Apply backend migrations
+        working-directory: apps/backend
+        run: alembic upgrade head
       - name: Start private services
         env:
           MODEL_PROVIDER: local_fixture
@@ -161,6 +220,17 @@ jobs:
         run: docker build -f infra/docker/Dockerfile.backend -t coach-backend:ci .
       - name: Build frontend image
         run: docker build -f infra/docker/Dockerfile.frontend -t coach-frontend:ci .
+      - name: Verify frontend container health
+        run: |
+          docker run --rm --detach --name coach-frontend-ci -p 8501:8501 coach-frontend:ci
+          trap 'docker logs coach-frontend-ci; docker stop coach-frontend-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8501/_stcore/health | grep --quiet --line-regexp ok; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
 
   dependency-review:
     name: Dependency review

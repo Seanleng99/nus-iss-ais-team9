@@ -131,6 +131,10 @@ $applicationParameters = @(
     "AiTaskRoleArn=$($foundation.AiTaskRoleArn)",
     "BackendApiKeySecretArn=$($foundation.BackendApiKeySecretArn)",
     "AiServiceApiKeySecretArn=$($foundation.AiServiceApiKeySecretArn)",
+    "DatabaseEndpoint=$($foundation.DatabaseEndpoint)",
+    "DatabasePort=$($foundation.DatabasePort)",
+    "DatabaseName=$($foundation.DatabaseName)",
+    "DatabaseSecretArn=$($foundation.DatabaseSecretArn)",
     "AiLogGroupName=$($foundation.AiLogGroupName)",
     "BackendLogGroupName=$($foundation.BackendLogGroupName)",
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
@@ -147,6 +151,43 @@ Invoke-Aws cloudformation deploy `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
 $application = Get-StackOutputs $ApplicationStack
+
+Write-Host "Running initial database migration as a one-shot ECS task..."
+$migrationNetwork = "awsvpcConfiguration={subnets=[$($foundation.PublicSubnetAId),$($foundation.PublicSubnetBId)],securityGroups=[$($foundation.BackendSecurityGroupId)],assignPublicIp=ENABLED}"
+$migrationOverrides = @{
+    containerOverrides = @(
+        @{
+            name = $application.BackendContainerName
+            command = @("alembic", "upgrade", "head")
+        }
+    )
+} | ConvertTo-Json -Depth 5 -Compress
+$migrationTaskArn = Invoke-Aws ecs run-task `
+    --cluster $foundation.EcsClusterName `
+    --task-definition $application.BackendTaskFamily `
+    --launch-type FARGATE `
+    --network-configuration $migrationNetwork `
+    --overrides $migrationOverrides `
+    --region $Region `
+    --query "tasks[0].taskArn" `
+    --output text
+if (-not $migrationTaskArn -or $migrationTaskArn -eq "None") {
+    throw "ECS did not start the initial database migration task."
+}
+Invoke-Aws ecs wait tasks-stopped `
+    --cluster $foundation.EcsClusterName `
+    --tasks $migrationTaskArn `
+    --region $Region
+$migrationExitCode = Invoke-Aws ecs describe-tasks `
+    --cluster $foundation.EcsClusterName `
+    --tasks $migrationTaskArn `
+    --region $Region `
+    --query "tasks[0].containers[?name=='$($application.BackendContainerName)'].exitCode | [0]" `
+    --output text
+if ($migrationExitCode -ne "0") {
+    throw "Initial database migration failed with exit code $migrationExitCode."
+}
+
 $providerArn = Invoke-Aws iam list-open-id-connect-providers `
     --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')].Arn | [0]" `
     --output text
@@ -164,6 +205,7 @@ $oidcParameters = @(
     "EcsAiServiceName=$($application.AiServiceName)",
     "EcsBackendServiceName=$($application.BackendServiceName)",
     "EcsFrontendServiceName=$($application.FrontendServiceName)",
+    "EcsBackendTaskFamily=$($application.BackendTaskFamily)",
     "EcsTaskExecutionRoleArn=$($foundation.TaskExecutionRoleArn)",
     "EcsAppTaskRoleArn=$($foundation.AppTaskRoleArn)",
     "EcsAiTaskRoleArn=$($foundation.AiTaskRoleArn)"

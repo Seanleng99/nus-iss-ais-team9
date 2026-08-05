@@ -2,13 +2,13 @@
 
 The repository includes a minimum-size, synthetic-data deployment for AWS account `902552928492` in `ap-southeast-1`:
 
-- `demo-foundation.yaml` creates two public subnets, an internet-facing HTTP ALB, security groups, three scan-on-push ECR repositories with ten-image retention, an ECS cluster, Cloud Map, generated service secrets, seven-day log groups, and separate application and AI task roles.
+- `demo-foundation.yaml` creates two public application subnets, two private database subnets, an internet-facing HTTP ALB, security groups, a minimum Single-AZ RDS PostgreSQL instance, three scan-on-push ECR repositories with ten-image retention, an ECS cluster, Cloud Map, generated service secrets, seven-day log groups, and separate application and AI task roles.
 - `demo-application.yaml` creates three one-task Fargate services, private DNS for backend-to-AI and frontend-to-backend calls, task definitions, target groups, and ALB routing.
 - `github-actions-oidc.yaml` creates narrowly scoped image-publishing and ECS-deployment roles using GitHub OIDC.
 
 The public-subnet task design avoids NAT Gateway cost. Tasks receive public IPs for outbound ECR, Secrets Manager, and Bedrock access, but their security groups permit inbound traffic only from the ALB or the calling service. The ALB uses HTTP because no domain and ACM certificate were supplied. Use synthetic data only until HTTPS is configured.
 
-RDS and a managed vector service are intentionally omitted because the current backend does not persist records and the current compliance retriever uses packaged controlled data. Add those services only when their application integrations are implemented.
+RDS PostgreSQL is encrypted, has no public address, accepts port 5432 only from the backend security group, and uses an RDS-managed master secret. A managed vector service remains deferred because the compliance retriever still uses packaged controlled data.
 
 ## Automated Bootstrap
 
@@ -35,7 +35,7 @@ The first script validates the AWS account, deploys the foundation stack, builds
 | Task | Plain environment | Secrets | Task-role access |
 |---|---|---|---|
 | Frontend | `APP_ENV=demo`, `BACKEND_BASE_URL` | `BACKEND_API_KEY` | None |
-| Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, non-operational database placeholder | `BACKEND_API_KEY`, `AI_SERVICE_API_KEY` | None |
+| Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, database host/name/port, TLS mode | `BACKEND_API_KEY`, `AI_SERVICE_API_KEY`, RDS username/password | None |
 | AI service | `APP_ENV=demo`, `MODEL_PROVIDER=bedrock`, model ID, temperatures, prompt version | `AI_SERVICE_API_KEY` | Approved Bedrock profile and destination models |
 
 Do not inject `AI_SERVICE_API_KEY` into Streamlit. Do not place runtime AWS credentials in GitHub or application secrets. ECS tasks obtain AWS permissions from task roles.
@@ -45,8 +45,15 @@ Do not inject `AI_SERVICE_API_KEY` into Streamlit. Do not place runtime AWS cred
 - Internet to demo ALB: TCP 80. Replace this with HTTPS on 443 and redirect 80 after a domain and ACM certificate are available.
 - ALB to frontend/backend target security groups: only their container ports.
 - Backend to AI: TCP 8001 only.
+- Backend to private RDS PostgreSQL: TCP 5432 only.
 - ECS tasks use public IPs for low-cost outbound access; security groups still deny direct inbound internet traffic.
-- Add private subnets plus NAT or VPC endpoints before processing anything beyond synthetic demo data.
+- Move application tasks to private subnets plus NAT or VPC endpoints before processing anything beyond synthetic demo data. RDS already uses private database subnets.
+
+## Database Migrations
+
+The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. Each protected release registers the new backend task definition, runs the same command as a one-shot ECS task, checks its exit code, and only then updates the backend service.
+
+Schema changes must remain compatible with the currently running backend during deployment. Service rollback does not automatically reverse a successful database migration; use expand-and-contract changes and create an explicit corrective migration when needed.
 
 ## Bedrock Gate
 
@@ -62,4 +69,4 @@ The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeli
 
 ## Go/No-Go
 
-Do not deploy when any required variable is absent, a service lacks circuit-breaker rollback, an image has a Critical/High finding above policy, an AI/security evaluation fails, model residency is unresolved for the selected data class, or no previous stable task revision exists for rollback.
+Do not deploy when any required variable is absent, a database migration fails, a service lacks circuit-breaker rollback, an image has a Critical/High finding above policy, an AI/security evaluation fails, model residency is unresolved for the selected data class, or no previous stable task revision exists for rollback.

@@ -204,6 +204,39 @@ jobs:
           task-definition: backend-task-definition.json
           container-name: ${{ env.BACKEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.backend-image }}
+      - name: Apply database migrations as a one-shot task
+        env:
+          RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
+        run: |
+          network_configuration=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            --query 'services[0].networkConfiguration' --output json)
+          migration_task_definition=$(aws ecs register-task-definition \
+            --cli-input-json "file://$RENDERED_BACKEND_TASK" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          overrides=$(jq -nc --arg name "$BACKEND_CONTAINER_NAME" \
+            '{containerOverrides:[{name:$name,command:["alembic","upgrade","head"]}]}')
+          run_result=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$migration_task_definition" \
+            --launch-type FARGATE \
+            --network-configuration "$network_configuration" \
+            --overrides "$overrides")
+          if [[ $(jq '.failures | length' <<< "$run_result") -ne 0 ]]; then
+            jq '.failures' <<< "$run_result" >&2
+            exit 1
+          fi
+          migration_task=$(jq -r '.tasks[0].taskArn' <<< "$run_result")
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$migration_task"
+          exit_code=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" --tasks "$migration_task" \
+            --query "tasks[0].containers[?name=='$BACKEND_CONTAINER_NAME'].exitCode | [0]" \
+            --output text)
+          if [[ "$exit_code" != "0" ]]; then
+            aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$migration_task" \
+              --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[*].{name:name,reason:reason,exitCode:exitCode}}'
+            exit 1
+          fi
       - name: Deploy application backend
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
@@ -235,6 +268,7 @@ jobs:
           --frontend-health-url "$FRONTEND_HEALTH_URL"
           --backend-health-url "$BACKEND_HEALTH_URL"
           --coach-url "$COACH_SMOKE_URL"
+          --persistence-base-url "${COACH_SMOKE_URL%/coach}"
           --api-key "$SMOKE_BACKEND_API_KEY"
       - name: Roll back services when post-deploy checks fail
         if: failure() && env.AI_PREVIOUS_TASK_DEFINITION != ''

@@ -33,6 +33,15 @@ Parameters:
     Type: String
   AiServiceApiKeySecretArn:
     Type: String
+  DatabaseEndpoint:
+    Type: String
+  DatabasePort:
+    Type: String
+    Default: "5432"
+  DatabaseName:
+    Type: String
+  DatabaseSecretArn:
+    Type: String
   AiLogGroupName:
     Type: String
   BackendLogGroupName:
@@ -218,13 +227,23 @@ Resources:
               Value: http://ai.coach.internal:8001
             - Name: AI_SERVICE_TIMEOUT_SECONDS
               Value: "45"
-            - Name: POSTGRES_URL
-              Value: postgresql://not-provisioned
+            - Name: POSTGRES_HOST
+              Value: !Ref DatabaseEndpoint
+            - Name: POSTGRES_PORT
+              Value: !Ref DatabasePort
+            - Name: POSTGRES_DB
+              Value: !Ref DatabaseName
+            - Name: POSTGRES_SSLMODE
+              Value: require
           Secrets:
             - Name: BACKEND_API_KEY
               ValueFrom: !Sub "${BackendApiKeySecretArn}:value::"
             - Name: AI_SERVICE_API_KEY
               ValueFrom: !Sub "${AiServiceApiKeySecretArn}:value::"
+            - Name: POSTGRES_USER
+              ValueFrom: !Sub "${DatabaseSecretArn}:username::"
+            - Name: POSTGRES_PASSWORD
+              ValueFrom: !Sub "${DatabaseSecretArn}:password::"
           LogConfiguration:
             LogDriver: awslogs
             Options:

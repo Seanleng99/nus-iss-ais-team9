@@ -17,11 +17,12 @@ This matrix maps the module briefing, FAQ, Team 9 proposal, and proposal feedbac
 | Monitoring, alerting, logging, auditability | Scaffolded | Correlation-safe JSON access events, audit metadata, CloudWatch plan | Provision dashboards, alarms, retention, and EventBridge notifications in AWS. |
 | Model selection and justification | Scaffolded | Bedrock Converse adapter, valid model/profile identifier, `docs/agent-design.md` | Run model quality, latency, cost, and data-residency comparison before fixing the production model. |
 | Prompt versioning | Implemented | Executable `apps/ai-service/prompts/v1/prompts.json`, prompt catalog, pull-request gate, audit metadata | Add an approval record for each production prompt release. |
-| Agent memory and state | Planned | Request-scoped snapshot contract and backend repository ports | Add consent-aware PostgreSQL persistence, retention, deletion, and session-history controls. |
+| Financial workspace and persistence | Implemented | Multipage Streamlit UI; profile, transaction, monthly budget, goal, dashboard, and snapshot APIs; RDS PostgreSQL; SQLAlchemy repositories; Alembic migrations | Add authenticated ownership, consent, retention, deletion, and cross-user isolation before accepting real data. |
+| Agent memory and state | Scaffolded | Backend-built request snapshots sourced from persisted financial records; agent runtime remains request-scoped | Add authenticated consent, retention, deletion, session history, and cross-user isolation controls before durable agent memory. |
 | Risk and Compliance RAG | Scaffolded | Compliance-only retrieval permission, trusted source IDs, deterministic retriever, document sanitization, retrieval ownership tests and evals | Build offline policy ingestion, provenance manifests, freshness checks, and managed vector persistence. |
 | User authentication and permissions | Planned | Separate service credentials and backend security boundary | Replace the demo service key at the public application boundary with OIDC/JWT user authentication before real users. |
 | MCP and A2A consideration | Implemented | `docs/adr/0001-mcp-a2a-decision.md` | Revisit only if tools or agents become independently owned services. |
 
 ## Release Interpretation
 
-The repository is suitable for source control and a synthetic-data AWS demo after the deployment checklist is completed. It is not approved for real personal financial data, regulated financial advice, or production users. Those transitions require the planned identity, privacy, persistence, model-validation, and operational controls above.
+The repository is suitable for source control and a synthetic-data AWS demo after the deployment checklist is completed. It is not approved for real personal financial data, regulated financial advice, or production users. Those transitions require the planned identity, privacy, retention, model-validation, and operational controls above.

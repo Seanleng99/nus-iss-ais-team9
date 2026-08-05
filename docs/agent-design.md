@@ -18,7 +18,7 @@ The architecture is hybrid rather than unconstrained. Deterministic calculators,
 | Investment Education | Explain general investment concepts | Sanitized request and request-scoped constraints | None | Makes no retrieval or source-verification claims and avoids product instructions |
 | Risk and Compliance | Validate requests and specialist outputs against trusted evidence | Sanitized request, agent results, and retrieved policy context | `policy_checker`, `trusted_retriever` | Returns controlled source IDs, records policy findings, and explains blocks without exposing hidden policy text |
 
-No agent has durable or private memory in the skeleton. The backend owns future consent-aware profile, transaction, goal, and session persistence. Before persistent memory is enabled, the team must define purpose limitation, user access, correction, deletion, encryption, retention, and cross-session isolation tests.
+No agent has durable or private memory in the skeleton. The backend persists synthetic profiles, transactions, monthly budgets, and goals and can assemble a request-scoped snapshot; session history and agent memory remain disabled. Before persistent memory is enabled, the team must define purpose limitation, user access, correction, deletion, encryption, retention, and cross-session isolation tests.
 
 ## Communication
 

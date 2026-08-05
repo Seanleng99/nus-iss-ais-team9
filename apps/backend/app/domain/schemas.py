@@ -13,7 +13,7 @@ class AgentName(StrEnum):
 
 
 class MoneyAmount(BaseModel):
-    currency: str = "SGD"
+    currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
     amount: float = Field(ge=0)
 
 
@@ -22,6 +22,7 @@ class Transaction(BaseModel):
     category: str
     amount: MoneyAmount
     occurred_on: str
+    recurring: bool = False
 
 
 class FinancialGoal(BaseModel):

@@ -9,6 +9,7 @@ $body = @{
             "FastAPI tests and AI evals",
             "Streamlit tests",
             "Backend tests",
+            "CloudFormation and Compose validation",
             "Backend to AI integration and load smoke",
             "Build hardened containers",
             "CodeQL (python)"
