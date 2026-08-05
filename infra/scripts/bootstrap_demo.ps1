@@ -69,7 +69,10 @@ $oidcConfig = Invoke-Gh api "repos/$Repository/actions/oidc/customization/sub" |
 if (-not $oidcConfig.use_default) {
     throw "GitHub OIDC must use the default subject format for these IAM trust policies."
 }
-$subjectPrefix = "repo:$Repository"
+$subjectPrefix = $oidcConfig.sub_claim_prefix
+if (-not $subjectPrefix -or -not $subjectPrefix.StartsWith("repo:")) {
+    throw "GitHub did not return a usable OIDC subject prefix."
+}
 
 & docker info *> $null
 if ($LASTEXITCODE -ne 0) {
@@ -188,10 +191,22 @@ if ($migrationExitCode -ne "0") {
     throw "Initial database migration failed with exit code $migrationExitCode."
 }
 
-$providerArn = Invoke-Aws iam list-open-id-connect-providers `
-    --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')].Arn | [0]" `
-    --output text
-if ($providerArn -eq "None") { $providerArn = "" }
+# Keep a provider created by this stack under CloudFormation ownership. Only pass an
+# existing ARN when the provider is genuinely external to the OIDC stack.
+$ownedProviderArn = & $Aws cloudformation describe-stack-resource `
+    --stack-name $OidcStack `
+    --logical-resource-id GitHubOidcProvider `
+    --region $Region `
+    --query "StackResourceDetail.PhysicalResourceId" `
+    --output text 2>$null
+if ($LASTEXITCODE -eq 0 -and $ownedProviderArn -and $ownedProviderArn -ne "None") {
+    $providerArn = ""
+} else {
+    $providerArn = Invoke-Aws iam list-open-id-connect-providers `
+        --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')].Arn | [0]" `
+        --output text
+    if ($providerArn -eq "None") { $providerArn = "" }
+}
 
 Write-Host "Deploying GitHub OIDC roles..."
 $oidcParameters = @(
