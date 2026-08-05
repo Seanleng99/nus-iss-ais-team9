@@ -33,7 +33,7 @@ jobs:
       backend-image: ${{ steps.images.outputs.backend-image }}
       frontend-image: ${{ steps.images.outputs.frontend-image }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
@@ -124,7 +124,7 @@ jobs:
       COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
       SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
