@@ -66,10 +66,10 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not enforce the default GitHub OIDC subject format."
 }
 $oidcConfig = Invoke-Gh api "repos/$Repository/actions/oidc/customization/sub" | ConvertFrom-Json
-$subjectPrefix = $oidcConfig.sub_claim_prefix
-if (-not $subjectPrefix -or -not $subjectPrefix.StartsWith("repo:")) {
-    throw "GitHub did not return a usable OIDC subject prefix."
+if (-not $oidcConfig.use_default) {
+    throw "GitHub OIDC must use the default subject format for these IAM trust policies."
 }
+$subjectPrefix = "repo:$Repository"
 
 & docker info *> $null
 if ($LASTEXITCODE -ne 0) {
