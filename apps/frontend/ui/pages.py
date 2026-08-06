@@ -1,5 +1,7 @@
+import re
 from datetime import date
 
+import httpx
 import pandas as pd
 import streamlit as st
 
@@ -18,6 +20,8 @@ CATEGORIES = [
     "shopping",
     "other",
 ]
+RISK_OPTIONS = ["conservative", "moderate", "growth"]
+PROFILE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _category_label(category: str) -> str:
@@ -407,23 +411,30 @@ def coach_page() -> None:
 def profile_page() -> None:
     client = get_client()
     user_id = get_user_id()
-    page_header("Profile", "Financial baseline")
-    profile = backend_call(lambda: client.get_profile(user_id)) or {}
+    page_header("Profile settings", "Financial baseline")
+    st.caption(f"Profile ID · {user_id}")
+    saved_notice = st.session_state.pop("profile_saved_notice", None)
+    if saved_notice:
+        st.success(saved_notice)
+
+    profile = backend_call(lambda: client.get_profile(user_id))
+    if not profile:
+        st.info("This profile has not been created yet.")
+        return
     income = profile.get("monthly_income") or {"amount": 0.0}
     preferences = profile.get("preferences", {})
-    risk_options = ["conservative", "moderate", "growth"]
     current_risk = profile.get("risk_tolerance") or "moderate"
 
     with st.form("profile"):
         display_name = st.text_input(
-            "Display name", value=preferences.get("display_name", "Demo user"), max_chars=80
+            "Display name", value=preferences.get("display_name", user_id), max_chars=80
         )
         monthly_income = st.number_input(
             "Monthly income (SGD)", min_value=0.0, value=float(income["amount"]), step=100.0
         )
         risk_tolerance = st.segmented_control(
             "Risk comfort",
-            risk_options,
+            RISK_OPTIONS,
             default=current_risk,
             format_func=str.title,
             selection_mode="single",
@@ -437,5 +448,77 @@ def profile_page() -> None:
         }
         result = backend_call(lambda: client.save_profile(user_id, payload))
         if result:
-            st.success("Profile saved.")
+            st.session_state.profile_saved_notice = "Profile saved."
+            st.session_state.profile_switcher_version = (
+                st.session_state.get("profile_switcher_version", 0) + 1
+            )
             st.rerun()
+
+
+def create_profile_page() -> None:
+    client = get_client()
+    page_header("Create profile", "New financial workspace")
+    created_notice = st.session_state.pop("profile_created_notice", None)
+    if created_notice:
+        st.success(created_notice)
+
+    with st.form("create-profile", clear_on_submit=False):
+        profile_id = st.text_input(
+            "Profile ID",
+            max_chars=128,
+            help="Letters, numbers, dots, underscores, and hyphens.",
+        )
+        display_name = st.text_input("Display name", max_chars=80)
+        monthly_income = st.number_input(
+            "Monthly income (SGD)", min_value=0.0, step=100.0
+        )
+        risk_tolerance = st.segmented_control(
+            "Risk comfort",
+            RISK_OPTIONS,
+            default="moderate",
+            format_func=str.title,
+            selection_mode="single",
+        )
+        created = st.form_submit_button(
+            "Create profile", type="primary", icon=":material/person_add:"
+        )
+
+    if not created:
+        return
+
+    normalized_id = profile_id.strip()
+    normalized_name = display_name.strip()
+    if not PROFILE_ID_PATTERN.fullmatch(normalized_id):
+        st.warning("Enter a valid profile ID.")
+        return
+    if not normalized_name:
+        st.warning("Enter a display name.")
+        return
+
+    payload = {
+        "user_id": normalized_id,
+        "monthly_income": {"currency": "SGD", "amount": monthly_income},
+        "risk_tolerance": risk_tolerance or "moderate",
+        "preferences": {"display_name": normalized_name},
+    }
+    try:
+        result = client.create_profile(payload)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code == 409:
+            st.error("That profile ID is already in use.")
+        else:
+            st.error(f"The request could not be completed ({error.response.status_code}).")
+        return
+    except httpx.HTTPError:
+        st.error("The application service is temporarily unavailable.")
+        return
+
+    st.session_state.active_user_id = result["user_id"]
+    st.session_state.profile_switcher_version = (
+        st.session_state.get("profile_switcher_version", 0) + 1
+    )
+    st.session_state.pop("coach_history", None)
+    st.session_state.profile_created_notice = (
+        f"{normalized_name} was created and is now active."
+    )
+    st.rerun()

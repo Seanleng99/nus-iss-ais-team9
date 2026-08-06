@@ -46,6 +46,12 @@ class BackendClient:
     def get_profile(self, user_id: str) -> dict[str, Any] | None:
         return self._request("GET", f"/api/users/{user_id}/profile", allow_not_found=True)
 
+    def list_profiles(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/api/profiles")
+
+    def create_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/api/profiles", json=payload)
+
     def save_profile(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/profile", json=payload)
 

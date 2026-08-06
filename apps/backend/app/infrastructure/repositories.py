@@ -38,6 +38,13 @@ class SQLAlchemyUserRepository:
     def get_profile(self, user_id: str) -> FinancialProfileRecord | None:
         return self.session.get(FinancialProfileRecord, user_id)
 
+    def list_profiles(self) -> list[FinancialProfileRecord]:
+        query = select(FinancialProfileRecord).order_by(
+            FinancialProfileRecord.updated_at.desc(),
+            FinancialProfileRecord.user_id,
+        )
+        return list(self.session.scalars(query))
+
     def exists(self, user_id: str) -> bool:
         return self.session.get(UserRecord, user_id) is not None
 

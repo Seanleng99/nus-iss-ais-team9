@@ -22,6 +22,10 @@ def apply_styles() -> None:
         div[data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 6px; }
         .workspace-brand { font-weight: 750; font-size: 1.05rem; color: var(--ink); }
         .workspace-kicker { color: var(--green); font-weight: 650; font-size: 0.75rem; }
+        .sidebar-section {
+            border-top: 1px solid var(--line); color: var(--muted); font-size: 0.72rem;
+            font-weight: 700; margin-top: 1rem; padding-top: 0.9rem;
+        }
         .page-heading { margin: 0; color: var(--ink); font-size: 1.8rem; line-height: 1.2; }
         .page-subheading { color: var(--muted); margin: 0.3rem 0 1.2rem 0; }
         .section-rule { border-top: 1px solid var(--line); margin: 1rem 0; }

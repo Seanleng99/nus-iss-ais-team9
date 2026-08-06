@@ -13,7 +13,9 @@ from app.api.financial_schemas import (
     GoalCreate,
     GoalProgressResponse,
     GoalResponse,
+    ProfileCreate,
     ProfileResponse,
+    ProfileSummary,
     ProfileUpsert,
     SnapshotResponse,
     TransactionCreate,
@@ -61,6 +63,23 @@ def _profile_response(record: FinancialProfileRecord) -> ProfileResponse:
     )
 
 
+def _profile_summary(record: FinancialProfileRecord) -> ProfileSummary:
+    display_name = record.preferences.get("display_name")
+    if not isinstance(display_name, str) or not display_name.strip():
+        display_name = record.user_id
+    income = (
+        MoneyAmount(currency=record.currency, amount=float(record.monthly_income))
+        if record.monthly_income is not None
+        else None
+    )
+    return ProfileSummary(
+        user_id=record.user_id,
+        display_name=display_name.strip(),
+        monthly_income=income,
+        risk_tolerance=record.risk_tolerance,
+    )
+
+
 def _transaction_response(record: TransactionRecord) -> TransactionResponse:
     return TransactionResponse(
         id=record.id,
@@ -104,6 +123,37 @@ def _budget_response(
         total_remaining=total_limit - total_spent,
         categories=categories,
     )
+
+
+@router.get("/profiles", response_model=list[ProfileSummary])
+def list_profiles(
+    session: Annotated[Session, Depends(get_db_session)],
+) -> list[ProfileSummary]:
+    records = SQLAlchemyUserRepository(session).list_profiles()
+    return [_profile_summary(record) for record in records]
+
+
+@router.post(
+    "/profiles",
+    response_model=ProfileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_profile(
+    profile: ProfileCreate,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> ProfileResponse:
+    repository = SQLAlchemyUserRepository(session)
+    if repository.get_profile(profile.user_id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Profile already exists",
+        )
+    record = repository.upsert_profile(
+        profile.user_id,
+        ProfileUpsert(**profile.model_dump(exclude={"user_id"})),
+    )
+    session.commit()
+    return _profile_response(record)
 
 
 @router.get("/users/{user_id}/profile", response_model=ProfileResponse)

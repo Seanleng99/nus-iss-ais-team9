@@ -13,8 +13,23 @@ class ProfileUpsert(BaseModel):
     preferences: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProfileCreate(ProfileUpsert):
+    user_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    )
+
+
 class ProfileResponse(ProfileUpsert):
     user_id: str
+
+
+class ProfileSummary(BaseModel):
+    user_id: str
+    display_name: str
+    monthly_income: MoneyAmount | None
+    risk_tolerance: str | None
 
 
 class TransactionCreate(BaseModel):

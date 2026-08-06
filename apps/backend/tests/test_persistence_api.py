@@ -74,3 +74,40 @@ def test_profile_transactions_goals_and_snapshot_are_persisted() -> None:
 def test_persistence_api_requires_service_key() -> None:
     response = TestClient(app).get("/api/users/demo-user/transactions")
     assert response.status_code == 401
+
+
+def test_profiles_can_be_created_listed_and_not_overwritten() -> None:
+    client = TestClient(app)
+    headers = {"X-API-Key": settings.api_key}
+    payload = {
+        "user_id": "alex-lee",
+        "monthly_income": {"currency": "SGD", "amount": 6200},
+        "risk_tolerance": "growth",
+        "preferences": {"display_name": "Alex Lee"},
+    }
+
+    created = client.post("/api/profiles", headers=headers, json=payload)
+    duplicate = client.post("/api/profiles", headers=headers, json=payload)
+    profiles = client.get("/api/profiles", headers=headers)
+
+    assert created.status_code == 201
+    assert duplicate.status_code == 409
+    assert profiles.status_code == 200
+    assert profiles.json() == [
+        {
+            "user_id": "alex-lee",
+            "display_name": "Alex Lee",
+            "monthly_income": {"currency": "SGD", "amount": 6200.0},
+            "risk_tolerance": "growth",
+        }
+    ]
+
+
+def test_profile_creation_rejects_unsafe_profile_id() -> None:
+    response = TestClient(app).post(
+        "/api/profiles",
+        headers={"X-API-Key": settings.api_key},
+        json={"user_id": "invalid profile", "preferences": {"display_name": "Invalid"}},
+    )
+
+    assert response.status_code == 422

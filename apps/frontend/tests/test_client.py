@@ -42,6 +42,35 @@ def test_client_supports_not_found_profile() -> None:
     assert client.get_profile("missing-user") is None
 
 
+def test_client_lists_and_creates_profiles() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json=[{"user_id": "alex", "display_name": "Alex"}],
+            )
+        return httpx.Response(201, json={"user_id": "alex"})
+
+    client = BackendClient(
+        base_url="http://backend.test",
+        transport=httpx.MockTransport(handler),
+    )
+    profiles = client.list_profiles()
+    created = client.create_profile(
+        {"user_id": "alex", "preferences": {"display_name": "Alex"}}
+    )
+
+    assert profiles[0]["display_name"] == "Alex"
+    assert created["user_id"] == "alex"
+    assert [(request.method, request.url.path) for request in captured] == [
+        ("GET", "/api/profiles"),
+        ("POST", "/api/profiles"),
+    ]
+
+
 def test_client_updates_budget_and_coaching_routes() -> None:
     captured: list[httpx.Request] = []
 
