@@ -2,8 +2,12 @@ name: CI and LLMSecOps
 
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
   workflow_dispatch:
   schedule:
     - cron: "0 2 * * 1"

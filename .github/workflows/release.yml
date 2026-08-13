@@ -1,10 +1,7 @@
 name: Release to AWS
 
 on:
-  workflow_run:
-    workflows: [CI and LLMSecOps]
-    branches: [main]
-    types: [completed]
+  workflow_dispatch:
 
 concurrency:
   group: deploy-demo
@@ -14,18 +11,16 @@ permissions:
   contents: read
 
 env:
-  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+  RELEASE_SHA: ${{ github.sha }}
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
 
 jobs:
   build-images:
     name: Build, publish, and scan images
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
       id-token: write
     outputs:
@@ -37,6 +32,34 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
+      - name: Verify commit-owner approval and successful CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Release approval must be dispatched from main." >&2
+            exit 1
+          fi
+
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$RELEASE_SHA" != "$main_sha" ]]; then
+            echo "Release SHA $RELEASE_SHA is not the current main SHA $main_sha." >&2
+            exit 1
+          fi
+
+          ci_actor=$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f branch=main -f event=push -f status=success -f head_sha="$RELEASE_SHA" \
+            -f per_page=20 --jq '.workflow_runs[0].actor.login // empty')
+          if [[ -z "$ci_actor" ]]; then
+            echo "No successful push CI run exists for $RELEASE_SHA." >&2
+            exit 1
+          fi
+          if [[ "${ci_actor,,}" != "${GITHUB_ACTOR,,}" ]]; then
+            echo "Release must be approved by $ci_actor, who triggered CI for this commit; received $GITHUB_ACTOR." >&2
+            exit 1
+          fi
+          echo "Release approved by commit owner $GITHUB_ACTOR for $RELEASE_SHA."
       - name: Validate publishing configuration
         env:
           PUBLISH_ROLE: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
@@ -133,7 +156,7 @@ jobs:
             --repository "$FRONTEND_REPOSITORY" --image-tag "$RELEASE_SHA"
 
   deploy-demo:
-    name: Deploy protected demo environment
+    name: Deploy approved demo environment
     needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 35

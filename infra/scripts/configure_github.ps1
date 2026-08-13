@@ -61,12 +61,7 @@ if ($LASTEXITCODE -ne 0) {
 $environmentBody = @{
     wait_timer = 0
     prevent_self_review = $false
-    reviewers = @(
-        @{
-            type = "User"
-            id = [int64]$viewerRecord.id
-        }
-    )
+    reviewers = @()
     deployment_branch_policy = @{
         protected_branches = $false
         custom_branch_policies = $true
@@ -127,8 +122,14 @@ if ($LASTEXITCODE -ne 0) {
 Invoke-Gh repo edit $Repository `
     --enable-issues=false `
     --enable-wiki=false `
-    --enable-projects=false `
-    --enable-secret-scanning `
-    --enable-secret-scanning-push-protection
+    --enable-projects=false
 
-Write-Host "Configured GitHub Actions variables, the demo environment, OIDC defaults, and the smoke-test secret."
+$securityOutput = & $Gh repo edit $Repository `
+    --enable-secret-scanning `
+    --enable-secret-scanning-push-protection 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Secret scanning or push protection is unavailable for this repository plan: $securityOutput"
+}
+
+Write-Host "Configured GitHub Actions variables, the main-only demo environment, OIDC defaults, and the smoke-test secret."
+Write-Host "Deployment approval is enforced by release.yml: the actor who triggered successful main CI must manually dispatch the release."

@@ -4,18 +4,17 @@
 
 ```mermaid
 flowchart LR
-  PR["Pull request"] --> CI["Python lint and tests"]
+  CHANGE["Non-doc pull request or main push"] --> CI["Python lint and tests"]
   CI --> EVAL["AI eval and guardrail gate"]
   CI --> INTEGRATION["Service integration and load smoke"]
   CI --> CONTAINERS["Hardened container builds"]
   CI --> SAST["CodeQL and dependency review"]
-  EVAL --> MAIN["Protected main branch"]
-  SAST --> MAIN
-  MAIN --> BUILD["Build AI, backend, and frontend images"]
+  EVAL --> APPROVAL["Manual release by main push actor"]
+  SAST --> APPROVAL
+  APPROVAL --> BUILD["Build AI, backend, and frontend images"]
   BUILD --> ECR["Amazon ECR"]
   ECR --> SCAN["ECR and Inspector vulnerability gate"]
-  SCAN --> APPROVAL["Protected demo approval"]
-  APPROVAL --> MIGRATE["One-shot Alembic migration task"]
+  SCAN --> MIGRATE["One-shot Alembic migration task"]
   MIGRATE --> RDS["Private RDS PostgreSQL"]
   MIGRATE --> ECS["Three ECS Fargate services"]
   ECS --> SMOKE["Health and prompt-injection smoke tests"]
@@ -26,12 +25,12 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 
 ## Workflow Files
 
-- `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; hardened container builds; CodeQL; dependency review; and LLMSecOps threshold/regression gates. It also runs weekly for drift observation.
-- `.github/workflows/release.yml`: immutable container builds, ECR publishing and scanning, a one-shot Alembic migration, protected ECS deployment, smoke testing, and coordinated service rollback.
+- `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; hardened container builds; CodeQL; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. It also runs weekly for drift observation.
+- `.github/workflows/release.yml`: commit-owner approval, immutable container builds, ECR publishing and scanning, a one-shot Alembic migration, ECS deployment through the `demo` environment, smoke testing, and coordinated service rollback.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
 
-The release workflow starts only after a successful `CI and LLMSecOps` run caused by a push to `main`. Weekly drift runs and manual CI runs do not deploy.
+The release workflow is manually dispatched from `main`. It releases only the current `main` SHA, requires a successful push-triggered `CI and LLMSecOps` run for that SHA, and requires the dispatcher to be the GitHub actor who triggered that CI run. In this pipeline, that authenticated push actor is the commit owner; Git author metadata is not used because it can be set or spoofed locally. Weekly drift runs and manual CI runs cannot satisfy the release gate.
 
 ## AWS Provisioning
 
@@ -60,13 +59,13 @@ Read `SUBJECT_PREFIX` from the repository OIDC configuration; repositories using
 
 ## GitHub Configuration
 
-Create a `demo` environment, restrict it to `main`, and add required reviewers. Configure these repository or environment variables:
+Create a `demo` environment and restrict it to `main`. The release workflow supplies the approval gate because required environment reviewers are unavailable for this private repository on the current GitHub plan. Collaborators with write access can approve their own successful `main` push by manually running `Release to AWS`; they cannot approve another collaborator's push. Configure these repository or environment variables:
 
 | Variable | Purpose |
 |---|---|
 | `AWS_REGION` | AWS region, default `ap-southeast-1` |
 | `AWS_PUBLISH_ROLE_ARN` | OIDC role for ECR publishing and scan reads |
-| `AWS_DEPLOY_ROLE_ARN` | OIDC role used by the protected environment |
+| `AWS_DEPLOY_ROLE_ARN` | OIDC role used by the `demo` environment |
 | `ECR_AI_REPOSITORY` | FastAPI ECR repository name |
 | `ECR_BACKEND_REPOSITORY` | Application backend ECR repository name |
 | `ECR_FRONTEND_REPOSITORY` | Streamlit ECR repository name |
@@ -87,7 +86,7 @@ Create a `demo` environment, restrict it to `main`, and add required reviewers. 
 
 Add `SMOKE_BACKEND_API_KEY` as a `demo` environment secret. Its value must match the backend key in Secrets Manager. Do not place `AI_SERVICE_API_KEY`, application AWS credentials, or runtime model credentials in GitHub.
 
-Protect `main` with required checks for the backend, AI service, Streamlit, infrastructure validation, service integration, container builds, dependency review, and CodeQL. Enable GitHub secret scanning and push protection when supported by the repository plan.
+Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful CI and the matching push actor, but it does not prevent a direct push to `main`. Enable GitHub secret scanning and push protection when supported by the repository plan.
 
 ## Release Gates
 

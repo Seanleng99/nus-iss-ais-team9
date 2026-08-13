@@ -27,9 +27,14 @@ $body = @{
     allow_deletions = $false
 } | ConvertTo-Json -Depth 6
 
-$body | & $Gh api --method PUT "repos/$Repository/branches/main/protection" --input -
+$result = $body | & $Gh api --method PUT "repos/$Repository/branches/main/protection" --input - 2>&1
 if ($LASTEXITCODE -ne 0) {
+    if ($result -match "Upgrade to GitHub Pro or make this repository public") {
+        Write-Warning "Branch protection is unavailable for this private repository on the current GitHub plan. Upgrade to GitHub Pro or make the repository public to enforce it."
+        return
+    }
     throw "Branch protection could not be enabled. Check the repository plan and administrator permissions."
 }
 
+$result
 Write-Host "Protected main with pull-request review and required CI checks."

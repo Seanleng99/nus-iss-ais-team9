@@ -19,7 +19,7 @@ After GitHub and AWS browser authentication, start Docker Desktop and run:
 .\infra\scripts\configure_github.ps1
 ```
 
-The first script validates the AWS account, deploys the foundation stack, builds and publishes bootstrap images, creates the ECS services, and deploys the OIDC roles. The second configures GitHub Actions variables, the `demo` environment restricted to `main`, the protected smoke-test secret, and repository security settings. After the initial push and successful checks, run `protect_main.ps1` to require pull requests and CI checks.
+The first script validates the AWS account, deploys the foundation stack, builds and publishes bootstrap images, creates the ECS services, and deploys the OIDC roles. The second configures GitHub Actions variables, the `demo` environment restricted to `main`, the smoke-test secret, and repository security settings. After the initial push and successful checks, run `protect_main.ps1`; it enables pull-request and CI requirements when the private-repository plan supports branch protection and otherwise reports the plan limitation.
 
 ## Deployment Order
 
@@ -27,8 +27,9 @@ The first script validates the AWS account, deploys the foundation stack, builds
 2. Authenticate with short-lived GitHub and AWS browser sessions.
 3. Run `bootstrap_demo.ps1` and wait for all three ECS services to stabilize.
 4. Run `configure_github.ps1`, commit, and push the repository to `main`.
-5. Verify CI, image scanning, protected deployment, prompt-injection blocking, and rollback.
-6. Run `protect_main.ps1` after the first successful workflow creates the required status-check contexts.
+5. After successful push CI, have the same authenticated push actor manually dispatch `Release to AWS` from `main`.
+6. Verify image scanning, deployment, prompt-injection blocking, and rollback.
+7. Run `protect_main.ps1` after the first successful workflow creates the required status-check contexts. Upgrade the GitHub plan if branch protection remains unavailable for the private repository.
 
 ## Task Configuration Matrix
 
@@ -51,7 +52,7 @@ Do not inject `AI_SERVICE_API_KEY` into Streamlit. Do not place runtime AWS cred
 
 ## Database Migrations
 
-The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. Each protected release registers the new backend task definition, runs the same command as a one-shot ECS task, checks its exit code, and only then updates the backend service.
+The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. Each approved release registers the new backend task definition, runs the same command as a one-shot ECS task, checks its exit code, and only then updates the backend service.
 
 Schema changes must remain compatible with the currently running backend during deployment. Service rollback does not automatically reverse a successful database migration; use expand-and-contract changes and create an explicit corrective migration when needed.
 
@@ -63,9 +64,9 @@ The AI ECS task role has `bedrock:InvokeModel` only for the selected APAC infere
 
 ## GitHub And OIDC
 
-Use exact OIDC subject claims for the main-branch publisher and protected `demo` environment deployer. Pass all three ECR repositories and ECS services to `github-actions-oidc.yaml`. The publisher can upload/scan only those repositories; the deployer can update only those services and pass only the named task roles.
+Use exact OIDC subject claims for the main-branch publisher and `demo` environment deployer. Pass all three ECR repositories and ECS services to `github-actions-oidc.yaml`. The publisher can upload/scan only those repositories; the deployer can update only those services and pass only the named task roles.
 
-The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeline.md`. Require environment reviewers, branch protection, secret scanning, push protection, CodeQL, dependency review, service integration, container builds, and AI evaluation checks before release.
+The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeline.md`. The release workflow requires the actor who triggered successful push CI for the current `main` SHA to dispatch the release manually. Native required environment reviewers and branch protection are unavailable for this private repository on the current GitHub plan; enable them after a plan upgrade. Secret scanning and push protection are also configured only when the plan supports them.
 
 ## Go/No-Go
 
