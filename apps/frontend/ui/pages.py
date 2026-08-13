@@ -101,8 +101,8 @@ REGION_OPTIONS = [
 ]
 
 
-def _option_index(options: list[str], value: str | None, default: int = 0) -> int:
-    return options.index(value) if value in options else default
+def _option_index(options: list[str], value: str | None) -> int | None:
+    return options.index(value) if value in options else None
 
 
 def _category_label(category: str) -> str:
@@ -507,10 +507,10 @@ def profile_page() -> None:
     with context_tab:
         income = profile.get("monthly_income") or {"amount": 0.0}
         preferences = profile.get("preferences", {})
-        current_risk = profile.get("risk_tolerance") or "moderate"
+        current_risk = profile.get("risk_tolerance")
         with st.form("profile"):
             display_name = st.text_input(
-                "Display name", value=preferences.get("display_name", user_id), max_chars=80
+                "Display name", value=preferences.get("display_name", ""), max_chars=80
             )
             first, second = st.columns(2)
             monthly_income = first.number_input(
@@ -523,6 +523,7 @@ def profile_page() -> None:
                 "Income frequency",
                 INCOME_FREQUENCY_OPTIONS,
                 index=_option_index(INCOME_FREQUENCY_OPTIONS, profile.get("income_frequency")),
+                key=f"profile-{user_id}-income-frequency-v2",
             )
             third, fourth = st.columns(2)
             employment_status = third.selectbox(
@@ -530,12 +531,14 @@ def profile_page() -> None:
                 EMPLOYMENT_OPTIONS,
                 index=_option_index(EMPLOYMENT_OPTIONS, profile.get("employment_status")),
                 format_func=str.title,
+                key=f"profile-{user_id}-employment-status-v2",
             )
             occupation_category = fourth.selectbox(
                 "Occupation category",
                 OCCUPATION_OPTIONS,
                 index=_option_index(OCCUPATION_OPTIONS, profile.get("occupation_category")),
                 format_func=str.title,
+                key=f"profile-{user_id}-occupation-category-v2",
             )
             fifth, sixth = st.columns(2)
             income_stability = fifth.selectbox(
@@ -543,19 +546,21 @@ def profile_page() -> None:
                 INCOME_STABILITY_OPTIONS,
                 index=_option_index(INCOME_STABILITY_OPTIONS, profile.get("income_stability")),
                 format_func=str.title,
+                key=f"profile-{user_id}-income-stability-v2",
             )
             housing_status = sixth.selectbox(
                 "Housing status",
                 HOUSING_OPTIONS,
                 index=_option_index(HOUSING_OPTIONS, profile.get("housing_status")),
                 format_func=str.title,
+                key=f"profile-{user_id}-housing-status-v2",
             )
             seventh, eighth = st.columns(2)
             household_size = seventh.number_input(
                 "Household size",
-                min_value=1,
+                min_value=0,
                 max_value=30,
-                value=profile.get("household_size") or 1,
+                value=profile.get("household_size") or 0,
             )
             dependants = eighth.number_input(
                 "Dependants",
@@ -569,11 +574,13 @@ def profile_page() -> None:
                 LITERACY_OPTIONS,
                 index=_option_index(LITERACY_OPTIONS, profile.get("financial_literacy")),
                 format_func=str.title,
+                key=f"profile-{user_id}-financial-literacy-v2",
             )
             preferred_language = tenth.selectbox(
                 "Preferred language",
                 LANGUAGE_OPTIONS,
                 index=_option_index(LANGUAGE_OPTIONS, profile.get("preferred_language")),
+                key=f"profile-{user_id}-preferred-language-v2",
             )
             accessibility_preferences = st.multiselect(
                 "Accessibility preferences",
@@ -587,28 +594,34 @@ def profile_page() -> None:
                 default=current_risk,
                 format_func=str.title,
                 selection_mode="single",
+                key=f"profile-{user_id}-risk-comfort-v2",
             )
             saved = st.form_submit_button(
                 "Save profile", type="primary", icon=":material/save:"
             )
         if saved:
-            if dependants > household_size:
+            if dependants and not household_size:
+                st.warning("Enter a household size when dependants are provided.")
+            elif household_size and dependants > household_size:
                 st.warning("Dependants cannot exceed household size.")
             else:
+                normalized_name = display_name.strip()
                 payload = {
                     "monthly_income": {"currency": "SGD", "amount": monthly_income},
-                    "risk_tolerance": risk_tolerance or "moderate",
+                    "risk_tolerance": risk_tolerance,
                     "employment_status": employment_status,
                     "occupation_category": occupation_category,
                     "income_frequency": income_frequency,
                     "income_stability": income_stability,
-                    "household_size": household_size,
+                    "household_size": household_size or None,
                     "dependants": dependants,
                     "housing_status": housing_status,
                     "financial_literacy": financial_literacy,
                     "preferred_language": preferred_language,
                     "accessibility_preferences": accessibility_preferences,
-                    "preferences": {"display_name": display_name.strip() or user_id},
+                    "preferences": (
+                        {"display_name": normalized_name} if normalized_name else {}
+                    ),
                 }
                 result = backend_call(lambda: client.save_profile(user_id, payload))
                 if result:
@@ -653,14 +666,14 @@ def profile_page() -> None:
                     age_band = st.selectbox(
                         "Age band",
                         AGE_BANDS,
-                        index=_option_index(AGE_BANDS, demographics.get("age_band"), 4),
+                        index=_option_index(AGE_BANDS, demographics.get("age_band")),
+                        key=f"fairness-{user_id}-age-band-v2",
                     )
                     gender_identity = st.selectbox(
                         "Gender identity",
                         GENDER_OPTIONS,
-                        index=_option_index(
-                            GENDER_OPTIONS, demographics.get("gender_identity"), 4
-                        ),
+                        index=_option_index(GENDER_OPTIONS, demographics.get("gender_identity")),
+                        key=f"fairness-{user_id}-gender-identity-v2",
                     )
                     race_ethnicity = st.multiselect(
                         "Race or ethnicity",
@@ -673,29 +686,28 @@ def profile_page() -> None:
                         index=_option_index(
                             RESIDENCY_OPTIONS,
                             demographics.get("nationality_residency"),
-                            4,
                         ),
+                        key=f"fairness-{user_id}-nationality-residency-v2",
                     )
                     disability_status = st.selectbox(
                         "Disability status",
                         DISABILITY_OPTIONS,
                         index=_option_index(
-                            DISABILITY_OPTIONS, demographics.get("disability_status"), 2
+                            DISABILITY_OPTIONS, demographics.get("disability_status")
                         ),
+                        key=f"fairness-{user_id}-disability-status-v2",
                     )
                     marital_status = st.selectbox(
                         "Marital or family status",
                         MARITAL_OPTIONS,
-                        index=_option_index(
-                            MARITAL_OPTIONS, demographics.get("marital_status"), 4
-                        ),
+                        index=_option_index(MARITAL_OPTIONS, demographics.get("marital_status")),
+                        key=f"fairness-{user_id}-marital-status-v2",
                     )
                     residential_region = st.selectbox(
                         "Broad residential region",
                         REGION_OPTIONS,
-                        index=_option_index(
-                            REGION_OPTIONS, demographics.get("residential_region"), 6
-                        ),
+                        index=_option_index(REGION_OPTIONS, demographics.get("residential_region")),
+                        key=f"fairness-{user_id}-residential-region-v2",
                     )
                     demographics_saved = st.form_submit_button(
                         "Save fairness data", type="primary", icon=":material/save:"
@@ -734,9 +746,10 @@ def create_profile_page() -> None:
         risk_tolerance = st.segmented_control(
             "Risk comfort",
             RISK_OPTIONS,
-            default="moderate",
+            default=None,
             format_func=str.title,
             selection_mode="single",
+            key="create-profile-risk-comfort-v2",
         )
         created = st.form_submit_button(
             "Create profile", type="primary", icon=":material/person_add:"
@@ -757,7 +770,7 @@ def create_profile_page() -> None:
     payload = {
         "user_id": normalized_id,
         "monthly_income": {"currency": "SGD", "amount": monthly_income},
-        "risk_tolerance": risk_tolerance or "moderate",
+        "risk_tolerance": risk_tolerance,
         "preferences": {"display_name": normalized_name},
     }
     try:
