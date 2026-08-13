@@ -20,8 +20,68 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect affected services
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frontend_ci: ${{ steps.classify.outputs.frontend_ci }}
+      backend_ci: ${{ steps.classify.outputs.backend_ci }}
+      ai_ci: ${{ steps.classify.outputs.ai_ci }}
+      infrastructure: ${{ steps.classify.outputs.infrastructure }}
+      integration: ${{ steps.classify.outputs.integration }}
+      sast: ${{ steps.classify.outputs.sast }}
+      frontend_deploy: ${{ steps.classify.outputs.frontend_deploy }}
+      backend_deploy: ${{ steps.classify.outputs.backend_deploy }}
+      ai_deploy: ${{ steps.classify.outputs.ai_deploy }}
+      migrations: ${{ steps.classify.outputs.migrations }}
+      deploy: ${{ steps.classify.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test change classifier
+        run: python -m unittest discover -s infra/scripts/tests -p 'test_detect_changes.py'
+      - id: classify
+        name: Classify changed paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p artifacts
+          if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            python infra/scripts/detect_changes.py --all \
+              --json-output artifacts/change-manifest.json \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              git diff --name-only "$BASE_SHA" "$HEAD_SHA" > artifacts/changed-files.txt
+            elif [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+              git diff-tree --root --no-commit-id --name-only -r "$HEAD_SHA" \
+                > artifacts/changed-files.txt
+            else
+              git diff --name-only "$BEFORE_SHA" "$HEAD_SHA" > artifacts/changed-files.txt
+            fi
+            python infra/scripts/detect_changes.py \
+              --changed-files artifacts/changed-files.txt \
+              --json-output artifacts/change-manifest.json \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+      - name: Upload change manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: change-manifest
+          path: artifacts/change-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
   ai-service:
     name: FastAPI tests and AI evals
+    needs: changes
+    if: needs.changes.outputs.ai_ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -55,6 +115,8 @@ jobs:
 
   frontend:
     name: Streamlit tests
+    needs: changes
+    if: needs.changes.outputs.frontend_ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -78,6 +140,8 @@ jobs:
 
   backend:
     name: Backend tests
+    needs: changes
+    if: needs.changes.outputs.backend_ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -121,6 +185,8 @@ jobs:
 
   infrastructure:
     name: CloudFormation and Compose validation
+    needs: changes
+    if: needs.changes.outputs.infrastructure == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -139,7 +205,12 @@ jobs:
 
   service-integration:
     name: Backend to AI integration and load smoke
-    needs: [ai-service, backend]
+    needs: [changes, ai-service, backend]
+    if: >-
+      always() &&
+      needs.changes.outputs.integration == 'true' &&
+      (needs.ai-service.result == 'success' || needs.ai-service.result == 'skipped') &&
+      (needs.backend.result == 'success' || needs.backend.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -211,7 +282,13 @@ jobs:
 
   container-build:
     name: Build hardened containers
-    needs: [frontend, backend, ai-service]
+    needs: [changes, frontend, backend, ai-service]
+    if: >-
+      always() &&
+      needs.changes.outputs.deploy == 'true' &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
+      (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
+      (needs.ai-service.result == 'success' || needs.ai-service.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -219,12 +296,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Build AI service image
+        if: needs.changes.outputs.ai_deploy == 'true'
         run: docker build -f infra/docker/Dockerfile.ai-service -t coach-ai:ci .
       - name: Build backend image
+        if: needs.changes.outputs.backend_deploy == 'true'
         run: docker build -f infra/docker/Dockerfile.backend -t coach-backend:ci .
       - name: Build frontend image
+        if: needs.changes.outputs.frontend_deploy == 'true'
         run: docker build -f infra/docker/Dockerfile.frontend -t coach-frontend:ci .
       - name: Verify frontend container health
+        if: needs.changes.outputs.frontend_deploy == 'true'
         run: |
           docker run --rm --detach --name coach-frontend-ci -p 8501:8501 coach-frontend:ci
           trap 'docker logs coach-frontend-ci; docker stop coach-frontend-ci >/dev/null 2>&1 || true' EXIT
@@ -238,6 +319,7 @@ jobs:
 
   dependency-review:
     name: Dependency review
+    needs: changes
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -252,6 +334,8 @@ jobs:
 
   python-sast:
     name: Python SAST (Bandit)
+    needs: changes
+    if: needs.changes.outputs.sast == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

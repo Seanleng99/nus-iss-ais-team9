@@ -6,6 +6,7 @@ $body = @{
     required_status_checks = @{
         strict = $true
         contexts = @(
+            "Detect affected services",
             "FastAPI tests and AI evals",
             "Streamlit tests",
             "Backend tests",

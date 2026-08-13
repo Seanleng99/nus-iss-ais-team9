@@ -25,22 +25,67 @@ jobs:
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
     outputs:
       deploy: ${{ steps.current.outputs.deploy }}
+      frontend: ${{ steps.current.outputs.frontend }}
+      backend: ${{ steps.current.outputs.backend }}
+      ai: ${{ steps.current.outputs.ai }}
+      migrations: ${{ steps.current.outputs.migrations }}
     steps:
       - id: current
-        name: Reject stale successful runs
+        name: Load change manifest and reject stale runs
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
-          if [[ "$RELEASE_SHA" == "$main_sha" ]]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            echo "CI passed for current main SHA $RELEASE_SHA."
-          else
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          if [[ "$RELEASE_SHA" != "$main_sha" ]]; then
             echo "Skipping stale SHA $RELEASE_SHA; current main is $main_sha."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          mkdir -p artifacts
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name change-manifest --dir artifacts
+          manifest=artifacts/change-manifest.json
+          for output in frontend backend ai migrations; do
+            case "$output" in
+              frontend) key=frontend_deploy ;;
+              backend) key=backend_deploy ;;
+              ai) key=ai_deploy ;;
+              migrations) key=migrations ;;
+            esac
+            value=$(jq -r ".$key" "$manifest")
+            if [[ "$value" != "true" && "$value" != "false" ]]; then
+              echo "Invalid $key value in change manifest: $value" >&2
+              exit 1
+            fi
+            printf -v "$output" '%s' "$value"
+            echo "$output=$value" >> "$GITHUB_OUTPUT"
+          done
+          deploy=$(jq -r '.deploy' "$manifest")
+          if [[ "$deploy" != "true" && "$deploy" != "false" ]]; then
+            echo "Invalid deploy value in change manifest: $deploy" >&2
+            exit 1
+          fi
+          if [[ "$migrations" == "true" && "$backend" != "true" ]]; then
+            echo "Migration selection requires a backend deployment." >&2
+            exit 1
+          fi
+          expected_deploy=false
+          if [[ "$frontend" == "true" || "$backend" == "true" || "$ai" == "true" ]]; then
+            expected_deploy=true
+          fi
+          if [[ "$deploy" != "$expected_deploy" ]]; then
+            echo "Deploy flag does not match selected services." >&2
+            exit 1
+          fi
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          echo "Release selection for $RELEASE_SHA: $(jq -c . "$manifest")"
 
   build-images:
     name: Build, publish, and scan images
@@ -63,16 +108,20 @@ jobs:
       - name: Validate publishing configuration
         env:
           PUBLISH_ROLE: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          AI_CHANGED: ${{ needs.release-gate.outputs.ai }}
+          BACKEND_CHANGED: ${{ needs.release-gate.outputs.backend }}
+          FRONTEND_CHANGED: ${{ needs.release-gate.outputs.frontend }}
           AI_REPOSITORY: ${{ vars.ECR_AI_REPOSITORY }}
           BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
           FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
         run: |
-          for name in PUBLISH_ROLE AI_REPOSITORY BACKEND_REPOSITORY FRONTEND_REPOSITORY; do
-            if [[ -z "${!name}" ]]; then
-              echo "Missing GitHub Actions variable: $name" >&2
-              exit 1
-            fi
-          done
+          [[ -n "$PUBLISH_ROLE" ]] || { echo "Missing PUBLISH_ROLE" >&2; exit 1; }
+          [[ "$AI_CHANGED" != "true" || -n "$AI_REPOSITORY" ]] || \
+            { echo "Missing AI_REPOSITORY" >&2; exit 1; }
+          [[ "$BACKEND_CHANGED" != "true" || -n "$BACKEND_REPOSITORY" ]] || \
+            { echo "Missing BACKEND_REPOSITORY" >&2; exit 1; }
+          [[ "$FRONTEND_CHANGED" != "true" || -n "$FRONTEND_REPOSITORY" ]] || \
+            { echo "Missing FRONTEND_REPOSITORY" >&2; exit 1; }
       - name: Report non-secret OIDC claims
         run: |
           python - <<'PY'
@@ -121,43 +170,59 @@ jobs:
         id: images
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          AI_CHANGED: ${{ needs.release-gate.outputs.ai }}
+          BACKEND_CHANGED: ${{ needs.release-gate.outputs.backend }}
+          FRONTEND_CHANGED: ${{ needs.release-gate.outputs.frontend }}
           AI_REPOSITORY: ${{ vars.ECR_AI_REPOSITORY }}
           BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
           FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
         run: |
-          ai_image="$ECR_REGISTRY/$AI_REPOSITORY:$RELEASE_SHA"
-          backend_image="$ECR_REGISTRY/$BACKEND_REPOSITORY:$RELEASE_SHA"
-          frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY:$RELEASE_SHA"
-
-          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-            -f infra/docker/Dockerfile.ai-service -t "$ai_image" .
-          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-            -f infra/docker/Dockerfile.backend -t "$backend_image" .
-          docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-            -f infra/docker/Dockerfile.frontend -t "$frontend_image" .
-          docker push "$ai_image"
-          docker push "$backend_image"
-          docker push "$frontend_image"
-
-          echo "ai-image=$ai_image" >> "$GITHUB_OUTPUT"
-          echo "backend-image=$backend_image" >> "$GITHUB_OUTPUT"
-          echo "frontend-image=$frontend_image" >> "$GITHUB_OUTPUT"
+          if [[ "$AI_CHANGED" == "true" ]]; then
+            ai_image="$ECR_REGISTRY/$AI_REPOSITORY:$RELEASE_SHA"
+            docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+              -f infra/docker/Dockerfile.ai-service -t "$ai_image" .
+            docker push "$ai_image"
+            echo "ai-image=$ai_image" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$BACKEND_CHANGED" == "true" ]]; then
+            backend_image="$ECR_REGISTRY/$BACKEND_REPOSITORY:$RELEASE_SHA"
+            docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+              -f infra/docker/Dockerfile.backend -t "$backend_image" .
+            docker push "$backend_image"
+            echo "backend-image=$backend_image" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$FRONTEND_CHANGED" == "true" ]]; then
+            frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY:$RELEASE_SHA"
+            docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+              -f infra/docker/Dockerfile.frontend -t "$frontend_image" .
+            docker push "$frontend_image"
+            echo "frontend-image=$frontend_image" >> "$GITHUB_OUTPUT"
+          fi
       - name: Gate on Amazon ECR and Inspector findings
         env:
+          AI_CHANGED: ${{ needs.release-gate.outputs.ai }}
+          BACKEND_CHANGED: ${{ needs.release-gate.outputs.backend }}
+          FRONTEND_CHANGED: ${{ needs.release-gate.outputs.frontend }}
           AI_REPOSITORY: ${{ vars.ECR_AI_REPOSITORY }}
           BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
           FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
         run: |
-          python infra/scripts/ecr_scan_gate.py \
-            --repository "$AI_REPOSITORY" --image-tag "$RELEASE_SHA"
-          python infra/scripts/ecr_scan_gate.py \
-            --repository "$BACKEND_REPOSITORY" --image-tag "$RELEASE_SHA"
-          python infra/scripts/ecr_scan_gate.py \
-            --repository "$FRONTEND_REPOSITORY" --image-tag "$RELEASE_SHA"
+          if [[ "$AI_CHANGED" == "true" ]]; then
+            python infra/scripts/ecr_scan_gate.py \
+              --repository "$AI_REPOSITORY" --image-tag "$RELEASE_SHA"
+          fi
+          if [[ "$BACKEND_CHANGED" == "true" ]]; then
+            python infra/scripts/ecr_scan_gate.py \
+              --repository "$BACKEND_REPOSITORY" --image-tag "$RELEASE_SHA"
+          fi
+          if [[ "$FRONTEND_CHANGED" == "true" ]]; then
+            python infra/scripts/ecr_scan_gate.py \
+              --repository "$FRONTEND_REPOSITORY" --image-tag "$RELEASE_SHA"
+          fi
 
   deploy-demo:
     name: Deploy demo environment
-    needs: build-images
+    needs: [release-gate, build-images]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment:
@@ -167,6 +232,10 @@ jobs:
       contents: read
       id-token: write
     env:
+      AI_CHANGED: ${{ needs.release-gate.outputs.ai }}
+      BACKEND_CHANGED: ${{ needs.release-gate.outputs.backend }}
+      FRONTEND_CHANGED: ${{ needs.release-gate.outputs.frontend }}
+      MIGRATIONS_CHANGED: ${{ needs.release-gate.outputs.migrations }}
       DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
       ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
       AI_SERVICE: ${{ vars.ECS_AI_SERVICE }}
@@ -200,12 +269,19 @@ jobs:
       - name: Validate deployment configuration
         run: |
           required=(
-            DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
-            AI_TASK_FAMILY BACKEND_TASK_FAMILY FRONTEND_TASK_FAMILY
-            AI_CONTAINER_NAME BACKEND_CONTAINER_NAME FRONTEND_CONTAINER_NAME
+            DEPLOY_ROLE ECS_CLUSTER
             FRONTEND_URL FRONTEND_HEALTH_URL BACKEND_HEALTH_URL
             COACH_SMOKE_URL SMOKE_BACKEND_API_KEY
           )
+          if [[ "$AI_CHANGED" == "true" ]]; then
+            required+=(AI_SERVICE AI_TASK_FAMILY AI_CONTAINER_NAME)
+          fi
+          if [[ "$BACKEND_CHANGED" == "true" ]]; then
+            required+=(BACKEND_SERVICE BACKEND_TASK_FAMILY BACKEND_CONTAINER_NAME)
+          fi
+          if [[ "$FRONTEND_CHANGED" == "true" ]]; then
+            required+=(FRONTEND_SERVICE FRONTEND_TASK_FAMILY FRONTEND_CONTAINER_NAME)
+          fi
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
               echo "Missing demo environment variable or secret: $name" >&2
@@ -220,7 +296,11 @@ jobs:
           mask-aws-account-id: true
       - name: Verify ECS rollback protection and capture current revisions
         run: |
-          for service in "$AI_SERVICE" "$BACKEND_SERVICE" "$FRONTEND_SERVICE"; do
+          services=()
+          [[ "$AI_CHANGED" != "true" ]] || services+=("$AI_SERVICE")
+          [[ "$BACKEND_CHANGED" != "true" ]] || services+=("$BACKEND_SERVICE")
+          [[ "$FRONTEND_CHANGED" != "true" ]] || services+=("$FRONTEND_SERVICE")
+          for service in "${services[@]}"; do
             enabled=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" \
               --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.enable' \
               --output text)
@@ -233,31 +313,45 @@ jobs:
             fi
           done
 
-          ai_previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$AI_SERVICE" \
-            --query 'services[0].taskDefinition' --output text)
-          backend_previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
-            --services "$BACKEND_SERVICE" --query 'services[0].taskDefinition' --output text)
-          frontend_previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
-            --services "$FRONTEND_SERVICE" --query 'services[0].taskDefinition' --output text)
-          echo "AI_PREVIOUS_TASK_DEFINITION=$ai_previous" >> "$GITHUB_ENV"
-          echo "BACKEND_PREVIOUS_TASK_DEFINITION=$backend_previous" >> "$GITHUB_ENV"
-          echo "FRONTEND_PREVIOUS_TASK_DEFINITION=$frontend_previous" >> "$GITHUB_ENV"
+          if [[ "$AI_CHANGED" == "true" ]]; then
+            previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$AI_SERVICE" \
+              --query 'services[0].taskDefinition' --output text)
+            echo "AI_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
+          fi
+          if [[ "$BACKEND_CHANGED" == "true" ]]; then
+            previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
+              --services "$BACKEND_SERVICE" --query 'services[0].taskDefinition' --output text)
+            echo "BACKEND_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
+          fi
+          if [[ "$FRONTEND_CHANGED" == "true" ]]; then
+            previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
+              --services "$FRONTEND_SERVICE" --query 'services[0].taskDefinition' --output text)
+            echo "FRONTEND_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
+          fi
       - name: Download current task definitions
         run: |
-          aws ecs describe-task-definition --task-definition "$AI_TASK_FAMILY" \
-            --query taskDefinition > ai-task-definition.json
-          aws ecs describe-task-definition --task-definition "$BACKEND_TASK_FAMILY" \
-            --query taskDefinition > backend-task-definition.json
-          aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_FAMILY" \
-            --query taskDefinition > frontend-task-definition.json
+          if [[ "$AI_CHANGED" == "true" ]]; then
+            aws ecs describe-task-definition --task-definition "$AI_TASK_FAMILY" \
+              --query taskDefinition > ai-task-definition.json
+          fi
+          if [[ "$BACKEND_CHANGED" == "true" ]]; then
+            aws ecs describe-task-definition --task-definition "$BACKEND_TASK_FAMILY" \
+              --query taskDefinition > backend-task-definition.json
+          fi
+          if [[ "$FRONTEND_CHANGED" == "true" ]]; then
+            aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_FAMILY" \
+              --query taskDefinition > frontend-task-definition.json
+          fi
       - name: Render AI service task definition
         id: render-ai
+        if: needs.release-gate.outputs.ai == 'true'
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: ai-task-definition.json
           container-name: ${{ env.AI_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.ai-image }}
       - name: Deploy AI service
+        if: needs.release-gate.outputs.ai == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-ai.outputs.task-definition }}
@@ -266,14 +360,19 @@ jobs:
           wait-for-service-stability: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
+      - name: Record AI deployment
+        if: needs.release-gate.outputs.ai == 'true'
+        run: echo "AI_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Render application backend task definition
         id: render-backend
+        if: needs.release-gate.outputs.backend == 'true'
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: backend-task-definition.json
           container-name: ${{ env.BACKEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.backend-image }}
       - name: Apply database migrations as a one-shot task
+        if: needs.release-gate.outputs.migrations == 'true'
         env:
           RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
         run: |
@@ -307,6 +406,7 @@ jobs:
             exit 1
           fi
       - name: Deploy application backend
+        if: needs.release-gate.outputs.backend == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-backend.outputs.task-definition }}
@@ -315,14 +415,19 @@ jobs:
           wait-for-service-stability: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
+      - name: Record backend deployment
+        if: needs.release-gate.outputs.backend == 'true'
+        run: echo "BACKEND_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Render Streamlit task definition
         id: render-frontend
+        if: needs.release-gate.outputs.frontend == 'true'
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: frontend-task-definition.json
           container-name: ${{ env.FRONTEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.frontend-image }}
       - name: Deploy Streamlit frontend
+        if: needs.release-gate.outputs.frontend == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-frontend.outputs.task-definition }}
@@ -331,6 +436,9 @@ jobs:
           wait-for-service-stability: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
+      - name: Record frontend deployment
+        if: needs.release-gate.outputs.frontend == 'true'
+        run: echo "FRONTEND_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Run health and AI safety smoke tests
         run: >-
           python infra/scripts/post_deploy_smoke.py
@@ -340,13 +448,26 @@ jobs:
           --persistence-base-url "${COACH_SMOKE_URL%/coach}"
           --api-key "$SMOKE_BACKEND_API_KEY"
       - name: Roll back services when post-deploy checks fail
-        if: failure() && env.AI_PREVIOUS_TASK_DEFINITION != ''
+        if: >-
+          failure() &&
+          (env.AI_DEPLOYED == 'true' ||
+           env.BACKEND_DEPLOYED == 'true' ||
+           env.FRONTEND_DEPLOYED == 'true')
         run: |
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$AI_SERVICE" \
-            --task-definition "$AI_PREVIOUS_TASK_DEFINITION"
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$BACKEND_SERVICE" \
-            --task-definition "$BACKEND_PREVIOUS_TASK_DEFINITION"
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$FRONTEND_SERVICE" \
-            --task-definition "$FRONTEND_PREVIOUS_TASK_DEFINITION"
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" \
-            --services "$AI_SERVICE" "$BACKEND_SERVICE" "$FRONTEND_SERVICE"
+          services=()
+          if [[ "$AI_DEPLOYED" == "true" ]]; then
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service "$AI_SERVICE" \
+              --task-definition "$AI_PREVIOUS_TASK_DEFINITION"
+            services+=("$AI_SERVICE")
+          fi
+          if [[ "$BACKEND_DEPLOYED" == "true" ]]; then
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service "$BACKEND_SERVICE" \
+              --task-definition "$BACKEND_PREVIOUS_TASK_DEFINITION"
+            services+=("$BACKEND_SERVICE")
+          fi
+          if [[ "$FRONTEND_DEPLOYED" == "true" ]]; then
+            aws ecs update-service --cluster "$ECS_CLUSTER" --service "$FRONTEND_SERVICE" \
+              --task-definition "$FRONTEND_PREVIOUS_TASK_DEFINITION"
+            services+=("$FRONTEND_SERVICE")
+          fi
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "${services[@]}"
