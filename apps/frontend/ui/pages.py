@@ -22,6 +22,87 @@ CATEGORIES = [
 ]
 RISK_OPTIONS = ["conservative", "moderate", "growth"]
 PROFILE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+EMPLOYMENT_OPTIONS = [
+    "employed",
+    "self-employed",
+    "student",
+    "unemployed",
+    "retired",
+    "prefer not to say",
+]
+OCCUPATION_OPTIONS = [
+    "business and administration",
+    "education",
+    "engineering and technology",
+    "healthcare",
+    "hospitality and services",
+    "public service",
+    "sales and marketing",
+    "skilled trades",
+    "student",
+    "other",
+    "prefer not to say",
+]
+INCOME_FREQUENCY_OPTIONS = ["monthly", "fortnightly", "weekly", "irregular"]
+INCOME_STABILITY_OPTIONS = ["stable", "variable", "seasonal", "not applicable"]
+HOUSING_OPTIONS = [
+    "family home",
+    "renting",
+    "homeowner with mortgage",
+    "homeowner without mortgage",
+    "other",
+    "prefer not to say",
+]
+LITERACY_OPTIONS = ["beginner", "intermediate", "advanced"]
+LANGUAGE_OPTIONS = ["English", "Mandarin", "Malay", "Tamil", "Other"]
+ACCESSIBILITY_OPTIONS = [
+    "plain language",
+    "shorter responses",
+    "step-by-step explanations",
+    "screen-reader friendly",
+]
+AGE_BANDS = ["18-20", "21-25", "26-30", "31-35", "Prefer not to say"]
+GENDER_OPTIONS = ["Woman", "Man", "Non-binary", "Another identity", "Prefer not to say"]
+RACE_ETHNICITY_OPTIONS = [
+    "Chinese",
+    "Malay",
+    "Indian",
+    "Eurasian",
+    "Other",
+    "Prefer not to say",
+]
+RESIDENCY_OPTIONS = [
+    "Singapore citizen",
+    "Permanent resident",
+    "Work or student pass holder",
+    "Other",
+    "Prefer not to say",
+]
+DISABILITY_OPTIONS = [
+    "No disability disclosed",
+    "Disability disclosed",
+    "Prefer not to say",
+]
+MARITAL_OPTIONS = [
+    "Single",
+    "Married or partnered",
+    "Separated or divorced",
+    "Widowed",
+    "Prefer not to say",
+]
+REGION_OPTIONS = [
+    "Central",
+    "East",
+    "North",
+    "North-East",
+    "West",
+    "Outside Singapore",
+    "Prefer not to say",
+]
+
+
+def _option_index(options: list[str], value: str | None, default: int = 0) -> int:
+    return options.index(value) if value in options else default
 
 
 def _category_label(category: str) -> str:
@@ -421,38 +502,216 @@ def profile_page() -> None:
     if not profile:
         st.info("This profile has not been created yet.")
         return
-    income = profile.get("monthly_income") or {"amount": 0.0}
-    preferences = profile.get("preferences", {})
-    current_risk = profile.get("risk_tolerance") or "moderate"
+    context_tab, fairness_tab = st.tabs(["Financial context", "Fairness data"])
 
-    with st.form("profile"):
-        display_name = st.text_input(
-            "Display name", value=preferences.get("display_name", user_id), max_chars=80
-        )
-        monthly_income = st.number_input(
-            "Monthly income (SGD)", min_value=0.0, value=float(income["amount"]), step=100.0
-        )
-        risk_tolerance = st.segmented_control(
-            "Risk comfort",
-            RISK_OPTIONS,
-            default=current_risk,
-            format_func=str.title,
-            selection_mode="single",
-        )
-        saved = st.form_submit_button("Save profile", type="primary", icon=":material/save:")
-    if saved:
-        payload = {
-            "monthly_income": {"currency": "SGD", "amount": monthly_income},
-            "risk_tolerance": risk_tolerance or "moderate",
-            "preferences": {"display_name": display_name.strip() or "Demo user"},
-        }
-        result = backend_call(lambda: client.save_profile(user_id, payload))
-        if result:
-            st.session_state.profile_saved_notice = "Profile saved."
-            st.session_state.profile_switcher_version = (
-                st.session_state.get("profile_switcher_version", 0) + 1
+    with context_tab:
+        income = profile.get("monthly_income") or {"amount": 0.0}
+        preferences = profile.get("preferences", {})
+        current_risk = profile.get("risk_tolerance") or "moderate"
+        with st.form("profile"):
+            display_name = st.text_input(
+                "Display name", value=preferences.get("display_name", user_id), max_chars=80
             )
-            st.rerun()
+            first, second = st.columns(2)
+            monthly_income = first.number_input(
+                "Monthly income (SGD)",
+                min_value=0.0,
+                value=float(income["amount"]),
+                step=100.0,
+            )
+            income_frequency = second.selectbox(
+                "Income frequency",
+                INCOME_FREQUENCY_OPTIONS,
+                index=_option_index(INCOME_FREQUENCY_OPTIONS, profile.get("income_frequency")),
+            )
+            third, fourth = st.columns(2)
+            employment_status = third.selectbox(
+                "Employment status",
+                EMPLOYMENT_OPTIONS,
+                index=_option_index(EMPLOYMENT_OPTIONS, profile.get("employment_status")),
+                format_func=str.title,
+            )
+            occupation_category = fourth.selectbox(
+                "Occupation category",
+                OCCUPATION_OPTIONS,
+                index=_option_index(OCCUPATION_OPTIONS, profile.get("occupation_category")),
+                format_func=str.title,
+            )
+            fifth, sixth = st.columns(2)
+            income_stability = fifth.selectbox(
+                "Income stability",
+                INCOME_STABILITY_OPTIONS,
+                index=_option_index(INCOME_STABILITY_OPTIONS, profile.get("income_stability")),
+                format_func=str.title,
+            )
+            housing_status = sixth.selectbox(
+                "Housing status",
+                HOUSING_OPTIONS,
+                index=_option_index(HOUSING_OPTIONS, profile.get("housing_status")),
+                format_func=str.title,
+            )
+            seventh, eighth = st.columns(2)
+            household_size = seventh.number_input(
+                "Household size",
+                min_value=1,
+                max_value=30,
+                value=profile.get("household_size") or 1,
+            )
+            dependants = eighth.number_input(
+                "Dependants",
+                min_value=0,
+                max_value=20,
+                value=profile.get("dependants") or 0,
+            )
+            ninth, tenth = st.columns(2)
+            financial_literacy = ninth.selectbox(
+                "Financial literacy",
+                LITERACY_OPTIONS,
+                index=_option_index(LITERACY_OPTIONS, profile.get("financial_literacy")),
+                format_func=str.title,
+            )
+            preferred_language = tenth.selectbox(
+                "Preferred language",
+                LANGUAGE_OPTIONS,
+                index=_option_index(LANGUAGE_OPTIONS, profile.get("preferred_language")),
+            )
+            accessibility_preferences = st.multiselect(
+                "Accessibility preferences",
+                ACCESSIBILITY_OPTIONS,
+                default=profile.get("accessibility_preferences", []),
+                format_func=str.title,
+            )
+            risk_tolerance = st.segmented_control(
+                "Risk comfort",
+                RISK_OPTIONS,
+                default=current_risk,
+                format_func=str.title,
+                selection_mode="single",
+            )
+            saved = st.form_submit_button(
+                "Save profile", type="primary", icon=":material/save:"
+            )
+        if saved:
+            if dependants > household_size:
+                st.warning("Dependants cannot exceed household size.")
+            else:
+                payload = {
+                    "monthly_income": {"currency": "SGD", "amount": monthly_income},
+                    "risk_tolerance": risk_tolerance or "moderate",
+                    "employment_status": employment_status,
+                    "occupation_category": occupation_category,
+                    "income_frequency": income_frequency,
+                    "income_stability": income_stability,
+                    "household_size": household_size,
+                    "dependants": dependants,
+                    "housing_status": housing_status,
+                    "financial_literacy": financial_literacy,
+                    "preferred_language": preferred_language,
+                    "accessibility_preferences": accessibility_preferences,
+                    "preferences": {"display_name": display_name.strip() or user_id},
+                }
+                result = backend_call(lambda: client.save_profile(user_id, payload))
+                if result:
+                    st.session_state.profile_saved_notice = "Profile saved."
+                    st.session_state.profile_switcher_version = (
+                        st.session_state.get("profile_switcher_version", 0) + 1
+                    )
+                    st.rerun()
+
+    with fairness_tab:
+        fairness = backend_call(lambda: client.get_fairness_profile(user_id))
+        if fairness:
+            consent = fairness["consent"]
+            demographics = fairness.get("demographics") or {}
+            st.info(
+                "Optional demographic data is stored separately for fairness evaluation. "
+                "It is never included in normal coaching requests."
+            )
+            with st.form("fairness-consent"):
+                granted = st.toggle(
+                    "Allow my demographic data to be stored for fairness testing",
+                    value=consent["granted"],
+                )
+                consent_saved = st.form_submit_button(
+                    "Update consent", icon=":material/privacy_tip:"
+                )
+            if consent_saved:
+                result = backend_call(
+                    lambda: client.save_fairness_consent(user_id, granted)
+                )
+                if result:
+                    message = (
+                        "Fairness-testing consent granted."
+                        if granted
+                        else "Consent withdrawn and demographic data deleted."
+                    )
+                    st.session_state.profile_saved_notice = message
+                    st.rerun()
+
+            if consent["granted"]:
+                with st.form("demographics"):
+                    age_band = st.selectbox(
+                        "Age band",
+                        AGE_BANDS,
+                        index=_option_index(AGE_BANDS, demographics.get("age_band"), 4),
+                    )
+                    gender_identity = st.selectbox(
+                        "Gender identity",
+                        GENDER_OPTIONS,
+                        index=_option_index(
+                            GENDER_OPTIONS, demographics.get("gender_identity"), 4
+                        ),
+                    )
+                    race_ethnicity = st.multiselect(
+                        "Race or ethnicity",
+                        RACE_ETHNICITY_OPTIONS,
+                        default=demographics.get("race_ethnicity", []),
+                    )
+                    nationality_residency = st.selectbox(
+                        "Nationality or residency",
+                        RESIDENCY_OPTIONS,
+                        index=_option_index(
+                            RESIDENCY_OPTIONS,
+                            demographics.get("nationality_residency"),
+                            4,
+                        ),
+                    )
+                    disability_status = st.selectbox(
+                        "Disability status",
+                        DISABILITY_OPTIONS,
+                        index=_option_index(
+                            DISABILITY_OPTIONS, demographics.get("disability_status"), 2
+                        ),
+                    )
+                    marital_status = st.selectbox(
+                        "Marital or family status",
+                        MARITAL_OPTIONS,
+                        index=_option_index(
+                            MARITAL_OPTIONS, demographics.get("marital_status"), 4
+                        ),
+                    )
+                    residential_region = st.selectbox(
+                        "Broad residential region",
+                        REGION_OPTIONS,
+                        index=_option_index(
+                            REGION_OPTIONS, demographics.get("residential_region"), 6
+                        ),
+                    )
+                    demographics_saved = st.form_submit_button(
+                        "Save fairness data", type="primary", icon=":material/save:"
+                    )
+                if demographics_saved:
+                    payload = {
+                        "age_band": age_band,
+                        "gender_identity": gender_identity,
+                        "race_ethnicity": race_ethnicity,
+                        "nationality_residency": nationality_residency,
+                        "disability_status": disability_status,
+                        "marital_status": marital_status,
+                        "residential_region": residential_region,
+                    }
+                    if backend_call(lambda: client.save_demographics(user_id, payload)):
+                        st.success("Fairness data saved.")
 
 
 def create_profile_page() -> None:

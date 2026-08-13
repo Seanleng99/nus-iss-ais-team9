@@ -55,6 +55,19 @@ class BackendClient:
     def save_profile(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/profile", json=payload)
 
+    def get_fairness_profile(self, user_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/users/{user_id}/fairness-profile")
+
+    def save_fairness_consent(self, user_id: str, granted: bool) -> dict[str, Any]:
+        return self._request(
+            "PUT",
+            f"/api/users/{user_id}/fairness-consent",
+            json={"granted": granted},
+        )
+
+    def save_demographics(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("PUT", f"/api/users/{user_id}/demographics", json=payload)
+
     def list_transactions(self, user_id: str, period_start: date) -> list[dict[str, Any]]:
         return self._request(
             "GET",

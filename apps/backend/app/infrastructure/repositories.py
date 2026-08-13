@@ -1,19 +1,30 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.financial_schemas import BudgetUpsert, GoalCreate, ProfileUpsert, TransactionCreate
+from app.api.financial_schemas import (
+    BudgetUpsert,
+    DemographicUpsert,
+    GoalCreate,
+    ProfileUpsert,
+    TransactionCreate,
+)
 from app.domain.schemas import FinancialGoal, MoneyAmount, Transaction, UserFinancialSnapshot
 from app.infrastructure.models import (
     BudgetCategoryRecord,
     FinancialGoalRecord,
     FinancialProfileRecord,
     MonthlyBudgetRecord,
+    ProfileConsentRecord,
+    ProfileDemographicRecord,
     TransactionRecord,
     UserRecord,
 )
+
+FAIRNESS_EVALUATION_PURPOSE = "fairness_evaluation"
+FAIRNESS_CONSENT_VERSION = "1.0"
 
 
 def _ensure_user(session: Session, user_id: str) -> UserRecord:
@@ -59,6 +70,16 @@ class SQLAlchemyUserRepository:
         record.monthly_income = income.amount if income else None
         record.currency = income.currency if income else "SGD"
         record.risk_tolerance = profile.risk_tolerance
+        record.employment_status = profile.employment_status
+        record.occupation_category = profile.occupation_category
+        record.income_frequency = profile.income_frequency
+        record.income_stability = profile.income_stability
+        record.household_size = profile.household_size
+        record.dependants = profile.dependants
+        record.housing_status = profile.housing_status
+        record.financial_literacy = profile.financial_literacy
+        record.preferred_language = profile.preferred_language
+        record.accessibility_preferences = profile.accessibility_preferences
         record.preferences = profile.preferences
         self.session.flush()
         return record
@@ -82,8 +103,74 @@ class SQLAlchemyUserRepository:
             recent_transactions=transactions,
             goals=goal_repository.list_for_user(user_id),
             risk_tolerance=profile.risk_tolerance if profile else None,
-            preferences=profile.preferences if profile else {},
+            preferences=(
+                {
+                    "employment_status": profile.employment_status,
+                    "occupation_category": profile.occupation_category,
+                    "income_frequency": profile.income_frequency,
+                    "income_stability": profile.income_stability,
+                    "household_size": profile.household_size,
+                    "dependants": profile.dependants,
+                    "housing_status": profile.housing_status,
+                    "financial_literacy": profile.financial_literacy,
+                    "preferred_language": profile.preferred_language,
+                    "accessibility_preferences": profile.accessibility_preferences,
+                }
+                if profile
+                else {}
+            ),
         )
+
+
+class SQLAlchemyFairnessProfileRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_demographics(self, user_id: str) -> ProfileDemographicRecord | None:
+        return self.session.get(ProfileDemographicRecord, user_id)
+
+    def get_consent(self, user_id: str) -> ProfileConsentRecord | None:
+        return self.session.get(
+            ProfileConsentRecord,
+            (user_id, FAIRNESS_EVALUATION_PURPOSE),
+        )
+
+    def set_consent(self, user_id: str, granted: bool) -> ProfileConsentRecord:
+        _ensure_user(self.session, user_id)
+        record = self.get_consent(user_id)
+        now = datetime.now(UTC)
+        if record is None:
+            record = ProfileConsentRecord(
+                user_id=user_id,
+                purpose=FAIRNESS_EVALUATION_PURPOSE,
+                consent_version=FAIRNESS_CONSENT_VERSION,
+            )
+            self.session.add(record)
+        record.consent_version = FAIRNESS_CONSENT_VERSION
+        record.granted = granted
+        record.granted_at = now if granted else record.granted_at
+        record.withdrawn_at = None if granted else now
+        if not granted:
+            demographics = self.get_demographics(user_id)
+            if demographics is not None:
+                self.session.delete(demographics)
+        self.session.flush()
+        return record
+
+    def upsert_demographics(
+        self, user_id: str, demographics: DemographicUpsert
+    ) -> ProfileDemographicRecord:
+        consent = self.get_consent(user_id)
+        if consent is None or not consent.granted:
+            raise PermissionError("Fairness evaluation consent is required")
+        record = self.get_demographics(user_id)
+        if record is None:
+            record = ProfileDemographicRecord(user_id=user_id)
+            self.session.add(record)
+        for field, value in demographics.model_dump().items():
+            setattr(record, field, value)
+        self.session.flush()
+        return record
 
 
 class SQLAlchemyTransactionRepository:

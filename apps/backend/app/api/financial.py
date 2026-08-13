@@ -10,6 +10,11 @@ from app.api.financial_schemas import (
     BudgetResponse,
     BudgetUpsert,
     DashboardResponse,
+    DemographicResponse,
+    DemographicUpsert,
+    FairnessConsentResponse,
+    FairnessConsentUpdate,
+    FairnessProfileResponse,
     GoalCreate,
     GoalProgressResponse,
     GoalResponse,
@@ -28,10 +33,13 @@ from app.infrastructure.models import (
     FinancialGoalRecord,
     FinancialProfileRecord,
     MonthlyBudgetRecord,
+    ProfileConsentRecord,
+    ProfileDemographicRecord,
     TransactionRecord,
 )
 from app.infrastructure.repositories import (
     SQLAlchemyBudgetRepository,
+    SQLAlchemyFairnessProfileRepository,
     SQLAlchemyGoalRepository,
     SQLAlchemyTransactionRepository,
     SQLAlchemyUserRepository,
@@ -59,6 +67,16 @@ def _profile_response(record: FinancialProfileRecord) -> ProfileResponse:
         user_id=record.user_id,
         monthly_income=income,
         risk_tolerance=record.risk_tolerance,
+        employment_status=record.employment_status,
+        occupation_category=record.occupation_category,
+        income_frequency=record.income_frequency,
+        income_stability=record.income_stability,
+        household_size=record.household_size,
+        dependants=record.dependants,
+        housing_status=record.housing_status,
+        financial_literacy=record.financial_literacy,
+        preferred_language=record.preferred_language,
+        accessibility_preferences=record.accessibility_preferences,
         preferences=record.preferences,
     )
 
@@ -173,6 +191,96 @@ def put_profile(
     record = SQLAlchemyUserRepository(session).upsert_profile(user_id, profile)
     session.commit()
     return _profile_response(record)
+
+
+def _fairness_consent_response(
+    record: ProfileConsentRecord | None,
+) -> FairnessConsentResponse:
+    if record is None:
+        return FairnessConsentResponse(
+            purpose="fairness_evaluation",
+            consent_version="1.0",
+            granted=False,
+            granted_at=None,
+            withdrawn_at=None,
+        )
+    return FairnessConsentResponse(
+        purpose=record.purpose,
+        consent_version=record.consent_version,
+        granted=record.granted,
+        granted_at=record.granted_at,
+        withdrawn_at=record.withdrawn_at,
+    )
+
+
+def _demographic_response(record: ProfileDemographicRecord) -> DemographicResponse:
+    return DemographicResponse(
+        user_id=record.user_id,
+        age_band=record.age_band,
+        gender_identity=record.gender_identity,
+        race_ethnicity=record.race_ethnicity,
+        nationality_residency=record.nationality_residency,
+        disability_status=record.disability_status,
+        marital_status=record.marital_status,
+        residential_region=record.residential_region,
+    )
+
+
+@router.get(
+    "/users/{user_id}/fairness-profile",
+    response_model=FairnessProfileResponse,
+)
+def get_fairness_profile(
+    user_id: UserId,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> FairnessProfileResponse:
+    if not SQLAlchemyUserRepository(session).exists(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    repository = SQLAlchemyFairnessProfileRepository(session)
+    demographics = repository.get_demographics(user_id)
+    return FairnessProfileResponse(
+        consent=_fairness_consent_response(repository.get_consent(user_id)),
+        demographics=(
+            _demographic_response(demographics) if demographics is not None else None
+        ),
+    )
+
+
+@router.put(
+    "/users/{user_id}/fairness-consent",
+    response_model=FairnessConsentResponse,
+)
+def put_fairness_consent(
+    user_id: UserId,
+    update: FairnessConsentUpdate,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> FairnessConsentResponse:
+    if not SQLAlchemyUserRepository(session).exists(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    record = SQLAlchemyFairnessProfileRepository(session).set_consent(
+        user_id, update.granted
+    )
+    session.commit()
+    return _fairness_consent_response(record)
+
+
+@router.put(
+    "/users/{user_id}/demographics",
+    response_model=DemographicResponse,
+)
+def put_demographics(
+    user_id: UserId,
+    demographics: DemographicUpsert,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DemographicResponse:
+    try:
+        record = SQLAlchemyFairnessProfileRepository(session).upsert_demographics(
+            user_id, demographics
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error
+    session.commit()
+    return _demographic_response(record)
 
 
 @router.get("/users/{user_id}/transactions", response_model=list[TransactionResponse])

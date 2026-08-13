@@ -71,6 +71,34 @@ def test_client_lists_and_creates_profiles() -> None:
     ]
 
 
+def test_client_manages_separate_fairness_profile() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"consent": {"granted": False}, "demographics": None},
+            )
+        return httpx.Response(200, json={"user_id": "alex"})
+
+    client = BackendClient(
+        base_url="http://backend.test",
+        transport=httpx.MockTransport(handler),
+    )
+    client.get_fairness_profile("alex")
+    client.save_fairness_consent("alex", True)
+    client.save_demographics("alex", {"age_band": "26-30"})
+
+    assert [(request.method, request.url.path) for request in captured] == [
+        ("GET", "/api/users/alex/fairness-profile"),
+        ("PUT", "/api/users/alex/fairness-consent"),
+        ("PUT", "/api/users/alex/demographics"),
+    ]
+    assert json.loads(captured[1].content) == {"granted": True}
+
+
 def test_client_updates_budget_and_coaching_routes() -> None:
     captured: list[httpx.Request] = []
 

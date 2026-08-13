@@ -111,3 +111,99 @@ def test_profile_creation_rejects_unsafe_profile_id() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_fairness_data_requires_consent_is_isolated_and_is_deleted_on_withdrawal() -> None:
+    client = TestClient(app)
+    headers = {"X-API-Key": settings.api_key}
+    profile_payload = {
+        "user_id": "fairness-user",
+        "monthly_income": {"currency": "SGD", "amount": 5200},
+        "risk_tolerance": "moderate",
+        "employment_status": "employed",
+        "occupation_category": "education",
+        "income_frequency": "monthly",
+        "income_stability": "stable",
+        "household_size": 3,
+        "dependants": 1,
+        "housing_status": "renting",
+        "financial_literacy": "beginner",
+        "preferred_language": "English",
+        "accessibility_preferences": ["plain language"],
+        "preferences": {"display_name": "Fairness User"},
+    }
+    demographic_payload = {
+        "age_band": "26-30",
+        "gender_identity": "Woman",
+        "race_ethnicity": ["Malay"],
+        "nationality_residency": "Singapore citizen",
+        "disability_status": "Prefer not to say",
+        "marital_status": "Single",
+        "residential_region": "East",
+    }
+
+    assert client.post("/api/profiles", headers=headers, json=profile_payload).status_code == 201
+    denied = client.put(
+        "/api/users/fairness-user/demographics",
+        headers=headers,
+        json=demographic_payload,
+    )
+    consent = client.put(
+        "/api/users/fairness-user/fairness-consent",
+        headers=headers,
+        json={"granted": True},
+    )
+    demographics = client.put(
+        "/api/users/fairness-user/demographics",
+        headers=headers,
+        json=demographic_payload,
+    )
+    fairness_profile = client.get(
+        "/api/users/fairness-user/fairness-profile", headers=headers
+    )
+    normal_profile = client.get("/api/users/fairness-user/profile", headers=headers)
+    snapshot = client.get("/api/users/fairness-user/snapshot", headers=headers)
+
+    assert denied.status_code == 403
+    assert consent.status_code == 200
+    assert consent.json()["granted"] is True
+    assert consent.json()["granted_at"] is not None
+    assert demographics.status_code == 200
+    assert fairness_profile.json()["demographics"] == {
+        "user_id": "fairness-user",
+        **demographic_payload,
+    }
+    assert "age_band" not in normal_profile.json()
+    snapshot_json = snapshot.json()
+    assert snapshot_json["preferences"]["employment_status"] == "employed"
+    assert snapshot_json["preferences"]["accessibility_preferences"] == [
+        "plain language"
+    ]
+    assert "display_name" not in snapshot_json["preferences"]
+    assert not set(demographic_payload).intersection(snapshot_json["preferences"])
+
+    withdrawal = client.put(
+        "/api/users/fairness-user/fairness-consent",
+        headers=headers,
+        json={"granted": False},
+    )
+    after_withdrawal = client.get(
+        "/api/users/fairness-user/fairness-profile", headers=headers
+    )
+    assert withdrawal.json()["granted"] is False
+    assert withdrawal.json()["withdrawn_at"] is not None
+    assert after_withdrawal.json()["demographics"] is None
+
+
+def test_profile_rejects_dependants_above_household_size() -> None:
+    response = TestClient(app).post(
+        "/api/profiles",
+        headers={"X-API-Key": settings.api_key},
+        json={
+            "user_id": "invalid-household",
+            "household_size": 1,
+            "dependants": 2,
+        },
+    )
+
+    assert response.status_code == 422

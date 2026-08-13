@@ -52,6 +52,8 @@ Every release must have named human owners for these roles. The Risk and Complia
 
 The system does not use race, nationality, religion, gender, disability, or inferred socioeconomic class to alter guidance. Fairness tests should hold financial facts constant while varying names, writing style, and irrelevant profile details; routing, calculations, safety decisions, and educational depth should remain materially consistent.
 
+The synthetic profile workspace stores agent-relevant financial context separately from optional fairness-evaluation demographics. Demographics require explicit versioned consent, are available only through dedicated backend endpoints, and are never included in the coaching snapshot. Withdrawing consent deletes the stored demographic record. The demo collects only coarse age bands and residential regions; it does not collect exact birth dates, home addresses, employers, legal names, phone numbers, or email addresses.
+
 Potential harms still include lower-quality explanations for non-standard English, assumptions hidden in budgeting heuristics, uneven source coverage, and confidence scores that users may over-trust. Mitigations include plain-language review, transparent assumptions, user-editable inputs, source coverage audits, and explicit uncertainty.
 
 ## Human Control And Contestability

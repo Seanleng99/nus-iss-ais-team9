@@ -38,6 +38,12 @@ class UserRecord(TimestampMixin, Base):
     profile: Mapped["FinancialProfileRecord | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+    demographics: Mapped["ProfileDemographicRecord | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
+    consents: Mapped[list["ProfileConsentRecord"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     transactions: Mapped[list["TransactionRecord"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -64,8 +70,50 @@ class FinancialProfileRecord(TimestampMixin, Base):
     monthly_income: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(3), default="SGD", nullable=False)
     risk_tolerance: Mapped[str | None] = mapped_column(String(32))
+    employment_status: Mapped[str | None] = mapped_column(String(32))
+    occupation_category: Mapped[str | None] = mapped_column(String(64))
+    income_frequency: Mapped[str | None] = mapped_column(String(32))
+    income_stability: Mapped[str | None] = mapped_column(String(32))
+    household_size: Mapped[int | None] = mapped_column()
+    dependants: Mapped[int | None] = mapped_column()
+    housing_status: Mapped[str | None] = mapped_column(String(32))
+    financial_literacy: Mapped[str | None] = mapped_column(String(32))
+    preferred_language: Mapped[str | None] = mapped_column(String(32))
+    accessibility_preferences: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
     preferences: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     user: Mapped[UserRecord] = relationship(back_populates="profile")
+
+
+class ProfileDemographicRecord(TimestampMixin, Base):
+    __tablename__ = "profile_demographics"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    age_band: Mapped[str | None] = mapped_column(String(32))
+    gender_identity: Mapped[str | None] = mapped_column(String(64))
+    race_ethnicity: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    nationality_residency: Mapped[str | None] = mapped_column(String(64))
+    disability_status: Mapped[str | None] = mapped_column(String(64))
+    marital_status: Mapped[str | None] = mapped_column(String(32))
+    residential_region: Mapped[str | None] = mapped_column(String(64))
+    user: Mapped[UserRecord] = relationship(back_populates="demographics")
+
+
+class ProfileConsentRecord(TimestampMixin, Base):
+    __tablename__ = "profile_consents"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    purpose: Mapped[str] = mapped_column(String(64), primary_key=True)
+    consent_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    granted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user: Mapped[UserRecord] = relationship(back_populates="consents")
 
 
 class TransactionRecord(TimestampMixin, Base):

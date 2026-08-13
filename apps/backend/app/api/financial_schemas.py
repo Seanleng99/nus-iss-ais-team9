@@ -1,16 +1,89 @@
-from datetime import date
-from typing import Any
+from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.domain.schemas import MoneyAmount, UserFinancialSnapshot
 
+EmploymentStatus = Literal[
+    "employed", "self-employed", "student", "unemployed", "retired", "prefer not to say"
+]
+OccupationCategory = Literal[
+    "business and administration",
+    "education",
+    "engineering and technology",
+    "healthcare",
+    "hospitality and services",
+    "public service",
+    "sales and marketing",
+    "skilled trades",
+    "student",
+    "other",
+    "prefer not to say",
+]
+IncomeFrequency = Literal["monthly", "fortnightly", "weekly", "irregular"]
+IncomeStability = Literal["stable", "variable", "seasonal", "not applicable"]
+HousingStatus = Literal[
+    "family home",
+    "renting",
+    "homeowner with mortgage",
+    "homeowner without mortgage",
+    "other",
+    "prefer not to say",
+]
+FinancialLiteracy = Literal["beginner", "intermediate", "advanced"]
+AgeBand = Literal["18-20", "21-25", "26-30", "31-35", "Prefer not to say"]
+GenderIdentity = Literal["Woman", "Man", "Non-binary", "Another identity", "Prefer not to say"]
+RaceEthnicity = Literal[
+    "Chinese", "Malay", "Indian", "Eurasian", "Other", "Prefer not to say"
+]
+NationalityResidency = Literal[
+    "Singapore citizen",
+    "Permanent resident",
+    "Work or student pass holder",
+    "Other",
+    "Prefer not to say",
+]
+DisabilityStatus = Literal[
+    "No disability disclosed", "Disability disclosed", "Prefer not to say"
+]
+MaritalStatus = Literal[
+    "Single",
+    "Married or partnered",
+    "Separated or divorced",
+    "Widowed",
+    "Prefer not to say",
+]
+ResidentialRegion = Literal[
+    "Central", "East", "North", "North-East", "West", "Outside Singapore", "Prefer not to say"
+]
+
 
 class ProfileUpsert(BaseModel):
     monthly_income: MoneyAmount | None = None
     risk_tolerance: str | None = Field(default=None, max_length=32)
+    employment_status: EmploymentStatus | None = None
+    occupation_category: OccupationCategory | None = None
+    income_frequency: IncomeFrequency | None = None
+    income_stability: IncomeStability | None = None
+    household_size: int | None = Field(default=None, ge=1, le=30)
+    dependants: int | None = Field(default=None, ge=0, le=20)
+    housing_status: HousingStatus | None = None
+    financial_literacy: FinancialLiteracy | None = None
+    preferred_language: str | None = Field(default=None, max_length=32)
+    accessibility_preferences: list[str] = Field(default_factory=list, max_length=20)
     preferences: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_household(self) -> "ProfileUpsert":
+        if (
+            self.household_size is not None
+            and self.dependants is not None
+            and self.dependants > self.household_size
+        ):
+            raise ValueError("Dependants cannot exceed household size")
+        return self
 
 
 class ProfileCreate(ProfileUpsert):
@@ -30,6 +103,45 @@ class ProfileSummary(BaseModel):
     display_name: str
     monthly_income: MoneyAmount | None
     risk_tolerance: str | None
+
+
+class DemographicUpsert(BaseModel):
+    age_band: AgeBand | None = None
+    gender_identity: GenderIdentity | None = None
+    race_ethnicity: list[RaceEthnicity] = Field(default_factory=list, max_length=6)
+    nationality_residency: NationalityResidency | None = None
+    disability_status: DisabilityStatus | None = None
+    marital_status: MaritalStatus | None = None
+    residential_region: ResidentialRegion | None = None
+
+    @model_validator(mode="after")
+    def validate_race_ethnicity(self) -> "DemographicUpsert":
+        if len(self.race_ethnicity) != len(set(self.race_ethnicity)):
+            raise ValueError("Race or ethnicity selections must be unique")
+        if "Prefer not to say" in self.race_ethnicity and len(self.race_ethnicity) > 1:
+            raise ValueError("Prefer not to say cannot be combined with another selection")
+        return self
+
+
+class DemographicResponse(DemographicUpsert):
+    user_id: str
+
+
+class FairnessConsentUpdate(BaseModel):
+    granted: bool
+
+
+class FairnessConsentResponse(BaseModel):
+    purpose: str
+    consent_version: str
+    granted: bool
+    granted_at: datetime | None
+    withdrawn_at: datetime | None
+
+
+class FairnessProfileResponse(BaseModel):
+    consent: FairnessConsentResponse
+    demographics: DemographicResponse | None
 
 
 class TransactionCreate(BaseModel):
