@@ -66,7 +66,7 @@ The AI ECS task role has `bedrock:InvokeModel` only for the selected APAC infere
 
 Use exact OIDC subject claims for the main-branch publisher and `demo` environment deployer. Pass all three ECR repositories and ECS services to `github-actions-oidc.yaml`. The publisher can upload/scan only those repositories; the deployer can update only those services and pass only the named task roles.
 
-The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeline.md`. The release workflow requires the actor who triggered successful push CI for the current `main` SHA to dispatch the release manually. Native required environment reviewers and branch protection are unavailable for this private repository on the current GitHub plan; enable them after a plan upgrade. Secret scanning and push protection are also configured only when the plan supports them.
+The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeline.md`. The release workflow requires the actor who triggered successful push CI for the current `main` SHA to dispatch the release manually. Native required environment reviewers, branch protection, and GitHub Code Security are unavailable for this private repository on the current GitHub plan; enable them after a plan upgrade. Bandit remains the active Python SAST gate. Secret scanning and push protection are also configured only when the plan supports them.
 
 ## Go/No-Go
 

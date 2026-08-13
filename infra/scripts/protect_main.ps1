@@ -12,7 +12,7 @@ $body = @{
             "CloudFormation and Compose validation",
             "Backend to AI integration and load smoke",
             "Build hardened containers",
-            "CodeQL (python)"
+            "Python SAST (Bandit)"
         )
     }
     enforce_admins = $false

@@ -8,7 +8,7 @@ flowchart LR
   CI --> EVAL["AI eval and guardrail gate"]
   CI --> INTEGRATION["Service integration and load smoke"]
   CI --> CONTAINERS["Hardened container builds"]
-  CI --> SAST["CodeQL and dependency review"]
+  CI --> SAST["Bandit SAST and dependency review"]
   EVAL --> APPROVAL["Manual release by main push actor"]
   SAST --> APPROVAL
   APPROVAL --> BUILD["Build AI, backend, and frontend images"]
@@ -25,7 +25,7 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 
 ## Workflow Files
 
-- `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; hardened container builds; CodeQL; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. It also runs weekly for drift observation.
+- `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. It also runs weekly for drift observation.
 - `.github/workflows/release.yml`: commit-owner approval, immutable container builds, ECR publishing and scanning, a one-shot Alembic migration, ECS deployment through the `demo` environment, smoke testing, and coordinated service rollback.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
@@ -86,7 +86,7 @@ Create a `demo` environment and restrict it to `main`. The release workflow supp
 
 Add `SMOKE_BACKEND_API_KEY` as a `demo` environment secret. Its value must match the backend key in Secrets Manager. Do not place `AI_SERVICE_API_KEY`, application AWS credentials, or runtime model credentials in GitHub.
 
-Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful CI and the matching push actor, but it does not prevent a direct push to `main`. Enable GitHub secret scanning and push protection when supported by the repository plan.
+Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful CI and the matching push actor, but it does not prevent a direct push to `main`. Enable GitHub secret scanning, push protection, and GitHub Code Security when supported by the repository plan. Until GitHub Code Security is enabled, Bandit provides the in-workflow Python SAST gate and uploads its JSON evidence as a 30-day workflow artifact.
 
 ## Release Gates
 

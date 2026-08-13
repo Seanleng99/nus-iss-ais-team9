@@ -2,7 +2,15 @@ import argparse
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+
+
+def require_http_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("smoke-test URL must use HTTP(S) and include a host")
+    return url
 
 
 def request(
@@ -17,8 +25,13 @@ def request(
         headers["Content-Type"] = "application/json"
     if api_key:
         headers["X-API-Key"] = api_key
-    http_request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(http_request, timeout=60) as response:
+    http_request = urllib.request.Request(
+        require_http_url(url), data=data, headers=headers, method=method
+    )
+    # B310 is contained by require_http_url before the request is constructed.
+    with urllib.request.urlopen(  # nosec B310
+        http_request, timeout=60
+    ) as response:
         return response.status, response.read().decode("utf-8")
 
 

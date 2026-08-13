@@ -11,7 +11,7 @@ Parameters:
     Description: Exact GitHub OIDC sub claim allowed to publish main-branch images.
   DeploySubjectClaim:
     Type: String
-    Description: Exact GitHub OIDC sub claim for the protected demo environment.
+    Description: Exact GitHub OIDC sub claim for the demo environment.
   EcrAiRepository:
     Type: String
   EcrBackendRepository:

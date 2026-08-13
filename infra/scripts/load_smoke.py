@@ -2,9 +2,17 @@ import argparse
 import json
 import math
 import time
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from uuid import uuid4
+
+
+def require_http_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("smoke-test URL must use HTTP(S) and include a host")
+    return url
 
 
 def send_request(url: str, api_key: str, timeout_seconds: float) -> tuple[int, float]:
@@ -18,13 +26,16 @@ def send_request(url: str, api_key: str, timeout_seconds: float) -> tuple[int, f
         },
     }
     request = urllib.request.Request(
-        url,
+        require_http_url(url),
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json", "X-API-Key": api_key},
         method="POST",
     )
     started = time.perf_counter()
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+    # B310 is contained by require_http_url before the request is constructed.
+    with urllib.request.urlopen(  # nosec B310
+        request, timeout=timeout_seconds
+    ) as response:
         response.read()
         return response.status, (time.perf_counter() - started) * 1000
 

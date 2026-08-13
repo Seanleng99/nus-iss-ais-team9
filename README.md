@@ -85,7 +85,7 @@ streamlit run app.py --server.port 8501
 
 ## CI/CD And LLMSecOps
 
-GitHub Actions builds and tests all three Python services, enforces versioned AI evaluation thresholds, and runs dependency review and CodeQL. Docs-only pushes and pull requests do not start CI. After successful push CI on the current `main` SHA, the same authenticated push actor can manually approve `Release to AWS`, which publishes immutable images and deploys the services to ECS Fargate through the `demo` environment. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
+GitHub Actions builds and tests all three Python services, enforces versioned AI evaluation thresholds, and runs dependency review and Bandit SAST. Docs-only pushes and pull requests do not start CI. After successful push CI on the current `main` SHA, the same authenticated push actor can manually approve `Release to AWS`, which publishes immutable images and deploys the services to ECS Fargate through the `demo` environment. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
 
 ## Evaluation
 
