@@ -116,7 +116,7 @@ $secretJson = Invoke-Aws secretsmanager get-secret-value `
 $backendApiKey = ($secretJson | ConvertFrom-Json).value
 $backendApiKey | & $Gh secret set SMOKE_BACKEND_API_KEY --repo $Repository --env demo
 if ($LASTEXITCODE -ne 0) {
-    throw "Could not set the protected demo smoke-test secret."
+    throw "Could not set the demo smoke-test secret."
 }
 
 Invoke-Gh repo edit $Repository `
