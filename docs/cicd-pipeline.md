@@ -9,9 +9,9 @@ flowchart LR
   CI --> INTEGRATION["Service integration and load smoke"]
   CI --> CONTAINERS["Hardened container builds"]
   CI --> SAST["Bandit SAST and dependency review"]
-  EVAL --> APPROVAL["Manual release by main push actor"]
-  SAST --> APPROVAL
-  APPROVAL --> BUILD["Build AI, backend, and frontend images"]
+  EVAL --> AUTO["Successful current main CI"]
+  SAST --> AUTO
+  AUTO --> BUILD["Build AI, backend, and frontend images"]
   BUILD --> ECR["Amazon ECR"]
   ECR --> SCAN["ECR and Inspector vulnerability gate"]
   SCAN --> MIGRATE["One-shot Alembic migration task"]
@@ -26,11 +26,11 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 ## Workflow Files
 
 - `.github/workflows/ci.yml`: Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. It also runs weekly for drift observation.
-- `.github/workflows/release.yml`: commit-owner approval, immutable container builds, ECR publishing and scanning, a one-shot Alembic migration, ECS deployment through the `demo` environment, smoke testing, and coordinated service rollback.
+- `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, immutable container builds, ECR publishing and scanning, a one-shot Alembic migration, ECS deployment through the `demo` environment, smoke testing, and coordinated service rollback.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
 
-The release workflow is manually dispatched from `main`. It releases only the current `main` SHA, requires a successful push-triggered `CI and LLMSecOps` run for that SHA, and requires the dispatcher to be the GitHub actor who triggered that CI run. In this pipeline, that authenticated push actor is the commit owner; Git author metadata is not used because it can be set or spoofed locally. Weekly drift runs and manual CI runs cannot satisfy the release gate.
+The release workflow starts automatically after a successful push-triggered `CI and LLMSecOps` run on `main`. A stale-run guard compares the successful run SHA with the current `main` SHA and skips deployment when a newer commit has arrived. Weekly drift runs, pull-request runs, and manual CI runs do not deploy.
 
 ## AWS Provisioning
 
@@ -59,7 +59,7 @@ Read `SUBJECT_PREFIX` from the repository OIDC configuration; repositories using
 
 ## GitHub Configuration
 
-Create a `demo` environment and restrict it to `main`. The release workflow supplies the approval gate because required environment reviewers are unavailable for this private repository on the current GitHub plan. Collaborators with write access can approve their own successful `main` push by manually running `Release to AWS`; they cannot approve another collaborator's push. Configure these repository or environment variables:
+Create a `demo` environment and restrict it to `main`. Required environment reviewers are unavailable for this private repository on the current GitHub plan, and the automatic release does not require manual approval. Configure these repository or environment variables:
 
 | Variable | Purpose |
 |---|---|
@@ -86,7 +86,7 @@ Create a `demo` environment and restrict it to `main`. The release workflow supp
 
 Add `SMOKE_BACKEND_API_KEY` as a `demo` environment secret. Its value must match the backend key in Secrets Manager. Do not place `AI_SERVICE_API_KEY`, application AWS credentials, or runtime model credentials in GitHub.
 
-Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful CI and the matching push actor, but it does not prevent a direct push to `main`. Enable GitHub secret scanning, push protection, and GitHub Code Security when supported by the repository plan. Until GitHub Code Security is enabled, Bandit provides the in-workflow Python SAST gate and uploads its JSON evidence as a 30-day workflow artifact.
+Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful push CI, but it does not prevent a direct push to `main`. Enable GitHub secret scanning, push protection, and GitHub Code Security when supported by the repository plan. Until GitHub Code Security is enabled, Bandit provides the in-workflow Python SAST gate and uploads its JSON evidence as a 30-day workflow artifact.
 
 ## Release Gates
 

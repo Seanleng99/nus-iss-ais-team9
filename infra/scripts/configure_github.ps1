@@ -132,4 +132,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Configured GitHub Actions variables, the main-only demo environment, OIDC defaults, and the smoke-test secret."
-Write-Host "Deployment approval is enforced by release.yml: the actor who triggered successful main CI must manually dispatch the release."
+Write-Host "release.yml automatically deploys the current main SHA after successful push CI."
