@@ -1,53 +1,102 @@
 # Architecture
 
-## Logical View
+## Target Logical View
 
 ```mermaid
 flowchart LR
-  User["User"] --> UI["Streamlit UI on ECS"]
-  UI --> Backend["FastAPI application backend on ECS"]
-  Backend --> API["Private FastAPI AI service on ECS"]
-  API --> Orchestrator["Agent Orchestrator"]
-  Orchestrator --> Spending["Spending Agent"]
-  Orchestrator --> Budget["Budget Agent"]
-  Orchestrator --> Goal["Goal Strategy Agent"]
-  Orchestrator --> Invest["Investment Education Agent"]
-  Spending --> Compliance["Risk and Compliance Agent"]
-  Budget --> Compliance
-  Goal --> Compliance
-  Invest --> Compliance
-  Compliance --> API
-  Compliance -->|"Trusted policy context"| RAG["Vector DB"]
-  Backend --> DB["PostgreSQL"]
-  API --> Bedrock["Amazon Bedrock"]
+  User["User"] --> UI["Streamlit UI"]
+  UI --> Backend["FastAPI Backend"]
+  Backend <-->|"Profiles, transactions, budgets, goals"| PG["PostgreSQL"]
+
+  subgraph AI["Private AI Service"]
+    Orchestrator["Guardrails + Agent Orchestrator"]
+    Spending["Spending Agent"]
+    Budget["Budget Agent"]
+    Goal["Goal Strategy Agent"]
+    Invest["Investment Education Agent"]
+    Synthesis["Response Synthesis"]
+    Compliance["Risk and Compliance Agent"]
+
+    Orchestrator -->|"Transactions"| Spending
+    Orchestrator -->|"Income + recurring expenses"| Budget
+    Orchestrator -->|"Savings goals"| Goal
+    Orchestrator -->|"Question + risk constraints"| Invest
+    Spending --> Synthesis
+    Budget --> Synthesis
+    Goal --> Synthesis
+    Invest --> Synthesis
+    Synthesis --> Compliance
+  end
+
+  Backend -->|"Coach request + minimized financial snapshot"| Orchestrator
+  EducationRAG["Education RAG: CPF, MAS, SGX, Government"] -->|"Investment education"| Invest
+  EducationRAG -. "Conditional guidance" .-> Budget
+  EducationRAG -. "Conditional guidance" .-> Goal
+  PolicyRAG["Policy RAG: advice boundaries + safety rules"] -->|"Independent validation"| Compliance
+  Compliance -->|"Approved or blocked answer"| Backend
+
+  Orchestrator -. "Model routing and specialist calls" .-> Bedrock["Amazon Bedrock"]
+  Synthesis -. "Model synthesis" .-> Bedrock
+  Compliance -. "Model-assisted review" .-> Bedrock
 ```
+
+PostgreSQL is the system of record for personal financial data. The application backend owns database access and sends only a minimized, request-scoped financial snapshot to the private AI service. Agents do not connect directly to PostgreSQL: Spending receives transactions, Budget receives income and recurring expenses, Goal Strategy receives savings goals, and Investment Education receives only the sanitized question and relevant risk constraints.
+
+The target retrieval design separates educational knowledge from policy controls. Investment Education can retrieve trusted CPF, MAS, SGX, and government education content. Budget and Goal Strategy can retrieve only relevant education content when deterministic financial data is insufficient. Spending does not use RAG. Risk and Compliance independently retrieves advice-boundary and safety policy before approving or blocking the synthesized response.
+
+This target view is intentionally ahead of the current executable demo. The current retriever uses a small in-memory `TRUSTED_DOCUMENTS` collection, and only Risk and Compliance has retrieval permission. The education and policy collections, offline ingestion pipeline, and expanded role-scoped permissions remain implementation work.
 
 ## Target Physical AWS View
 
 ```mermaid
-flowchart TB
-  GitHub["GitHub Actions"] -->|"OIDC short-lived role"| ECR["Three ECR repositories"]
-  GitHub -->|"Protected demo deployment"| ECS["ECS Fargate cluster"]
-  User["User browser"] -->|"HTTPS"| ALB["Application Load Balancer"]
-  subgraph VPC["VPC across two Availability Zones"]
-    ALB --> UI["Streamlit service"]
-    ALB --> Backend["Application backend service"]
-    UI -->|"Backend service key"| Backend
-    Backend -->|"Private service key"| AI["AI service"]
-    Backend --> RDS["Encrypted PostgreSQL"]
-    AI --> Vector["Private vector store"]
+flowchart LR
+  User["User Browser"] -->|"HTTPS"| ALB["Application Load Balancer"]
+
+  subgraph AWS["AWS Account"]
+    subgraph VPC["VPC across two Availability Zones"]
+      subgraph AppTier["Private Application Subnets"]
+        UI["ECS Fargate: Streamlit"]
+        Backend["ECS Fargate: FastAPI Backend"]
+        AI["ECS Fargate: Private AI Service"]
+        Ingestion["Scheduled Trusted-Content Ingestion Task"]
+      end
+
+      subgraph DataTier["Private Data Subnets"]
+        RDS["Amazon RDS PostgreSQL"]
+        VectorDB["Vector DB: Education + Policy Collections"]
+      end
+
+      ALB --> UI
+      UI -->|"Backend service key"| Backend
+      Backend -->|"Private service key + minimized snapshot"| AI
+      Backend <-->|"Personal financial records"| RDS
+      AI <-->|"Role-scoped retrieval"| VectorDB
+    end
+
+    S3["S3 Curated Document Store"]
+    Bedrock["Amazon Bedrock: Models + Embeddings"]
+    Secrets["AWS Secrets Manager"]
+    Logs["Amazon CloudWatch"]
+
+    S3 --> Ingestion
+    Ingestion -->|"Chunk + metadata"| Bedrock
+    Bedrock -->|"Document embeddings"| VectorDB
+    AI <-->|"Routing, generation, compliance review"| Bedrock
+    Secrets -.-> UI
+    Secrets -.-> Backend
+    Secrets -.-> AI
+    UI -.-> Logs
+    Backend -.-> Logs
+    AI -.-> Logs
+    Ingestion -.-> Logs
   end
-  AI -->|"Task role"| Bedrock["Amazon Bedrock"]
-  Secrets["Secrets Manager"] --> UI
-  Secrets --> Backend
-  Secrets --> AI
-  UI --> Logs["CloudWatch logs and metrics"]
-  Backend --> Logs
-  AI --> Logs
-  ECR --> ECS
+
+  Sources["Trusted Sources: CPF, MAS, SGX, Government"] -->|"Allowlisted offline collection"| S3
 ```
 
-The target architecture terminates TLS at the ALB and keeps ECS tasks and data stores in private subnets. Its security groups permit only ALB-to-service, backend-to-AI, backend-to-PostgreSQL, and AI-to-vector traffic.
+The target architecture terminates TLS at the ALB and keeps ECS tasks and data stores in private subnets. Its security groups permit only ALB-to-Streamlit, Streamlit-to-backend, backend-to-AI, backend-to-PostgreSQL, and AI-to-vector traffic. The AI service is not exposed to the browser or public load balancer.
+
+Trusted CPF, MAS, SGX, and government documents enter through an allowlisted offline collection process. Curated source files are retained in S3, a scheduled ingestion task validates and chunks them, Amazon Bedrock produces embeddings, and the private vector database stores separate education and policy collections. Runtime AI tasks receive read-only, role-scoped retrieval access; they cannot ingest arbitrary user or web content.
 
 The provisioned minimum demo intentionally differs: it uses an HTTP ALB and three single-task Fargate services in public subnets to avoid NAT Gateway cost. Each task receives a public IP for outbound AWS service access, but security groups deny direct internet ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. A managed vector store remains deferred. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. Use synthetic data only until TLS, end-user identity, and the target private application network are implemented.
 
@@ -57,9 +106,9 @@ The synthetic demo uses a backend service key. Before real users, the public app
 
 - Streamlit frontend: provides Overview, Transactions, Budget, Goals, Coach, and Profile workflows; calls the application backend server-side; and presents answers, rationale, confidence, disclaimers, and audit metadata.
 - FastAPI application backend: owns user-facing APIs, access control, profiles, transactions, monthly budgets, goals, dashboard summaries, coaching snapshots, and PostgreSQL persistence workflows. It is the only application service allowed to call the AI service.
-- FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, performs controlled retrieval, and integrates with Bedrock.
-- Data services: PostgreSQL stores the synthetic financial workspace records; the future vector store will contain curated MAS, CPF, and financial literacy content.
-- AWS boundary: ECS runs all three services, Secrets Manager supplies separate frontend-to-backend and backend-to-AI credentials, Bedrock supplies models, and CloudWatch captures operational telemetry.
+- FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, enforces agent-specific retrieval permissions, and integrates with Bedrock.
+- Data services: PostgreSQL stores synthetic personal financial records; S3 retains curated source documents; and the future vector store separates education content from policy and safety controls.
+- AWS boundary: ECS runs the three application services and scheduled ingestion task, Secrets Manager supplies separate service credentials, Bedrock supplies generation and embedding models, and CloudWatch captures operational telemetry. GitHub Actions, ECR publishing, and protected deployment remain documented separately in `docs/cicd-pipeline.md`.
 
 Each FastAPI health endpoint is available for load balancer checks. Both coaching boundaries require an `X-API-Key`: Streamlit receives only `BACKEND_API_KEY`, while the backend receives `AI_SERVICE_API_KEY`. The AI service remains on private networking and is not exposed to the browser or public load balancer.
 
@@ -76,6 +125,8 @@ ECS Fargate remains preferable to EKS for the initial scope because there are on
 The implemented LangGraph workflow is `guard_input -> route -> run_specialists -> synthesize -> review_compliance -> finalize`. The router, specialist narratives, synthesis, and compliance review are model calls with non-zero temperatures. The graph can branch to one or more specialists based on structured router output.
 
 Hard boundary controls run before the first model call. Each specialist receives minimized deterministic grounding according to its role. Risk and Compliance alone can retrieve trusted, sanitized RAG context; Investment Education has no retrieval permission. Structured model responses are schema-validated, and the independent compliance result can block the draft before release. Local and CI integration use an explicitly configured offline fixture; ECS requires the Bedrock provider.
+
+The target retrieval upgrade keeps deterministic grounding as the default while adding least-privilege education retrieval. Investment Education receives access to the trusted education collection, Budget and Goal Strategy receive conditional access, Spending remains retrieval-free, and Risk and Compliance retains independent access to the policy collection. Personal financial records remain in PostgreSQL and are never embedded into the education or policy stores.
 
 ## MCP And A2A Position
 
