@@ -64,6 +64,44 @@ def severity_counts(response: dict) -> Counter:
     return Counter(str(finding.get("severity", "UNDEFINED")).upper() for finding in findings)
 
 
+def blocking_findings(response: dict) -> list[dict]:
+    scan_findings = response.get("imageScanFindings", {})
+    findings = scan_findings.get("enhancedFindings") or scan_findings.get("findings") or []
+    summaries = []
+    for finding in findings:
+        severity = str(finding.get("severity", "UNDEFINED")).upper()
+        if severity not in {"CRITICAL", "HIGH"}:
+            continue
+        vulnerability = finding.get("packageVulnerabilityDetails", {})
+        packages = vulnerability.get("vulnerablePackages", [])
+        attributes = {
+            attribute.get("key"): attribute.get("value")
+            for attribute in finding.get("attributes", [])
+            if attribute.get("key")
+        }
+        summaries.append(
+            {
+                "severity": severity,
+                "id": vulnerability.get("vulnerabilityId")
+                or finding.get("name")
+                or finding.get("title"),
+                "fix_available": finding.get("fixAvailable"),
+                "source": finding.get("sourceUrl") or finding.get("uri"),
+                "packages": [
+                    {
+                        "name": package.get("name"),
+                        "version": package.get("version"),
+                        "fixed_in_version": package.get("fixedInVersion"),
+                        "package_manager": package.get("packageManager"),
+                    }
+                    for package in packages
+                ],
+                "attributes": attributes,
+            }
+        )
+    return summaries
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fail a release on ECR image vulnerabilities")
     parser.add_argument("--repository", required=True)
@@ -88,6 +126,7 @@ def main() -> None:
         "image_tag": args.image_tag,
         "scan_status": response.get("imageScanStatus", {}).get("status"),
         "severity_counts": dict(sorted(counts.items())),
+        "blocking_findings": blocking_findings(response),
     }
     print(json.dumps(summary, indent=2))
     if counts["CRITICAL"] > args.max_critical or counts["HIGH"] > args.max_high:

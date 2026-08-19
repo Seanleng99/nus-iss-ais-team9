@@ -11,7 +11,9 @@ COPY apps/backend/alembic.ini ./alembic.ini
 COPY apps/backend/migrations ./migrations
 RUN pip install --no-cache-dir .
 # The service does not invoke Perl; remove it from the runtime attack surface.
-RUN groupadd --system app && \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    groupadd --system app && \
     useradd --system --gid app --create-home --home-dir /home/app app && \
     apt-get purge -y --allow-remove-essential perl-base && \
     rm -rf /var/lib/apt/lists/*
