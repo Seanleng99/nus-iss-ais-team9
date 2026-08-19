@@ -7,7 +7,7 @@ import streamlit as st
 
 from client import build_request
 from ui.components import backend_call, clamp_progress, money, page_header, percent
-from ui.state import get_client, get_period_start, get_user_id, today_singapore
+from ui.state import get_client, get_period_start, get_user_id
 
 CATEGORIES = [
     "housing",
@@ -195,21 +195,45 @@ def transactions_page() -> None:
 
     with add_tab:
         with st.form("add-transaction", clear_on_submit=True):
-            description = st.text_input("Description", max_chars=255)
+            description = st.text_input(
+                "Description",
+                max_chars=255,
+                key=f"add-transaction-{user_id}-description-v2",
+            )
             first, second = st.columns(2)
             category = first.selectbox(
-                "Category", CATEGORIES, format_func=_category_label, key="add-category"
+                "Category",
+                CATEGORIES,
+                index=None,
+                format_func=_category_label,
+                key=f"add-transaction-{user_id}-category-v2",
             )
-            amount = second.number_input("Amount (SGD)", min_value=0.01, step=10.0)
+            amount = second.number_input(
+                "Amount (SGD)",
+                min_value=0.0,
+                value=0.0,
+                step=10.0,
+                key=f"add-transaction-{user_id}-amount-v2",
+            )
             third, fourth = st.columns(2)
-            occurred_on = third.date_input("Date", value=today_singapore())
-            recurring = fourth.toggle("Recurring expense")
+            occurred_on = third.date_input(
+                "Date", value=None, key=f"add-transaction-{user_id}-date-v2"
+            )
+            recurring = fourth.toggle(
+                "Recurring expense", key=f"add-transaction-{user_id}-recurring-v2"
+            )
             add_submitted = st.form_submit_button(
                 "Add transaction", type="primary", icon=":material/add:"
             )
         if add_submitted:
             if not description.strip():
                 st.warning("Enter a transaction description.")
+            elif category is None:
+                st.warning("Select a transaction category.")
+            elif amount <= 0:
+                st.warning("Enter a transaction amount greater than zero.")
+            elif occurred_on is None:
+                st.warning("Select a transaction date.")
             else:
                 result = backend_call(
                     lambda: client.create_transaction(
@@ -252,62 +276,78 @@ def transactions_page() -> None:
         selected_id = st.selectbox(
             "Transaction",
             [item["id"] for item in transactions],
+            index=None,
             format_func=lambda value: next(
                 f"{item['occurred_on']} · {item['description']}"
                 for item in transactions
                 if item["id"] == value
             ),
+            key=f"manage-transaction-{user_id}-selection-v2",
         )
-        selected = next(item for item in transactions if item["id"] == selected_id)
-        selected_category = (
-            selected["category"] if selected["category"] in CATEGORIES else "other"
-        )
-        with st.form("manage-transaction"):
-            edit_description = st.text_input("Description", value=selected["description"])
-            first, second = st.columns(2)
-            edit_category = first.selectbox(
-                "Category",
-                CATEGORIES,
-                index=CATEGORIES.index(selected_category),
-                format_func=_category_label,
-                key="edit-category",
+        if selected_id is not None:
+            selected = next(item for item in transactions if item["id"] == selected_id)
+            selected_category = (
+                selected["category"] if selected["category"] in CATEGORIES else "other"
             )
-            edit_amount = second.number_input(
-                "Amount (SGD)", min_value=0.01, value=float(selected["amount"]["amount"])
-            )
-            third, fourth = st.columns(2)
-            edit_date = third.date_input(
-                "Date", value=date.fromisoformat(selected["occurred_on"]), key="edit-date"
-            )
-            edit_recurring = fourth.toggle("Recurring expense", value=selected["recurring"])
-            save, delete = st.columns(2)
-            save_submitted = save.form_submit_button(
-                "Save changes", type="primary", icon=":material/save:"
-            )
-            delete_submitted = delete.form_submit_button(
-                "Delete", icon=":material/delete:"
-            )
-        if save_submitted:
-            result = backend_call(
-                lambda: client.update_transaction(
-                    user_id,
-                    selected_id,
-                    _transaction_payload(
-                        edit_description,
-                        edit_category,
-                        edit_amount,
-                        edit_date,
-                        edit_recurring,
-                    ),
+            with st.form("manage-transaction"):
+                edit_description = st.text_input(
+                    "Description",
+                    value=selected["description"],
+                    key=f"manage-transaction-{selected_id}-description",
                 )
-            )
-            if result:
-                st.success("Transaction updated.")
+                first, second = st.columns(2)
+                edit_category = first.selectbox(
+                    "Category",
+                    CATEGORIES,
+                    index=CATEGORIES.index(selected_category),
+                    format_func=_category_label,
+                    key=f"manage-transaction-{selected_id}-category",
+                )
+                edit_amount = second.number_input(
+                    "Amount (SGD)",
+                    min_value=0.01,
+                    value=float(selected["amount"]["amount"]),
+                    key=f"manage-transaction-{selected_id}-amount",
+                )
+                third, fourth = st.columns(2)
+                edit_date = third.date_input(
+                    "Date",
+                    value=date.fromisoformat(selected["occurred_on"]),
+                    key=f"manage-transaction-{selected_id}-date",
+                )
+                edit_recurring = fourth.toggle(
+                    "Recurring expense",
+                    value=selected["recurring"],
+                    key=f"manage-transaction-{selected_id}-recurring",
+                )
+                save, delete = st.columns(2)
+                save_submitted = save.form_submit_button(
+                    "Save changes", type="primary", icon=":material/save:"
+                )
+                delete_submitted = delete.form_submit_button(
+                    "Delete", icon=":material/delete:"
+                )
+            if save_submitted:
+                result = backend_call(
+                    lambda: client.update_transaction(
+                        user_id,
+                        selected_id,
+                        _transaction_payload(
+                            edit_description,
+                            edit_category,
+                            edit_amount,
+                            edit_date,
+                            edit_recurring,
+                        ),
+                    )
+                )
+                if result:
+                    st.success("Transaction updated.")
+                    st.rerun()
+            if delete_submitted:
+                backend_call(lambda: client.delete_transaction(user_id, selected_id))
+                st.success("Transaction deleted.")
                 st.rerun()
-        if delete_submitted:
-            backend_call(lambda: client.delete_transaction(user_id, selected_id))
-            st.success("Transaction deleted.")
-            st.rerun()
 
 
 def budget_page() -> None:
@@ -330,7 +370,7 @@ def budget_page() -> None:
                 min_value=0.0,
                 value=existing.get(category, 0.0),
                 step=25.0,
-                key=f"budget-{category}",
+                key=f"budget-{user_id}-{period_start.isoformat()}-{category}-v2",
             )
         budget_submitted = st.form_submit_button(
             "Save budget", type="primary", icon=":material/save:"
@@ -392,27 +432,52 @@ def goals_page() -> None:
     add_tab, manage_tab = st.tabs(["Add goal", "Manage goals"])
     with add_tab:
         with st.form("add-goal", clear_on_submit=True):
-            name = st.text_input("Goal name", max_chars=120)
+            name = st.text_input(
+                "Goal name", max_chars=120, key=f"add-goal-{user_id}-name-v2"
+            )
             first, second = st.columns(2)
-            target_amount = first.number_input("Target (SGD)", min_value=1.0, step=100.0)
-            current_amount = second.number_input("Saved (SGD)", min_value=0.0, step=100.0)
+            target_amount = first.number_input(
+                "Target (SGD)",
+                min_value=0.0,
+                value=0.0,
+                step=100.0,
+                key=f"add-goal-{user_id}-target-v2",
+            )
+            current_amount = second.number_input(
+                "Saved (SGD)",
+                min_value=0.0,
+                value=0.0,
+                step=100.0,
+                key=f"add-goal-{user_id}-current-v2",
+            )
             target_months = st.number_input(
-                "Time horizon (months)", min_value=1, max_value=600, value=12
+                "Time horizon (months)",
+                min_value=0,
+                max_value=600,
+                value=0,
+                key=f"add-goal-{user_id}-months-v2",
             )
             add_submitted = st.form_submit_button(
                 "Add goal", type="primary", icon=":material/add:"
             )
         if add_submitted:
-            payload = {
-                "name": name.strip(),
-                "target_amount": {"currency": "SGD", "amount": target_amount},
-                "current_amount": {"currency": "SGD", "amount": current_amount},
-                "target_months": target_months,
-            }
-            result = backend_call(lambda: client.create_goal(user_id, payload))
-            if result:
-                st.success("Goal added.")
-                st.rerun()
+            if not name.strip():
+                st.warning("Enter a goal name.")
+            elif target_amount <= 0:
+                st.warning("Enter a target amount greater than zero.")
+            elif target_months <= 0:
+                st.warning("Enter a time horizon greater than zero.")
+            else:
+                payload = {
+                    "name": name.strip(),
+                    "target_amount": {"currency": "SGD", "amount": target_amount},
+                    "current_amount": {"currency": "SGD", "amount": current_amount},
+                    "target_months": target_months,
+                }
+                result = backend_call(lambda: client.create_goal(user_id, payload))
+                if result:
+                    st.success("Goal added.")
+                    st.rerun()
 
     with manage_tab:
         if not goals:
@@ -420,44 +485,60 @@ def goals_page() -> None:
             return
         goal_id = st.selectbox(
             "Goal", [goal["id"] for goal in goals],
+            index=None,
             format_func=lambda value: next(goal["name"] for goal in goals if goal["id"] == value),
+            key=f"manage-goal-{user_id}-selection-v2",
         )
-        selected = next(goal for goal in goals if goal["id"] == goal_id)
-        with st.form("manage-goal"):
-            edit_name = st.text_input("Goal name", value=selected["name"])
-            first, second = st.columns(2)
-            edit_target = first.number_input(
-                "Target (SGD)", min_value=1.0, value=float(selected["target_amount"]["amount"])
-            )
-            edit_current = second.number_input(
-                "Saved (SGD)", min_value=0.0, value=float(selected["current_amount"]["amount"])
-            )
-            edit_months = st.number_input(
-                "Time horizon (months)",
-                min_value=1,
-                max_value=600,
-                value=int(selected["target_months"]),
-            )
-            save, delete = st.columns(2)
-            save_submitted = save.form_submit_button(
-                "Save changes", type="primary", icon=":material/save:"
-            )
-            delete_submitted = delete.form_submit_button("Delete", icon=":material/delete:")
-        payload = {
-            "name": edit_name.strip(),
-            "target_amount": {"currency": "SGD", "amount": edit_target},
-            "current_amount": {"currency": "SGD", "amount": edit_current},
-            "target_months": edit_months,
-        }
-        if save_submitted:
-            result = backend_call(lambda: client.update_goal(user_id, goal_id, payload))
-            if result:
-                st.success("Goal updated.")
+        if goal_id is not None:
+            selected = next(goal for goal in goals if goal["id"] == goal_id)
+            with st.form("manage-goal"):
+                edit_name = st.text_input(
+                    "Goal name",
+                    value=selected["name"],
+                    key=f"manage-goal-{goal_id}-name",
+                )
+                first, second = st.columns(2)
+                edit_target = first.number_input(
+                    "Target (SGD)",
+                    min_value=1.0,
+                    value=float(selected["target_amount"]["amount"]),
+                    key=f"manage-goal-{goal_id}-target",
+                )
+                edit_current = second.number_input(
+                    "Saved (SGD)",
+                    min_value=0.0,
+                    value=float(selected["current_amount"]["amount"]),
+                    key=f"manage-goal-{goal_id}-current",
+                )
+                edit_months = st.number_input(
+                    "Time horizon (months)",
+                    min_value=1,
+                    max_value=600,
+                    value=int(selected["target_months"]),
+                    key=f"manage-goal-{goal_id}-months",
+                )
+                save, delete = st.columns(2)
+                save_submitted = save.form_submit_button(
+                    "Save changes", type="primary", icon=":material/save:"
+                )
+                delete_submitted = delete.form_submit_button(
+                    "Delete", icon=":material/delete:"
+                )
+            payload = {
+                "name": edit_name.strip(),
+                "target_amount": {"currency": "SGD", "amount": edit_target},
+                "current_amount": {"currency": "SGD", "amount": edit_current},
+                "target_months": edit_months,
+            }
+            if save_submitted:
+                result = backend_call(lambda: client.update_goal(user_id, goal_id, payload))
+                if result:
+                    st.success("Goal updated.")
+                    st.rerun()
+            if delete_submitted:
+                backend_call(lambda: client.delete_goal(user_id, goal_id))
+                st.success("Goal deleted.")
                 st.rerun()
-        if delete_submitted:
-            backend_call(lambda: client.delete_goal(user_id, goal_id))
-            st.success("Goal deleted.")
-            st.rerun()
 
 
 def coach_page() -> None:

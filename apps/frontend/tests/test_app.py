@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
@@ -48,6 +49,46 @@ class SparseProfileClient:
         return {"user_id": user_id, **payload}
 
 
+class WorkspaceDefaultsClient:
+    def get_dashboard(self, user_id: str, period_start: date) -> None:
+        return None
+
+    def list_transactions(self, user_id: str, period_start: date) -> list[dict]:
+        return [
+            {
+                "id": "transaction-1",
+                "occurred_on": "2026-08-01",
+                "description": "Saved transaction",
+                "category": "housing",
+                "amount": {"currency": "SGD", "amount": 1200},
+                "recurring": True,
+            }
+        ]
+
+    def get_budget(self, user_id: str, period_start: date) -> dict:
+        return {
+            "categories": [
+                {
+                    "category": "housing",
+                    "limit_amount": 1800,
+                    "spent_amount": 1200,
+                    "remaining_amount": 600,
+                }
+            ]
+        }
+
+    def list_goals(self, user_id: str) -> list[dict]:
+        return [
+            {
+                "id": "goal-1",
+                "name": "Saved goal",
+                "target_amount": {"currency": "SGD", "amount": 10000},
+                "current_amount": {"currency": "SGD", "amount": 1000},
+                "target_months": 12,
+            }
+        ]
+
+
 def test_multipage_app_renders_without_runtime_errors() -> None:
     app = AppTest.from_file(Path(__file__).parents[1] / "app.py")
     app.session_state["backend_client"] = FakeBackendClient()
@@ -82,3 +123,63 @@ def test_sparse_profile_inputs_start_empty_or_zero() -> None:
     assert saved["risk_tolerance"] is None
     assert saved["household_size"] is None
     assert saved["preferences"] == {}
+
+
+def _workspace_page(source: str) -> AppTest:
+    app = AppTest.from_string(f"from ui.pages import {source}\n{source}()")
+    app.session_state["backend_client"] = WorkspaceDefaultsClient()
+    app.session_state["active_user_id"] = "workspace-user"
+    app.session_state["active_period"] = date(2026, 8, 1)
+    return app.run(timeout=30)
+
+
+def test_overview_has_no_unsaved_input_defaults() -> None:
+    app = _workspace_page("dashboard_page")
+
+    assert not app.exception
+    assert not app.text_input
+    assert not app.number_input
+    assert not app.selectbox
+    assert not app.date_input
+
+
+def test_transaction_inputs_start_empty_or_zero() -> None:
+    app = _workspace_page("transactions_page")
+
+    assert not app.exception
+    assert [(item.label, item.value) for item in app.text_input] == [
+        ("Description", "")
+    ]
+    assert {item.label: item.value for item in app.selectbox} == {
+        "Category": None,
+        "Transaction": None,
+    }
+    assert [(item.label, item.value) for item in app.number_input] == [
+        ("Amount (SGD)", 0.0)
+    ]
+    assert [(item.label, item.value) for item in app.date_input] == [("Date", None)]
+    assert app.toggle[0].value is False
+
+
+def test_budget_defaults_to_zero_except_saved_values() -> None:
+    app = _workspace_page("budget_page")
+
+    assert not app.exception
+    values = {item.label: item.value for item in app.number_input}
+    assert values["Housing (SGD)"] == 1800.0
+    assert all(
+        value == 0.0 for label, value in values.items() if label != "Housing (SGD)"
+    )
+
+
+def test_goal_inputs_start_empty_or_zero() -> None:
+    app = _workspace_page("goals_page")
+
+    assert not app.exception
+    assert [(item.label, item.value) for item in app.text_input] == [("Goal name", "")]
+    assert [(item.label, item.value) for item in app.number_input] == [
+        ("Target (SGD)", 0.0),
+        ("Saved (SGD)", 0.0),
+        ("Time horizon (months)", 0),
+    ]
+    assert [(item.label, item.value) for item in app.selectbox] == [("Goal", None)]
