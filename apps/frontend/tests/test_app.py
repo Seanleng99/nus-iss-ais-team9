@@ -33,6 +33,7 @@ class NoProfilesClient:
 class SparseProfileClient:
     def __init__(self) -> None:
         self.saved_profile: dict | None = None
+        self.deleted_user_id: str | None = None
 
     def get_profile(self, user_id: str) -> dict:
         return {
@@ -52,6 +53,10 @@ class SparseProfileClient:
     def save_profile(self, user_id: str, payload: dict) -> dict:
         self.saved_profile = payload
         return {"user_id": user_id, **payload}
+
+    def delete_profile(self, user_id: str) -> bool:
+        self.deleted_user_id = user_id
+        return True
 
 
 class WorkspaceDefaultsClient:
@@ -156,6 +161,29 @@ def test_sparse_profile_inputs_start_empty_or_zero() -> None:
     assert saved["risk_tolerance"] is None
     assert saved["household_size"] is None
     assert saved["preferences"] == {}
+
+
+def test_profile_deletion_requires_confirmation() -> None:
+    app = AppTest.from_string(
+        "from ui.pages import profile_page\nprofile_page()"
+    )
+    app.session_state["backend_client"] = SparseProfileClient()
+    app.session_state["active_user_id"] = "delete-user"
+    app.session_state["coach_history"] = [{"role": "user", "content": "hello"}]
+    app.run(timeout=30)
+
+    delete_button = app.button(key="delete-profile-delete-user")
+    assert not app.exception
+    assert delete_button.disabled is True
+
+    app.checkbox(key="delete-profile-confirmed-delete-user").check().run(timeout=30)
+    app.button(key="delete-profile-delete-user").click().run(timeout=30)
+
+    assert app.session_state["backend_client"].deleted_user_id == "delete-user"
+    assert "active_user_id" not in app.session_state
+    assert "coach_history" not in app.session_state
+    assert app.session_state["profile_deleted_notice"] == "Profile deleted."
+    assert app.session_state["profile_deleted_redirect"] is True
 
 
 def _workspace_page(source: str) -> AppTest:

@@ -98,6 +98,11 @@ navigation = st.navigation(
     position="hidden",
 )
 
+if st.session_state.pop("profile_deleted_redirect", False):
+    st.switch_page(overview if has_active_profile else create_profile)
+if deleted_notice := st.session_state.pop("profile_deleted_notice", None):
+    st.toast(deleted_notice, icon=":material/delete:")
+
 with st.sidebar:
     st.markdown('<div class="workspace-kicker">FINANCIAL WELLNESS</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-brand">Coach workspace</div>', unsafe_allow_html=True)

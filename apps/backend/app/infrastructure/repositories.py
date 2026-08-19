@@ -84,6 +84,14 @@ class SQLAlchemyUserRepository:
         self.session.flush()
         return record
 
+    def delete_profile(self, user_id: str) -> bool:
+        user = self.session.get(UserRecord, user_id)
+        if user is None or self.get_profile(user_id) is None:
+            return False
+        self.session.delete(user)
+        self.session.flush()
+        return True
+
     def get_financial_snapshot(self, user_id: str) -> UserFinancialSnapshot | None:
         if self.session.get(UserRecord, user_id) is None:
             return None

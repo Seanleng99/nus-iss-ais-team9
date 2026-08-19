@@ -42,7 +42,7 @@ def test_client_supports_not_found_profile() -> None:
     assert client.get_profile("missing-user") is None
 
 
-def test_client_lists_and_creates_profiles() -> None:
+def test_client_manages_profiles() -> None:
     captured: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -62,12 +62,15 @@ def test_client_lists_and_creates_profiles() -> None:
     created = client.create_profile(
         {"user_id": "alex", "preferences": {"display_name": "Alex"}}
     )
+    deleted = client.delete_profile("alex")
 
     assert profiles[0]["display_name"] == "Alex"
     assert created["user_id"] == "alex"
+    assert deleted is True
     assert [(request.method, request.url.path) for request in captured] == [
         ("GET", "/api/profiles"),
         ("POST", "/api/profiles"),
+        ("DELETE", "/api/users/alex/profile"),
     ]
 
 

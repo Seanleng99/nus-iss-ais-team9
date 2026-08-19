@@ -193,6 +193,17 @@ def put_profile(
     return _profile_response(record)
 
 
+@router.delete("/users/{user_id}/profile", status_code=204)
+def delete_profile(
+    user_id: UserId,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> Response:
+    if not SQLAlchemyUserRepository(session).delete_profile(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 def _fairness_consent_response(
     record: ProfileConsentRecord | None,
 ) -> FairnessConsentResponse:

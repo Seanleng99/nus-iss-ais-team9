@@ -583,7 +583,9 @@ def profile_page() -> None:
     if not profile:
         st.info("This profile has not been created yet.")
         return
-    context_tab, fairness_tab = st.tabs(["Financial context", "Fairness data"])
+    context_tab, fairness_tab, delete_tab = st.tabs(
+        ["Financial context", "Fairness data", "Delete profile"]
+    )
 
     with context_tab:
         income = profile.get("monthly_income") or {"amount": 0.0}
@@ -805,6 +807,31 @@ def profile_page() -> None:
                     }
                     if backend_call(lambda: client.save_demographics(user_id, payload)):
                         st.success("Fairness data saved.")
+
+    with delete_tab:
+        st.warning(
+            "This permanently deletes the profile and all associated financial and fairness "
+            "data. This action cannot be undone."
+        )
+        confirmed = st.checkbox(
+            "I understand that all data for this profile will be deleted",
+            key=f"delete-profile-confirmed-{user_id}",
+        )
+        delete_requested = st.button(
+            "Delete profile",
+            icon=":material/delete_forever:",
+            disabled=not confirmed,
+            key=f"delete-profile-{user_id}",
+        )
+        if delete_requested and backend_call(lambda: client.delete_profile(user_id)):
+            st.session_state.pop("active_user_id", None)
+            st.session_state.pop("coach_history", None)
+            st.session_state.profile_switcher_version = (
+                st.session_state.get("profile_switcher_version", 0) + 1
+            )
+            st.session_state.profile_deleted_notice = "Profile deleted."
+            st.session_state.profile_deleted_redirect = True
+            st.rerun()
 
 
 def create_profile_page() -> None:

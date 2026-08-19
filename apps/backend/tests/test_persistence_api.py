@@ -103,6 +103,83 @@ def test_profiles_can_be_created_listed_and_not_overwritten() -> None:
     ]
 
 
+def test_profile_deletion_removes_all_user_data() -> None:
+    client = TestClient(app)
+    headers = {"X-API-Key": settings.api_key}
+    profile = {
+        "user_id": "delete-user",
+        "preferences": {"display_name": "Delete User"},
+    }
+
+    assert client.post("/api/profiles", headers=headers, json=profile).status_code == 201
+    assert client.post(
+        "/api/users/delete-user/transactions",
+        headers=headers,
+        json={
+            "description": "Rent",
+            "category": "housing",
+            "amount": {"currency": "SGD", "amount": 1800},
+            "occurred_on": "2026-08-01",
+            "recurring": True,
+        },
+    ).status_code == 201
+    assert client.post(
+        "/api/users/delete-user/goals",
+        headers=headers,
+        json={
+            "name": "Emergency fund",
+            "target_amount": {"currency": "SGD", "amount": 12000},
+            "current_amount": {"currency": "SGD", "amount": 1000},
+            "target_months": 12,
+        },
+    ).status_code == 201
+    assert client.put(
+        "/api/users/delete-user/budget",
+        headers=headers,
+        json={
+            "period_start": "2026-08-01",
+            "currency": "SGD",
+            "categories": [{"category": "housing", "limit_amount": 2000}],
+        },
+    ).status_code == 200
+    assert client.put(
+        "/api/users/delete-user/fairness-consent",
+        headers=headers,
+        json={"granted": True},
+    ).status_code == 200
+    assert client.put(
+        "/api/users/delete-user/demographics",
+        headers=headers,
+        json={"age_band": "26-30", "race_ethnicity": ["Malay"]},
+    ).status_code == 200
+
+    deleted = client.delete("/api/users/delete-user/profile", headers=headers)
+    deleted_again = client.delete("/api/users/delete-user/profile", headers=headers)
+
+    assert deleted.status_code == 204
+    assert deleted_again.status_code == 404
+    assert client.get("/api/users/delete-user/profile", headers=headers).status_code == 404
+    assert client.get("/api/profiles", headers=headers).json() == []
+
+    assert client.post("/api/profiles", headers=headers, json=profile).status_code == 201
+    assert client.get(
+        "/api/users/delete-user/transactions",
+        headers=headers,
+        params={"period_start": "2026-08-01"},
+    ).json() == []
+    assert client.get("/api/users/delete-user/goals", headers=headers).json() == []
+    assert client.get(
+        "/api/users/delete-user/budget",
+        headers=headers,
+        params={"period_start": "2026-08-01"},
+    ).status_code == 404
+    fairness = client.get(
+        "/api/users/delete-user/fairness-profile", headers=headers
+    ).json()
+    assert fairness["consent"]["granted"] is False
+    assert fairness["demographics"] is None
+
+
 def test_profile_creation_rejects_unsafe_profile_id() -> None:
     response = TestClient(app).post(
         "/api/profiles",
