@@ -3,6 +3,8 @@ import json
 import subprocess
 import time
 from collections import Counter
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 READY_STATUSES = {"ACTIVE", "COMPLETE"}
 FAILED_STATUSES = {"FAILED", "UNSUPPORTED_IMAGE", "SCAN_ELIGIBILITY_EXPIRED"}
@@ -102,6 +104,37 @@ def blocking_findings(response: dict) -> list[dict]:
     return summaries
 
 
+def load_exceptions(path: Path, today: date | None = None) -> list[dict]:
+    if not path.exists():
+        return []
+    current_date = today or datetime.now(UTC).date()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    active = []
+    for exception in payload.get("exceptions", []):
+        expires_on = date.fromisoformat(exception["expires_on"])
+        if expires_on < current_date:
+            continue
+        if not exception.get("reason") or not exception.get("source"):
+            raise ValueError("Scan exceptions require a reason and authoritative source")
+        active.append(exception)
+    return active
+
+
+def excepted_finding(
+    finding: dict, repository: str, exceptions: list[dict]
+) -> dict | None:
+    attributes = finding.get("attributes", {})
+    for exception in exceptions:
+        if (
+            finding.get("id") == exception.get("id")
+            and attributes.get("package_name") == exception.get("package_name")
+            and attributes.get("package_version") == exception.get("package_version")
+            and repository in exception.get("repositories", [])
+        ):
+            return exception
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fail a release on ECR image vulnerabilities")
     parser.add_argument("--repository", required=True)
@@ -111,6 +144,11 @@ def main() -> None:
     parser.add_argument("--attempts", type=int, default=30)
     parser.add_argument("--interval-seconds", type=int, default=10)
     parser.add_argument("--settle-seconds", type=int, default=60)
+    parser.add_argument(
+        "--exceptions-file",
+        type=Path,
+        default=Path("infra/llmsecops/ecr-scan-exceptions.json"),
+    )
     args = parser.parse_args()
 
     response = wait_for_findings(
@@ -121,17 +159,41 @@ def main() -> None:
         args.settle_seconds,
     )
     counts = severity_counts(response)
+    findings = blocking_findings(response)
+    exceptions = load_exceptions(args.exceptions_file)
+    accepted_exceptions = []
+    effective_findings = []
+    for finding in findings:
+        exception = excepted_finding(finding, args.repository, exceptions)
+        if exception:
+            accepted_exceptions.append(
+                {
+                    "finding": finding,
+                    "expires_on": exception["expires_on"],
+                    "reason": exception["reason"],
+                    "source": exception["source"],
+                }
+            )
+        else:
+            effective_findings.append(finding)
+    effective_counts = Counter(finding["severity"] for finding in effective_findings)
     summary = {
         "repository": args.repository,
         "image_tag": args.image_tag,
         "scan_status": response.get("imageScanStatus", {}).get("status"),
         "severity_counts": dict(sorted(counts.items())),
-        "blocking_findings": blocking_findings(response),
+        "effective_blocking_counts": dict(sorted(effective_counts.items())),
+        "blocking_findings": effective_findings,
+        "accepted_exceptions": accepted_exceptions,
     }
     print(json.dumps(summary, indent=2))
-    if counts["CRITICAL"] > args.max_critical or counts["HIGH"] > args.max_high:
+    if (
+        effective_counts["CRITICAL"] > args.max_critical
+        or effective_counts["HIGH"] > args.max_high
+    ):
         raise SystemExit(
-            f"Image scan gate failed: CRITICAL={counts['CRITICAL']}, HIGH={counts['HIGH']}"
+            "Image scan gate failed: "
+            f"CRITICAL={effective_counts['CRITICAL']}, HIGH={effective_counts['HIGH']}"
         )
 
 

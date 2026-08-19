@@ -78,6 +78,19 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 result["infrastructure"] = True
                 continue
 
+            if path == "infra/llmsecops/ecr-scan-exceptions.json":
+                result.update(
+                    frontend_ci=True,
+                    backend_ci=True,
+                    ai_ci=True,
+                    frontend_deploy=True,
+                    backend_deploy=True,
+                    ai_deploy=True,
+                    integration=True,
+                    sast=True,
+                )
+                continue
+
             if path.startswith("infra/llmsecops/"):
                 result["ai_ci"] = True
                 continue

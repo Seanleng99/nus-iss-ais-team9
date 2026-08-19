@@ -1,4 +1,5 @@
 import importlib.util
+from datetime import date
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).parents[1] / "ecr_scan_gate.py"
@@ -83,3 +84,35 @@ def test_blocking_findings_summarizes_basic_ecr_result_and_ignores_medium() -> N
             },
         }
     ]
+
+
+def test_exception_requires_exact_version_repository_and_unexpired_review(tmp_path) -> None:
+    exception_file = tmp_path / "exceptions.json"
+    exception_file.write_text(
+        """{
+  "exceptions": [{
+    "id": "CVE-2026-14456",
+    "package_name": "openssl",
+    "package_version": "3.0.20-1~deb12u2",
+    "repositories": ["demo-ai"],
+    "expires_on": "2026-09-18",
+    "reason": "Affected code was introduced in OpenSSL 3.5.",
+    "source": "https://www.cve.org/CVERecord?id=CVE-2026-14456"
+  }]
+}
+""",
+        encoding="utf-8",
+    )
+    finding = {
+        "id": "CVE-2026-14456",
+        "attributes": {
+            "package_name": "openssl",
+            "package_version": "3.0.20-1~deb12u2",
+        },
+    }
+
+    active = ecr_scan_gate.load_exceptions(exception_file, date(2026, 8, 19))
+
+    assert ecr_scan_gate.excepted_finding(finding, "demo-ai", active) == active[0]
+    assert ecr_scan_gate.excepted_finding(finding, "another-repository", active) is None
+    assert ecr_scan_gate.load_exceptions(exception_file, date(2026, 9, 19)) == []

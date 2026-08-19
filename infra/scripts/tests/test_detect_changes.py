@@ -40,6 +40,18 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertFalse(result["ai_deploy"])
         self.assertFalse(result["deploy"])
 
+    def test_shared_scan_exception_rebuilds_and_rescans_all_services(self):
+        result = detect_changes.classify_changes(
+            ["infra/llmsecops/ecr-scan-exceptions.json"]
+        )
+
+        self.assertTrue(result["frontend_deploy"])
+        self.assertTrue(result["backend_deploy"])
+        self.assertTrue(result["ai_deploy"])
+        self.assertTrue(result["integration"])
+        self.assertTrue(result["deploy"])
+        self.assertFalse(result["migrations"])
+
     def test_backend_dockerfile_selects_integration_without_migration(self):
         result = detect_changes.classify_changes(
             ["infra/docker/Dockerfile.backend"]

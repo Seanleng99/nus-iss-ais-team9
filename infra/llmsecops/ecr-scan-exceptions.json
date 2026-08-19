@@ -1,0 +1,17 @@
+{
+  "exceptions": [
+    {
+      "id": "CVE-2026-14456",
+      "package_name": "openssl",
+      "package_version": "3.0.20-1~deb12u2",
+      "repositories": [
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
+      ],
+      "expires_on": "2026-09-18",
+      "reason": "OpenSSL's CNA record says the vulnerable QUIC server implementation was introduced in 3.5; Debian OpenSSL 3.0.20 does not contain the affected code.",
+      "source": "https://www.cve.org/CVERecord?id=CVE-2026-14456"
+    }
+  ]
+}
