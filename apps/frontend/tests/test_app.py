@@ -25,6 +25,11 @@ class FakeBackendClient:
         return None
 
 
+class NoProfilesClient:
+    def list_profiles(self) -> list[dict]:
+        return []
+
+
 class SparseProfileClient:
     def __init__(self) -> None:
         self.saved_profile: dict | None = None
@@ -98,7 +103,35 @@ def test_multipage_app_renders_without_runtime_errors() -> None:
     assert app.sidebar.selectbox[0].label == "Active profile"
     assert app.sidebar.selectbox[0].options == ["Alex Lee · alex", "Sam Tan · sam"]
     assert app.sidebar.selectbox[1].label == "Period"
+    assert app.sidebar.selectbox[1].disabled is False
     assert app.session_state["active_user_id"] == "alex"
+    page_links = {item.label: item for item in app.sidebar.get("page_link")}
+    assert page_links["Overview"].proto.page == ""
+
+
+def test_no_profiles_defaults_to_create_profile_and_disables_workspace() -> None:
+    app = AppTest.from_file(Path(__file__).parents[1] / "app.py")
+    app.session_state["backend_client"] = NoProfilesClient()
+    app.session_state["active_user_id"] = "stale-profile"
+    app.run(timeout=30)
+
+    assert not app.exception
+    assert "active_user_id" not in app.session_state
+    assert [item.label for item in app.sidebar.selectbox] == ["Period"]
+    assert app.sidebar.selectbox[0].disabled is True
+
+    page_links = {item.label: item for item in app.sidebar.get("page_link")}
+    assert page_links["Create profile"].proto.page == ""
+    for label in [
+        "Profile settings",
+        "Overview",
+        "Transactions",
+        "Budget",
+        "Goals",
+        "Coach",
+    ]:
+        assert page_links[label].disabled is True
+    assert page_links["Create profile"].disabled is False
 
 
 def test_sparse_profile_inputs_start_empty_or_zero() -> None:
@@ -147,16 +180,12 @@ def test_transaction_inputs_start_empty_or_zero() -> None:
     app = _workspace_page("transactions_page")
 
     assert not app.exception
-    assert [(item.label, item.value) for item in app.text_input] == [
-        ("Description", "")
-    ]
+    assert [(item.label, item.value) for item in app.text_input] == [("Description", "")]
     assert {item.label: item.value for item in app.selectbox} == {
         "Category": None,
         "Transaction": None,
     }
-    assert [(item.label, item.value) for item in app.number_input] == [
-        ("Amount (SGD)", 0.0)
-    ]
+    assert [(item.label, item.value) for item in app.number_input] == [("Amount (SGD)", 0.0)]
     assert [(item.label, item.value) for item in app.date_input] == [("Date", None)]
     assert app.toggle[0].value is False
 
@@ -167,9 +196,7 @@ def test_budget_defaults_to_zero_except_saved_values() -> None:
     assert not app.exception
     values = {item.label: item.value for item in app.number_input}
     assert values["Housing (SGD)"] == 1800.0
-    assert all(
-        value == 0.0 for label, value in values.items() if label != "Housing (SGD)"
-    )
+    assert all(value == 0.0 for label, value in values.items() if label != "Housing (SGD)")
 
 
 def test_goal_inputs_start_empty_or_zero() -> None:

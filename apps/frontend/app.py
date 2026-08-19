@@ -20,12 +20,29 @@ st.set_page_config(
 )
 apply_styles()
 
+client = get_client()
+profiles = backend_call(client.list_profiles) or []
+profiles = sorted(
+    profiles,
+    key=lambda profile: (profile["display_name"].casefold(), profile["user_id"]),
+)
+profile_ids = [profile["user_id"] for profile in profiles]
+active_user_id = st.session_state.get("active_user_id")
+if profile_ids and active_user_id not in profile_ids:
+    active_user_id = profile_ids[0]
+    st.session_state.active_user_id = active_user_id
+elif not profile_ids:
+    active_user_id = None
+    st.session_state.pop("active_user_id", None)
+
+has_active_profile = active_user_id in profile_ids
+
 overview = st.Page(
     dashboard_page,
     title="Overview",
     icon=":material/dashboard:",
     url_path="overview",
-    default=True,
+    default=has_active_profile,
 )
 transactions = st.Page(
     transactions_page,
@@ -62,30 +79,24 @@ create_profile = st.Page(
     title="Create profile",
     icon=":material/person_add:",
     url_path="create-profile",
+    default=not has_active_profile,
 )
 navigation = st.navigation(
-    [
-        overview,
-        transactions,
-        budget,
-        goals,
-        coach,
-        profile_settings,
-        create_profile,
-    ],
+    (
+        [
+            overview,
+            transactions,
+            budget,
+            goals,
+            coach,
+            profile_settings,
+            create_profile,
+        ]
+        if has_active_profile
+        else [create_profile]
+    ),
     position="hidden",
 )
-
-client = get_client()
-profiles = backend_call(client.list_profiles) or []
-profiles = sorted(
-    profiles,
-    key=lambda profile: (profile["display_name"].casefold(), profile["user_id"]),
-)
-profile_ids = [profile["user_id"] for profile in profiles]
-active_user_id = st.session_state.get("active_user_id", "demo-user")
-if profile_ids and active_user_id not in profile_ids:
-    active_user_id = profile_ids[0]
 
 with st.sidebar:
     st.markdown('<div class="workspace-kicker">FINANCIAL WELLNESS</div>', unsafe_allow_html=True)
@@ -93,33 +104,27 @@ with st.sidebar:
     st.caption("Synthetic demo")
 
     st.markdown('<div class="sidebar-section">ACCOUNT</div>', unsafe_allow_html=True)
-    if profiles:
+    if has_active_profile:
         profile_by_id = {profile["user_id"]: profile for profile in profiles}
         selected_user_id = st.selectbox(
             "Active profile",
             profile_ids,
             index=profile_ids.index(active_user_id),
-            format_func=lambda user_id: (
-                f"{profile_by_id[user_id]['display_name']} · {user_id}"
-            ),
-            key=(
-                "profile-switcher-"
-                f"{st.session_state.get('profile_switcher_version', 0)}"
-            ),
+            format_func=lambda user_id: f"{profile_by_id[user_id]['display_name']} · {user_id}",
+            key=(f"profile-switcher-{st.session_state.get('profile_switcher_version', 0)}"),
         )
         if selected_user_id != st.session_state.get("active_user_id"):
             st.session_state.active_user_id = selected_user_id
             st.session_state.pop("coach_history", None)
         active_user_id = selected_user_id
     else:
-        st.session_state.active_user_id = active_user_id
         st.caption("No profiles created")
 
     st.page_link(
         profile_settings,
         label="Profile settings",
         icon=":material/manage_accounts:",
-        disabled=not profiles,
+        disabled=not has_active_profile,
         use_container_width=True,
     )
     st.page_link(
@@ -130,10 +135,30 @@ with st.sidebar:
     )
 
     st.markdown('<div class="sidebar-section">WORKSPACE</div>', unsafe_allow_html=True)
-    st.page_link(overview, label="Overview", icon=":material/dashboard:")
-    st.page_link(transactions, label="Transactions", icon=":material/receipt_long:")
-    st.page_link(budget, label="Budget", icon=":material/pie_chart:")
-    st.page_link(goals, label="Goals", icon=":material/flag:")
+    st.page_link(
+        overview,
+        label="Overview",
+        icon=":material/dashboard:",
+        disabled=not has_active_profile,
+    )
+    st.page_link(
+        transactions,
+        label="Transactions",
+        icon=":material/receipt_long:",
+        disabled=not has_active_profile,
+    )
+    st.page_link(
+        budget,
+        label="Budget",
+        icon=":material/pie_chart:",
+        disabled=not has_active_profile,
+    )
+    st.page_link(
+        goals,
+        label="Goals",
+        icon=":material/flag:",
+        disabled=not has_active_profile,
+    )
 
     periods = period_options()
     current = today_singapore()
@@ -145,9 +170,15 @@ with st.sidebar:
         periods,
         index=selected_index,
         format_func=lambda value: value.strftime("%B %Y"),
+        disabled=not has_active_profile,
     )
 
     st.markdown('<div class="sidebar-section">GUIDANCE</div>', unsafe_allow_html=True)
-    st.page_link(coach, label="Coach", icon=":material/forum:")
+    st.page_link(
+        coach,
+        label="Coach",
+        icon=":material/forum:",
+        disabled=not has_active_profile,
+    )
 
 navigation.run()
