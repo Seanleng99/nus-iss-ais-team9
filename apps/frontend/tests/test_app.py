@@ -218,6 +218,8 @@ def test_profile_deletion_requires_confirmation() -> None:
     app.session_state["backend_client"] = SparseProfileClient()
     app.session_state["active_user_id"] = "delete-user"
     app.session_state["coach_history"] = [{"role": "user", "content": "hello"}]
+    app.session_state["coach_rename_open"] = True
+    app.session_state["coach_delete_open"] = True
     app.run(timeout=30)
 
     delete_button = app.button(key="delete-profile-delete-user")
@@ -230,6 +232,8 @@ def test_profile_deletion_requires_confirmation() -> None:
     assert app.session_state["backend_client"].deleted_user_id == "delete-user"
     assert "active_user_id" not in app.session_state
     assert "coach_history" not in app.session_state
+    assert "coach_rename_open" not in app.session_state
+    assert "coach_delete_open" not in app.session_state
     assert app.session_state["profile_deleted_notice"] == "Profile deleted."
     assert app.session_state["profile_deleted_redirect"] is True
 

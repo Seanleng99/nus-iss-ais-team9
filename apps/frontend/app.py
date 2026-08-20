@@ -123,6 +123,8 @@ with st.sidebar:
             st.session_state.pop("coach_active_session_id", None)
             st.session_state.pop("coach_history", None)
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_rename_open", None)
+            st.session_state.pop("coach_delete_open", None)
         active_user_id = selected_user_id
     else:
         st.caption("No profiles created")

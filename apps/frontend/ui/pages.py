@@ -1001,6 +1001,8 @@ def profile_page() -> None:
             st.session_state.pop("coach_active_session_id", None)
             st.session_state.pop("coach_history", None)
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_rename_open", None)
+            st.session_state.pop("coach_delete_open", None)
             st.session_state.profile_switcher_version = (
                 st.session_state.get("profile_switcher_version", 0) + 1
             )
@@ -1075,6 +1077,8 @@ def create_profile_page() -> None:
     st.session_state.pop("coach_active_session_id", None)
     st.session_state.pop("coach_history", None)
     st.session_state.pop("coach_pending_question", None)
+    st.session_state.pop("coach_rename_open", None)
+    st.session_state.pop("coach_delete_open", None)
     st.session_state.profile_created_notice = (
         f"{normalized_name} was created and is now active."
     )

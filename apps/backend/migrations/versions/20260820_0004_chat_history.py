@@ -1,4 +1,4 @@
-"""Persist profile-scoped coaching conversations.
+"""Persist profile-scoped coaching conversations and their ordered messages.
 
 Revision ID: 20260820_0004
 Revises: 20260813_0003
