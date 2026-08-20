@@ -9,6 +9,11 @@ from app.api.financial_schemas import (
     BudgetCategoryResponse,
     BudgetResponse,
     BudgetUpsert,
+    ChatMessageResponse,
+    ChatSessionCreate,
+    ChatSessionResponse,
+    ChatSessionSummary,
+    ChatSessionUpdate,
     DashboardResponse,
     DemographicResponse,
     DemographicUpsert,
@@ -30,6 +35,7 @@ from app.core.security import require_api_key
 from app.domain.schemas import MoneyAmount
 from app.infrastructure.database import get_db_session
 from app.infrastructure.models import (
+    ChatSessionRecord,
     FinancialGoalRecord,
     FinancialProfileRecord,
     MonthlyBudgetRecord,
@@ -39,6 +45,7 @@ from app.infrastructure.models import (
 )
 from app.infrastructure.repositories import (
     SQLAlchemyBudgetRepository,
+    SQLAlchemyChatRepository,
     SQLAlchemyFairnessProfileRepository,
     SQLAlchemyGoalRepository,
     SQLAlchemyTransactionRepository,
@@ -143,6 +150,33 @@ def _budget_response(
     )
 
 
+def _chat_session_response(
+    record: ChatSessionRecord, *, include_messages: bool
+) -> ChatSessionSummary | ChatSessionResponse:
+    values = {
+        "id": record.id,
+        "user_id": record.user_id,
+        "title": record.title,
+        "message_count": len(record.messages),
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+    if not include_messages:
+        return ChatSessionSummary(**values)
+    return ChatSessionResponse(
+        **values,
+        messages=[
+            ChatMessageResponse(
+                id=message.id,
+                role=message.role,
+                content=message.content,
+                created_at=message.created_at,
+            )
+            for message in record.messages
+        ],
+    )
+
+
 @router.get("/profiles", response_model=list[ProfileSummary])
 def list_profiles(
     session: Annotated[Session, Depends(get_db_session)],
@@ -200,6 +234,101 @@ def delete_profile(
 ) -> Response:
     if not SQLAlchemyUserRepository(session).delete_profile(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/users/{user_id}/chat-sessions",
+    response_model=list[ChatSessionSummary],
+)
+def list_chat_sessions(
+    user_id: UserId,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> list[ChatSessionSummary]:
+    records = SQLAlchemyChatRepository(session).list_for_user(user_id)
+    return [
+        _chat_session_response(record, include_messages=False) for record in records
+    ]
+
+
+@router.post(
+    "/users/{user_id}/chat-sessions",
+    response_model=ChatSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_chat_session(
+    user_id: UserId,
+    chat: ChatSessionCreate,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> ChatSessionResponse:
+    user_repository = SQLAlchemyUserRepository(session)
+    if not user_repository.exists(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    repository = SQLAlchemyChatRepository(session)
+    if repository.id_exists(chat.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Conversation already exists",
+        )
+    record = repository.create(user_id, chat.id, chat.title)
+    session.commit()
+    return _chat_session_response(record, include_messages=True)
+
+
+@router.get(
+    "/users/{user_id}/chat-sessions/{chat_session_id}",
+    response_model=ChatSessionResponse,
+)
+def get_chat_session(
+    user_id: UserId,
+    chat_session_id: str,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> ChatSessionResponse:
+    record = SQLAlchemyChatRepository(session).get(user_id, chat_session_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    return _chat_session_response(record, include_messages=True)
+
+
+@router.patch(
+    "/users/{user_id}/chat-sessions/{chat_session_id}",
+    response_model=ChatSessionResponse,
+)
+def update_chat_session(
+    user_id: UserId,
+    chat_session_id: str,
+    update: ChatSessionUpdate,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> ChatSessionResponse:
+    record = SQLAlchemyChatRepository(session).rename(
+        user_id, chat_session_id, update.title
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    session.commit()
+    return _chat_session_response(record, include_messages=True)
+
+
+@router.delete(
+    "/users/{user_id}/chat-sessions/{chat_session_id}", status_code=204
+)
+def delete_chat_session(
+    user_id: UserId,
+    chat_session_id: str,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> Response:
+    if not SQLAlchemyChatRepository(session).delete(user_id, chat_session_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

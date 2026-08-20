@@ -284,3 +284,48 @@ def test_profile_rejects_dependants_above_household_size() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_chat_sessions_are_profile_scoped_and_manageable() -> None:
+    client = TestClient(app)
+    headers = {"X-API-Key": settings.api_key}
+    for user_id in ("chat-alex", "chat-sam"):
+        assert client.post(
+            "/api/profiles",
+            headers=headers,
+            json={"user_id": user_id},
+        ).status_code == 201
+
+    created = client.post(
+        "/api/users/chat-alex/chat-sessions",
+        headers=headers,
+        json={"id": "chat-1", "title": "Budget review"},
+    )
+    assert created.status_code == 201
+    assert created.json()["messages"] == []
+    assert client.get(
+        "/api/users/chat-sam/chat-sessions/chat-1", headers=headers
+    ).status_code == 404
+    assert client.post(
+        "/api/users/chat-sam/chat-sessions",
+        headers=headers,
+        json={"id": "chat-1", "title": "Colliding conversation"},
+    ).status_code == 409
+
+    renamed = client.patch(
+        "/api/users/chat-alex/chat-sessions/chat-1",
+        headers=headers,
+        json={"title": "Monthly budget"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Monthly budget"
+    assert client.get(
+        "/api/users/chat-alex/chat-sessions", headers=headers
+    ).json()[0]["message_count"] == 0
+
+    assert client.delete(
+        "/api/users/chat-alex/chat-sessions/chat-1", headers=headers
+    ).status_code == 204
+    assert client.get(
+        "/api/users/chat-alex/chat-sessions", headers=headers
+    ).json() == []

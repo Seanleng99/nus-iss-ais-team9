@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -51,6 +52,9 @@ class UserRecord(TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     budgets: Mapped[list["MonthlyBudgetRecord"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    chat_sessions: Mapped[list["ChatSessionRecord"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -199,3 +203,41 @@ class BudgetCategoryRecord(TimestampMixin, Base):
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     limit_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     budget: Mapped[MonthlyBudgetRecord] = relationship(back_populates="categories")
+
+
+class ChatSessionRecord(TimestampMixin, Base):
+    __tablename__ = "chat_sessions"
+    __table_args__ = (Index("ix_chat_sessions_user_updated", "user_id", "updated_at"),)
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    user: Mapped[UserRecord] = relationship(back_populates="chat_sessions")
+    messages: Mapped[list["ChatMessageRecord"]] = relationship(
+        back_populates="chat_session",
+        cascade="all, delete-orphan",
+        order_by="ChatMessageRecord.position",
+    )
+
+
+class ChatMessageRecord(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant')", name="chat_message_role"),
+        CheckConstraint("position > 0", name="chat_message_position_positive"),
+        UniqueConstraint("session_id", "position", name="uq_chat_messages_session_position"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    chat_session: Mapped[ChatSessionRecord] = relationship(back_populates="messages")

@@ -242,3 +242,46 @@ class DashboardResponse(BaseModel):
     category_spending: dict[str, float]
     goals: list[GoalProgressResponse]
     transaction_count: int
+
+
+class ChatSessionCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def normalize_title(self) -> "ChatSessionCreate":
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("Conversation title is required")
+        return self
+
+
+class ChatSessionUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def normalize_title(self) -> "ChatSessionUpdate":
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError("Conversation title is required")
+        return self
+
+
+class ChatMessageResponse(BaseModel):
+    id: UUID
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
+
+
+class ChatSessionSummary(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatSessionResponse(ChatSessionSummary):
+    messages: list[ChatMessageResponse]

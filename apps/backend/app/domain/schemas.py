@@ -43,7 +43,7 @@ class UserFinancialSnapshot(BaseModel):
 
 class CoachRequest(BaseModel):
     user_id: str
-    session_id: str
+    session_id: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=5000)
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None

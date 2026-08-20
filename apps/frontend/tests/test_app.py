@@ -102,9 +102,48 @@ class WorkspaceDefaultsClient:
 class CoachClient:
     def __init__(self) -> None:
         self.questions: list[str] = []
+        self.sessions: dict[str, dict] = {}
+
+    def list_chat_sessions(self, user_id: str) -> list[dict]:
+        return [
+            {
+                "id": item["id"],
+                "title": item["title"],
+                "message_count": len(item["messages"]),
+            }
+            for item in self.sessions.values()
+        ]
+
+    def create_chat_session(
+        self, user_id: str, title: str, session_id: str | None = None
+    ) -> dict:
+        session_id = session_id or "coach-session-1"
+        session = {"id": session_id, "title": title, "messages": []}
+        self.sessions[session_id] = session
+        return session
+
+    def get_chat_session(self, user_id: str, session_id: str) -> dict:
+        return self.sessions[session_id]
+
+    def rename_chat_session(self, user_id: str, session_id: str, title: str) -> dict:
+        self.sessions[session_id]["title"] = title
+        return self.sessions[session_id]
+
+    def delete_chat_session(self, user_id: str, session_id: str) -> None:
+        del self.sessions[session_id]
 
     def ask_coach(self, payload: dict) -> dict:
         self.questions.append(payload["message"])
+        session = self.sessions[payload["session_id"]]
+        session["messages"].extend(
+            [
+                {"role": "user", "content": payload["message"]},
+                {
+                    "role": "assistant",
+                    "content": "Start by comparing essential spending with monthly income.",
+                },
+            ]
+        )
         return {"answer": "Start by comparing essential spending with monthly income."}
 
 
@@ -249,7 +288,7 @@ def test_goal_inputs_start_empty_or_zero() -> None:
     assert [(item.label, item.value) for item in app.selectbox] == [("Goal", None)]
 
 
-def test_coach_starter_creates_conversation_and_new_chat_clears_it() -> None:
+def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> None:
     app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
     app.session_state["backend_client"] = CoachClient()
     app.session_state["active_user_id"] = "coach-user"
@@ -262,7 +301,8 @@ def test_coach_starter_creates_conversation_and_new_chat_clears_it() -> None:
     app.button(key="coach-starter-0").click().run(timeout=30)
 
     assert app.session_state["backend_client"].questions == ["Review my monthly spending"]
-    assert app.session_state["coach_history"] == [
+    assert app.session_state["coach_active_session_id"] == "coach-session-1"
+    assert app.session_state["backend_client"].sessions["coach-session-1"]["messages"] == [
         {"role": "user", "content": "Review my monthly spending"},
         {
             "role": "assistant",
@@ -272,4 +312,5 @@ def test_coach_starter_creates_conversation_and_new_chat_clears_it() -> None:
     assert app.button(key="coach-new-chat").disabled is False
 
     app.button(key="coach-new-chat").click().run(timeout=30)
-    assert app.session_state["coach_history"] == []
+    assert app.session_state["coach_active_session_id"] is None
+    assert len(app.session_state["backend_client"].sessions) == 1

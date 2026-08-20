@@ -13,6 +13,9 @@ def test_build_request_uses_backend_owned_snapshot() -> None:
     assert payload["session_id"]
     assert "snapshot" not in payload
 
+    persisted_payload = build_request("demo-user", "Continue", "conversation-1")
+    assert persisted_payload["session_id"] == "conversation-1"
+
 
 def test_client_sends_service_key_and_period() -> None:
     captured: list[httpx.Request] = []

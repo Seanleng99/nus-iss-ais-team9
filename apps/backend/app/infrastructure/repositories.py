@@ -14,6 +14,8 @@ from app.api.financial_schemas import (
 from app.domain.schemas import FinancialGoal, MoneyAmount, Transaction, UserFinancialSnapshot
 from app.infrastructure.models import (
     BudgetCategoryRecord,
+    ChatMessageRecord,
+    ChatSessionRecord,
     FinancialGoalRecord,
     FinancialProfileRecord,
     MonthlyBudgetRecord,
@@ -414,3 +416,84 @@ class SQLAlchemyBudgetRepository:
             TransactionRecord.occurred_on < next_month(period_start),
         )
         return int(self.session.scalar(query) or 0)
+
+
+class SQLAlchemyChatRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list_for_user(self, user_id: str) -> list[ChatSessionRecord]:
+        query = (
+            select(ChatSessionRecord)
+            .options(selectinload(ChatSessionRecord.messages))
+            .where(ChatSessionRecord.user_id == user_id)
+            .order_by(ChatSessionRecord.updated_at.desc(), ChatSessionRecord.created_at.desc())
+        )
+        return list(self.session.scalars(query))
+
+    def get(self, user_id: str, session_id: str) -> ChatSessionRecord | None:
+        query = (
+            select(ChatSessionRecord)
+            .options(selectinload(ChatSessionRecord.messages))
+            .where(
+                ChatSessionRecord.id == session_id,
+                ChatSessionRecord.user_id == user_id,
+            )
+        )
+        return self.session.scalar(query)
+
+    def get_for_update(
+        self, user_id: str, session_id: str
+    ) -> ChatSessionRecord | None:
+        query = (
+            select(ChatSessionRecord)
+            .options(selectinload(ChatSessionRecord.messages))
+            .where(
+                ChatSessionRecord.id == session_id,
+                ChatSessionRecord.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        return self.session.scalar(query)
+
+    def id_exists(self, session_id: str) -> bool:
+        return self.session.get(ChatSessionRecord, session_id) is not None
+
+    def create(self, user_id: str, session_id: str, title: str) -> ChatSessionRecord:
+        _ensure_user(self.session, user_id)
+        record = ChatSessionRecord(id=session_id, user_id=user_id, title=title)
+        self.session.add(record)
+        self.session.flush()
+        return record
+
+    def rename(
+        self, user_id: str, session_id: str, title: str
+    ) -> ChatSessionRecord | None:
+        record = self.get(user_id, session_id)
+        if record is None:
+            return None
+        record.title = title
+        self.session.flush()
+        return record
+
+    def delete(self, user_id: str, session_id: str) -> bool:
+        record = self.get(user_id, session_id)
+        if record is None:
+            return False
+        self.session.delete(record)
+        self.session.flush()
+        return True
+
+    def append_message(
+        self, chat_session: ChatSessionRecord, role: str, content: str
+    ) -> ChatMessageRecord:
+        message = ChatMessageRecord(
+            chat_session=chat_session,
+            role=role,
+            content=content,
+            position=len(chat_session.messages) + 1,
+        )
+        self.session.add(message)
+        chat_session.updated_at = datetime.now(UTC)
+        self.session.flush()
+        return message

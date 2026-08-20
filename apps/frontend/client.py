@@ -128,11 +128,42 @@ class BackendClient:
     def ask_coach(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/api/coach", json=payload, timeout=60.0)
 
+    def list_chat_sessions(self, user_id: str) -> list[dict[str, Any]]:
+        return self._request("GET", f"/api/users/{user_id}/chat-sessions")
 
-def build_request(user_id: str, message: str) -> dict[str, Any]:
+    def create_chat_session(
+        self, user_id: str, title: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/api/users/{user_id}/chat-sessions",
+            json={"id": session_id or str(uuid4()), "title": title},
+        )
+
+    def get_chat_session(self, user_id: str, session_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET", f"/api/users/{user_id}/chat-sessions/{session_id}"
+        )
+
+    def rename_chat_session(
+        self, user_id: str, session_id: str, title: str
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/api/users/{user_id}/chat-sessions/{session_id}",
+            json={"title": title},
+        )
+
+    def delete_chat_session(self, user_id: str, session_id: str) -> None:
+        self._request("DELETE", f"/api/users/{user_id}/chat-sessions/{session_id}")
+
+
+def build_request(
+    user_id: str, message: str, session_id: str | None = None
+) -> dict[str, Any]:
     return {
         "user_id": user_id.strip() or "demo-user",
-        "session_id": str(uuid4()),
+        "session_id": session_id or str(uuid4()),
         "message": message.strip(),
     }
 

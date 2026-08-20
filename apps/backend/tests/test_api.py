@@ -65,6 +65,10 @@ def test_coach_forwards_valid_request() -> None:
                 "snapshot": {"monthly_income": {"currency": "SGD", "amount": 1}},
             },
         )
+        conversation = client.get(
+            "/api/users/u1/chat-sessions/s1",
+            headers={"X-API-Key": settings.api_key},
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -74,6 +78,11 @@ def test_coach_forwards_valid_request() -> None:
     assert StubAIServiceClient.last_request is not None
     assert StubAIServiceClient.last_request.snapshot.monthly_income is not None
     assert StubAIServiceClient.last_request.snapshot.monthly_income.amount == 5000
+    assert [message["role"] for message in conversation.json()["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert conversation.json()["messages"][1]["content"] == "Test guidance"
 
 
 def test_coach_hides_downstream_failure_details() -> None:
