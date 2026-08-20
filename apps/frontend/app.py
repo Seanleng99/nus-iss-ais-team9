@@ -121,6 +121,7 @@ with st.sidebar:
         if selected_user_id != st.session_state.get("active_user_id"):
             st.session_state.active_user_id = selected_user_id
             st.session_state.pop("coach_history", None)
+            st.session_state.pop("coach_pending_question", None)
         active_user_id = selected_user_id
     else:
         st.caption("No profiles created")

@@ -30,6 +30,33 @@ def apply_styles() -> None:
         .page-subheading { color: var(--muted); margin: 0.3rem 0 1.2rem 0; }
         .section-rule { border-top: 1px solid var(--line); margin: 1rem 0; }
         .stButton > button, .stFormSubmitButton > button { border-radius: 6px; }
+        .stApp:has(.coach-shell) [data-testid="stMainBlockContainer"] {
+            max-width: 900px; padding-bottom: 7rem;
+        }
+        .stApp:has(.coach-shell) [data-testid="stChatMessage"] {
+            background: transparent; border: 0; padding: 0.75rem 0;
+        }
+        .stApp:has(.coach-shell) [data-testid="stChatMessage"]:has(
+            [aria-label="Chat message from user"]
+        ) { justify-content: flex-end; }
+        .stApp:has(.coach-shell) [data-testid="stChatMessage"]:has(
+            [aria-label="Chat message from user"]
+        ) [data-testid="stChatMessageAvatarCustom"] { display: none; }
+        .stApp:has(.coach-shell) [aria-label="Chat message from user"] {
+            background: #e9efeb; border-radius: 8px; flex: 0 1 auto;
+            margin: 0; max-width: 78%; padding: 0.65rem 0.9rem;
+        }
+        .stApp:has(.coach-shell) [data-testid="stChatInput"] {
+            background: #ffffff; border: 1px solid #cbd8d0; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(23, 33, 29, 0.08);
+        }
+        .stApp:has(.coach-shell) [data-testid="stBottomBlockContainer"] {
+            background: #f7f9f7; padding-top: 0.75rem;
+        }
+        .coach-empty { margin: 12vh auto 1.5rem auto; text-align: center; }
+        .coach-empty h2 { color: var(--ink); font-size: 1.65rem; margin: 0; }
+        .coach-empty p { color: var(--muted); margin: 0.5rem 0 0 0; }
+        .coach-disclaimer { color: var(--muted); font-size: 0.78rem; text-align: center; }
         </style>
         """,
         unsafe_allow_html=True,

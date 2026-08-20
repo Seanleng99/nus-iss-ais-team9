@@ -99,6 +99,12 @@ REGION_OPTIONS = [
     "Outside Singapore",
     "Prefer not to say",
 ]
+COACH_STARTERS = [
+    ("Review my monthly spending", ":material/receipt_long:"),
+    ("Help me build an emergency fund", ":material/savings:"),
+    ("Explain where my budget is tight", ":material/pie_chart:"),
+    ("How can I reach my goal sooner?", ":material/flag:"),
+]
 
 
 def _option_index(options: list[str], value: str | None) -> int | None:
@@ -544,29 +550,83 @@ def goals_page() -> None:
 def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
-    page_header("Coach", "Financial education")
+    st.markdown('<div class="coach-shell"></div>', unsafe_allow_html=True)
+    heading, action = st.columns([5, 1], vertical_alignment="center")
+    with heading:
+        page_header("Coach", "Financial education")
     history = st.session_state.setdefault("coach_history", [])
-    for message in history:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+    with action:
+        if st.button(
+            "New chat",
+            icon=":material/edit_square:",
+            disabled=not history,
+            key="coach-new-chat",
+            use_container_width=True,
+        ):
+            history.clear()
+            st.session_state.pop("coach_pending_question", None)
+            st.rerun()
 
-    with st.form("coach-request"):
-        question = st.text_area("Question", max_chars=5000, height=110)
-        submitted = st.form_submit_button(
-            "Get guidance", type="primary", icon=":material/arrow_forward:"
+    pending_question = st.session_state.pop("coach_pending_question", None)
+    if pending_question:
+        history.append({"role": "user", "content": pending_question})
+
+    for message in history:
+        avatar = (
+            ":material/person:"
+            if message["role"] == "user"
+            else ":material/account_balance_wallet:"
         )
-    if submitted:
-        if not question.strip():
-            st.warning("Enter a financial wellness question.")
-            return
-        response = backend_call(lambda: client.ask_coach(build_request(user_id, question)))
-        if response:
-            history.extend(
-                [
-                    {"role": "user", "content": question.strip()},
-                    {"role": "assistant", "content": response["answer"]},
-                ]
+        with st.chat_message(message["role"], avatar=avatar):
+            st.markdown(message["content"])
+
+    if pending_question:
+        with st.chat_message(
+            "assistant", avatar=":material/account_balance_wallet:"
+        ), st.spinner("Thinking"):
+            response = backend_call(
+                lambda: client.ask_coach(build_request(user_id, pending_question))
             )
+        answer = (
+            response["answer"]
+            if response and response.get("answer")
+            else "I couldn't complete that request. Please try again."
+        )
+        history.append({"role": "assistant", "content": answer})
+        st.rerun()
+
+    starter_question = None
+    if not history:
+        st.markdown(
+            '<div class="coach-empty"><h2>What can I help with?</h2>'
+            '<p>Ask about your spending, budget, savings, or goals.</p></div>',
+            unsafe_allow_html=True,
+        )
+        first, second = st.columns(2)
+        for index, (starter, icon) in enumerate(COACH_STARTERS):
+            column = first if index % 2 == 0 else second
+            if column.button(
+                starter,
+                icon=icon,
+                key=f"coach-starter-{index}",
+                use_container_width=True,
+            ):
+                starter_question = starter
+
+    question = st.chat_input(
+        "Message your financial coach",
+        max_chars=5000,
+        key=f"coach-input-{user_id}",
+    )
+    st.markdown(
+        '<div class="coach-disclaimer">Educational guidance, not financial advice.</div>',
+        unsafe_allow_html=True,
+    )
+    submitted_question = question or starter_question
+    if submitted_question:
+        normalized_question = submitted_question.strip()
+        if normalized_question:
+            st.session_state.coach_pending_question = normalized_question
             st.rerun()
 
 
@@ -826,6 +886,7 @@ def profile_page() -> None:
         if delete_requested and backend_call(lambda: client.delete_profile(user_id)):
             st.session_state.pop("active_user_id", None)
             st.session_state.pop("coach_history", None)
+            st.session_state.pop("coach_pending_question", None)
             st.session_state.profile_switcher_version = (
                 st.session_state.get("profile_switcher_version", 0) + 1
             )
@@ -898,6 +959,7 @@ def create_profile_page() -> None:
         st.session_state.get("profile_switcher_version", 0) + 1
     )
     st.session_state.pop("coach_history", None)
+    st.session_state.pop("coach_pending_question", None)
     st.session_state.profile_created_notice = (
         f"{normalized_name} was created and is now active."
     )

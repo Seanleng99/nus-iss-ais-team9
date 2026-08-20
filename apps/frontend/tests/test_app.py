@@ -99,6 +99,15 @@ class WorkspaceDefaultsClient:
         ]
 
 
+class CoachClient:
+    def __init__(self) -> None:
+        self.questions: list[str] = []
+
+    def ask_coach(self, payload: dict) -> dict:
+        self.questions.append(payload["message"])
+        return {"answer": "Start by comparing essential spending with monthly income."}
+
+
 def test_multipage_app_renders_without_runtime_errors() -> None:
     app = AppTest.from_file(Path(__file__).parents[1] / "app.py")
     app.session_state["backend_client"] = FakeBackendClient()
@@ -238,3 +247,29 @@ def test_goal_inputs_start_empty_or_zero() -> None:
         ("Time horizon (months)", 0),
     ]
     assert [(item.label, item.value) for item in app.selectbox] == [("Goal", None)]
+
+
+def test_coach_starter_creates_conversation_and_new_chat_clears_it() -> None:
+    app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
+    app.session_state["backend_client"] = CoachClient()
+    app.session_state["active_user_id"] = "coach-user"
+    app.run(timeout=30)
+
+    assert not app.exception
+    assert app.chat_input[0].placeholder == "Message your financial coach"
+    assert app.button(key="coach-new-chat").disabled is True
+
+    app.button(key="coach-starter-0").click().run(timeout=30)
+
+    assert app.session_state["backend_client"].questions == ["Review my monthly spending"]
+    assert app.session_state["coach_history"] == [
+        {"role": "user", "content": "Review my monthly spending"},
+        {
+            "role": "assistant",
+            "content": "Start by comparing essential spending with monthly income.",
+        },
+    ]
+    assert app.button(key="coach-new-chat").disabled is False
+
+    app.button(key="coach-new-chat").click().run(timeout=30)
+    assert app.session_state["coach_history"] == []
