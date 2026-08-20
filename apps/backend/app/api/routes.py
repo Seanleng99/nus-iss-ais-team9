@@ -31,6 +31,13 @@ async def coach(
     persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
+    try:
+        response = await ai_service.coach(request)
+    except AIServiceUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The coaching service is temporarily unavailable.",
+        ) from error
     chat_repository = SQLAlchemyChatRepository(session)
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
     if chat_session is None:
@@ -42,13 +49,6 @@ async def coach(
         chat_session = chat_repository.create(
             request.user_id, request.session_id, request.message[:120]
         )
-    try:
-        response = await ai_service.coach(request)
-    except AIServiceUnavailableError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The coaching service is temporarily unavailable.",
-        ) from error
     chat_repository.append_message(chat_session, "user", request.message)
     chat_repository.append_message(chat_session, "assistant", response.answer)
     session.commit()
