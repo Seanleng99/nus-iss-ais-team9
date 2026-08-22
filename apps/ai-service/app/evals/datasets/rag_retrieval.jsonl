@@ -1,2 +1,3 @@
-{"id":"rag_diversification","input":{"user_id":"u1","session_id":"r1","message":"Explain diversification and ETF risk for beginners","snapshot":{}},"expected":{"source_ids":["controlled-diversification-reference"]}}
-{"id":"rag_cpf","input":{"user_id":"u1","session_id":"r2","message":"What should I understand about CPF savings basics?","snapshot":{}},"expected":{"source_ids":["cpf-savings-basics"]}}
+{"id":"rag_diversification","input":{"user_id":"u1","session_id":"r1","message":"Explain diversification and ETF risk for beginners","snapshot":{}},"expected":{"source_ids":["cpf-beginners-guide-to-investing"]}}
+{"id":"rag_cpfis","input":{"user_id":"u1","session_id":"r2","message":"What should I understand about CPFIS risks and CPF investment savings?","snapshot":{}},"expected":{"source_ids":["cpf-investment-scheme-guide"]}}
+{"id":"rag_evidence_gap","input":{"user_id":"u1","session_id":"r3","message":"Explain tax treatment for an unsupported tokenized asset","snapshot":{},"requested_agents":["investment_education"]},"expected":{"evidence_gap":true}}

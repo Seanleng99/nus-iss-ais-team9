@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.domain.schemas import MoneyAmount, UserFinancialSnapshot
+from app.domain.schemas import MoneyAmount, SourceCitation, UserFinancialSnapshot
 
 EmploymentStatus = Literal[
     "employed", "self-employed", "student", "unemployed", "retired", "prefer not to say"
@@ -271,6 +271,7 @@ class ChatMessageResponse(BaseModel):
     id: UUID
     role: Literal["user", "assistant"]
     content: str
+    sources: list[SourceCitation] = Field(default_factory=list)
     created_at: datetime
 
 

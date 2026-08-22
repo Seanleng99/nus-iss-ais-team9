@@ -64,11 +64,20 @@ class AgentResult(BaseModel):
     policy_notes: list[str] = Field(default_factory=list)
 
 
+class SourceCitation(BaseModel):
+    source_id: str
+    title: str
+    issuing_organization: str
+    canonical_url: str
+    published_at: str
+
+
 class CoachResponse(BaseModel):
     session_id: str
     selected_agents: list[AgentName]
     answer: str
     agent_results: list[AgentResult]
     disclaimers: list[str]
+    sources: list[SourceCitation] = Field(default_factory=list)
     audit: dict[str, Any]
     blocked: bool = False

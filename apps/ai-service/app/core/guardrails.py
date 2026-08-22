@@ -70,7 +70,7 @@ TOOL_ALLOWLIST: dict[AgentName, set[str]] = {
     AgentName.SPENDING: {"transaction_summarizer"},
     AgentName.BUDGET: {"budget_calculator"},
     AgentName.GOAL_STRATEGY: {"goal_projection"},
-    AgentName.INVESTMENT_EDUCATION: set(),
+    AgentName.INVESTMENT_EDUCATION: {"education_retriever"},
     AgentName.RISK_COMPLIANCE: {"policy_checker", "trusted_retriever"},
 }
 

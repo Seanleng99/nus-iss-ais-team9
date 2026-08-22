@@ -15,18 +15,18 @@ The architecture is hybrid rather than unconstrained. Deterministic calculators,
 | Spending | Aggregate recent transactions and describe category patterns | Request-scoped financial snapshot | `transaction_summarizer` | Uses only supplied transactions; reports arithmetic and avoids lifestyle inference |
 | Budget | Produce a constrained monthly baseline | Request-scoped income and recurring expenses | `budget_calculator` | Shows disposable income, method, allocations, and missing-input uncertainty |
 | Goal Strategy | Project user-defined savings goals | Request-scoped goals | `goal_projection` | Shows remaining amount, time horizon, and monthly requirement |
-| Investment Education | Explain general investment concepts | Sanitized request and request-scoped constraints | None | Makes no retrieval or source-verification claims and avoids product instructions |
-| Risk and Compliance | Validate requests and specialist outputs against trusted evidence | Sanitized request, agent results, and retrieved policy context | `policy_checker`, `trusted_retriever` | Returns controlled source IDs, records policy findings, and explains blocks without exposing hidden policy text |
+| Investment Education | Explain general investment concepts | Sanitized request and approved education context | `education_retriever` | Uses only approved sources, exposes citations, reports evidence gaps, and avoids product instructions |
+| Risk and Compliance | Validate requests and specialist outputs against trusted evidence | Sanitized request, agent results including education evidence, and packaged policy context | `policy_checker`, legacy `trusted_retriever` | Reviews specialist evidence, records policy findings, and explains blocks without exposing hidden policy text; a separate managed Policy retriever remains planned |
 
 No agent has durable or private memory in the skeleton. The backend persists synthetic profiles, transactions, monthly budgets, and goals and can assemble a request-scoped snapshot; session history and agent memory remain disabled. Before persistent memory is enabled, the team must define purpose limitation, user access, correction, deletion, encryption, retention, and cross-session isolation tests.
 
 ## Communication
 
-The backend calls one private AI service API. Inside that service, LangGraph passes typed state between nodes and Pydantic models validate all model decisions. Specialists receive only the sanitized message and minimized grounding assigned to their role, rather than the full user record. Risk and Compliance is the sole RAG consumer; Investment Education has no retrieval permission. A2A is deferred because agents share one owner and runtime; MCP is deferred because the small tool set is governed by a local typed allowlist.
+The backend calls one private AI service API. Inside that service, LangGraph passes typed state between nodes and Pydantic models validate all model decisions. Specialists receive only the sanitized message and minimized grounding assigned to their role, rather than the full user record. Investment Education alone can call `education_retriever`; the retrieved evidence is carried into synthesis and independent Compliance review. Compliance does not query the Education knowledge base. Budget and Goal Strategy receive conditional Education access only in the target design, while Spending remains retrieval-free. A2A is deferred because agents share one owner and runtime; MCP is deferred because the small tool set is governed by a local typed allowlist.
 
 ## Model Strategy
 
-The implemented deployment adapter calls Amazon Nova Lite through the Bedrock APAC geographic inference profile, with Titan Text Embeddings V2 reserved for future retrieval. Nova Lite avoids third-party model onboarding while providing instruction following and clear explanations through IAM-integrated managed inference. Requests can be routed among the profile's APAC destination Regions. It is a demo default, not the approved production model choice.
+The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Investment Education evidence from a configured Amazon Bedrock Knowledge Base. The knowledge base uses its configured embedding model; the target corpus uses Titan Text Embeddings V2. Requests can be routed among the profile's APAC destination Regions. Nova Lite remains a demo default, not the approved production model choice.
 
 Before activation, compare at least one lower-cost model against the candidate on:
 

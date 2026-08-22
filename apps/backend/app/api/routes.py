@@ -50,6 +50,11 @@ async def coach(
             request.user_id, request.session_id, request.message[:120]
         )
     chat_repository.append_message(chat_session, "user", request.message)
-    chat_repository.append_message(chat_session, "assistant", response.answer)
+    chat_repository.append_message(
+        chat_session,
+        "assistant",
+        response.answer,
+        [source.model_dump() for source in response.sources],
+    )
     session.commit()
     return response

@@ -63,6 +63,14 @@ class AgentResult(BaseModel):
     policy_notes: list[str] = Field(default_factory=list)
 
 
+class SourceCitation(BaseModel):
+    source_id: str
+    title: str
+    issuing_organization: str
+    canonical_url: str
+    published_at: str
+
+
 class RouterDecision(BaseModel):
     selected_agents: list[AgentName] = Field(min_length=1, max_length=4)
     rationale: list[str] = Field(min_length=1)
@@ -99,5 +107,6 @@ class CoachResponse(BaseModel):
     answer: str
     agent_results: list[AgentResult]
     disclaimers: list[str]
+    sources: list[SourceCitation] = Field(default_factory=list)
     audit: dict[str, Any]
     blocked: bool = False

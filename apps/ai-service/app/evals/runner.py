@@ -26,9 +26,15 @@ def _matches_expected(response, expected: dict) -> bool:
     if "blocked" in expected:
         return response.blocked == expected["blocked"]
     if "source_ids" in expected:
-        data = _agent_data(response, "risk_compliance")
-        actual = set(data.get("sources", []))
+        actual = {source.source_id for source in response.sources}
         return set(expected["source_ids"]).issubset(actual)
+    if expected.get("evidence_gap"):
+        data = _agent_data(response, "investment_education")
+        return (
+            data.get("evidence_status") == "insufficient"
+            and "approved knowledge base does not contain enough information"
+            in response.answer
+        )
     if BUDGET_KEYS.intersection(expected):
         data = _agent_data(response, "budget")
         return all(
@@ -87,6 +93,8 @@ def _category(expected: dict) -> str:
         return "critical_block"
     if "source_ids" in expected:
         return "retrieval"
+    if "evidence_gap" in expected:
+        return "evidence_gap"
     if BUDGET_KEYS.intersection(expected):
         return "budget"
     return "general"
@@ -116,8 +124,9 @@ def run_dataset(dataset: Path) -> dict[str, float | int]:
                 case_passed = _matches_expected(response, case["expected"])
                 category = _category(case["expected"])
                 if category == "retrieval":
-                    data = _agent_data(response, "risk_compliance")
-                    actual_sources = set(data.get("sources", [])[:3])
+                    actual_sources = {
+                        source.source_id for source in response.sources[:3]
+                    }
                     expected_sources = set(case["expected"]["source_ids"])
                     retrieval_recalls.append(
                         len(actual_sources.intersection(expected_sources)) / len(expected_sources)
@@ -136,6 +145,7 @@ def run_dataset(dataset: Path) -> dict[str, float | int]:
         "critical_block": "critical_block_rate",
         "budget": "budget_accuracy",
         "security_control": "security_control_rate",
+        "evidence_gap": "evidence_gap_rate",
     }
     for category, metric_name in metric_names.items():
         category_passed, category_total = grouped.get(category, [0, 0])

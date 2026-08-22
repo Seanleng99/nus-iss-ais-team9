@@ -135,16 +135,29 @@ class CoachClient:
     def ask_coach(self, payload: dict) -> dict:
         self.questions.append(payload["message"])
         session = self.sessions[payload["session_id"]]
+        sources = [
+            {
+                "source_id": "cpf-beginners-guide-to-investing",
+                "title": "A beginner's guide to investing in Singapore",
+                "issuing_organization": "CPF Board",
+                "canonical_url": "https://www.cpf.gov.sg/example",
+                "published_at": "2026-05-07",
+            }
+        ]
         session["messages"].extend(
             [
                 {"role": "user", "content": payload["message"]},
                 {
                     "role": "assistant",
                     "content": "Start by comparing essential spending with monthly income.",
+                    "sources": sources,
                 },
             ]
         )
-        return {"answer": "Start by comparing essential spending with monthly income."}
+        return {
+            "answer": "Start by comparing essential spending with monthly income.",
+            "sources": sources,
+        }
 
 
 def test_multipage_app_renders_without_runtime_errors() -> None:
@@ -311,6 +324,15 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
         {
             "role": "assistant",
             "content": "Start by comparing essential spending with monthly income.",
+            "sources": [
+                {
+                    "source_id": "cpf-beginners-guide-to-investing",
+                    "title": "A beginner's guide to investing in Singapore",
+                    "issuing_organization": "CPF Board",
+                    "canonical_url": "https://www.cpf.gov.sg/example",
+                    "published_at": "2026-05-07",
+                }
+            ],
         },
     ]
     assert app.button(key="coach-new-chat").disabled is False
@@ -318,3 +340,17 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
     app.button(key="coach-new-chat").click().run(timeout=30)
     assert app.session_state["coach_active_session_id"] is None
     assert len(app.session_state["backend_client"].sessions) == 1
+
+
+def test_coach_answer_displays_approved_source_citations() -> None:
+    app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
+    app.session_state["backend_client"] = CoachClient()
+    app.session_state["active_user_id"] = "coach-user"
+    app.run(timeout=30)
+
+    app.button(key="coach-starter-0").click().run(timeout=30)
+
+    rendered_markdown = "\n".join(item.value for item in app.markdown)
+    assert "[A beginner's guide to investing in Singapore]" in rendered_markdown
+    assert "https://www.cpf.gov.sg/example" in rendered_markdown
+    assert "CPF Board" in rendered_markdown

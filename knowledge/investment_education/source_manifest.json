@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.0",
+  "collection_id": "investment-education-sg",
+  "scope": "General investment education for the Investment Education Agent",
+  "manifest_status": "approved_for_ingestion",
+  "url_verified_at": "2026-08-16",
+  "content_reviewed_at": "2026-08-16",
+  "sources": [
+    {
+      "source_id": "cpf-beginners-guide-to-investing",
+      "title": "A beginner's guide to investing in Singapore",
+      "issuing_organization": "CPF Board",
+      "canonical_url": "https://www.cpf.gov.sg/member/infohub/educational-resources/a-beginners-guide-to-investing-in-singapore",
+      "published_at": "2026-05-07",
+      "topics": [
+        "investment_basics",
+        "diversification",
+        "risk",
+        "investment_horizon"
+      ],
+      "source_review_status": "approved",
+      "content_review_status": "approved",
+      "ingestion_approved": true
+    },
+    {
+      "source_id": "cpf-investment-scheme-guide",
+      "title": "CPF Investment Scheme: what you need to know about CPFIS",
+      "issuing_organization": "CPF Board",
+      "canonical_url": "https://www.cpf.gov.sg/member/infohub/educational-resources/cpf-investment-scheme-what-you-need-to-know-about-cpfis",
+      "published_at": "2026-02-09",
+      "topics": [
+        "cpfis",
+        "risk_return",
+        "fees",
+        "investment_limits"
+      ],
+      "source_review_status": "approved",
+      "content_review_status": "approved",
+      "ingestion_approved": true
+    },
+    {
+      "source_id": "moneysense-what-is-investing",
+      "title": "What is investing?",
+      "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+      "canonical_url": "https://www.moneysense.gov.sg/investments/what-is-investing/",
+      "published_at": "2026-07-02",
+      "topics": [
+        "investment_readiness",
+        "investment_basics",
+        "risk_return",
+        "investment_horizon"
+      ],
+      "source_review_status": "approved",
+      "content_review_status": "approved",
+      "ingestion_approved": true
+    },
+    {
+      "source_id": "moneysense-managing-investment-risk",
+      "title": "Managing investment risk",
+      "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+      "canonical_url": "https://www.moneysense.gov.sg/investments/investment-risk/",
+      "published_at": "2026-07-02",
+      "topics": [
+        "market_risk",
+        "credit_risk",
+        "liquidity_risk",
+        "currency_risk",
+        "diversification"
+      ],
+      "source_review_status": "approved",
+      "content_review_status": "approved",
+      "ingestion_approved": true
+    },
+    {
+      "source_id": "moneysense-types-of-investments",
+      "title": "An introduction to types of investments",
+      "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+      "canonical_url": "https://www.moneysense.gov.sg/investments/types-of-investments/",
+      "published_at": "2026-07-02",
+      "topics": [
+        "shares",
+        "bonds",
+        "funds",
+        "etfs",
+        "reits"
+      ],
+      "source_review_status": "approved",
+      "content_review_status": "approved",
+      "ingestion_approved": true
+    },
+    {
+      "source_id": "moneysense-guide-to-etfs",
+      "title": "Guide to ETFs: Understanding Exchange-Traded Funds",
+      "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+      "canonical_url": "https://www.moneysense.gov.sg/guide-to-etfs-understanding-exchange-traded-funds/",
+      "published_at": "2026-07-02",
+      "topics": [
+        "etfs",
+        "fees",
+        "liquidity_risk",
+        "tracking_error",
+        "counterparty_risk"
+      ],
+      "source_review_status": "approved",
+      "content_review_status": "approved",
+      "ingestion_approved": true
+    }
+  ]
+}

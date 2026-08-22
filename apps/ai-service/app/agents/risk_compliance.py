@@ -81,6 +81,11 @@ class RiskComplianceAgent:
                             "agent": result.agent.value,
                             "summary": result.summary,
                             "rationale": result.rationale,
+                            "data": {
+                                key: result.data[key]
+                                for key in ("evidence_status", "sources", "contexts")
+                                if key in result.data
+                            },
                         }
                         for result in results
                     ],

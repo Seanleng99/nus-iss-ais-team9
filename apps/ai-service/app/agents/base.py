@@ -36,6 +36,17 @@ class BaseAgent(ABC):
                 policy_notes=decision.findings,
             )
         grounding = self._ground(request, decision.sanitized_text)
+        if grounding.get("evidence_status") == "insufficient":
+            return AgentResult(
+                agent=self.name,
+                summary=(
+                    "The approved knowledge base does not contain enough information "
+                    "to answer this question."
+                ),
+                rationale=["No relevant approved source was retrieved."],
+                confidence=1.0,
+                data=grounding,
+            )
         raw = self.gateway.generate(
             system_prompt=self.prompts.get(self.prompt_id),
             user_prompt=json.dumps(

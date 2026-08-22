@@ -44,7 +44,7 @@ PostgreSQL is the system of record for personal financial data. The application 
 
 The target retrieval design separates educational knowledge from policy controls. Investment Education can retrieve trusted CPF, MAS, SGX, and government education content. Budget and Goal Strategy can retrieve only relevant education content when deterministic financial data is insufficient. Spending does not use RAG. Risk and Compliance independently retrieves advice-boundary and safety policy before approving or blocking the synthesized response.
 
-This target view is intentionally ahead of the current executable demo. The current retriever uses a small in-memory `TRUSTED_DOCUMENTS` collection, and only Risk and Compliance has retrieval permission. The education and policy collections, offline ingestion pipeline, and expanded role-scoped permissions remain implementation work.
+Investment Education now has a dedicated `education_retriever`, an offline fixture for local and CI execution, and a Bedrock Knowledge Base adapter for deployed environments. Retrieved source metadata is retained through synthesis, Compliance review, the API response, and the Streamlit UI. The separate managed policy collection and conditional Budget and Goal Strategy permissions remain implementation work; the legacy Compliance retriever still uses packaged controlled data.
 
 ## Target Physical AWS View
 
@@ -98,13 +98,13 @@ The target architecture terminates TLS at the ALB and keeps ECS tasks and data s
 
 Trusted CPF, MAS, SGX, and government documents enter through an allowlisted offline collection process. Curated source files are retained in S3, a scheduled ingestion task validates and chunks them, Amazon Bedrock produces embeddings, and the private vector database stores separate education and policy collections. Runtime AI tasks receive read-only, role-scoped retrieval access; they cannot ingest arbitrary user or web content.
 
-The provisioned minimum demo intentionally differs: it uses an HTTP ALB and three single-task Fargate services in public subnets to avoid NAT Gateway cost. Each task receives a public IP for outbound AWS service access, but security groups deny direct internet ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. A managed vector store remains deferred. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. Use synthetic data only until TLS, end-user identity, and the target private application network are implemented.
+The provisioned minimum demo intentionally differs: it uses an HTTP ALB and three single-task Fargate services in public subnets to avoid NAT Gateway cost. Each task receives a public IP for outbound AWS service access, but security groups deny direct internet ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. The deployment accepts an externally provisioned Education Knowledge Base ID and grants the AI task read-only retrieval; provisioning its S3 data source and vector index remains an explicit prerequisite. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. Use synthetic data only until TLS, end-user identity, and the target private application network are implemented.
 
 The synthetic demo uses a backend service key. Before real users, the public application boundary moves to OIDC/JWT identity and authorization while the independent backend-to-AI credential remains a service secret.
 
 ## Service Boundaries
 
-- Streamlit frontend: provides Overview, Transactions, Budget, Goals, Coach, and Profile workflows; calls the application backend server-side; and presents answers, rationale, confidence, disclaimers, and audit metadata.
+- Streamlit frontend: provides Overview, Transactions, Budget, Goals, Coach, and Profile workflows; calls the application backend server-side; and presents answers, source citations, rationale, confidence, disclaimers, and audit metadata.
 - FastAPI application backend: owns user-facing APIs, access control, profiles, transactions, monthly budgets, goals, dashboard summaries, coaching snapshots, and PostgreSQL persistence workflows. It is the only application service allowed to call the AI service.
 - FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, enforces agent-specific retrieval permissions, and integrates with Bedrock.
 - Data services: PostgreSQL stores synthetic personal financial records; S3 retains curated source documents; and the future vector store separates education content from policy and safety controls.
@@ -124,9 +124,9 @@ ECS Fargate remains preferable to EKS for the initial scope because there are on
 
 The implemented LangGraph workflow is `guard_input -> route -> run_specialists -> synthesize -> review_compliance -> finalize`. The router, specialist narratives, synthesis, and compliance review are model calls with non-zero temperatures. The graph can branch to one or more specialists based on structured router output.
 
-Hard boundary controls run before the first model call. Each specialist receives minimized deterministic grounding according to its role. Risk and Compliance alone can retrieve trusted, sanitized RAG context; Investment Education has no retrieval permission. Structured model responses are schema-validated, and the independent compliance result can block the draft before release. Local and CI integration use an explicitly configured offline fixture; ECS requires the Bedrock provider.
+Hard boundary controls run before the first model call. Each specialist receives minimized deterministic grounding according to its role. Investment Education alone can retrieve approved education context, and the same sanitized evidence is supplied to Risk and Compliance for independent validation. Structured model responses are schema-validated, and the independent compliance result can block the draft before release. Local and CI integration use an explicitly configured offline fixture; ECS requires the Bedrock model and RAG providers.
 
-The target retrieval upgrade keeps deterministic grounding as the default while adding least-privilege education retrieval. Investment Education receives access to the trusted education collection, Budget and Goal Strategy receive conditional access, Spending remains retrieval-free, and Risk and Compliance retains independent access to the policy collection. Personal financial records remain in PostgreSQL and are never embedded into the education or policy stores.
+The next retrieval phase keeps deterministic grounding as the default while adding conditional Education access for Budget and Goal Strategy and a separate managed Policy collection for Risk and Compliance. Spending remains retrieval-free. Personal financial records remain in PostgreSQL and are never embedded into the education or policy stores.
 
 ## MCP And A2A Position
 

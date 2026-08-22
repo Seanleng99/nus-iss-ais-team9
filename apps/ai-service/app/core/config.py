@@ -17,7 +17,11 @@ class Settings(BaseSettings):
         alias="EMBEDDING_MODEL_ID",
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
-    prompt_set_version: str = Field(default="v1", alias="PROMPT_SET_VERSION")
+    prompt_set_version: str = Field(
+        default="v2",
+        pattern=r"^v2$",
+        alias="PROMPT_SET_VERSION",
+    )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")
     agent_temperature: float = Field(default=0.35, ge=0.01, le=1.0, alias="AGENT_TEMPERATURE")
     compliance_temperature: float = Field(
@@ -25,6 +29,17 @@ class Settings(BaseSettings):
     )
     model_max_tokens: int = Field(default=800, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
     vector_store_url: str = Field(default="http://localhost:6333", alias="VECTOR_STORE_URL")
+    rag_provider: str = Field(default="local_fixture", alias="RAG_PROVIDER")
+    education_knowledge_base_id: str | None = Field(
+        default=None,
+        alias="EDUCATION_KNOWLEDGE_BASE_ID",
+    )
+    rag_minimum_score: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        alias="RAG_MINIMUM_SCORE",
+    )
     api_key: str = Field(default="change-me-locally", alias="AI_SERVICE_API_KEY")
 
     @model_validator(mode="after")
@@ -38,6 +53,13 @@ class Settings(BaseSettings):
             and self.model_provider.lower() != "bedrock"
         ):
             raise ValueError("Deployed environments require MODEL_PROVIDER=bedrock")
+        if self.app_env.lower() not in {"local", "test"}:
+            if self.rag_provider.lower() != "bedrock":
+                raise ValueError("Deployed environments require RAG_PROVIDER=bedrock")
+            if not self.education_knowledge_base_id:
+                raise ValueError(
+                    "EDUCATION_KNOWLEDGE_BASE_ID is required in deployed environments"
+                )
         return self
 
 

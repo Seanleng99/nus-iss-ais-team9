@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
@@ -485,12 +486,17 @@ class SQLAlchemyChatRepository:
         return True
 
     def append_message(
-        self, chat_session: ChatSessionRecord, role: str, content: str
+        self,
+        chat_session: ChatSessionRecord,
+        role: str,
+        content: str,
+        sources: list[dict[str, Any]] | None = None,
     ) -> ChatMessageRecord:
         message = ChatMessageRecord(
             chat_session=chat_session,
             role=role,
             content=content,
+            sources=sources or [],
             position=len(chat_session.messages) + 1,
         )
         self.session.add(message)

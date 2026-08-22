@@ -19,6 +19,15 @@ class StubAIServiceClient:
             answer="Test guidance",
             agent_results=[],
             disclaimers=[],
+            sources=[
+                {
+                    "source_id": "cpf-beginners-guide-to-investing",
+                    "title": "A beginner's guide to investing in Singapore",
+                    "issuing_organization": "CPF Board",
+                    "canonical_url": "https://www.cpf.gov.sg/example",
+                    "published_at": "2026-05-07",
+                }
+            ],
             audit={"source": "stub"},
         )
 
@@ -74,6 +83,9 @@ def test_coach_forwards_valid_request() -> None:
 
     assert response.status_code == 200
     assert response.json()["selected_agents"] == ["budget"]
+    assert response.json()["sources"][0]["source_id"] == (
+        "cpf-beginners-guide-to-investing"
+    )
     assert response.headers["X-Correlation-ID"]
     assert StubAIServiceClient.last_request is not None
     assert StubAIServiceClient.last_request.snapshot.monthly_income is not None
@@ -83,6 +95,9 @@ def test_coach_forwards_valid_request() -> None:
         "assistant",
     ]
     assert conversation.json()["messages"][1]["content"] == "Test guidance"
+    assert conversation.json()["messages"][1]["sources"][0]["source_id"] == (
+        "cpf-beginners-guide-to-investing"
+    )
 
 
 def test_coach_hides_downstream_failure_details() -> None:

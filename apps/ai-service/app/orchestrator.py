@@ -21,10 +21,12 @@ from app.core.schemas import (
     CoachRequest,
     CoachResponse,
     RouterDecision,
+    SourceCitation,
     SynthesisDecision,
 )
 from app.models.gateway import ModelGateway, create_model_gateway
 from app.models.structured import parse_structured_response
+from app.rag.retriever import EducationRetriever, create_education_retriever
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -48,10 +50,12 @@ class AgentOrchestrator:
         config: Settings | None = None,
         gateway: ModelGateway | None = None,
         prompts: PromptCatalog | None = None,
+        education_retriever: EducationRetriever | None = None,
     ) -> None:
         self.config = config or runtime_settings
         self.gateway = gateway or create_model_gateway(self.config)
         self.prompts = prompts or PromptCatalog(self.config.prompt_set_version)
+        self.education_retriever = education_retriever or create_education_retriever(self.config)
         agent_args = (
             self.gateway,
             self.prompts,
@@ -62,7 +66,10 @@ class AgentOrchestrator:
             AgentName.SPENDING: SpendingAgent(*agent_args),
             AgentName.BUDGET: BudgetAgent(*agent_args),
             AgentName.GOAL_STRATEGY: GoalStrategyAgent(*agent_args),
-            AgentName.INVESTMENT_EDUCATION: InvestmentEducationAgent(*agent_args),
+            AgentName.INVESTMENT_EDUCATION: InvestmentEducationAgent(
+                *agent_args,
+                education_retriever=self.education_retriever,
+            ),
         }
         self.compliance_agent = RiskComplianceAgent(
             self.gateway,
@@ -163,6 +170,7 @@ class AgentOrchestrator:
         return {"agent_results": results}
 
     def _synthesize(self, state: OrchestratorState) -> OrchestratorState:
+        sources = self._collect_source_citations(state["agent_results"])
         payload = {
             "message": state["sanitized_message"],
             "agent_results": [
@@ -174,6 +182,7 @@ class AgentOrchestrator:
                 }
                 for result in state["agent_results"]
             ],
+            "sources": [source.model_dump() for source in sources],
         }
         raw = self.gateway.generate(
             system_prompt=self.prompts.get("synthesizer"),
@@ -205,6 +214,7 @@ class AgentOrchestrator:
             answer=answer,
             agent_results=state["agent_results"] + [compliance],
             disclaimers=[ADVISORY_DISCLAIMER],
+            sources=self._collect_source_citations(state["agent_results"]),
             audit={
                 "trace_id": state["trace_id"],
                 "executed_at": state["executed_at"],
@@ -218,6 +228,21 @@ class AgentOrchestrator:
             blocked=compliance.blocked,
         )
         return {"response": response}
+
+    @staticmethod
+    def _collect_source_citations(results: list[AgentResult]) -> list[SourceCitation]:
+        sources: list[SourceCitation] = []
+        seen: set[str] = set()
+        for result in results:
+            for item in result.data.get("sources", []):
+                if not isinstance(item, dict):
+                    continue
+                source = SourceCitation.model_validate(item)
+                if source.source_id in seen:
+                    continue
+                seen.add(source.source_id)
+                sources.append(source)
+        return sources
 
     def handle(self, request: CoachRequest) -> CoachResponse:
         result = self.graph.invoke(

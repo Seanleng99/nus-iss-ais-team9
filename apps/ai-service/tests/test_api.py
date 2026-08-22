@@ -5,6 +5,7 @@ from app.core.config import Settings, settings
 from app.main import app, get_orchestrator
 from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
 from app.orchestrator import AgentOrchestrator
+from app.rag.retriever import RetrievalError
 
 test_config = Settings(MODEL_PROVIDER="local_fixture")
 test_orchestrator = AgentOrchestrator(
@@ -80,3 +81,30 @@ def test_coach_returns_sanitized_model_failure() -> None:
     app.dependency_overrides[get_orchestrator] = lambda: test_orchestrator
     assert response.status_code == 503
     assert "provider detail" not in response.text
+
+
+def test_coach_returns_sanitized_retrieval_failure() -> None:
+    class FailingEducationRetriever:
+        def retrieve(self, query: str, top_k: int = 3) -> list:
+            del query, top_k
+            raise RetrievalError("sensitive knowledge base detail")
+
+    failed = AgentOrchestrator(
+        config=test_config,
+        gateway=LocalFixtureModelGateway(),
+        education_retriever=FailingEducationRetriever(),
+    )
+    app.dependency_overrides[get_orchestrator] = lambda: failed
+    response = client.post(
+        "/coach",
+        headers={"X-API-Key": settings.api_key},
+        json={
+            "user_id": "u1",
+            "session_id": "s1",
+            "message": "Explain ETF diversification",
+        },
+    )
+    app.dependency_overrides[get_orchestrator] = lambda: test_orchestrator
+
+    assert response.status_code == 503
+    assert "sensitive knowledge base detail" not in response.text

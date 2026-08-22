@@ -20,6 +20,10 @@ Parameters:
   BedrockFoundationModelId:
     Type: String
     Default: amazon.nova-lite-v1:0
+  EducationKnowledgeBaseId:
+    Type: String
+    MinLength: 10
+    MaxLength: 10
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
@@ -400,6 +404,15 @@ Resources:
                 Condition:
                   StringEquals:
                     bedrock:InferenceProfileArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}
+        - PolicyName: RetrieveApprovedEducationKnowledgeBase
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:Retrieve
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
 
   AiRepository:
     Type: AWS::ECR::Repository

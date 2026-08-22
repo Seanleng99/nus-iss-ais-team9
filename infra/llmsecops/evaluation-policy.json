@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "suites": [
     {
       "name": "orchestrator",
@@ -34,13 +34,16 @@
       "name": "retrieval",
       "dataset": "apps/ai-service/app/evals/datasets/rag_retrieval.jsonl",
       "minimums": {
-        "source_recall_at_3": 0.85
+        "source_recall_at_3": 0.85,
+        "evidence_gap_rate": 1.0
       },
       "baselines": {
-        "source_recall_at_3": 1.0
+        "source_recall_at_3": 1.0,
+        "evidence_gap_rate": 1.0
       },
       "max_regression": {
-        "source_recall_at_3": 0.15
+        "source_recall_at_3": 0.15,
+        "evidence_gap_rate": 0.0
       }
     },
     {

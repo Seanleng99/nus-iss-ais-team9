@@ -4,7 +4,10 @@ param(
     [string]$Repository = "Seanleng99/nus-iss-ais-team9",
     [string]$FoundationStack = "ai-financial-wellness-coach-foundation",
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
-    [string]$OidcStack = "ai-financial-wellness-coach-github-oidc"
+    [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern("^[A-Za-z0-9]{10}$")]
+    [string]$EducationKnowledgeBaseId
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,6 +88,7 @@ Invoke-Aws cloudformation deploy `
     --stack-name $FoundationStack `
     --region $Region `
     --capabilities CAPABILITY_NAMED_IAM `
+    --parameter-overrides "EducationKnowledgeBaseId=$EducationKnowledgeBaseId" `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
@@ -141,6 +145,7 @@ $applicationParameters = @(
     "AiLogGroupName=$($foundation.AiLogGroupName)",
     "BackendLogGroupName=$($foundation.BackendLogGroupName)",
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
+    "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
     "AiImageUri=$($images.Ai)",
     "BackendImageUri=$($images.Backend)",
     "FrontendImageUri=$($images.Frontend)"

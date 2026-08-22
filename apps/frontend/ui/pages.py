@@ -693,6 +693,14 @@ def coach_page() -> None:
         )
         with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
+            sources = message.get("sources", [])
+            if sources:
+                st.caption("Sources")
+                for source in sources:
+                    st.markdown(
+                        f"- [{source['title']}]({source['canonical_url']}) — "
+                        f"{source['issuing_organization']}, {source['published_at']}"
+                    )
 
     if pending_question and active_session_id:
         with st.chat_message("user", avatar=":material/person:"):

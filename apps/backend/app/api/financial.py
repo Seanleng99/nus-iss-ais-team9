@@ -170,6 +170,7 @@ def _chat_session_response(
                 id=message.id,
                 role=message.role,
                 content=message.content,
+                sources=message.sources,
                 created_at=message.created_at,
             )
             for message in record.messages

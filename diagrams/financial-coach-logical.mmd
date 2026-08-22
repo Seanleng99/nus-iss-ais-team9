@@ -1,0 +1,35 @@
+graph LR
+  User["User"] --> UI["Streamlit UI"]
+  UI --> Backend["FastAPI Backend"]
+  Backend <-->|"Profiles, transactions, budgets, goals"| PG["PostgreSQL"]
+
+  subgraph AI["Private AI Service"]
+    Orchestrator["Guardrails + Agent Orchestrator"]
+    Spending["Spending Agent"]
+    Budget["Budget Agent"]
+    Goal["Goal Strategy Agent"]
+    Invest["Investment Education Agent"]
+    Synthesis["Response Synthesis"]
+    Compliance["Risk and Compliance Agent"]
+
+    Orchestrator -->|"Transactions"| Spending
+    Orchestrator -->|"Income + recurring expenses"| Budget
+    Orchestrator -->|"Savings goals"| Goal
+    Orchestrator -->|"Question + risk constraints"| Invest
+    Spending --> Synthesis
+    Budget --> Synthesis
+    Goal --> Synthesis
+    Invest --> Synthesis
+    Synthesis --> Compliance
+  end
+
+  Backend -->|"Coach request + minimized financial snapshot"| Orchestrator
+  EducationRAG["Education RAG: CPF, MAS, SGX, Government"] -->|"Investment education"| Invest
+  EducationRAG -. "Conditional guidance" .-> Budget
+  EducationRAG -. "Conditional guidance" .-> Goal
+  PolicyRAG["Policy RAG: advice boundaries + safety rules"] -->|"Independent validation"| Compliance
+  Compliance -->|"Approved or blocked answer"| Backend
+
+  Orchestrator -. "Model routing and specialist calls" .-> Bedrock["Amazon Bedrock"]
+  Synthesis -. "Model synthesis" .-> Bedrock
+  Compliance -. "Model-assisted review" .-> Bedrock

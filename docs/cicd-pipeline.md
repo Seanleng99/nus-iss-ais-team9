@@ -58,9 +58,9 @@ The minimum demo resources are implemented as CloudFormation in `infra/aws`. Run
 - Secrets Manager values for `BACKEND_API_KEY` and `AI_SERVICE_API_KEY`. Streamlit receives only the backend key; the backend receives both; the AI service receives only its internal key.
 - An encrypted, non-public, Single-AZ RDS PostgreSQL instance with an RDS-managed master secret and backend-only security-group ingress.
 - CloudWatch logs, service alarms, and deployment-failure EventBridge notifications.
-- Bedrock access restricted to the configured APAC inference profile and its destination foundation models for the AI task role.
+- Bedrock generation access restricted to the configured APAC inference profile and destination models, with retrieval restricted to the configured Education Knowledge Base.
 
-The executable demo uses PostgreSQL for profiles, transactions, monthly budgets, goals, and backend-built snapshots. Dashboard summaries are computed by the backend from those persisted records. An external vector store remains deferred until its managed adapter exists.
+The executable demo uses PostgreSQL for profiles, transactions, monthly budgets, goals, and backend-built snapshots. Dashboard summaries are computed by the backend from those persisted records. Investment Education uses the Bedrock Knowledge Base adapter when `RAG_PROVIDER=bedrock`; provisioning and approving the Education Knowledge Base and S3 data source are deployment prerequisites.
 
 AWS Cloud Map provides private DNS between services. The deployment smoke test enters through the runner-reachable backend route and proves the private AI hop without exposing the AI service.
 

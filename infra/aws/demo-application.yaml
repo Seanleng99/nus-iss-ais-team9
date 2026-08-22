@@ -57,6 +57,10 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: apac.amazon.nova-lite-v1:0
+  EducationKnowledgeBaseId:
+    Type: String
+    MinLength: 10
+    MaxLength: 10
   AiServiceName:
     Type: String
     Default: coach-ai
@@ -182,7 +186,13 @@ Resources:
             - Name: MODEL_ID
               Value: !Ref BedrockModelId
             - Name: PROMPT_SET_VERSION
-              Value: v1
+              Value: v2
+            - Name: RAG_PROVIDER
+              Value: bedrock
+            - Name: EDUCATION_KNOWLEDGE_BASE_ID
+              Value: !Ref EducationKnowledgeBaseId
+            - Name: RAG_MINIMUM_SCORE
+              Value: "0.6"
             - Name: ROUTER_TEMPERATURE
               Value: "0.2"
             - Name: AGENT_TEMPERATURE

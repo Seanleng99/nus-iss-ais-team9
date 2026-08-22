@@ -41,8 +41,8 @@ Streamlit calls the application backend from the server side, and the backend ca
 - Spending Agent: spending summaries, patterns, and anomaly explanations.
 - Budget Agent: rule-constrained monthly budget recommendations.
 - Goal Strategy Agent: savings goal decomposition and progress adjustments.
-- Investment Education Agent: general model-driven education, not financial advice and not RAG-backed.
-- Risk & Compliance Agent: RAG-backed policy validation, advisory disclaimers, and blocked-topic handling.
+- Investment Education Agent: reads the Education RAG collection to provide source-grounded education; not financial advice.
+- Risk & Compliance Agent: reviews specialist evidence and applies independent policy validation; it does not query the Education RAG collection and uses a separate Policy RAG boundary.
 
 Shared guardrails run before and after every agent call. The Risk & Compliance Agent is a final validation layer, not the only safety control.
 

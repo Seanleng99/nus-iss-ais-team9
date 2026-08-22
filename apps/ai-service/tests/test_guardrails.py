@@ -29,7 +29,19 @@ def test_sanitizes_indirect_prompt_injection() -> None:
     assert "[REMOVED_UNTRUSTED_INSTRUCTION]" in decision.sanitized_text
 
 
-def test_only_risk_compliance_can_retrieve_trusted_context() -> None:
+def test_only_risk_compliance_can_use_legacy_policy_retriever() -> None:
     validate_tool_permission(AgentName.RISK_COMPLIANCE, "trusted_retriever")
     with pytest.raises(PermissionError):
         validate_tool_permission(AgentName.INVESTMENT_EDUCATION, "trusted_retriever")
+
+
+def test_only_investment_education_can_retrieve_education_context() -> None:
+    validate_tool_permission(AgentName.INVESTMENT_EDUCATION, "education_retriever")
+    for agent in (
+        AgentName.SPENDING,
+        AgentName.BUDGET,
+        AgentName.GOAL_STRATEGY,
+        AgentName.RISK_COMPLIANCE,
+    ):
+        with pytest.raises(PermissionError):
+            validate_tool_permission(agent, "education_retriever")

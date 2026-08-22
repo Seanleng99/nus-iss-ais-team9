@@ -8,14 +8,15 @@ The repository includes a minimum-size, synthetic-data deployment for AWS accoun
 
 The public-subnet task design avoids NAT Gateway cost. Tasks receive public IPs for outbound ECR, Secrets Manager, and Bedrock access, but their security groups permit inbound traffic only from the ALB or the calling service. The ALB uses HTTP because no domain and ACM certificate were supplied. Use synthetic data only until HTTPS is configured.
 
-RDS PostgreSQL is encrypted, has no public address, accepts port 5432 only from the backend security group, and uses an RDS-managed master secret. A managed vector service remains deferred because the compliance retriever still uses packaged controlled data.
+RDS PostgreSQL is encrypted, has no public address, accepts port 5432 only from the backend security group, and uses an RDS-managed master secret. Investment Education retrieves from an externally provisioned Amazon Bedrock Knowledge Base; the CloudFormation stack scopes the AI task role to that knowledge base. The separate managed Policy knowledge base remains deferred.
 
 ## Automated Bootstrap
 
-After GitHub and AWS browser authentication, start Docker Desktop and run:
+After GitHub and AWS browser authentication, start Docker Desktop and run the bootstrap with the
+approved Education Knowledge Base ID:
 
 ```powershell
-.\infra\scripts\bootstrap_demo.ps1
+.\infra\scripts\bootstrap_demo.ps1 -EducationKnowledgeBaseId <10-character-kb-id>
 .\infra\scripts\configure_github.ps1
 ```
 
@@ -37,7 +38,7 @@ The first script validates the AWS account, deploys the foundation stack, builds
 |---|---|---|---|
 | Frontend | `APP_ENV=demo`, `BACKEND_BASE_URL` | `BACKEND_API_KEY` | None |
 | Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, database host/name/port, TLS mode | `BACKEND_API_KEY`, `AI_SERVICE_API_KEY`, RDS username/password | None |
-| AI service | `APP_ENV=demo`, `MODEL_PROVIDER=bedrock`, model ID, temperatures, prompt version | `AI_SERVICE_API_KEY` | Approved Bedrock profile and destination models |
+| AI service | `APP_ENV=demo`, `MODEL_PROVIDER=bedrock`, `RAG_PROVIDER=bedrock`, model ID, Education Knowledge Base ID, retrieval threshold, temperatures, prompt version | `AI_SERVICE_API_KEY` | Approved Bedrock profile, destination models, and read-only Education Knowledge Base retrieval |
 
 Do not inject `AI_SERVICE_API_KEY` into Streamlit. Do not place runtime AWS credentials in GitHub or application secrets. ECS tasks obtain AWS permissions from task roles.
 
