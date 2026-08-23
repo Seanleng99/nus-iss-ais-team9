@@ -1,7 +1,9 @@
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any, Literal
+from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AgentName(StrEnum):
@@ -10,6 +12,38 @@ class AgentName(StrEnum):
     GOAL_STRATEGY = "goal_strategy"
     INVESTMENT_EDUCATION = "investment_education"
     RISK_COMPLIANCE = "risk_compliance"
+
+
+class CapabilityName(StrEnum):
+    TRANSACTION_CATEGORY_TOTALS = "transaction_category_totals"
+    MONTHLY_BUDGET_BASELINE = "monthly_budget_baseline"
+    MONTHLY_SAVINGS_CAPACITY = "monthly_savings_capacity"
+    GOAL_PROJECTION = "goal_projection"
+    INVESTMENT_EDUCATION_EVIDENCE = "investment_education_evidence"
+    POLICY_CONTEXT = "policy_context"
+
+
+class CapabilityProviderType(StrEnum):
+    AGENT = "agent"
+    TOOL = "tool"
+
+
+class AgentTaskStatus(StrEnum):
+    PENDING = "pending"
+    READY = "ready"
+    RUNNING = "running"
+    WAITING_FOR_DEPENDENCY = "waiting_for_dependency"
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    NEEDS_INPUT = "needs_input"
+    FAILED = "failed"
+    BLOCKED_BY_DEPENDENCY = "blocked_by_dependency"
+    TIMED_OUT = "timed_out"
+    CANCELLED = "cancelled"
+
+
+class StrictContractModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class MoneyAmount(BaseModel):
@@ -61,6 +95,118 @@ class AgentResult(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     blocked: bool = False
     policy_notes: list[str] = Field(default_factory=list)
+
+
+class CapabilityResult(StrictContractModel):
+    capability: CapabilityName
+    provider: str
+    provider_task_id: str
+    data: dict[str, Any]
+    evidence_refs: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DependencyRequest(StrictContractModel):
+    request_id: str = Field(default_factory=lambda: str(uuid4()))
+    requester_task_id: str
+    requester: AgentName
+    capability: CapabilityName
+    reason_code: str = Field(min_length=1, max_length=128)
+    required_output_fields: list[str] = Field(default_factory=list, max_length=20)
+    required: bool = True
+
+
+class DependencyResolution(StrictContractModel):
+    request_id: str
+    capability: CapabilityName
+    requester_task_id: str
+    provider_task_id: str | None = None
+    resolution: Literal["reused", "scheduled", "resolved", "rejected"]
+    reason_code: str | None = None
+
+
+class DependencyEdge(StrictContractModel):
+    requester_task_id: str
+    provider_task_id: str
+    capability: CapabilityName
+
+
+class AgentTask(StrictContractModel):
+    task_id: str = Field(default_factory=lambda: str(uuid4()))
+    agent: AgentName
+    sanitized_message: str
+    input_data: dict[str, Any] = Field(default_factory=dict)
+    status: AgentTaskStatus = AgentTaskStatus.READY
+    attempt: int = Field(default=1, ge=1, le=10)
+    requested_by: AgentName | None = None
+    resolved_dependencies: dict[CapabilityName, CapabilityResult] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_role_scope(self):
+        allowed_fields = {
+            AgentName.SPENDING: {"recent_transactions"},
+            AgentName.BUDGET: {"monthly_income", "recurring_expenses"},
+            AgentName.GOAL_STRATEGY: {"goals"},
+            AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
+        }
+        allowed = allowed_fields.get(self.agent)
+        if allowed is None:
+            raise ValueError(f"{self.agent.value} is not a schedulable specialist")
+        unexpected = set(self.input_data) - allowed
+        if unexpected:
+            raise ValueError(
+                f"{self.agent.value} task contains fields outside its role scope: "
+                f"{sorted(unexpected)}"
+            )
+        for capability, result in self.resolved_dependencies.items():
+            if result.capability != capability:
+                raise ValueError("Resolved dependency key does not match its capability result")
+        return self
+
+
+class CompletedInvocation(StrictContractModel):
+    status: Literal["completed"] = "completed"
+    result: AgentResult
+    capabilities: list[CapabilityResult] = Field(default_factory=list)
+
+
+class NeedsDependencyInvocation(StrictContractModel):
+    status: Literal["needs_dependency"] = "needs_dependency"
+    dependency_requests: list[DependencyRequest] = Field(min_length=1, max_length=4)
+
+
+class FailedInvocation(StrictContractModel):
+    status: Literal["failed"] = "failed"
+    error_code: str = Field(min_length=1, max_length=128)
+    retryable: bool = False
+    safe_message: str = Field(min_length=1, max_length=500)
+
+
+AgentInvocationResult = Annotated[
+    CompletedInvocation | NeedsDependencyInvocation | FailedInvocation,
+    Field(discriminator="status"),
+]
+
+
+class CapabilityDefinition(StrictContractModel):
+    capability: CapabilityName
+    provider: str
+    provider_type: CapabilityProviderType
+    allowed_requesters: set[AgentName]
+    required_inputs: list[str] = Field(default_factory=list)
+    maximum_calls_per_run: int = Field(default=1, ge=1, le=10)
+    cacheable_within_run: bool = True
+
+
+class AuditEvent(StrictContractModel):
+    event_id: str = Field(default_factory=lambda: str(uuid4()))
+    trace_id: str
+    event_type: str
+    actor: str
+    occurred_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    task_id: str | None = None
+    parent_task_id: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class SourceCitation(BaseModel):

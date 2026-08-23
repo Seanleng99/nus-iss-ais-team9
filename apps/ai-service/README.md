@@ -9,12 +9,25 @@ Private Python API containing the model-driven LangGraph orchestration layer.
 - Redact sensitive values before prompts and logs.
 - Detect direct and indirect prompt-injection attempts.
 - Route requests through a Bedrock model to one or more specialist agents.
+- Resolve typed, capability-based specialist dependencies through the orchestrator.
+- Suspend and resume dependent tasks without allowing direct agent-to-agent calls.
 - Generate grounded specialist narratives and a final synthesis.
 - Ground Investment Education in approved, sanitized education sources and return citations.
 - Run independent model-assisted risk and compliance validation.
 - Supply Investment Education evidence to Risk and Compliance for independent review.
 - Apply packaged controlled policy context until the separate managed Policy knowledge base is implemented.
 - Provide an explicit offline fixture for deterministic control and regression evaluation.
+
+## Dynamic Dependencies
+
+Specialists request capabilities rather than naming or invoking other specialists. The
+orchestrator validates each request against the capability registry, reuses an existing result or
+schedules its provider, detects cycles, and resumes the requester with only the validated result.
+
+The first implemented dependency is `goal_strategy -> monthly_savings_capacity`. Budget produces
+that capability from the deterministic budget calculator. If Budget was already selected, its
+result is reused; otherwise the orchestrator adds Budget to the workflow. Dependency request,
+scheduling, resolution, and task-resumption events are included in the response audit metadata.
 
 ## Run
 

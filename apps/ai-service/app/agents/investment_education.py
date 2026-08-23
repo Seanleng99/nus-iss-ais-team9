@@ -3,7 +3,7 @@ from dataclasses import asdict
 from app.agents.base import BaseAgent
 from app.core.guardrails import sanitize_rag_document, validate_tool_permission
 from app.core.prompts import PromptCatalog
-from app.core.schemas import AgentName, CoachRequest
+from app.core.schemas import AgentName, AgentTask
 from app.models.gateway import ModelGateway
 from app.rag.retriever import EducationRetriever
 
@@ -23,8 +23,8 @@ class InvestmentEducationAgent(BaseAgent):
         super().__init__(gateway, prompts, temperature, max_tokens)
         self.education_retriever = education_retriever
 
-    def _ground(self, request: CoachRequest, sanitized_message: str) -> dict:
-        del request
+    def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
+        del task
         validate_tool_permission(self.name, "education_retriever")
         contexts = []
         for item in self.education_retriever.retrieve(sanitized_message):

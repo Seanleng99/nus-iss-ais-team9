@@ -4,8 +4,8 @@ This matrix maps the module briefing, FAQ, Team 9 proposal, and proposal feedbac
 
 | Requirement | Status | Repository evidence | Remaining work before final assessment |
 |---|---|---|---|
-| Non-deterministic multi-agent system with orchestration | Implemented | LangGraph state machine in `apps/ai-service/app/orchestrator.py`, Bedrock gateway, versioned prompts, five model-assisted roles | Run and retain repeated live-model evaluation evidence before final assessment. |
-| Explainability and traceability | Implemented | Agent rationale/confidence, audit trace and timestamp, `docs/responsible-ai.md` | Validate explanations with representative users. |
+| Non-deterministic multi-agent system with orchestration | Implemented | LangGraph state machine in `apps/ai-service/app/orchestrator.py`, typed dynamic dependency scheduler, capability registry, Bedrock gateway, versioned prompts, five model-assisted roles | Run and retain repeated live-model evaluation evidence before final assessment. |
+| Explainability and traceability | Implemented | Agent rationale/confidence, audit trace and timestamp, task lifecycle and dependency events, `docs/responsible-ai.md` | Persist token/latency telemetry and validate explanations with representative users. |
 | Guardrails across agents, tools, and boundaries | Implemented | `core/guardrails.py`, `agents/base.py`, tool allowlist, backend/AI authentication, security evals | Add managed Bedrock Guardrails only after comparing it with application controls. |
 | PII and sensitive financial-data handling | Implemented | Input redaction patterns, body-free structured access logs, security tests | Complete a formal privacy review before accepting real customer data. |
 | Direct and indirect prompt-injection protection | Implemented | Prompt inspection, RAG sanitization, unit tests, eval dataset, deployment smoke test | Expand adversarial datasets and add model-based attack cases. |

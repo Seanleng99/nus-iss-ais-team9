@@ -28,6 +28,13 @@ class Settings(BaseSettings):
         default=0.1, ge=0.01, le=1.0, alias="COMPLIANCE_TEMPERATURE"
     )
     model_max_tokens: int = Field(default=800, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
+    max_dependency_rounds: int = Field(
+        default=4,
+        ge=1,
+        le=10,
+        alias="MAX_DEPENDENCY_ROUNDS",
+    )
+    max_task_attempts: int = Field(default=3, ge=1, le=10, alias="MAX_TASK_ATTEMPTS")
     vector_store_url: str = Field(default="http://localhost:6333", alias="VECTOR_STORE_URL")
     rag_provider: str = Field(default="local_fixture", alias="RAG_PROVIDER")
     education_knowledge_base_id: str | None = Field(

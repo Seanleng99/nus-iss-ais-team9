@@ -137,6 +137,16 @@ class LocalFixtureModelGateway:
                     f"To reach {first['name']}, estimated monthly savings required are "
                     f"SGD {first['monthly_required']:.2f}."
                 )
+                feasibility = grounding.get("feasibility", [])
+                if feasibility:
+                    first_feasibility = feasibility[0]
+                    if first_feasibility["status"] == "shortfall":
+                        summary += (
+                            " This exceeds the estimated savings capacity by SGD "
+                            f"{first_feasibility['monthly_shortfall']:.2f} per month."
+                        )
+                    else:
+                        summary += " The estimated monthly savings capacity covers this amount."
         else:
             summary = (
                 "Investment education should focus on diversification, risk tolerance, time "

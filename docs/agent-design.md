@@ -13,8 +13,8 @@ The architecture is hybrid rather than unconstrained. Deterministic calculators,
 | Agent | Model-driven responsibility | Current memory | Approved tool | Explainability and safety |
 |---|---|---|---|---|
 | Spending | Aggregate recent transactions and describe category patterns | Request-scoped financial snapshot | `transaction_summarizer` | Uses only supplied transactions; reports arithmetic and avoids lifestyle inference |
-| Budget | Produce a constrained monthly baseline | Request-scoped income and recurring expenses | `budget_calculator` | Shows disposable income, method, allocations, and missing-input uncertainty |
-| Goal Strategy | Project user-defined savings goals | Request-scoped goals | `goal_projection` | Shows remaining amount, time horizon, and monthly requirement |
+| Budget | Produce a constrained monthly baseline and the `monthly_savings_capacity` capability | Request-scoped income and recurring expenses | `budget_calculator` | Shows disposable income, method, allocations, and missing-input uncertainty |
+| Goal Strategy | Project user-defined savings goals and dynamically request savings capacity for feasibility | Request-scoped goals plus an orchestrator-resolved capability result | `goal_projection` | Shows remaining amount, time horizon, monthly requirement, capacity, and shortfall |
 | Investment Education | Explain general investment concepts | Sanitized request and approved education context | `education_retriever` | Uses only approved sources, exposes citations, reports evidence gaps, and avoids product instructions |
 | Risk and Compliance | Validate requests and specialist outputs against trusted evidence | Sanitized request, agent results including education evidence, and packaged policy context | `policy_checker`, legacy `trusted_retriever` | Reviews specialist evidence, records policy findings, and explains blocks without exposing hidden policy text; a separate managed Policy retriever remains planned |
 
@@ -22,7 +22,9 @@ No agent has durable or private memory in the skeleton. The backend persists syn
 
 ## Communication
 
-The backend calls one private AI service API. Inside that service, LangGraph passes typed state between nodes and Pydantic models validate all model decisions. Specialists receive only the sanitized message and minimized grounding assigned to their role, rather than the full user record. Investment Education alone can call `education_retriever`; the retrieved evidence is carried into synthesis and independent Compliance review. Compliance does not query the Education knowledge base. Budget and Goal Strategy receive conditional Education access only in the target design, while Spending remains retrieval-free. A2A is deferred because agents share one owner and runtime; MCP is deferred because the small tool set is governed by a local typed allowlist.
+The backend calls one private AI service API. Inside that service, LangGraph passes typed state between nodes and Pydantic models validate all model decisions. The orchestrator creates a role-scoped `AgentTask`, so Spending receives only recent transactions, Budget only income and recurring expenses, Goal Strategy only goals, and Investment Education only its sanitized question and risk constraint. Investment Education alone can call `education_retriever`; the retrieved evidence is carried into synthesis and independent Compliance review. Compliance does not query the Education knowledge base. Budget and Goal Strategy receive conditional Education access only in the target design, while Spending remains retrieval-free. A2A is deferred because agents share one owner and runtime; MCP is deferred because the small tool set is governed by a local typed allowlist.
+
+Specialists do not invoke one another. A specialist can return a typed `needs_dependency` outcome that requests a capability. The orchestrator authorizes the request through a deterministic registry, reuses or schedules the provider, records the dependency edge, rejects cycles, and resumes the requester with the minimal `CapabilityResult`. The initial vertical slice lets Goal Strategy request `monthly_savings_capacity`, which Budget produces from the deterministic budget calculator.
 
 ## Model Strategy
 
@@ -41,4 +43,4 @@ Global cross-Region inference can route outside Singapore. It is acceptable only
 
 ## Prompt And Model Change Control
 
-Prompt, model, retrieval, tool, or policy changes require a pull request and regenerated evaluation evidence. A change that alters instruction meaning increments the prompt-set version. Current audit metadata includes model provider, model ID, prompt version, route rationale, trace ID, and safety findings without recording raw prompts. Add token, latency, and source-version telemetry before production approval.
+Prompt, model, retrieval, tool, capability, or policy changes require a pull request and regenerated evaluation evidence. A change that alters instruction meaning increments the prompt-set version. Current audit metadata includes model provider, model ID, prompt version, route rationale, trace ID, safety findings, task lifecycle, and dependency resolution events without recording raw prompts. Add token, latency, and source-version telemetry before production approval.
