@@ -6,6 +6,10 @@ import urllib.parse
 import urllib.request
 
 
+class SmokeRequestError(OSError):
+    """HTTP failure with bounded, non-secret diagnostics for release logs."""
+
+
 def require_http_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -28,11 +32,29 @@ def request(
     http_request = urllib.request.Request(
         require_http_url(url), data=data, headers=headers, method=method
     )
-    # B310 is contained by require_http_url before the request is constructed.
-    with urllib.request.urlopen(  # nosec B310
-        http_request, timeout=60
-    ) as response:
-        return response.status, response.read().decode("utf-8")
+    try:
+        # B310 is contained by require_http_url before the request is constructed.
+        with urllib.request.urlopen(  # nosec B310
+            http_request, timeout=60
+        ) as response:
+            return response.status, response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        response_body = exc.read(2048).decode("utf-8", errors="replace")
+        detail = "response detail unavailable"
+        try:
+            payload = json.loads(response_body)
+            if isinstance(payload, dict) and isinstance(payload.get("detail"), str):
+                detail = payload["detail"][:300]
+        except json.JSONDecodeError:
+            pass
+        correlation_id = (
+            exc.headers.get("X-Correlation-ID", "missing")[:128]
+            if exc.headers
+            else "missing"
+        )
+        raise SmokeRequestError(
+            f"HTTP {exc.code}; correlation_id={correlation_id}; detail={detail}"
+        ) from exc
 
 
 def retry(check, label: str, attempts: int = 12, delay_seconds: int = 5) -> None:

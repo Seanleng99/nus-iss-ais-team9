@@ -58,7 +58,14 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 continue
 
             if path.startswith("apps/ai-service/"):
-                result.update(ai_ci=True, ai_deploy=True, integration=True, sast=True)
+                result.update(
+                    ai_ci=True,
+                    ai_deploy=True,
+                    backend_ci=True,
+                    backend_deploy=True,
+                    integration=True,
+                    sast=True,
+                )
                 continue
 
             dockerfiles = {
@@ -69,6 +76,8 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
             if path in dockerfiles:
                 for flag in dockerfiles[path]:
                     result[flag] = True
+                if path == "infra/docker/Dockerfile.ai-service":
+                    result.update(backend_ci=True, backend_deploy=True)
                 result["sast"] = True
                 if path.endswith(("Dockerfile.backend", "Dockerfile.ai-service")):
                     result["integration"] = True

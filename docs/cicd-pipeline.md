@@ -41,13 +41,13 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 | `apps/frontend/**` or its Dockerfile | Frontend tests, SAST, frontend container | Frontend image and ECS service |
 | `apps/backend/**` or its Dockerfile | Backend tests, SAST, integration, backend container | Backend image and ECS service |
 | `apps/backend/migrations/**` or `apps/backend/alembic.ini` | Backend path above | Backend release plus one-shot Alembic migration |
-| `apps/ai-service/**` or its Dockerfile | AI tests/evals, SAST, integration, AI container | AI image and ECS service |
+| `apps/ai-service/**` or its Dockerfile | AI and backend tests, AI evals, SAST, integration, AI and backend containers | AI and compatible backend images and ECS services |
 | `infra/llmsecops/**` | AI tests and evaluation gate | No application deployment |
 | `infra/aws/**` | CloudFormation and Compose validation | No application deployment |
 | CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; backend deployment always runs the migration task |
 | `docs/**` only | No workflow | No release |
 
-Unknown executable or configuration paths take the conservative complete-service route. Root documentation and repository metadata run only change detection and do not publish application images.
+AI changes deploy the backend from the same commit because the backend persists orchestration traces and exposes the trace-aware coaching contract used by the release smoke test. This also guarantees that a recovery after coordinated rollback does not pair a new AI service with an older backend API. Unknown executable or configuration paths take the conservative complete-service route. Root documentation and repository metadata run only change detection and do not publish application images.
 
 ## AWS Provisioning
 

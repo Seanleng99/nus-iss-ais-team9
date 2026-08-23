@@ -127,6 +127,8 @@ class BaseAgent(ABC):
 
         options = list(self._dependency_options(task))
         missing_questions = list(self._missing_input_questions(task))
+        if not options and not missing_questions:
+            return None
         raw = self.gateway.generate(
             system_prompt=self.prompts.get("dependency_planner"),
             user_prompt=json.dumps(

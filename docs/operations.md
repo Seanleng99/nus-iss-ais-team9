@@ -15,7 +15,7 @@ These are initial targets to validate with AWS load evidence, not production gua
 
 ## Telemetry
 
-Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, and token usage. The backend persists the trace against the profile-scoped chat message without raw prompts or financial grounding.
+Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. A failed coaching request adds only a stable error code, bounded component name, exception type, and correlation ID; it never logs the prompt, model output, provider message, or financial snapshot. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, and token usage. The backend persists the trace against the profile-scoped chat message without raw prompts or financial grounding.
 
 In AWS, send ECS stdout/stderr to encrypted CloudWatch log groups with explicit retention. Restrict log access separately from application access. Enable ECS Container Insights and collect ALB request/error/latency metrics, ECS CPU/memory/task count, Bedrock invocation latency/errors/token usage, RDS health, and vector-store health.
 

@@ -322,7 +322,7 @@ class AgentOrchestrator:
             future.cancel()
         executor.shutdown(wait=False, cancel_futures=True)
 
-        fatal_failure = False
+        fatal_failure: tuple[str, str] | None = None
         for task in ready:
             if task.task_id in timed_out:
                 task.status = AgentTaskStatus.TIMED_OUT
@@ -335,7 +335,8 @@ class AgentOrchestrator:
                         details={"timeout_seconds": self.config.agent_timeout_seconds},
                     )
                 )
-                fatal_failure = fatal_failure or self._task_failure_is_required(state, task)
+                if self._task_failure_is_required(state, task):
+                    fatal_failure = ("AGENT_TIMEOUT", task.agent.value)
                 continue
 
             outcome, final_attempt, retry_errors, duration_ms = outcomes[task.task_id]
@@ -429,12 +430,18 @@ class AgentOrchestrator:
                         },
                     )
                 )
-                fatal_failure = fatal_failure or self._task_failure_is_required(state, task)
+                if self._task_failure_is_required(state, task):
+                    fatal_failure = (outcome.error_code, task.agent.value)
             else:
                 raise ModelGatewayError("A specialist returned an unsupported result type.")
 
         if fatal_failure:
-            raise ModelGatewayError("A required specialist could not complete its assigned task.")
+            error_code, component = fatal_failure
+            raise ModelGatewayError(
+                "A required specialist could not complete its assigned task.",
+                code=error_code,
+                component=component,
+            )
 
         return {
             "tasks": tasks,
@@ -455,14 +462,19 @@ class AgentOrchestrator:
             try:
                 outcome = agent.run_task(task.model_copy(update={"attempt": final_attempt}))
             except (ModelGatewayError, RetrievalError) as exc:
+                error_code = getattr(
+                    exc,
+                    "code",
+                    "RETRIEVAL_ERROR" if isinstance(exc, RetrievalError) else type(exc).__name__,
+                )
                 if final_attempt >= self.config.max_task_attempts:
                     outcome = FailedInvocation(
-                        error_code=type(exc).__name__,
+                        error_code=error_code,
                         retryable=True,
                         safe_message="The specialist could not complete after bounded retries.",
                     )
                     break
-                retry_errors.append((final_attempt + 1, type(exc).__name__))
+                retry_errors.append((final_attempt + 1, error_code))
                 sleep(self.config.retry_backoff_seconds * (2 ** (final_attempt - 1)))
                 final_attempt += 1
                 continue

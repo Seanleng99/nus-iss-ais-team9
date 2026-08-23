@@ -23,4 +23,8 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
     try:
         return response_type.model_validate(json.loads(candidate))
     except (json.JSONDecodeError, ValidationError) as exc:
-        raise ModelGatewayError("The model returned an invalid structured response.") from exc
+        raise ModelGatewayError(
+            "The model returned an invalid structured response.",
+            code="INVALID_STRUCTURED_RESPONSE",
+            component=response_type.__name__,
+        ) from exc

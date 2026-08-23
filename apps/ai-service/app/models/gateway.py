@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from collections.abc import Mapping
 from contextvars import ContextVar, Token
@@ -10,6 +11,36 @@ from app.core.config import Settings
 
 class ModelGatewayError(RuntimeError):
     """Raised when a model cannot be invoked or returns an invalid response."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "MODEL_GATEWAY_ERROR",
+        component: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = (
+            code
+            if re.fullmatch(r"[A-Z0-9_-]{1,128}", code)
+            else "MODEL_GATEWAY_ERROR"
+        )
+        self.component = (
+            component
+            if component and re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", component)
+            else None
+        )
+
+
+def _bedrock_error_code(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    if isinstance(response, Mapping):
+        error = response.get("Error", {})
+        if isinstance(error, Mapping):
+            candidate = str(error.get("Code", ""))
+            if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", candidate):
+                return f"BEDROCK_{candidate.upper()}"
+    return "BEDROCK_INVOCATION_FAILED"
 
 
 class ModelGeneration(str):
@@ -89,7 +120,11 @@ class BedrockModelGateway:
                 provider_metrics=response.get("metrics", {}),
             )
         except Exception as exc:
-            raise ModelGatewayError("The configured model could not produce a response.") from exc
+            raise ModelGatewayError(
+                "The configured model could not produce a response.",
+                code=_bedrock_error_code(exc),
+                component="bedrock",
+            ) from exc
 
 
 class LocalFixtureModelGateway:

@@ -40,6 +40,17 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertFalse(result["ai_deploy"])
         self.assertFalse(result["deploy"])
 
+    def test_ai_service_change_redeploys_compatible_backend(self):
+        result = detect_changes.classify_changes(["apps/ai-service/app/orchestrator.py"])
+
+        self.assertTrue(result["ai_ci"])
+        self.assertTrue(result["ai_deploy"])
+        self.assertTrue(result["backend_ci"])
+        self.assertTrue(result["backend_deploy"])
+        self.assertTrue(result["integration"])
+        self.assertTrue(result["deploy"])
+        self.assertFalse(result["migrations"])
+
     def test_shared_scan_exception_rebuilds_and_rescans_all_services(self):
         result = detect_changes.classify_changes(
             ["infra/llmsecops/ecr-scan-exceptions.json"]
@@ -61,6 +72,17 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["backend_deploy"])
         self.assertTrue(result["integration"])
         self.assertTrue(result["sast"])
+        self.assertFalse(result["migrations"])
+
+    def test_ai_dockerfile_redeploys_compatible_backend(self):
+        result = detect_changes.classify_changes(
+            ["infra/docker/Dockerfile.ai-service"]
+        )
+
+        self.assertTrue(result["ai_deploy"])
+        self.assertTrue(result["backend_ci"])
+        self.assertTrue(result["backend_deploy"])
+        self.assertTrue(result["integration"])
         self.assertFalse(result["migrations"])
 
     def test_aws_change_only_runs_infrastructure_validation(self):

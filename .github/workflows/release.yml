@@ -76,6 +76,10 @@ jobs:
             echo "Migration selection requires a backend deployment." >&2
             exit 1
           fi
+          if [[ "$ai" == "true" && "$backend" != "true" ]]; then
+            echo "AI deployment requires a compatible backend deployment." >&2
+            exit 1
+          fi
           expected_deploy=false
           if [[ "$frontend" == "true" || "$backend" == "true" || "$ai" == "true" ]]; then
             expected_deploy=true

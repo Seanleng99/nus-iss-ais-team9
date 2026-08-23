@@ -114,6 +114,32 @@ def test_preselected_budget_result_is_reused_without_duplicate_execution() -> No
     ) == 1
 
 
+def test_budget_skips_dependency_planner_when_there_is_nothing_to_decide() -> None:
+    gateway = RecordingGateway()
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=gateway,
+    ).handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="no-op-preflight",
+            message="Create a simple monthly budget",
+            requested_agents=["budget"],
+            snapshot={"monthly_income": {"amount": 4000}},
+        )
+    )
+
+    assert response.blocked is False
+    assert not any(
+        call["system_prompt"].startswith("PROMPT_ID: dependency_planner")
+        for call in gateway.calls
+    )
+    assert sum(
+        call["system_prompt"].startswith("PROMPT_ID: agent_budget")
+        for call in gateway.calls
+    ) == 1
+
+
 def test_capability_registry_rejects_unauthorized_requester() -> None:
     registry = CapabilityRegistry()
 

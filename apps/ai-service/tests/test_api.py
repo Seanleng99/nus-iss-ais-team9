@@ -1,3 +1,6 @@
+import json
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -66,21 +69,42 @@ def test_deployment_rejects_fixture_model() -> None:
         )
 
 
-def test_coach_returns_sanitized_model_failure() -> None:
+def test_coach_returns_and_logs_sanitized_model_failure(caplog) -> None:
     class FailingGateway:
         def generate(self, **kwargs) -> str:
             raise ModelGatewayError("provider detail that must not escape")
 
     failed = AgentOrchestrator(config=test_config, gateway=FailingGateway())
     app.dependency_overrides[get_orchestrator] = lambda: failed
-    response = client.post(
-        "/coach",
-        headers={"X-API-Key": settings.api_key},
-        json={"user_id": "u1", "session_id": "s1", "message": "Create a budget"},
-    )
+    with caplog.at_level(logging.ERROR, logger="service.ai"):
+        response = client.post(
+            "/coach",
+            headers={
+                "X-API-Key": settings.api_key,
+                "X-Correlation-ID": "failure-trace",
+            },
+            json={
+                "user_id": "u1",
+                "session_id": "s1",
+                "message": "Create a budget",
+            },
+        )
     app.dependency_overrides[get_orchestrator] = lambda: test_orchestrator
     assert response.status_code == 503
     assert "provider detail" not in response.text
+    failure = next(
+        json.loads(record.message)
+        for record in caplog.records
+        if '"event":"coach_generation_failed"' in record.message
+    )
+    assert failure == {
+        "event": "coach_generation_failed",
+        "correlation_id": "failure-trace",
+        "error_code": "MODEL_GATEWAY_ERROR",
+        "component": "orchestrator",
+        "exception_type": "ModelGatewayError",
+    }
+    assert "provider detail" not in caplog.text
 
 
 def test_coach_returns_sanitized_retrieval_failure() -> None:
