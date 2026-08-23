@@ -12,6 +12,10 @@ def apply_styles() -> None:
         :root { --ink: #17211d; --muted: #64716b; --line: #dfe7e2; --green: #18794e; }
         html, body, [class*="css"] { letter-spacing: 0 !important; }
         .stApp { background: #f7f9f7; color: var(--ink); }
+        [data-testid="stHeader"] {
+            background: transparent !important; height: 2.5rem !important;
+            min-height: 2.5rem !important;
+        }
         [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid var(--line); }
         [data-testid="stMainBlockContainer"] { padding-top: 1.5rem; }
         [data-testid="stSidebarContent"] { gap: 0; }
@@ -42,22 +46,40 @@ def apply_styles() -> None:
         .stApp:has(.coach-shell) [data-testid="stMainBlockContainer"] {
             padding-bottom: 7rem;
         }
+        .stApp:has(.coach-shell) .st-key-coach-page-header {
+            background: #f7f9f7; position: sticky; top: 2.5rem; z-index: 3;
+        }
+        .stApp:has(.coach-shell) .st-key-coach-page-header .page-subheading {
+            margin-bottom: 0.65rem;
+        }
         .stApp:has(.coach-shell) .coach-conversation-section { margin-top: 1rem; }
         .stApp:has(.coach-shell) .st-key-coach-new-chat button,
         .stApp:has(.coach-shell) [class*="st-key-coach-session-"] button {
-            justify-content: flex-start; min-height: 2.5rem; text-align: left;
+            gap: 0.5rem; justify-content: flex-start; min-height: 2.5rem;
+            overflow: hidden; padding-left: 0.65rem; padding-right: 0.65rem; text-align: left;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"] {
             margin-bottom: 0.15rem;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"]
-        [data-testid="stHorizontalBlock"] { gap: 0.2rem; }
+        [data-testid="stHorizontalBlock"] { gap: 0; }
         .stApp:has(.coach-shell) [class*="st-key-coach-session-"] button p {
-            overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap;
+            flex: 1 1 0 !important; min-width: 0; overflow: hidden; text-align: left;
+            max-width: calc(100% - 1.5rem); text-overflow: ellipsis; white-space: nowrap;
+            width: auto !important;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-session-"]
+        button > div > span {
+            justify-content: flex-start; overflow: hidden; width: 100%;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-session-"]
+        [data-testid="stIconMaterial"] {
+            flex: 0 0 1rem;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-rename-action-"] button,
         .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button {
-            justify-content: center; min-height: 2.5rem; padding: 0.35rem; width: 100%;
+            height: 1.875rem; justify-content: center; min-height: 1.875rem;
+            min-width: 1.875rem; padding: 0.2rem; width: 1.875rem !important;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-rename-action-"] button p,
         .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button p {

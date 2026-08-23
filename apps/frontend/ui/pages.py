@@ -550,7 +550,8 @@ def goals_page() -> None:
 def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
-    page_header("Coach", "Financial education", marker_class="coach-shell")
+    with st.container(key="coach-page-header"):
+        page_header("Coach", "Financial education", marker_class="coach-shell")
 
     sessions = backend_call(lambda: client.list_chat_sessions(user_id)) or []
     session_by_id = {item["id"]: item for item in sessions}
@@ -587,7 +588,7 @@ def coach_page() -> None:
             visible_title = title if len(title) <= 38 else f"{title[:35]}..."
             with st.container(key=f"coach-conversation-row-{session_id}"):
                 title_column, rename_column, delete_column = st.columns(
-                    [1, 0.23, 0.23], gap="small", vertical_alignment="center"
+                    [1, 0.16, 0.16], gap="small", vertical_alignment="center"
                 )
                 with title_column:
                     if st.button(
