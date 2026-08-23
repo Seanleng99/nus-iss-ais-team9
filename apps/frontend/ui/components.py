@@ -13,7 +13,7 @@ def apply_styles() -> None:
         html, body, [class*="css"] { letter-spacing: 0 !important; }
         .stApp { background: #f7f9f7; color: var(--ink); }
         [data-testid="stHeader"] {
-            background: transparent !important; height: 2.5rem !important;
+            background: #f7f9f7 !important; height: 2.5rem !important;
             min-height: 2.5rem !important;
         }
         [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid var(--line); }
@@ -46,9 +46,12 @@ def apply_styles() -> None:
         .stApp:has(.coach-shell) [data-testid="stMainBlockContainer"] {
             padding-bottom: 7rem;
         }
-        .stApp:has(.coach-shell) .st-key-coach-page-header {
+        .stApp:has(.coach-shell) [data-testid="stLayoutWrapper"]:has(
+            > .st-key-coach-page-header
+        ) {
             background: #f7f9f7; position: sticky; top: 2.5rem; z-index: 3;
         }
+        .stApp:has(.coach-shell) .st-key-coach-page-header { position: static; }
         .stApp:has(.coach-shell) .st-key-coach-page-header .page-subheading {
             margin-bottom: 0.65rem;
         }
