@@ -31,7 +31,11 @@ def apply_styles() -> None:
         .section-rule { border-top: 1px solid var(--line); margin: 1rem 0; }
         .stButton > button, .stFormSubmitButton > button { border-radius: 6px; }
         .stApp:has(.coach-shell) [data-testid="stMainBlockContainer"] {
-            max-width: 900px; padding-bottom: 7rem;
+            padding-bottom: 7rem;
+        }
+        .stApp:has(.coach-shell) .coach-conversation-section { margin-top: 1rem; }
+        .stApp:has(.coach-shell) [data-testid="stSidebar"] .stButton > button {
+            justify-content: flex-start; min-height: 2.5rem; text-align: left;
         }
         .stApp:has(.coach-shell) [data-testid="stChatMessage"] {
             background: transparent; border: 0; padding: 0.75rem 0;
@@ -63,8 +67,9 @@ def apply_styles() -> None:
     )
 
 
-def page_header(title: str, subtitle: str) -> None:
-    st.markdown(f'<h1 class="page-heading">{title}</h1>', unsafe_allow_html=True)
+def page_header(title: str, subtitle: str, marker_class: str | None = None) -> None:
+    heading_class = f"page-heading {marker_class}" if marker_class else "page-heading"
+    st.markdown(f'<h1 class="{heading_class}">{title}</h1>', unsafe_allow_html=True)
     st.markdown(f'<p class="page-subheading">{subtitle}</p>', unsafe_allow_html=True)
 
 

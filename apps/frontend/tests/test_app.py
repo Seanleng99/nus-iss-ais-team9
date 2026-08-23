@@ -313,7 +313,7 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
 
     assert not app.exception
     assert app.chat_input[0].placeholder == "Message your financial coach"
-    assert app.button(key="coach-new-chat").disabled is True
+    assert app.sidebar.button(key="coach-new-chat").disabled is True
 
     app.button(key="coach-starter-0").click().run(timeout=30)
 
@@ -335,9 +335,12 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
             ],
         },
     ]
-    assert app.button(key="coach-new-chat").disabled is False
+    assert app.sidebar.button(key="coach-new-chat").disabled is False
+    assert app.sidebar.button(key="coach-session-coach-session-1").label == (
+        "Review my monthly spending"
+    )
 
-    app.button(key="coach-new-chat").click().run(timeout=30)
+    app.sidebar.button(key="coach-new-chat").click().run(timeout=30)
     assert app.session_state["coach_active_session_id"] is None
     assert len(app.session_state["backend_client"].sessions) == 1
 
