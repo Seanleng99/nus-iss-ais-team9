@@ -339,6 +339,16 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
     assert app.sidebar.button(key="coach-session-coach-session-1").label == (
         "Review my monthly spending"
     )
+    assert app.sidebar.button(key="coach-rename-action-coach-session-1").label == "Rename"
+    assert app.sidebar.button(key="coach-delete-action-coach-session-1").label == "Delete"
+
+    app.sidebar.button(key="coach-rename-action-coach-session-1").click().run(timeout=30)
+    assert app.session_state["coach_rename_open"] == "coach-session-1"
+    assert app.sidebar.text_input[0].value == "Review my monthly spending"
+
+    app.sidebar.button(key="coach-delete-action-coach-session-1").click().run(timeout=30)
+    assert "coach_rename_open" not in app.session_state
+    assert app.session_state["coach_delete_open"] == "coach-session-1"
 
     app.sidebar.button(key="coach-new-chat").click().run(timeout=30)
     assert app.session_state["coach_active_session_id"] is None

@@ -13,6 +13,12 @@ def apply_styles() -> None:
         html, body, [class*="css"] { letter-spacing: 0 !important; }
         .stApp { background: #f7f9f7; color: var(--ink); }
         [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid var(--line); }
+        [data-testid="stMainBlockContainer"] { padding-top: 1.5rem; }
+        [data-testid="stSidebarContent"] { gap: 0; }
+        [data-testid="stSidebarHeader"] {
+            height: 2.5rem; position: absolute; right: 0.5rem; top: 0.5rem; z-index: 1;
+        }
+        [data-testid="stSidebarUserContent"] { padding-top: 2.5rem; }
         [data-testid="stSidebar"] h1 { color: var(--ink); font-size: 1.3rem; }
         [data-testid="stMetric"] {
             background: #ffffff; border: 1px solid var(--line); border-radius: 6px;
@@ -26,7 +32,10 @@ def apply_styles() -> None:
             border-top: 1px solid var(--line); color: var(--muted); font-size: 0.72rem;
             font-weight: 700; margin-top: 1rem; padding-top: 0.9rem;
         }
-        .page-heading { margin: 0; color: var(--ink); font-size: 1.8rem; line-height: 1.2; }
+        .page-heading {
+            color: var(--ink); font-size: 1.8rem; line-height: 1.2;
+            margin: 0 !important; padding: 0 !important;
+        }
         .page-subheading { color: var(--muted); margin: 0.3rem 0 1.2rem 0; }
         .section-rule { border-top: 1px solid var(--line); margin: 1rem 0; }
         .stButton > button, .stFormSubmitButton > button { border-radius: 6px; }
@@ -34,8 +43,25 @@ def apply_styles() -> None:
             padding-bottom: 7rem;
         }
         .stApp:has(.coach-shell) .coach-conversation-section { margin-top: 1rem; }
-        .stApp:has(.coach-shell) [data-testid="stSidebar"] .stButton > button {
+        .stApp:has(.coach-shell) .st-key-coach-new-chat button,
+        .stApp:has(.coach-shell) [class*="st-key-coach-session-"] button {
             justify-content: flex-start; min-height: 2.5rem; text-align: left;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"] {
+            margin-bottom: 0.15rem;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"]
+        [data-testid="stHorizontalBlock"] { gap: 0.2rem; }
+        .stApp:has(.coach-shell) [class*="st-key-coach-session-"] button p {
+            overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-rename-action-"] button,
+        .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button {
+            justify-content: center; min-height: 2.5rem; padding: 0.35rem; width: 100%;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-rename-action-"] button p,
+        .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button p {
+            display: none;
         }
         .stApp:has(.coach-shell) [data-testid="stChatMessage"] {
             background: transparent; border: 0; padding: 0.75rem 0;

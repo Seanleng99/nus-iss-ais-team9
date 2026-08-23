@@ -585,87 +585,98 @@ def coach_page() -> None:
             session_id = chat_session["id"]
             title = chat_session["title"]
             visible_title = title if len(title) <= 38 else f"{title[:35]}..."
-            if st.button(
-                visible_title,
-                icon=(
-                    ":material/chat_bubble:"
-                    if session_id == active_session_id
-                    else ":material/chat_bubble_outline:"
-                ),
-                help=title,
-                key=f"coach-session-{session_id}",
-                use_container_width=True,
-            ):
-                st.session_state.coach_active_session_id = session_id
-                st.session_state.pop("coach_pending_question", None)
-                st.session_state.pop("coach_rename_open", None)
-                st.session_state.pop("coach_delete_open", None)
-                st.rerun()
-
-        rename_action, delete_action = st.columns(2)
-        with rename_action:
-            if st.button(
-                "Rename",
-                icon=":material/edit:",
-                disabled=active_session_id is None,
-                key="coach-rename",
-                use_container_width=True,
-            ):
-                st.session_state.coach_rename_open = True
-                st.session_state.pop("coach_delete_open", None)
-        with delete_action:
-            if st.button(
-                "Delete",
-                icon=":material/delete:",
-                disabled=active_session_id is None,
-                key="coach-delete",
-                use_container_width=True,
-            ):
-                st.session_state.coach_delete_open = True
-                st.session_state.pop("coach_rename_open", None)
-
-        if st.session_state.get("coach_rename_open") and active_session_id:
-            with st.form("coach-rename-form"):
-                renamed_title = st.text_input(
-                    "Conversation title",
-                    value=session_by_id[active_session_id]["title"],
-                    max_chars=120,
+            with st.container(key=f"coach-conversation-row-{session_id}"):
+                title_column, rename_column, delete_column = st.columns(
+                    [1, 0.23, 0.23], gap="small", vertical_alignment="center"
                 )
-                rename_submitted = st.form_submit_button(
-                    "Save", icon=":material/check:", use_container_width=True
-                )
-                if st.form_submit_button("Cancel", use_container_width=True):
+                with title_column:
+                    if st.button(
+                        visible_title,
+                        icon=(
+                            ":material/chat_bubble:"
+                            if session_id == active_session_id
+                            else ":material/chat_bubble_outline:"
+                        ),
+                        help=title,
+                        key=f"coach-session-{session_id}",
+                        type="primary" if session_id == active_session_id else "tertiary",
+                        use_container_width=True,
+                    ):
+                        st.session_state.coach_active_session_id = session_id
+                        st.session_state.pop("coach_pending_question", None)
+                        st.session_state.pop("coach_rename_open", None)
+                        st.session_state.pop("coach_delete_open", None)
+                        st.rerun()
+                with rename_column:
+                    if st.button(
+                        "Rename",
+                        icon=":material/edit:",
+                        help=f"Rename {title}",
+                        key=f"coach-rename-action-{session_id}",
+                        type="tertiary",
+                        use_container_width=True,
+                    ):
+                        st.session_state.coach_rename_open = session_id
+                        st.session_state.pop("coach_delete_open", None)
+                with delete_column:
+                    if st.button(
+                        "Delete",
+                        icon=":material/delete:",
+                        help=f"Delete {title}",
+                        key=f"coach-delete-action-{session_id}",
+                        type="tertiary",
+                        use_container_width=True,
+                    ):
+                        st.session_state.coach_delete_open = session_id
+                        st.session_state.pop("coach_rename_open", None)
+
+            if st.session_state.get("coach_rename_open") == session_id:
+                with st.form(f"coach-rename-form-{session_id}"):
+                    renamed_title = st.text_input(
+                        "Conversation title",
+                        value=title,
+                        max_chars=120,
+                    )
+                    rename_submitted = st.form_submit_button(
+                        "Save", icon=":material/check:", use_container_width=True
+                    )
+                    if st.form_submit_button("Cancel", use_container_width=True):
+                        st.session_state.pop("coach_rename_open", None)
+                        st.rerun()
+                if rename_submitted and renamed_title.strip():
+                    backend_call(
+                        lambda session_id=session_id, renamed_title=renamed_title: client.rename_chat_session(
+                            user_id, session_id, renamed_title.strip()
+                        )
+                    )
                     st.session_state.pop("coach_rename_open", None)
                     st.rerun()
-            if rename_submitted and renamed_title.strip():
-                backend_call(
-                    lambda: client.rename_chat_session(
-                        user_id, active_session_id, renamed_title.strip()
-                    )
-                )
-                st.session_state.pop("coach_rename_open", None)
-                st.rerun()
 
-        if st.session_state.get("coach_delete_open") and active_session_id:
-            st.warning("Delete this conversation and all of its messages?")
-            if st.button(
-                "Delete conversation",
-                icon=":material/delete:",
-                type="primary",
-                key="coach-confirm-delete",
-                use_container_width=True,
-            ):
-                backend_call(
-                    lambda: client.delete_chat_session(user_id, active_session_id)
-                )
-                st.session_state.coach_active_session_id = None
-                st.session_state.pop("coach_delete_open", None)
-                st.rerun()
-            if st.button(
-                "Cancel", key="coach-cancel-delete", use_container_width=True
-            ):
-                st.session_state.pop("coach_delete_open", None)
-                st.rerun()
+            if st.session_state.get("coach_delete_open") == session_id:
+                st.warning("Delete this conversation and all of its messages?")
+                if st.button(
+                    "Delete conversation",
+                    icon=":material/delete:",
+                    type="primary",
+                    key=f"coach-confirm-delete-{session_id}",
+                    use_container_width=True,
+                ):
+                    backend_call(
+                        lambda session_id=session_id: client.delete_chat_session(
+                            user_id, session_id
+                        )
+                    )
+                    if session_id == active_session_id:
+                        st.session_state.coach_active_session_id = None
+                    st.session_state.pop("coach_delete_open", None)
+                    st.rerun()
+                if st.button(
+                    "Cancel",
+                    key=f"coach-cancel-delete-{session_id}",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop("coach_delete_open", None)
+                    st.rerun()
 
     pending_question = st.session_state.pop("coach_pending_question", None)
     if pending_question and active_session_id is None:
