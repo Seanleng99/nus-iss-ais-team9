@@ -15,7 +15,7 @@ These are initial targets to validate with AWS load evidence, not production gua
 
 ## Telemetry
 
-Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. AI response audit metadata includes correlation ID, UTC execution time, selected-agent count, and guardrail categories.
+Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, and token usage. The backend persists the trace against the profile-scoped chat message without raw prompts or financial grounding.
 
 In AWS, send ECS stdout/stderr to encrypted CloudWatch log groups with explicit retention. Restrict log access separately from application access. Enable ECS Container Insights and collect ALB request/error/latency metrics, ECS CPU/memory/task count, Bedrock invocation latency/errors/token usage, RDS health, and vector-store health.
 
@@ -32,7 +32,9 @@ In AWS, send ECS stdout/stderr to encrypted CloudWatch log groups with explicit 
 
 ## Database Changes
 
-CI applies every Alembic migration to PostgreSQL and runs `alembic check` for model drift. Releases run `alembic upgrade head` as one ECS task before updating the backend service. Treat migration failure as a failed release. Use expand-and-contract changes because rolling back an ECS task definition does not reverse a successful schema migration.
+CI applies every Alembic migration to PostgreSQL and runs `alembic check` for model drift. Every backend release runs `alembic upgrade head` as one ECS task before updating the backend service, even when the change manifest did not identify a migration-file edit. This makes the database revision a deployment invariant instead of relying solely on path classification. Treat migration failure as a failed release. Use expand-and-contract changes because rolling back an ECS task definition does not reverse a successful schema migration.
+
+Apply explicit retention and deletion policy to orchestration traces before using real financial data. Trace lookup is profile-isolated at the backend boundary; monitor missing traces and rejected cross-profile lookups without logging request content.
 
 Route deployment failures through EventBridge and operational alerts through SNS or the team incident channel. Every alert needs an owner, severity, runbook link, and tested notification path.
 

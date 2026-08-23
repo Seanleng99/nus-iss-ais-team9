@@ -58,6 +58,19 @@
       "max_regression": {
         "security_control_rate": 0.0
       }
+    },
+    {
+      "name": "dynamic-dependencies",
+      "dataset": "apps/ai-service/app/evals/datasets/dynamic_dependencies.jsonl",
+      "minimums": {
+        "dependency_accuracy": 1.0
+      },
+      "baselines": {
+        "dependency_accuracy": 1.0
+      },
+      "max_regression": {
+        "dependency_accuracy": 0.0
+      }
     }
   ]
 }

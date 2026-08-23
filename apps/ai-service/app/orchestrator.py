@@ -1,6 +1,10 @@
 import json
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor, wait
+from contextvars import copy_context
 from datetime import UTC, datetime
+from hashlib import sha256
+from time import perf_counter, sleep
 from typing import TypedDict
 from uuid import uuid4
 
@@ -24,6 +28,7 @@ from app.core.schemas import (
     AgentTask,
     AgentTaskStatus,
     AuditEvent,
+    CapabilityDefinition,
     CapabilityName,
     CapabilityProviderType,
     CapabilityResult,
@@ -35,13 +40,19 @@ from app.core.schemas import (
     DependencyResolution,
     FailedInvocation,
     NeedsDependencyInvocation,
+    NeedsInputInvocation,
     RouterDecision,
     SourceCitation,
     SynthesisDecision,
 )
-from app.models.gateway import ModelGateway, ModelGatewayError, create_model_gateway
+from app.models.gateway import (
+    ModelGateway,
+    ModelGatewayError,
+    TracingModelGateway,
+    create_model_gateway,
+)
 from app.models.structured import parse_structured_response
-from app.rag.retriever import EducationRetriever, create_education_retriever
+from app.rag.retriever import EducationRetriever, RetrievalError, create_education_retriever
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -56,7 +67,7 @@ class OrchestratorState(TypedDict, total=False):
     task_results: dict[str, AgentResult]
     agent_results: list[AgentResult]
     pending_dependencies: list[DependencyRequest]
-    resolved_capabilities: dict[CapabilityName, CapabilityResult]
+    resolved_capabilities: dict[str, CapabilityResult]
     dependency_edges: list[DependencyEdge]
     dependency_resolutions: list[DependencyResolution]
     dependency_round: int
@@ -78,7 +89,12 @@ class AgentOrchestrator:
         capability_registry: CapabilityRegistry | None = None,
     ) -> None:
         self.config = config or runtime_settings
-        self.gateway = gateway or create_model_gateway(self.config)
+        raw_gateway = gateway or create_model_gateway(self.config)
+        self.gateway = (
+            raw_gateway
+            if isinstance(raw_gateway, TracingModelGateway)
+            else TracingModelGateway(raw_gateway, self.config)
+        )
         self.prompts = prompts or PromptCatalog(self.config.prompt_set_version)
         self.education_retriever = education_retriever or create_education_retriever(self.config)
         self.capability_registry = capability_registry or CapabilityRegistry()
@@ -257,17 +273,31 @@ class AgentOrchestrator:
         capabilities = dict(state.get("resolved_capabilities", {}))
         pending = list(state.get("pending_dependencies", []))
         events = list(state.get("audit_events", []))
+        ready = [task for task in tasks.values() if task.status == AgentTaskStatus.READY]
+        if not ready:
+            return {
+                "tasks": tasks,
+                "task_results": task_results,
+                "agent_results": self._ordered_results(
+                    state["selected_agents"], tasks, task_results
+                ),
+                "pending_dependencies": pending,
+                "resolved_capabilities": capabilities,
+                "audit_events": events,
+            }
 
-        for task in tasks.values():
-            if task.status != AgentTaskStatus.READY:
-                continue
+        executor = ThreadPoolExecutor(
+            max_workers=min(self.config.max_parallel_agents, len(ready)),
+            thread_name_prefix="specialist",
+        )
+        futures = {}
+        for task in ready:
             if task.attempt > self.config.max_task_attempts:
                 raise ModelGatewayError("A specialist exceeded the allowed number of attempts.")
             try:
                 agent = self.agents[task.agent]
             except KeyError as exc:
                 raise ModelGatewayError("A selected specialist is not available.") from exc
-
             task.status = AgentTaskStatus.RUNNING
             events.append(
                 self._event(
@@ -278,14 +308,57 @@ class AgentOrchestrator:
                     details={"attempt": task.attempt},
                 )
             )
-            outcome = agent.run_task(task)
+            context = copy_context()
+            future = executor.submit(context.run, self._execute_task, task, agent)
+            futures[future] = task.task_id
+
+        done, not_done = wait(
+            futures,
+            timeout=self.config.agent_timeout_seconds,
+        )
+        outcomes = {futures[future]: future.result() for future in done}
+        timed_out = {futures[future] for future in not_done}
+        for future in not_done:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+
+        fatal_failure = False
+        for task in ready:
+            if task.task_id in timed_out:
+                task.status = AgentTaskStatus.TIMED_OUT
+                events.append(
+                    self._event(
+                        state,
+                        "task.timed_out",
+                        task.agent.value,
+                        task_id=task.task_id,
+                        details={"timeout_seconds": self.config.agent_timeout_seconds},
+                    )
+                )
+                fatal_failure = fatal_failure or self._task_failure_is_required(state, task)
+                continue
+
+            outcome, final_attempt, retry_errors, duration_ms = outcomes[task.task_id]
+            task.attempt = final_attempt
+            for attempt, error_code in retry_errors:
+                events.append(
+                    self._event(
+                        state,
+                        "task.retry_scheduled",
+                        task.agent.value,
+                        task_id=task.task_id,
+                        details={"attempt": attempt, "error_code": error_code},
+                    )
+                )
 
             if isinstance(outcome, CompletedInvocation):
                 task.status = AgentTaskStatus.COMPLETED
                 task_results[task.task_id] = outcome.result
                 for capability in outcome.capabilities:
-                    self._validate_produced_capability(task, capability)
-                    capabilities[capability.capability] = capability
+                    definition = self._validate_produced_capability(task, capability)
+                    fingerprint = self._capability_input_fingerprint(state, definition)
+                    capability.input_fingerprint = fingerprint
+                    capabilities[self._capability_key(capability.capability, fingerprint)] = capability
                 events.append(
                     self._event(
                         state,
@@ -294,6 +367,8 @@ class AgentOrchestrator:
                         task_id=task.task_id,
                         details={
                             "blocked": outcome.result.blocked,
+                            "duration_ms": duration_ms,
+                            "attempts": final_attempt,
                             "capabilities": [
                                 item.capability.value for item in outcome.capabilities
                             ],
@@ -314,9 +389,31 @@ class AgentOrchestrator:
                                 "request_id": request.request_id,
                                 "capability": request.capability.value,
                                 "reason_code": request.reason_code,
+                                "required": request.required,
                             },
                         )
                     )
+            elif isinstance(outcome, NeedsInputInvocation):
+                task.status = AgentTaskStatus.NEEDS_INPUT
+                task_results[task.task_id] = AgentResult(
+                    agent=task.agent,
+                    summary="Additional information is needed before this specialist can continue.",
+                    rationale=[outcome.reason_code],
+                    confidence=1.0,
+                    data={"needs_input": True, "questions": outcome.questions},
+                )
+                events.append(
+                    self._event(
+                        state,
+                        "task.needs_input",
+                        task.agent.value,
+                        task_id=task.task_id,
+                        details={
+                            "reason_code": outcome.reason_code,
+                            "question_count": len(outcome.questions),
+                        },
+                    )
+                )
             elif isinstance(outcome, FailedInvocation):
                 task.status = AgentTaskStatus.FAILED
                 events.append(
@@ -328,12 +425,16 @@ class AgentOrchestrator:
                         details={
                             "error_code": outcome.error_code,
                             "retryable": outcome.retryable,
+                            "attempts": final_attempt,
                         },
                     )
                 )
-                raise ModelGatewayError("A specialist could not complete its assigned task.")
+                fatal_failure = fatal_failure or self._task_failure_is_required(state, task)
             else:
                 raise ModelGatewayError("A specialist returned an unsupported result type.")
+
+        if fatal_failure:
+            raise ModelGatewayError("A required specialist could not complete its assigned task.")
 
         return {
             "tasks": tasks,
@@ -346,11 +447,73 @@ class AgentOrchestrator:
             "audit_events": events,
         }
 
+    def _execute_task(self, task: AgentTask, agent: BaseAgent):
+        started = perf_counter()
+        retry_errors: list[tuple[int, str]] = []
+        final_attempt = task.attempt
+        while final_attempt <= self.config.max_task_attempts:
+            try:
+                outcome = agent.run_task(task.model_copy(update={"attempt": final_attempt}))
+            except (ModelGatewayError, RetrievalError) as exc:
+                if final_attempt >= self.config.max_task_attempts:
+                    outcome = FailedInvocation(
+                        error_code=type(exc).__name__,
+                        retryable=True,
+                        safe_message="The specialist could not complete after bounded retries.",
+                    )
+                    break
+                retry_errors.append((final_attempt + 1, type(exc).__name__))
+                sleep(self.config.retry_backoff_seconds * (2 ** (final_attempt - 1)))
+                final_attempt += 1
+                continue
+            if (
+                isinstance(outcome, FailedInvocation)
+                and outcome.retryable
+                and final_attempt < self.config.max_task_attempts
+            ):
+                retry_errors.append((final_attempt + 1, outcome.error_code))
+                sleep(self.config.retry_backoff_seconds * (2 ** (final_attempt - 1)))
+                final_attempt += 1
+                continue
+            break
+        return (
+            outcome,
+            final_attempt,
+            retry_errors,
+            round((perf_counter() - started) * 1000, 2),
+        )
+
+    @staticmethod
+    def _task_failure_is_required(state: OrchestratorState, task: AgentTask) -> bool:
+        if task.requested_by is None:
+            return True
+        provider_edges = [
+            edge
+            for edge in state.get("dependency_edges", [])
+            if edge.provider_task_id == task.task_id
+        ]
+        requests = [
+            request
+            for request in state.get("pending_dependencies", [])
+            if any(
+                edge.requester_task_id == request.requester_task_id
+                and edge.capability == request.capability
+                for edge in provider_edges
+            )
+        ]
+        return not requests or any(request.required for request in requests)
+
     def _stage_after_tasks(self, state: OrchestratorState) -> str:
         if state.get("pending_dependencies"):
             return "resolve"
         statuses = {task.status for task in state["tasks"].values()}
-        if statuses.issubset({AgentTaskStatus.COMPLETED}):
+        if statuses.issubset(
+            {
+                AgentTaskStatus.COMPLETED,
+                AgentTaskStatus.NEEDS_INPUT,
+                AgentTaskStatus.CANCELLED,
+            }
+        ):
             return "complete"
         raise ModelGatewayError("The specialist scheduler reached an unresolved state.")
 
@@ -395,7 +558,14 @@ class AgentOrchestrator:
                 )
                 raise ModelGatewayError("A dependency request was not authorized.") from exc
 
-            existing = capabilities.get(request.capability)
+            fingerprint = self._capability_input_fingerprint(state, definition)
+            request = request.model_copy(update={"input_fingerprint": fingerprint})
+            capability_key = self._capability_key(request.capability, fingerprint)
+            existing = (
+                capabilities.get(capability_key)
+                if definition.cacheable_within_run
+                else None
+            )
             if existing is not None:
                 self._validate_dependency_fields(request, existing)
                 requester_task.resolved_dependencies[request.capability] = existing
@@ -411,6 +581,7 @@ class AgentOrchestrator:
                         requester_task_id=request.requester_task_id,
                         provider_task_id=existing.provider_task_id,
                         resolution=resolution_type,
+                        input_fingerprint=fingerprint,
                     )
                 )
                 events.append(
@@ -424,6 +595,7 @@ class AgentOrchestrator:
                             "request_id": request.request_id,
                             "capability": request.capability.value,
                             "resolution": resolution_type,
+                            "input_fingerprint": fingerprint,
                         },
                     )
                 )
@@ -441,6 +613,13 @@ class AgentOrchestrator:
 
             provider_task = self._find_task_by_agent(tasks, provider_agent)
             if provider_task is None:
+                provider_call_count = sum(
+                    1 for task in tasks.values() if task.agent == provider_agent
+                )
+                if provider_call_count >= definition.maximum_calls_per_run:
+                    raise ModelGatewayError(
+                        "A capability exceeded its maximum provider calls per run."
+                    )
                 provider_task = self._create_task(
                     state,
                     provider_agent,
@@ -456,6 +635,7 @@ class AgentOrchestrator:
                         requester_task_id=request.requester_task_id,
                         provider_task_id=provider_task.task_id,
                         resolution="scheduled",
+                        input_fingerprint=fingerprint,
                     )
                 )
                 events.append(
@@ -469,6 +649,7 @@ class AgentOrchestrator:
                             "request_id": request.request_id,
                             "capability": request.capability.value,
                             "provider": provider_agent.value,
+                            "input_fingerprint": fingerprint,
                         },
                     )
                 )
@@ -489,9 +670,56 @@ class AgentOrchestrator:
                 AgentTaskStatus.TIMED_OUT,
                 AgentTaskStatus.CANCELLED,
             }:
-                raise ModelGatewayError("A required dependency provider did not complete.")
+                if request.required:
+                    raise ModelGatewayError("A required dependency provider did not complete.")
+                requester_task.dependency_warnings.append(
+                    f"Optional capability {request.capability.value} was unavailable."
+                )
+                provider_task.status = AgentTaskStatus.CANCELLED
+                resolutions.append(
+                    DependencyResolution(
+                        request_id=request.request_id,
+                        capability=request.capability,
+                        requester_task_id=request.requester_task_id,
+                        provider_task_id=provider_task.task_id,
+                        resolution="rejected",
+                        reason_code="OPTIONAL_PROVIDER_UNAVAILABLE",
+                        input_fingerprint=fingerprint,
+                    )
+                )
+                events.append(
+                    self._event(
+                        state,
+                        "dependency.rejected",
+                        "orchestrator",
+                        task_id=request.requester_task_id,
+                        parent_task_id=provider_task.task_id,
+                        details={
+                            "request_id": request.request_id,
+                            "capability": request.capability.value,
+                            "reason_code": "OPTIONAL_PROVIDER_UNAVAILABLE",
+                        },
+                    )
+                )
+                continue
             if provider_task.status == AgentTaskStatus.COMPLETED:
-                raise ModelGatewayError("A dependency provider did not produce its capability.")
+                if request.required:
+                    raise ModelGatewayError("A dependency provider did not produce its capability.")
+                requester_task.dependency_warnings.append(
+                    f"Optional capability {request.capability.value} returned no result."
+                )
+                resolutions.append(
+                    DependencyResolution(
+                        request_id=request.request_id,
+                        capability=request.capability,
+                        requester_task_id=request.requester_task_id,
+                        provider_task_id=provider_task.task_id,
+                        resolution="rejected",
+                        reason_code="OPTIONAL_CAPABILITY_MISSING",
+                        input_fingerprint=fingerprint,
+                    )
+                )
+                continue
             unresolved.append(request)
 
         unresolved_requesters = {request.requester_task_id for request in unresolved}
@@ -618,6 +846,10 @@ class AgentOrchestrator:
                     item.model_dump(mode="json")
                     for item in state.get("dependency_resolutions", [])
                 ],
+                "dependency_edges": [
+                    item.model_dump(mode="json")
+                    for item in state.get("dependency_edges", [])
+                ],
                 "events": [item.model_dump(mode="json") for item in events],
             },
             blocked=compliance.blocked,
@@ -661,6 +893,13 @@ class AgentOrchestrator:
             agent=agent,
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
+            context_features={
+                "has_monthly_income": snapshot.monthly_income is not None,
+                "recurring_expense_count": len(snapshot.recurring_expenses),
+                "recent_transaction_count": len(snapshot.recent_transactions),
+                "goal_count": len(snapshot.goals),
+                "has_risk_tolerance": snapshot.risk_tolerance is not None,
+            },
             requested_by=requested_by,
         )
 
@@ -697,7 +936,7 @@ class AgentOrchestrator:
         self,
         task: AgentTask,
         result: CapabilityResult,
-    ) -> None:
+    ) -> CapabilityDefinition:
         try:
             definition = self.capability_registry.get(result.capability)
         except CapabilityRegistryError as exc:
@@ -714,6 +953,30 @@ class AgentOrchestrator:
             and task.agent not in definition.allowed_requesters
         ):
             raise ModelGatewayError("A specialist was not authorized to expose a tool capability.")
+        return definition
+
+    @staticmethod
+    def _capability_key(capability: CapabilityName, fingerprint: str) -> str:
+        return f"{capability.value}:{fingerprint}"
+
+    @staticmethod
+    def _capability_input_fingerprint(
+        state: OrchestratorState,
+        definition: CapabilityDefinition,
+    ) -> str:
+        snapshot = state["request"].snapshot.model_dump(mode="json")
+        values = {}
+        for field in definition.required_inputs:
+            if field == "sanitized_message":
+                values[field] = state["sanitized_message"]
+            elif field in snapshot:
+                values[field] = snapshot[field]
+            else:
+                raise ModelGatewayError(
+                    "A capability definition referenced an unavailable required input."
+                )
+        encoded = json.dumps(values, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        return sha256(encoded.encode("utf-8")).hexdigest()[:16]
 
     @staticmethod
     def _creates_cycle(existing: list[DependencyEdge], proposed: DependencyEdge) -> bool:
@@ -773,18 +1036,42 @@ class AgentOrchestrator:
     def handle(self, request: CoachRequest) -> CoachResponse:
         trace_id = get_correlation_id() or str(uuid4())
         executed_at = datetime.now(UTC).isoformat()
+        workflow_started = perf_counter()
         started_event = AuditEvent(
             trace_id=trace_id,
             event_type="workflow.started",
             actor="orchestrator",
             occurred_at=executed_at,
         )
-        result = self.graph.invoke(
-            {
-                "request": request,
-                "trace_id": trace_id,
-                "executed_at": executed_at,
-                "audit_events": [started_event],
-            }
-        )
-        return result["response"]
+        trace_token = self.gateway.bind_trace(trace_id)
+        try:
+            result = self.graph.invoke(
+                {
+                    "request": request,
+                    "trace_id": trace_id,
+                    "executed_at": executed_at,
+                    "audit_events": [started_event],
+                }
+            )
+            response = result["response"]
+            model_calls = self.gateway.snapshot(trace_id)
+            response.audit.update(
+                {
+                    "workflow_duration_ms": round(
+                        (perf_counter() - workflow_started) * 1000,
+                        2,
+                    ),
+                    "model_call_count": len(model_calls),
+                    "model_input_tokens": sum(
+                        int(call.get("input_tokens") or 0) for call in model_calls
+                    ),
+                    "model_output_tokens": sum(
+                        int(call.get("output_tokens") or 0) for call in model_calls
+                    ),
+                    "model_calls": model_calls,
+                }
+            )
+            return response
+        finally:
+            self.gateway.reset_trace(trace_token)
+            self.gateway.clear(trace_id)

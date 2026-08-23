@@ -1,3 +1,5 @@
+import time
+
 from pydantic import ValidationError
 
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
@@ -13,6 +15,7 @@ from app.core.schemas import (
     CompletedInvocation,
     DependencyEdge,
     DependencyRequest,
+    FailedInvocation,
     NeedsDependencyInvocation,
 )
 from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
@@ -307,3 +310,229 @@ def test_cycle_detector_accepts_chain_and_rejects_back_edge() -> None:
 
     assert AgentOrchestrator._creates_cycle([], first) is False
     assert AgentOrchestrator._creates_cycle([first], back_edge) is True
+
+
+def test_goal_budget_spending_dependency_chain_fans_in() -> None:
+    request = goal_request(requested_agents=["goal_strategy"])
+    payload = request.model_dump(mode="json")
+    payload["snapshot"]["recent_transactions"] = [
+        {
+            "description": "Groceries",
+            "category": "food",
+            "amount": {"amount": 300},
+            "occurred_on": "2026-08-02",
+        }
+    ]
+    request = CoachRequest.model_validate(payload)
+
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=LocalFixtureModelGateway(),
+    ).handle(request)
+
+    assert response.selected_agents == ["goal_strategy", "budget", "spending"]
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["spending_context"]["category_totals"] == {"food": 300.0}
+    goal = next(result for result in response.agent_results if result.agent == "goal_strategy")
+    assert goal.data["feasibility"][0]["status"] == "shortfall"
+    resolutions = response.audit["dependency_resolutions"]
+    assert {item["capability"] for item in resolutions} == {
+        "monthly_savings_capacity",
+        "transaction_category_totals",
+    }
+    assert all(item["input_fingerprint"] for item in resolutions)
+
+
+def test_missing_budget_input_returns_typed_needs_input_result() -> None:
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=LocalFixtureModelGateway(),
+    ).handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="needs-input",
+            message="Create a budget",
+            requested_agents=["budget"],
+        )
+    )
+
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["needs_input"] is True
+    assert budget.data["questions"] == [
+        "What is your monthly income before creating this budget?"
+    ]
+    assert "task.needs_input" in {
+        event["event_type"] for event in response.audit["events"]
+    }
+
+
+class DelayedCompletedAgent:
+    def __init__(self, name: AgentName, starts: dict[AgentName, float]) -> None:
+        self.name = name
+        self.starts = starts
+
+    def run_task(self, task):
+        self.starts[self.name] = time.perf_counter()
+        time.sleep(0.08)
+        return CompletedInvocation(
+            result=AgentResult(
+                agent=self.name,
+                summary=f"{self.name.value} completed",
+                rationale=["parallel test"],
+                confidence=1,
+            )
+        )
+
+
+def test_independent_ready_agents_execute_concurrently() -> None:
+    starts: dict[AgentName, float] = {}
+    orchestrator = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture", MAX_PARALLEL_AGENTS=2),
+        gateway=LocalFixtureModelGateway(),
+        agents={
+            AgentName.SPENDING: DelayedCompletedAgent(AgentName.SPENDING, starts),
+            AgentName.INVESTMENT_EDUCATION: DelayedCompletedAgent(
+                AgentName.INVESTMENT_EDUCATION,
+                starts,
+            ),
+        },
+    )
+    orchestrator.handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="parallel",
+            message="Summarize spending and explain investment risk",
+            requested_agents=["spending", "investment_education"],
+        )
+    )
+
+    assert abs(starts[AgentName.SPENDING] - starts[AgentName.INVESTMENT_EDUCATION]) < 0.04
+
+
+class RetryOnceAgent:
+    name = AgentName.SPENDING
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def run_task(self, task):
+        self.calls += 1
+        if self.calls == 1:
+            raise ModelGatewayError("transient")
+        return CompletedInvocation(
+            result=AgentResult(
+                agent=self.name,
+                summary="Recovered",
+                rationale=["bounded retry"],
+                confidence=1,
+            )
+        )
+
+
+def test_retryable_specialist_failure_is_retried_with_trace_event() -> None:
+    agent = RetryOnceAgent()
+    response = AgentOrchestrator(
+        config=Settings(
+            MODEL_PROVIDER="local_fixture",
+            MAX_TASK_ATTEMPTS=2,
+            RETRY_BACKOFF_SECONDS=0,
+        ),
+        gateway=LocalFixtureModelGateway(),
+        agents={AgentName.SPENDING: agent},
+    ).handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="retry",
+            message="Summarize spending",
+            requested_agents=["spending"],
+        )
+    )
+
+    assert agent.calls == 2
+    assert "task.retry_scheduled" in {
+        event["event_type"] for event in response.audit["events"]
+    }
+
+
+class SlowAgent:
+    name = AgentName.SPENDING
+
+    def run_task(self, task):
+        time.sleep(0.1)
+        return CompletedInvocation(
+            result=AgentResult(
+                agent=self.name,
+                summary="Too late",
+                rationale=["timeout test"],
+                confidence=1,
+            )
+        )
+
+
+def test_required_specialist_timeout_fails_closed() -> None:
+    orchestrator = AgentOrchestrator(
+        config=Settings(
+            MODEL_PROVIDER="local_fixture",
+            AGENT_TIMEOUT_SECONDS=0.01,
+            MAX_TASK_ATTEMPTS=1,
+        ),
+        gateway=LocalFixtureModelGateway(),
+        agents={AgentName.SPENDING: SlowAgent()},
+    )
+
+    try:
+        orchestrator.handle(
+            CoachRequest(
+                user_id="u1",
+                session_id="timeout",
+                message="Summarize spending",
+                requested_agents=["spending"],
+            )
+        )
+    except ModelGatewayError as exc:
+        assert "required specialist" in str(exc)
+    else:
+        raise AssertionError("Expected a required specialist timeout to fail closed")
+
+
+class UnavailableSpendingAgent:
+    name = AgentName.SPENDING
+
+    def run_task(self, task):
+        return FailedInvocation(
+            error_code="OPTIONAL_CONTEXT_UNAVAILABLE",
+            retryable=False,
+            safe_message="Optional spending context is unavailable.",
+        )
+
+
+def test_optional_dependency_failure_allows_budget_and_goal_to_continue() -> None:
+    request = goal_request(requested_agents=["goal_strategy"])
+    payload = request.model_dump(mode="json")
+    payload["snapshot"]["recent_transactions"] = [
+        {
+            "description": "Groceries",
+            "category": "food",
+            "amount": {"amount": 300},
+            "occurred_on": "2026-08-02",
+        }
+    ]
+    request = CoachRequest.model_validate(payload)
+    orchestrator = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=LocalFixtureModelGateway(),
+    )
+    orchestrator.agents[AgentName.SPENDING] = UnavailableSpendingAgent()
+
+    response = orchestrator.handle(request)
+
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["dependency_warnings"] == [
+        "Optional capability transaction_category_totals was unavailable."
+    ]
+    assert response.blocked is False
+    assert any(
+        item["resolution"] == "rejected"
+        and item["reason_code"] == "OPTIONAL_PROVIDER_UNAVAILABLE"
+        for item in response.audit["dependency_resolutions"]
+    )

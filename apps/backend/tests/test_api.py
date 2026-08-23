@@ -28,7 +28,15 @@ class StubAIServiceClient:
                     "published_at": "2026-05-07",
                 }
             ],
-            audit={"source": "stub"},
+            audit={
+                "trace_id": f"trace-{request.session_id}",
+                "source": "stub",
+                "model_provider": "local_fixture",
+                "model_id": "fixture",
+                "prompt_set_version": "v3",
+                "dependency_resolutions": [],
+                "events": [],
+            },
         )
 
 
@@ -78,6 +86,10 @@ def test_coach_forwards_valid_request() -> None:
             "/api/users/u1/chat-sessions/s1",
             headers={"X-API-Key": settings.api_key},
         )
+        trace = client.get(
+            "/api/coach/traces/trace-s1?user_id=u1",
+            headers={"X-API-Key": settings.api_key},
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -98,6 +110,30 @@ def test_coach_forwards_valid_request() -> None:
     assert conversation.json()["messages"][1]["sources"][0]["source_id"] == (
         "cpf-beginners-guide-to-investing"
     )
+    assert trace.status_code == 200
+    assert trace.json()["trace_id"] == "trace-s1"
+    assert trace.json()["session_id"] == "s1"
+    assert trace.json()["prompt_set_version"] == "v3"
+    assert trace.json()["selected_agents"] == ["budget"]
+
+
+def test_trace_is_isolated_to_its_profile() -> None:
+    app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
+    try:
+        response = client.post(
+            "/api/coach",
+            headers={"X-API-Key": settings.api_key},
+            json={"user_id": "owner", "session_id": "owned", "message": "Budget"},
+        )
+        trace = client.get(
+            "/api/coach/traces/trace-owned?user_id=other-user",
+            headers={"X-API-Key": settings.api_key},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert trace.status_code == 404
 
 
 def test_coach_hides_downstream_failure_details() -> None:

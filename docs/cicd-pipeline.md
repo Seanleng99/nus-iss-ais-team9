@@ -15,7 +15,8 @@ flowchart LR
   AUTO --> BUILD["Build selected service images"]
   BUILD --> ECR["Amazon ECR"]
   ECR --> SCAN["ECR and Inspector vulnerability gate"]
-  SCAN --> MIGRATE["Conditional Alembic migration task"]
+  SCAN --> CONFIG["Rendered task configuration gate"]
+  CONFIG --> MIGRATE["Alembic migration for backend releases"]
   MIGRATE --> RDS["Private RDS PostgreSQL"]
   MIGRATE --> ECS["Selected ECS Fargate services"]
   ECS --> SMOKE["Health and prompt-injection smoke tests"]
@@ -27,7 +28,7 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 ## Workflow Files
 
 - `.github/workflows/ci.yml`: repository-owned change detection; selected Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; selected hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. Weekly and manual runs select the complete CI suite for drift observation.
-- `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, selective immutable container builds, ECR publishing and scanning, conditional Alembic migration, selective ECS deployment through the `demo` environment, smoke testing, and targeted service rollback.
+- `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, selective immutable container builds, ECR publishing and scanning, rendered task-configuration validation, migration before every backend deployment, selective ECS deployment through the `demo` environment, live Education RAG and trace-aware smoke testing, and targeted service rollback.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
 
@@ -43,7 +44,7 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 | `apps/ai-service/**` or its Dockerfile | AI tests/evals, SAST, integration, AI container | AI image and ECS service |
 | `infra/llmsecops/**` | AI tests and evaluation gate | No application deployment |
 | `infra/aws/**` | CloudFormation and Compose validation | No application deployment |
-| CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; no migration unless migration paths also changed |
+| CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; backend deployment always runs the migration task |
 | `docs/**` only | No workflow | No release |
 
 Unknown executable or configuration paths take the conservative complete-service route. Root documentation and repository metadata run only change detection and do not publish application images.
@@ -113,6 +114,7 @@ The versioned policy requires:
 - Budget calculation accuracy of 100 percent within SGD 1 tolerance.
 - Controlled-source recall@3 of at least 85 percent.
 - Guardrail control pass rate of 100 percent across direct injection, PII redaction, indirect RAG injection, and tool permissions.
+- Dynamic dependency accuracy of 100 percent across capability selection, multi-hop scheduling, and typed user-input requests.
 - Zero critical and zero high ECR image findings.
 
 Every evaluation run uploads a JSON evidence artifact retained for 30 days. Expand the JSONL datasets before final evaluation; threshold changes require review.
@@ -121,6 +123,6 @@ The versioned policy also records metric baselines and maximum permitted regress
 
 ## Operational Notes
 
-The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads task definitions and changes images only for selected services. A migration-file change runs Alembic before the selected backend update. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
+The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads task definitions and changes images only for selected services. Before an AI update, it verifies the rendered deployment still selects Bedrock generation, prompt set v3, Bedrock RAG, and a non-empty Education Knowledge Base ID. Every backend deployment runs Alembic before updating the service. Post-deployment smoke verifies live Education citations and retrieves the persisted prompt-v3 decision trace. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
 
 The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. Inspector and CloudWatch continue monitoring after release because new vulnerabilities and behavioral drift can appear later.

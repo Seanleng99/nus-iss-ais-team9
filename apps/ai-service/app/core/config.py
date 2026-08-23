@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
     prompt_set_version: str = Field(
-        default="v2",
-        pattern=r"^v2$",
+        default="v3",
+        pattern=r"^v(?:2|3)$",
         alias="PROMPT_SET_VERSION",
     )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")
@@ -35,6 +35,43 @@ class Settings(BaseSettings):
         alias="MAX_DEPENDENCY_ROUNDS",
     )
     max_task_attempts: int = Field(default=3, ge=1, le=10, alias="MAX_TASK_ATTEMPTS")
+    max_parallel_agents: int = Field(default=4, ge=1, le=8, alias="MAX_PARALLEL_AGENTS")
+    agent_timeout_seconds: float = Field(
+        default=20.0,
+        gt=0,
+        le=120,
+        alias="AGENT_TIMEOUT_SECONDS",
+    )
+    retry_backoff_seconds: float = Field(
+        default=0.25,
+        ge=0,
+        le=10,
+        alias="RETRY_BACKOFF_SECONDS",
+    )
+    max_model_calls_per_run: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        alias="MAX_MODEL_CALLS_PER_RUN",
+    )
+    max_model_tokens_per_run: int = Field(
+        default=16000,
+        ge=100,
+        le=200000,
+        alias="MAX_MODEL_TOKENS_PER_RUN",
+    )
+    model_connect_timeout_seconds: float = Field(
+        default=3.0,
+        gt=0,
+        le=30,
+        alias="MODEL_CONNECT_TIMEOUT_SECONDS",
+    )
+    model_read_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        le=120,
+        alias="MODEL_READ_TIMEOUT_SECONDS",
+    )
     vector_store_url: str = Field(default="http://localhost:6333", alias="VECTOR_STORE_URL")
     rag_provider: str = Field(default="local_fixture", alias="RAG_PROVIDER")
     education_knowledge_base_id: str | None = Field(

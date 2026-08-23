@@ -244,3 +244,30 @@ class ChatMessageRecord(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     chat_session: Mapped[ChatSessionRecord] = relationship(back_populates="messages")
+
+
+class OrchestrationTraceRecord(Base):
+    __tablename__ = "orchestration_traces"
+    __table_args__ = (
+        Index("ix_orchestration_traces_session_created", "session_id", "created_at"),
+    )
+
+    trace_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    assistant_message_id: Mapped[UUID] = mapped_column(
+        ForeignKey("chat_messages.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    selected_agents: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    agent_results: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    audit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    model_provider: Mapped[str | None] = mapped_column(String(64))
+    model_id: Mapped[str | None] = mapped_column(String(256))
+    prompt_set_version: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

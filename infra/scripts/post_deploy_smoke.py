@@ -99,6 +99,45 @@ def check_model_backed_coaching(
         f"expected model provider {expected_model_provider!r}, "
         f"received {audit.get('model_provider')!r}"
     )
+    trace_id = audit.get("trace_id")
+    assert trace_id, "model-backed response did not include a trace ID"
+    trace_url = (
+        f"{url.removesuffix('/coach')}/coach/traces/"
+        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id=deployment-smoke-test"
+    )
+    trace_status, trace_body = request(trace_url, api_key=api_key)
+    assert trace_status == 200, f"trace retrieval returned HTTP {trace_status}"
+    trace = json.loads(trace_body)
+    assert trace.get("trace_id") == trace_id, "persisted trace ID did not match"
+    assert trace.get("prompt_set_version") == "v3", "unexpected persisted prompt version"
+    assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
+
+
+def check_investment_education_rag(url: str, api_key: str) -> None:
+    payload = {
+        "user_id": "deployment-smoke-test",
+        "session_id": "deployment-rag-smoke-test",
+        "message": "Explain diversification using the approved education sources.",
+        "snapshot": {"risk_tolerance": "moderate"},
+        "requested_agents": ["investment_education"],
+    }
+    status, body = request(url, method="POST", body=payload, api_key=api_key)
+    assert status == 200, f"expected HTTP 200, received {status}"
+    response = json.loads(body)
+    assert response.get("blocked") is False, "approved education request was blocked"
+    assert response.get("sources"), "Bedrock Knowledge Base returned no approved sources"
+    investment = next(
+        (
+            item
+            for item in response.get("agent_results", [])
+            if item.get("agent") == "investment_education"
+        ),
+        None,
+    )
+    assert investment is not None, "investment education agent result was absent"
+    assert investment.get("data", {}).get("evidence_status") == "grounded", (
+        "investment education response was not grounded"
+    )
 
 
 def check_persistence(base_url: str, api_key: str) -> None:
@@ -213,6 +252,10 @@ def main() -> None:
         retry(
             lambda: check_prompt_injection(args.coach_url, args.api_key),
             "prompt-injection blocking",
+        )
+        retry(
+            lambda: check_investment_education_rag(args.coach_url, args.api_key),
+            "Bedrock Knowledge Base retrieval",
         )
     if args.persistence_base_url:
         if not args.api_key:

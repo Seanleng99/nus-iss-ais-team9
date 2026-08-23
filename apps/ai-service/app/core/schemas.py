@@ -104,6 +104,7 @@ class CapabilityResult(StrictContractModel):
     data: dict[str, Any]
     evidence_refs: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    input_fingerprint: str | None = None
 
 
 class DependencyRequest(StrictContractModel):
@@ -114,6 +115,7 @@ class DependencyRequest(StrictContractModel):
     reason_code: str = Field(min_length=1, max_length=128)
     required_output_fields: list[str] = Field(default_factory=list, max_length=20)
     required: bool = True
+    input_fingerprint: str | None = None
 
 
 class DependencyResolution(StrictContractModel):
@@ -123,6 +125,7 @@ class DependencyResolution(StrictContractModel):
     provider_task_id: str | None = None
     resolution: Literal["reused", "scheduled", "resolved", "rejected"]
     reason_code: str | None = None
+    input_fingerprint: str | None = None
 
 
 class DependencyEdge(StrictContractModel):
@@ -136,10 +139,12 @@ class AgentTask(StrictContractModel):
     agent: AgentName
     sanitized_message: str
     input_data: dict[str, Any] = Field(default_factory=dict)
+    context_features: dict[str, Any] = Field(default_factory=dict)
     status: AgentTaskStatus = AgentTaskStatus.READY
     attempt: int = Field(default=1, ge=1, le=10)
     requested_by: AgentName | None = None
     resolved_dependencies: dict[CapabilityName, CapabilityResult] = Field(default_factory=dict)
+    dependency_warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_role_scope(self):
@@ -175,6 +180,12 @@ class NeedsDependencyInvocation(StrictContractModel):
     dependency_requests: list[DependencyRequest] = Field(min_length=1, max_length=4)
 
 
+class NeedsInputInvocation(StrictContractModel):
+    status: Literal["needs_input"] = "needs_input"
+    reason_code: str = Field(min_length=1, max_length=128)
+    questions: list[str] = Field(min_length=1, max_length=4)
+
+
 class FailedInvocation(StrictContractModel):
     status: Literal["failed"] = "failed"
     error_code: str = Field(min_length=1, max_length=128)
@@ -183,9 +194,37 @@ class FailedInvocation(StrictContractModel):
 
 
 AgentInvocationResult = Annotated[
-    CompletedInvocation | NeedsDependencyInvocation | FailedInvocation,
+    CompletedInvocation | NeedsDependencyInvocation | NeedsInputInvocation | FailedInvocation,
     Field(discriminator="status"),
 ]
+
+
+class DependencyRequestDraft(StrictContractModel):
+    capability: CapabilityName
+    reason_code: str = Field(min_length=1, max_length=128)
+    required_output_fields: list[str] = Field(default_factory=list, max_length=20)
+    required: bool = True
+
+
+class DependencyPlanningDecision(StrictContractModel):
+    status: Literal["ready", "needs_dependency", "needs_input"]
+    requests: list[DependencyRequestDraft] = Field(default_factory=list, max_length=4)
+    questions: list[str] = Field(default_factory=list, max_length=4)
+    reason_code: str | None = Field(default=None, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_status_payload(self):
+        if self.status == "ready" and (self.requests or self.questions):
+            raise ValueError("ready dependency decisions cannot include requests or questions")
+        if self.status == "needs_dependency" and not self.requests:
+            raise ValueError("needs_dependency decisions require at least one request")
+        if self.status == "needs_dependency" and self.questions:
+            raise ValueError("dependency decisions cannot also request user input")
+        if self.status == "needs_input" and not self.questions:
+            raise ValueError("needs_input decisions require at least one question")
+        if self.status == "needs_input" and self.requests:
+            raise ValueError("user-input decisions cannot also request dependencies")
+        return self
 
 
 class CapabilityDefinition(StrictContractModel):

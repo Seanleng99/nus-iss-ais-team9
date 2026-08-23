@@ -186,7 +186,7 @@ Resources:
             - Name: MODEL_ID
               Value: !Ref BedrockModelId
             - Name: PROMPT_SET_VERSION
-              Value: v2
+              Value: v3
             - Name: RAG_PROVIDER
               Value: bedrock
             - Name: EDUCATION_KNOWLEDGE_BASE_ID

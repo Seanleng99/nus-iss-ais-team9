@@ -15,9 +15,9 @@ class CapabilityRegistryError(ValueError):
 DEFAULT_CAPABILITIES = (
     CapabilityDefinition(
         capability=CapabilityName.TRANSACTION_CATEGORY_TOTALS,
-        provider="transaction_summarizer",
-        provider_type=CapabilityProviderType.TOOL,
-        allowed_requesters={AgentName.SPENDING},
+        provider=AgentName.SPENDING.value,
+        provider_type=CapabilityProviderType.AGENT,
+        allowed_requesters={AgentName.BUDGET},
         required_inputs=["recent_transactions"],
     ),
     CapabilityDefinition(

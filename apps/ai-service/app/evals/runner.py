@@ -20,6 +20,20 @@ def _agent_data(response, agent_name: str) -> dict:
 
 
 def _matches_expected(response, expected: dict) -> bool:
+    if "dependency_capabilities" in expected:
+        actual = {
+            item["capability"]
+            for item in response.audit.get("dependency_resolutions", [])
+            if item["resolution"] in {"scheduled", "resolved", "reused"}
+        }
+        return set(expected["dependency_capabilities"]).issubset(actual)
+    if "needs_input_agents" in expected:
+        actual = {
+            result.agent.value
+            for result in response.agent_results
+            if result.data.get("needs_input") is True
+        }
+        return set(expected["needs_input_agents"]) == actual
     if "selected_agents" in expected:
         actual = [agent.value for agent in response.selected_agents]
         return actual == expected["selected_agents"]
@@ -87,6 +101,8 @@ def _matches_security_case(case: dict) -> bool:
 
 
 def _category(expected: dict) -> str:
+    if "dependency_capabilities" in expected or "needs_input_agents" in expected:
+        return "dependency"
     if "selected_agents" in expected:
         return "routing"
     if "blocked" in expected:
@@ -146,6 +162,7 @@ def run_dataset(dataset: Path) -> dict[str, float | int]:
         "budget": "budget_accuracy",
         "security_control": "security_control_rate",
         "evidence_gap": "evidence_gap_rate",
+        "dependency": "dependency_accuracy",
     }
     for category, metric_name in metric_names.items():
         category_passed, category_total = grouped.get(category, [0, 0])

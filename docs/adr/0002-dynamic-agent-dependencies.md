@@ -16,14 +16,18 @@ Specialists request capabilities through a typed `needs_dependency` outcome. The
 invoke, or transfer control to another specialist. The orchestrator owns a deterministic capability
 registry that maps each capability to its provider and allowed requesters.
 
-For each request, the orchestrator validates authorization and required fields, reuses a completed
-capability when available, otherwise schedules its provider, records the dependency edge, detects
-cycles, and resumes the requester with only the validated `CapabilityResult`. Dependency rounds and
-task attempts are bounded by configuration.
+For each request, the orchestrator validates authorization and required fields, fingerprints the
+provider input, reuses a matching completed capability when available, otherwise schedules its
+provider, records the dependency edge, detects cycles, and resumes the requester with only the
+validated `CapabilityResult`. Dependency rounds, provider calls, task attempts, agent duration,
+model calls, and model tokens are bounded by configuration.
 
-The initial vertical slice is Goal Strategy requesting `monthly_savings_capacity`. Budget produces
-that capability from `budget_calculator`. Risk and Compliance remains a mandatory fixed release gate
-and is not selected through the dependency mechanism.
+Prompt set v3 allows eligible specialists to produce a schema-validated `ready`,
+`needs_dependency`, or `needs_input` planning result. The implemented chain is Goal Strategy
+requesting `monthly_savings_capacity` from Budget; Budget can in turn request
+`transaction_category_totals` from Spending when recent transactions are needed. Independent ready
+tasks run concurrently. Risk and Compliance remains a mandatory fixed release gate and is not
+selected through the dependency mechanism.
 
 ## Consequences
 
@@ -33,6 +37,6 @@ and is not selected through the dependency mechanism.
 - A dynamic dependency can require an additional model call and increase latency.
 - Cycles, duplicate work, unauthorized capabilities, missing fields, and failed required providers
   must fail closed.
-- The active v2 narrative prompt contract remains unchanged; dependency discovery is currently a
-  typed specialist preflight. A future model-generated dependency contract requires a versioned
-  prompt-set change and evaluation evidence.
+- Prompt set v2 remains available as the deterministic compatibility path. Prompt set v3 makes
+  dependency discovery model-generated while keeping registry authorization and scheduling under
+  deterministic orchestrator control.

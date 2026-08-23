@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -81,3 +82,17 @@ class CoachResponse(BaseModel):
     sources: list[SourceCitation] = Field(default_factory=list)
     audit: dict[str, Any]
     blocked: bool = False
+
+
+class OrchestrationTraceResponse(BaseModel):
+    trace_id: str
+    session_id: str
+    assistant_message_id: str
+    selected_agents: list[AgentName]
+    agent_results: list[AgentResult]
+    audit: dict[str, Any]
+    blocked: bool
+    model_provider: str | None = None
+    model_id: str | None = None
+    prompt_set_version: str | None = None
+    created_at: datetime

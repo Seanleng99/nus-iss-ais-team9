@@ -53,7 +53,7 @@ Do not inject `AI_SERVICE_API_KEY` into Streamlit. Do not place runtime AWS cred
 
 ## Database Migrations
 
-The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. An automatic release runs the one-shot ECS migration task only when `apps/backend/migrations/**` or `apps/backend/alembic.ini` changed. It checks the migration exit code before updating the selected backend service.
+The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. Every automatic backend release runs the one-shot ECS migration task, even when no migration path was detected, and checks its exit code before updating the backend service. This makes migration state a deployment invariant and protects against path-classification drift.
 
 Application releases build, scan, and update only services selected by the CI change manifest. Unchanged ECS task definitions remain active. If post-deployment checks fail, explicit rollback restores only services whose new task definitions were successfully deployed; ECS circuit-breaker rollback remains responsible for an individual service update that fails before completion.
 

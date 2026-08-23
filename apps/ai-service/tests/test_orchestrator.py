@@ -16,8 +16,8 @@ def local_orchestrator() -> AgentOrchestrator:
     return AgentOrchestrator(config=config, gateway=LocalFixtureModelGateway())
 
 
-def test_prompt_catalog_defaults_to_active_v2() -> None:
-    assert PromptCatalog().version == "v2"
+def test_prompt_catalog_defaults_to_active_v3() -> None:
+    assert PromptCatalog().version == "v3"
 
 
 def test_settings_rejects_superseded_v1_prompt() -> None:
@@ -229,7 +229,7 @@ def test_compliance_review_receives_investment_evidence() -> None:
     assert evidence["contexts"]
 
 
-def test_investment_rag_reports_v2_prompt_set() -> None:
+def test_investment_rag_reports_v3_prompt_set_and_model_telemetry() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s9",
@@ -238,5 +238,25 @@ def test_investment_rag_reports_v2_prompt_set() -> None:
     )
 
     response = local_orchestrator().handle(request)
+
+    assert response.audit["prompt_set_version"] == "v3"
+    assert response.audit["model_call_count"] == len(response.audit["model_calls"])
+    assert response.audit["model_call_count"] >= 4
+    assert response.audit["workflow_duration_ms"] >= 0
+
+
+def test_v2_prompt_set_remains_available_for_rollback_compatibility() -> None:
+    orchestrator = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v2"),
+        gateway=LocalFixtureModelGateway(),
+    )
+    response = orchestrator.handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="v2-compatible",
+            message="Create a monthly budget",
+            snapshot={"monthly_income": {"amount": 4000}},
+        )
+    )
 
     assert response.audit["prompt_set_version"] == "v2"

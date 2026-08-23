@@ -20,6 +20,7 @@ from app.infrastructure.models import (
     FinancialGoalRecord,
     FinancialProfileRecord,
     MonthlyBudgetRecord,
+    OrchestrationTraceRecord,
     ProfileConsentRecord,
     ProfileDemographicRecord,
     TransactionRecord,
@@ -503,3 +504,53 @@ class SQLAlchemyChatRepository:
         chat_session.updated_at = datetime.now(UTC)
         self.session.flush()
         return message
+
+
+class SQLAlchemyOrchestrationTraceRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def create(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        assistant_message_id: UUID,
+        selected_agents: list[str],
+        agent_results: list[dict[str, Any]],
+        audit: dict[str, Any],
+        blocked: bool,
+    ) -> OrchestrationTraceRecord:
+        record = OrchestrationTraceRecord(
+            trace_id=trace_id,
+            session_id=session_id,
+            assistant_message_id=assistant_message_id,
+            selected_agents=selected_agents,
+            agent_results=agent_results,
+            audit=audit,
+            blocked=blocked,
+            model_provider=audit.get("model_provider"),
+            model_id=audit.get("model_id"),
+            prompt_set_version=audit.get("prompt_set_version"),
+        )
+        self.session.add(record)
+        self.session.flush()
+        return record
+
+    def get_for_user(
+        self,
+        user_id: str,
+        trace_id: str,
+    ) -> OrchestrationTraceRecord | None:
+        query = (
+            select(OrchestrationTraceRecord)
+            .join(
+                ChatSessionRecord,
+                ChatSessionRecord.id == OrchestrationTraceRecord.session_id,
+            )
+            .where(
+                OrchestrationTraceRecord.trace_id == trace_id,
+                ChatSessionRecord.user_id == user_id,
+            )
+        )
+        return self.session.scalar(query)

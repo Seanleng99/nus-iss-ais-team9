@@ -350,6 +350,24 @@ jobs:
           task-definition: ai-task-definition.json
           container-name: ${{ env.AI_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.ai-image }}
+          environment-variables: |
+            APP_ENV=demo
+            MODEL_PROVIDER=bedrock
+            PROMPT_SET_VERSION=v3
+            RAG_PROVIDER=bedrock
+      - name: Verify AI runtime configuration has not drifted
+        if: needs.release-gate.outputs.ai == 'true'
+        env:
+          RENDERED_AI_TASK: ${{ steps.render-ai.outputs.task-definition }}
+        run: >-
+          python infra/scripts/verify_ecs_task_config.py
+          --task-definition "$RENDERED_AI_TASK"
+          --container "$AI_CONTAINER_NAME"
+          --expect APP_ENV=demo
+          --expect MODEL_PROVIDER=bedrock
+          --expect PROMPT_SET_VERSION=v3
+          --expect RAG_PROVIDER=bedrock
+          --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID
       - name: Deploy AI service
         if: needs.release-gate.outputs.ai == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
@@ -371,8 +389,8 @@ jobs:
           task-definition: backend-task-definition.json
           container-name: ${{ env.BACKEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.backend-image }}
-      - name: Apply database migrations as a one-shot task
-        if: needs.release-gate.outputs.migrations == 'true'
+      - name: Apply and verify database migrations as a one-shot task
+        if: needs.release-gate.outputs.backend == 'true'
         env:
           RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
         run: |

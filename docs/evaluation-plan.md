@@ -81,6 +81,25 @@ Expected output:
 
 Metric and acceptance criterion: 100 percent security-control pass rate. Any critical failure blocks release regardless of aggregate quality.
 
+## Dynamic Dependencies
+
+Dataset: `apps/ai-service/app/evals/datasets/dynamic_dependencies.jsonl`
+
+Expected output:
+
+- The requested capability names and their centrally authorized providers.
+- Correct multi-hop edges for Goal Strategy -> Budget -> Spending.
+- Typed `needs_input` questions when required user facts are absent.
+- No direct specialist invocation or unauthorized capability request.
+
+Metrics:
+
+- Exact dependency-capability match.
+- Exact set of specialists requiring user input.
+- Required-provider failure and cycle block rate in unit tests.
+
+Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any unauthorized edge, unresolved required dependency, or missed `needs_input` outcome fails the gate.
+
 ## Regression And Drift
 
 `infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.

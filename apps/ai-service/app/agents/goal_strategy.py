@@ -6,6 +6,7 @@ from app.core.schemas import (
     AgentTask,
     CapabilityName,
     DependencyRequest,
+    DependencyRequestDraft,
     UserFinancialSnapshot,
 )
 from app.tools.registry import call_tool
@@ -14,6 +15,7 @@ from app.tools.registry import call_tool
 class GoalStrategyAgent(BaseAgent):
     name = AgentName.GOAL_STRATEGY
     prompt_id = "agent_goal_strategy"
+    dependency_planning_enabled = True
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         goals = task.input_data.get("goals", [])
@@ -31,6 +33,31 @@ class GoalStrategyAgent(BaseAgent):
                 ),
             )
         return ()
+
+    def _dependency_options(self, task: AgentTask) -> Sequence[DependencyRequestDraft]:
+        goals = task.input_data.get("goals", [])
+        if goals and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies:
+            return (
+                DependencyRequestDraft(
+                    capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,
+                    reason_code="GOAL_FEASIBILITY_REQUIRES_CAPACITY",
+                    required_output_fields=[
+                        "estimated_savings_capacity",
+                        "calculation_method",
+                    ],
+                ),
+            )
+        return ()
+
+    def _missing_input_questions(self, task: AgentTask) -> Sequence[str]:
+        questions = []
+        if not task.input_data.get("goals"):
+            questions.append("What goal amount and target date would you like to plan for?")
+        elif not task.context_features.get("has_monthly_income"):
+            questions.append(
+                "What is your monthly income so the goal feasibility can be assessed?"
+            )
+        return questions
 
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
