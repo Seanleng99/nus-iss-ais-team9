@@ -67,9 +67,15 @@ $environmentBody = @{
         custom_branch_policies = $true
     }
 } | ConvertTo-Json -Depth 5
-$environmentBody | & $Gh api --method PUT "repos/$Repository/environments/demo" --input -
+$existingEnvironment = & $Gh api "repos/$Repository/environments/demo" 2>$null
+$environmentExists = $LASTEXITCODE -eq 0
+$environmentOutput = $environmentBody | & $Gh api --method PUT `
+    "repos/$Repository/environments/demo" --input - 2>&1
 if ($LASTEXITCODE -ne 0) {
-    throw "Could not create the GitHub demo environment."
+    if (-not $environmentExists) {
+        throw "Could not create the GitHub demo environment: $environmentOutput"
+    }
+    Write-Warning "The existing demo environment could not be updated because its protection settings are unavailable on the current repository plan. Existing settings are preserved."
 }
 
 $branchPolicies = Invoke-Gh api "repos/$Repository/environments/demo/deployment-branch-policies"
