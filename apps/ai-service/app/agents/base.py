@@ -100,6 +100,7 @@ class BaseAgent(ABC):
         )
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
+        """Return dependency requests required by deterministic specialist policy."""
         del task
         return ()
 
@@ -126,9 +127,21 @@ class BaseAgent(ABC):
         if not self.dependency_planning_enabled:
             return None
 
-        options = list(self._dependency_options(task))
         missing_questions = list(self._missing_input_questions(task))
-        if not options and not missing_questions:
+        if missing_questions:
+            return NeedsInputInvocation(
+                reason_code="MISSING_REQUIRED_INPUT",
+                questions=missing_questions,
+            )
+
+        policy_dependencies = list(self._dependency_requests(task))
+        if policy_dependencies:
+            return NeedsDependencyInvocation(
+                dependency_requests=policy_dependencies,
+            )
+
+        options = list(self._dependency_options(task))
+        if not options:
             return None
         plan = generate_structured_response(
             self.gateway,

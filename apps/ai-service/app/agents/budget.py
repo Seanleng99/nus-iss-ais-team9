@@ -18,6 +18,17 @@ class BudgetAgent(BaseAgent):
     dependency_planning_enabled = True
 
     def _dependency_requests(self, task: AgentTask) -> list[DependencyRequest]:
+        message = task.sanitized_message.casefold()
+        explicit_spending_context = any(
+            term in message
+            for term in (
+                "spending",
+                "transaction",
+                "expense pattern",
+                "expense history",
+                "recent purchases",
+            )
+        )
         return [
             DependencyRequest(
                 requester_task_id=task.task_id,
@@ -27,7 +38,7 @@ class BudgetAgent(BaseAgent):
                 required_output_fields=["category_totals", "transaction_count"],
                 required=False,
             )
-        ] if self._dependency_options(task) else []
+        ] if explicit_spending_context and self._dependency_options(task) else []
 
     def _dependency_options(self, task: AgentTask) -> list[DependencyRequestDraft]:
         if (

@@ -95,6 +95,37 @@ def test_goal_dynamically_schedules_budget_and_resumes() -> None:
     assert "task.resumed" in event_types
 
 
+def test_required_goal_dependency_cannot_be_skipped_by_model_planner() -> None:
+    class AlwaysReadyPlannerGateway(RecordingGateway):
+        def generate(self, **kwargs) -> str:
+            if kwargs["system_prompt"].startswith("PROMPT_ID: dependency_planner"):
+                self.calls.append(kwargs)
+                return json.dumps(
+                    {
+                        "status": "ready",
+                        "requests": [],
+                        "questions": [],
+                        "reason_code": None,
+                    }
+                )
+            return super().generate(**kwargs)
+
+    gateway = AlwaysReadyPlannerGateway()
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=gateway,
+    ).handle(goal_request(requested_agents=["goal_strategy"]))
+
+    assert response.selected_agents == ["goal_strategy", "budget"]
+    assert {
+        item["capability"] for item in response.audit["dependency_resolutions"]
+    } == {"monthly_savings_capacity"}
+    assert not any(
+        call["system_prompt"].startswith("PROMPT_ID: dependency_planner")
+        for call in gateway.calls
+    )
+
+
 def test_preselected_budget_result_is_reused_without_duplicate_execution() -> None:
     gateway = RecordingGateway()
     response = AgentOrchestrator(
@@ -143,8 +174,11 @@ def test_budget_skips_dependency_planner_when_there_is_nothing_to_decide() -> No
 
 def test_model_cannot_escalate_optional_dependency_contract() -> None:
     class OverreachingGateway(LocalFixtureModelGateway):
+        planner_called = False
+
         def generate(self, **kwargs) -> str:
             if kwargs["system_prompt"].startswith("PROMPT_ID: dependency_planner"):
+                self.planner_called = True
                 payload = json.loads(kwargs["user_prompt"])
                 requested = dict(payload["allowed_requests"][0])
                 requested.pop("selection_guidance")
@@ -165,14 +199,15 @@ def test_model_cannot_escalate_optional_dependency_contract() -> None:
                 )
             return super().generate(**kwargs)
 
+    gateway = OverreachingGateway()
     response = AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"),
-        gateway=OverreachingGateway(),
+        gateway=gateway,
     ).handle(
         CoachRequest(
             user_id="u1",
             session_id="contract-authority",
-            message="Use my recent spending to create a monthly budget.",
+            message="Create a monthly budget using any useful context.",
             requested_agents=["budget"],
             snapshot={
                 "monthly_income": {"amount": 4000},
@@ -197,6 +232,7 @@ def test_model_cannot_escalate_optional_dependency_contract() -> None:
     assert requested_event["details"]["reason_code"] == (
         "BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS"
     )
+    assert gateway.planner_called is True
 
 
 def test_capability_registry_rejects_unauthorized_requester() -> None:
@@ -400,6 +436,9 @@ def test_cycle_detector_accepts_chain_and_rejects_back_edge() -> None:
 def test_goal_budget_spending_dependency_chain_fans_in() -> None:
     request = goal_request(requested_agents=["goal_strategy"])
     payload = request.model_dump(mode="json")
+    payload["message"] = (
+        "Use my recent spending to assess whether I can reach my emergency fund goal."
+    )
     payload["snapshot"]["recent_transactions"] = [
         {
             "description": "Groceries",
@@ -410,9 +449,10 @@ def test_goal_budget_spending_dependency_chain_fans_in() -> None:
     ]
     request = CoachRequest.model_validate(payload)
 
+    gateway = RecordingGateway()
     response = AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"),
-        gateway=LocalFixtureModelGateway(),
+        gateway=gateway,
     ).handle(request)
 
     assert response.selected_agents == ["goal_strategy", "budget", "spending"]
@@ -426,12 +466,17 @@ def test_goal_budget_spending_dependency_chain_fans_in() -> None:
         "transaction_category_totals",
     }
     assert all(item["input_fingerprint"] for item in resolutions)
+    assert not any(
+        call["system_prompt"].startswith("PROMPT_ID: dependency_planner")
+        for call in gateway.calls
+    )
 
 
 def test_missing_budget_input_returns_typed_needs_input_result() -> None:
+    gateway = RecordingGateway()
     response = AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"),
-        gateway=LocalFixtureModelGateway(),
+        gateway=gateway,
     ).handle(
         CoachRequest(
             user_id="u1",
@@ -449,6 +494,10 @@ def test_missing_budget_input_returns_typed_needs_input_result() -> None:
     assert "task.needs_input" in {
         event["event_type"] for event in response.audit["events"]
     }
+    assert not any(
+        call["system_prompt"].startswith("PROMPT_ID: dependency_planner")
+        for call in gateway.calls
+    )
 
 
 class DelayedCompletedAgent:
