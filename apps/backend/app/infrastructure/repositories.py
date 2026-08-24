@@ -104,6 +104,13 @@ class SQLAlchemyUserRepository:
         transaction_repository = SQLAlchemyTransactionRepository(self.session)
         goal_repository = SQLAlchemyGoalRepository(self.session)
         transactions = transaction_repository.list_for_user(user_id)
+        goals = goal_repository.list_for_user(user_id)
+
+        # Chat persistence creates a bare user record. It must not turn an empty
+        # database snapshot into an authoritative replacement for caller-supplied
+        # financial context on later coaching requests.
+        if profile is None and not transactions and not goals:
+            return None
 
         return UserFinancialSnapshot(
             monthly_income=(
@@ -113,7 +120,7 @@ class SQLAlchemyUserRepository:
             ),
             recurring_expenses=[item for item in transactions if item.recurring],
             recent_transactions=transactions,
-            goals=goal_repository.list_for_user(user_id),
+            goals=goals,
             risk_tolerance=profile.risk_tolerance if profile else None,
             preferences=(
                 {

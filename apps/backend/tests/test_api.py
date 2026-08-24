@@ -117,6 +117,50 @@ def test_coach_forwards_valid_request() -> None:
     assert trace.json()["selected_agents"] == ["budget"]
 
 
+def test_bare_chat_user_does_not_replace_later_request_snapshot() -> None:
+    app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
+    try:
+        first = client.post(
+            "/api/coach",
+            headers={"X-API-Key": settings.api_key},
+            json={
+                "user_id": "snapshot-user",
+                "session_id": "first-chat",
+                "message": "Create a budget",
+                "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
+            },
+        )
+        second = client.post(
+            "/api/coach",
+            headers={"X-API-Key": settings.api_key},
+            json={
+                "user_id": "snapshot-user",
+                "session_id": "second-chat",
+                "message": "Assess my emergency fund goal",
+                "snapshot": {
+                    "monthly_income": {"currency": "SGD", "amount": 5000},
+                    "goals": [
+                        {
+                            "name": "Emergency fund",
+                            "target_amount": {"currency": "SGD", "amount": 12000},
+                            "target_months": 12,
+                        }
+                    ],
+                },
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert StubAIServiceClient.last_request is not None
+    snapshot = StubAIServiceClient.last_request.snapshot
+    assert snapshot.monthly_income is not None
+    assert snapshot.monthly_income.amount == 5000
+    assert [goal.name for goal in snapshot.goals] == ["Emergency fund"]
+
+
 def test_trace_is_isolated_to_its_profile() -> None:
     app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
     try:
