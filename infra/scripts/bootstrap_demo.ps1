@@ -5,6 +5,7 @@ param(
     [string]$FoundationStack = "ai-financial-wellness-coach-foundation",
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
     [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
+    [string]$AlertEmail = "",
     [Parameter(Mandatory = $true)]
     [ValidatePattern("^[A-Za-z0-9]{10}$")]
     [string]$EducationKnowledgeBaseId
@@ -146,6 +147,7 @@ $applicationParameters = @(
     "BackendLogGroupName=$($foundation.BackendLogGroupName)",
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
+    "AlertEmail=$AlertEmail",
     "AiImageUri=$($images.Ai)",
     "BackendImageUri=$($images.Backend)",
     "FrontendImageUri=$($images.Frontend)"

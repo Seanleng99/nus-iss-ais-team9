@@ -70,6 +70,13 @@ Parameters:
   FrontendServiceName:
     Type: String
     Default: coach-frontend
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional email subscription for operational alarms.
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
 
 Resources:
   AiDiscoveryService:
@@ -237,6 +244,8 @@ Resources:
               Value: http://ai.coach.internal:8001
             - Name: AI_SERVICE_TIMEOUT_SECONDS
               Value: "45"
+            - Name: TRACE_RETENTION_DAYS
+              Value: "30"
             - Name: POSTGRES_HOST
               Value: !Ref DatabaseEndpoint
             - Name: POSTGRES_PORT
@@ -395,6 +404,366 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
+  AiScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 1
+      ResourceId: !Sub service/${EcsClusterName}/${AiService.Name}
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  AiCpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ProjectName}-ai-cpu-target
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref AiScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+        TargetValue: 70
+
+  BackendScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 1
+      ResourceId: !Sub service/${EcsClusterName}/${BackendService.Name}
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  BackendCpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ProjectName}-backend-cpu-target
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref BackendScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+        TargetValue: 70
+
+  OperationalAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Financial coach operational alerts
+      TopicName: !Sub ${ProjectName}-demo-operational-alerts
+
+  OperationalAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      Endpoint: !Ref AlertEmail
+      Protocol: email
+      TopicArn: !Ref OperationalAlertsTopic
+
+  OperationalAlertsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEcsDeploymentEvents
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref OperationalAlertsTopic
+      Topics:
+        - !Ref OperationalAlertsTopic
+
+  EcsDeploymentFailureRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Notify when an ECS service deployment fails.
+      EventPattern:
+        source:
+          - aws.ecs
+        detail-type:
+          - ECS Deployment State Change
+        detail:
+          eventType:
+            - ERROR
+          eventName:
+            - SERVICE_DEPLOYMENT_FAILED
+          clusterArn:
+            - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${EcsClusterName}
+      State: ENABLED
+      Targets:
+        - Arn: !Ref OperationalAlertsTopic
+          Id: operational-alerts
+
+  AiGenerationFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${ProjectName}-ai-generation-failures
+      FilterPattern: '"coach_generation_failed"'
+      LogGroupName: !Ref AiLogGroupName
+      MetricTransformations:
+        - MetricName: CoachGenerationFailures
+          MetricNamespace: !Sub ${ProjectName}/Application
+          MetricValue: "1"
+          Unit: Count
+
+  BackendTarget5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-backend-5xx
+      AlarmDescription: Backend target returned at least two 5xx responses in five minutes.
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value:
+            Fn::Select:
+              - 1
+              - Fn::Split:
+                  - loadbalancer/
+                  - !Ref LoadBalancerArn
+        - Name: TargetGroup
+          Value: !GetAtt BackendTargetGroup.TargetGroupFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  BackendUnhealthyHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-backend-unhealthy-host
+      AlarmDescription: At least one backend target is unhealthy.
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - Name: LoadBalancer
+          Value:
+            Fn::Select:
+              - 1
+              - Fn::Split:
+                  - loadbalancer/
+                  - !Ref LoadBalancerArn
+        - Name: TargetGroup
+          Value: !GetAtt BackendTargetGroup.TargetGroupFullName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  AiGenerationFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-ai-generation-failure
+      AlarmDescription: The AI service logged a model or retrieval generation failure.
+      Namespace: !Sub ${ProjectName}/Application
+      MetricName: CoachGenerationFailures
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  BedrockThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-bedrock-throttles
+      AlarmDescription: Bedrock throttled at least one model invocation.
+      Namespace: AWS/Bedrock
+      MetricName: InvocationThrottles
+      Dimensions:
+        - Name: ModelId
+          Value: !Ref BedrockModelId
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  BedrockServerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-bedrock-server-errors
+      AlarmDescription: Bedrock returned at least one server error.
+      Namespace: AWS/Bedrock
+      MetricName: InvocationServerErrors
+      Dimensions:
+        - Name: ModelId
+          Value: !Ref BedrockModelId
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  BedrockLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-bedrock-p95-latency
+      AlarmDescription: Bedrock p95 invocation latency exceeded five seconds.
+      Namespace: AWS/Bedrock
+      MetricName: InvocationLatency
+      Dimensions:
+        - Name: ModelId
+          Value: !Ref BedrockModelId
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  AiCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-ai-high-cpu
+      AlarmDescription: AI service average CPU utilization stayed above 80 percent.
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref EcsClusterName
+        - Name: ServiceName
+          Value: !GetAtt AiService.Name
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
+  OperationalDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${ProjectName}-demo-operational
+      DashboardBody:
+        Fn::Sub:
+          - |
+            {
+              "widgets": [
+                {
+                  "type": "metric",
+                  "x": 0,
+                  "y": 0,
+                  "width": 12,
+                  "height": 6,
+                  "properties": {
+                    "title": "ECS service CPU and memory",
+                    "region": "${AWS::Region}",
+                    "period": 300,
+                    "stat": "Average",
+                    "metrics": [
+                      ["AWS/ECS", "CPUUtilization", "ClusterName", "${EcsClusterName}", "ServiceName", "${AiServiceName}"],
+                      [".", "MemoryUtilization", ".", ".", ".", "."],
+                      ["AWS/ECS", "CPUUtilization", "ClusterName", "${EcsClusterName}", "ServiceName", "${BackendServiceName}"],
+                      [".", "MemoryUtilization", ".", ".", ".", "."]
+                    ]
+                  }
+                },
+                {
+                  "type": "metric",
+                  "x": 12,
+                  "y": 0,
+                  "width": 12,
+                  "height": 6,
+                  "properties": {
+                    "title": "Backend ALB health and latency",
+                    "region": "${AWS::Region}",
+                    "period": 300,
+                    "metrics": [
+                      ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${LoadBalancerFullName}", "TargetGroup", "${BackendTargetGroupFullName}", {"stat": "Sum"}],
+                      [".", "TargetResponseTime", ".", ".", ".", ".", {"stat": "p95"}],
+                      [".", "UnHealthyHostCount", ".", ".", ".", ".", {"stat": "Maximum"}]
+                    ]
+                  }
+                },
+                {
+                  "type": "metric",
+                  "x": 0,
+                  "y": 6,
+                  "width": 12,
+                  "height": 6,
+                  "properties": {
+                    "title": "Bedrock invocations, errors, and throttles",
+                    "region": "${AWS::Region}",
+                    "period": 300,
+                    "metrics": [
+                      ["AWS/Bedrock", "Invocations", "ModelId", "${BedrockModelId}", {"stat": "Sum"}],
+                      [".", "InvocationClientErrors", ".", ".", {"stat": "Sum"}],
+                      [".", "InvocationServerErrors", ".", ".", {"stat": "Sum"}],
+                      [".", "InvocationThrottles", ".", ".", {"stat": "Sum"}],
+                      [".", "InvocationLatency", ".", ".", {"stat": "p95", "yAxis": "right"}]
+                    ]
+                  }
+                },
+                {
+                  "type": "metric",
+                  "x": 12,
+                  "y": 6,
+                  "width": 12,
+                  "height": 6,
+                  "properties": {
+                    "title": "Token usage and application generation failures",
+                    "region": "${AWS::Region}",
+                    "period": 300,
+                    "metrics": [
+                      ["AWS/Bedrock", "InputTokenCount", "ModelId", "${BedrockModelId}", {"stat": "Sum"}],
+                      [".", "OutputTokenCount", ".", ".", {"stat": "Sum"}],
+                      ["${ProjectName}/Application", "CoachGenerationFailures", {"stat": "Sum"}]
+                    ]
+                  }
+                }
+              ]
+            }
+          - LoadBalancerFullName:
+              Fn::Select:
+                - 1
+                - Fn::Split:
+                    - loadbalancer/
+                    - !Ref LoadBalancerArn
+            BackendTargetGroupFullName: !GetAtt BackendTargetGroup.TargetGroupFullName
+
 Outputs:
   AiServiceName:
     Value: !GetAtt AiService.Name
@@ -414,3 +783,11 @@ Outputs:
     Value: backend
   FrontendContainerName:
     Value: frontend
+  OperationalDashboardName:
+    Value: !Ref OperationalDashboard
+  OperationalAlertsTopicArn:
+    Value: !Ref OperationalAlertsTopic
+  OperationalAlarmPrefix:
+    Value: !Sub ${ProjectName}-demo-
+  BedrockModelId:
+    Value: !Ref BedrockModelId

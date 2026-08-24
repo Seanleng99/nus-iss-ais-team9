@@ -102,6 +102,13 @@ $variables = [ordered]@{
     FRONTEND_HEALTH_URL = "$baseUrl/_stcore/health"
     BACKEND_HEALTH_URL = "$baseUrl/health"
     COACH_SMOKE_URL = "$baseUrl/api/coach"
+    BEDROCK_MODEL_ID = $application.BedrockModelId
+    OPERATIONAL_DASHBOARD_NAME = $application.OperationalDashboardName
+    OPERATIONAL_ALARM_PREFIX = $application.OperationalAlarmPrefix
+    LIVE_EVAL_MAX_P95_MS = "30000"
+    LIVE_EVAL_MAX_COST_USD = "1.00"
+    LOAD_MAX_P95_MS = "30000"
+    AWS_OPERATIONAL_VALIDATION_ENABLED = "true"
 }
 
 foreach ($item in $variables.GetEnumerator()) {

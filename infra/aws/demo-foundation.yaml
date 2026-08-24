@@ -238,7 +238,7 @@ Resources:
       ClusterName: !Sub ${ProjectName}-demo
       ClusterSettings:
         - Name: containerInsights
-          Value: disabled
+          Value: enabled
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -254,19 +254,19 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /ecs/${ProjectName}/ai
-      RetentionInDays: 7
+      RetentionInDays: 30
 
   BackendLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /ecs/${ProjectName}/backend
-      RetentionInDays: 7
+      RetentionInDays: 30
 
   FrontendLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /ecs/${ProjectName}/frontend
-      RetentionInDays: 7
+      RetentionInDays: 30
 
   BackendApiKeySecret:
     Type: AWS::SecretsManager::Secret

@@ -128,6 +128,16 @@ Resources:
                   - ecs:TagResource
                 Resource: "*"
               - Effect: Allow
+                Action:
+                  - application-autoscaling:DescribeScalableTargets
+                  - application-autoscaling:DescribeScalingPolicies
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:GetDashboard
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:ListMetrics
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
                 Action: ecs:RunTask
                 Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${EcsBackendTaskFamily}:*
                 Condition:

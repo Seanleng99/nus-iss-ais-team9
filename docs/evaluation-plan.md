@@ -112,10 +112,18 @@ The pull-request gate uses the explicit local fixture to test graph topology, sc
 
 Before an AWS release is approved for anything beyond the synthetic demo, run the same routing cases plus representative and adversarial cases against the configured Bedrock model. Measure groundedness, unsupported-claim rate, unsafe-advice rate, explanation quality, source attribution, P50/P95 latency, token use, and cost across repeated samples. Compare the candidate with at least one lower-cost model and record model/profile IDs, prompt version, run count, and inference geography. Live-model thresholds must be stored separately from deterministic control thresholds.
 
+## Live AWS Evaluation
+
+`.github/workflows/aws-operational-validation.yml` runs `infra/scripts/live_evaluation.py` against the deployed backend weekly and on demand. The versioned cases in `infra/llmsecops/live-evaluation-cases.jsonl` cover routing, multi-hop dynamic dependencies, typed missing-input behavior, a critical prompt injection, and grounded Education RAG. Each case is repeated from a new synthetic session so the result measures the deployed Bedrock model, prompt set, orchestrator, backend persistence path, and Knowledge Base adapter together.
+
+The gate requires every case-level structural check to pass. It also enforces configurable P95 latency and estimated-cost ceilings. The initial workflow ceiling is deliberately a 30-second characterization bound; after the first retained AWS run, lower `LIVE_EVAL_MAX_P95_MS` toward the eight-second demo objective using observed variance. Cost is estimated from audited input/output token counts. The default Nova Lite rates are configurable command arguments and must be checked against the current AWS pricing page before a formal assessment.
+
+The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads.
+
 ## Fairness Consistency
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
 
 ## Evidence Handling
 
-Evaluation inputs use synthetic or approved public data. Artifacts contain metrics and case identifiers rather than raw personal prompts. Retain CI evidence for 30 days during development and archive the final approved release results with the project report.
+Evaluation inputs use synthetic or approved public data. Artifacts contain metrics and case identifiers rather than raw personal prompts. Retain deterministic CI evidence for 30 days and AWS operational evidence for 90 days during development. Archive the final approved release results with the project report.

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
@@ -107,3 +107,24 @@ def get_orchestration_trace(
         prompt_set_version=record.prompt_set_version,
         created_at=record.created_at,
     )
+
+
+@router.delete(
+    "/coach/traces/{trace_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_api_key)],
+)
+def delete_orchestration_trace(
+    trace_id: str,
+    user_id: str,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> Response:
+    if not SQLAlchemyOrchestrationTraceRepository(session).delete_for_user(
+        user_id, trace_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Orchestration trace not found",
+        )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

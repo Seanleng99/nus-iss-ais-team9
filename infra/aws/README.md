@@ -2,9 +2,9 @@
 
 The repository includes a minimum-size, synthetic-data deployment for AWS account `902552928492` in `ap-southeast-1`:
 
-- `demo-foundation.yaml` creates two public application subnets, two private database subnets, an internet-facing HTTP ALB, security groups, a minimum Single-AZ RDS PostgreSQL instance, three scan-on-push ECR repositories with ten-image retention, an ECS cluster, Cloud Map, generated service secrets, seven-day log groups, and separate application and AI task roles.
-- `demo-application.yaml` creates three one-task Fargate services, private DNS for backend-to-AI and frontend-to-backend calls, task definitions, target groups, and ALB routing.
-- `github-actions-oidc.yaml` creates narrowly scoped image-publishing and ECS-deployment roles using GitHub OIDC.
+- `demo-foundation.yaml` creates two public application subnets, two private database subnets, an internet-facing HTTP ALB, security groups, a minimum Single-AZ RDS PostgreSQL instance, three scan-on-push ECR repositories with ten-image retention, a Container-Insights-enabled ECS cluster, Cloud Map, generated service secrets, 30-day log groups, and separate application and AI task roles.
+- `demo-application.yaml` creates three minimum-size Fargate services, backend/AI CPU target tracking from one to two tasks, private DNS, task definitions, target groups, ALB routing, a CloudWatch dashboard, seven alarms, SNS alerts, and an ECS deployment-failure EventBridge rule.
+- `github-actions-oidc.yaml` creates narrowly scoped image-publishing and ECS-deployment roles using GitHub OIDC. The deployment role can read the operational dashboard, alarms, logs, and scaling configuration for evidence collection.
 
 The public-subnet task design avoids NAT Gateway cost. Tasks receive public IPs for outbound ECR, Secrets Manager, and Bedrock access, but their security groups permit inbound traffic only from the ALB or the calling service. The ALB uses HTTP because no domain and ACM certificate were supplied. Use synthetic data only until HTTPS is configured.
 
@@ -20,6 +20,8 @@ approved Education Knowledge Base ID:
 .\infra\scripts\configure_github.ps1
 ```
 
+Add `-AlertEmail address@example.com` to the bootstrap command when email notifications are required, then confirm the AWS SNS subscription. Re-run both scripts after changing these templates so the AWS stacks and operational GitHub variables remain synchronized.
+
 The first script validates the AWS account, deploys the foundation stack, builds and publishes bootstrap images, creates the ECS services, and deploys the OIDC roles. The second configures GitHub Actions variables, the `demo` environment restricted to `main`, the smoke-test secret, and repository security settings. After the initial push and successful checks, run `protect_main.ps1`; it enables pull-request and CI requirements when the private-repository plan supports branch protection and otherwise reports the plan limitation.
 
 ## Deployment Order
@@ -30,14 +32,15 @@ The first script validates the AWS account, deploys the foundation stack, builds
 4. Run `configure_github.ps1`, commit, and push the repository to `main`.
 5. Successful push CI for the current `main` SHA automatically starts `Release to AWS`.
 6. Verify image scanning, deployment, prompt-injection blocking, and rollback.
-7. Run `protect_main.ps1` after the first successful workflow creates the required status-check contexts. Upgrade the GitHub plan if branch protection remains unavailable for the private repository.
+7. Manually run `AWS Operational Validation`, retain its evidence artifact, and optionally enable the task-replacement exercise.
+8. Run `protect_main.ps1` after the first successful workflow creates the required status-check contexts. Upgrade the GitHub plan if branch protection remains unavailable for the private repository.
 
 ## Task Configuration Matrix
 
 | Task | Plain environment | Secrets | Task-role access |
 |---|---|---|---|
 | Frontend | `APP_ENV=demo`, `BACKEND_BASE_URL` | `BACKEND_API_KEY` | None |
-| Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, database host/name/port, TLS mode | `BACKEND_API_KEY`, `AI_SERVICE_API_KEY`, RDS username/password | None |
+| Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, database host/name/port, TLS mode, 30-day trace retention | `BACKEND_API_KEY`, `AI_SERVICE_API_KEY`, RDS username/password | None |
 | AI service | `APP_ENV=demo`, `MODEL_PROVIDER=bedrock`, `RAG_PROVIDER=bedrock`, model ID, Education Knowledge Base ID, retrieval threshold, temperatures, prompt version | `AI_SERVICE_API_KEY` | Approved Bedrock profile, destination models, and read-only Education Knowledge Base retrieval |
 
 Do not inject `AI_SERVICE_API_KEY` into Streamlit. Do not place runtime AWS credentials in GitHub or application secrets. ECS tasks obtain AWS permissions from task roles.
@@ -69,8 +72,8 @@ The AI ECS task role has `bedrock:InvokeModel` only for the selected APAC infere
 
 Use exact OIDC subject claims for the main-branch publisher and `demo` environment deployer. Pass all three ECR repositories and ECS services to `github-actions-oidc.yaml`. The publisher can upload/scan only those repositories; the deployer can update only those services and pass only the named task roles.
 
-The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeline.md`. Successful push CI for the current `main` SHA automatically starts the release workflow. Native required environment reviewers, branch protection, and GitHub Code Security are unavailable for this private repository on the current GitHub plan; enable them after a plan upgrade. Bandit remains the active Python SAST gate. Secret scanning and push protection are also configured only when the plan supports them.
+The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeline.md`. Successful push CI for the current `main` SHA automatically starts the release workflow. The weekly `AWS Operational Validation` workflow uses the same short-lived demo-environment OIDC role and produces 90-day privacy-safe evidence. Native required environment reviewers, branch protection, and GitHub Code Security are unavailable for this private repository on the current GitHub plan; enable them after a plan upgrade. Bandit remains the active Python SAST gate. Secret scanning and push protection are also configured only when the plan supports them.
 
 ## Go/No-Go
 
-Do not deploy when any required variable is absent, a database migration fails, a service lacks circuit-breaker rollback, an image has a Critical/High finding above policy, an AI/security evaluation fails, model residency is unresolved for the selected data class, or no previous stable task revision exists for rollback.
+Do not deploy when any required variable is absent, a database migration fails, a service lacks circuit-breaker rollback, an image has a Critical/High finding above policy, an AI/security evaluation fails, model residency is unresolved for the selected data class, or no previous stable task revision exists for rollback. Do not claim operational readiness until the updated stacks are deployed, an SNS notification path is tested, and a successful AWS operational-evidence artifact is retained.

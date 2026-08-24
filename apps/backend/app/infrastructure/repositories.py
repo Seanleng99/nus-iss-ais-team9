@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.financial_schemas import (
@@ -554,3 +554,19 @@ class SQLAlchemyOrchestrationTraceRepository:
             )
         )
         return self.session.scalar(query)
+
+    def delete_for_user(self, user_id: str, trace_id: str) -> bool:
+        record = self.get_for_user(user_id, trace_id)
+        if record is None:
+            return False
+        self.session.delete(record)
+        self.session.flush()
+        return True
+
+    def delete_expired(self, cutoff: datetime) -> int:
+        result = self.session.execute(
+            delete(OrchestrationTraceRecord).where(
+                OrchestrationTraceRecord.created_at < cutoff
+            )
+        )
+        return int(getattr(result, "rowcount", 0) or 0)

@@ -136,6 +136,35 @@ def test_trace_is_isolated_to_its_profile() -> None:
     assert trace.status_code == 404
 
 
+def test_trace_can_only_be_deleted_by_its_profile() -> None:
+    app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
+    try:
+        response = client.post(
+            "/api/coach",
+            headers={"X-API-Key": settings.api_key},
+            json={"user_id": "owner", "session_id": "deletable", "message": "Budget"},
+        )
+        wrong_owner = client.delete(
+            "/api/coach/traces/trace-deletable?user_id=other-user",
+            headers={"X-API-Key": settings.api_key},
+        )
+        deleted = client.delete(
+            "/api/coach/traces/trace-deletable?user_id=owner",
+            headers={"X-API-Key": settings.api_key},
+        )
+        missing = client.get(
+            "/api/coach/traces/trace-deletable?user_id=owner",
+            headers={"X-API-Key": settings.api_key},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert wrong_owner.status_code == 404
+    assert deleted.status_code == 204
+    assert missing.status_code == 404
+
+
 def test_coach_hides_downstream_failure_details() -> None:
     app.dependency_overrides[get_ai_service_client] = UnavailableAIServiceClient
     try:

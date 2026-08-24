@@ -21,14 +21,17 @@ flowchart LR
   MIGRATE --> ECS["Selected ECS Fargate services"]
   ECS --> SMOKE["Health and prompt-injection smoke tests"]
   SMOKE -->|failure| ROLLBACK["Restore deployed service revisions"]
+  SCHEDULE["Weekly or manual operational validation"] --> LIVE["Repeated Bedrock/RAG and bounded load evidence"]
+  LIVE --> OBSERVE["Verify ECS scaling, CloudWatch, retention, and optional task replacement"]
 ```
 
 The first deployment target remains ECS Fargate. EKS is outside the initial pipeline and remains a future option if independently owned agent workloads need Kubernetes-specific scheduling, policy, or ecosystem capabilities.
 
 ## Workflow Files
 
-- `.github/workflows/ci.yml`: repository-owned change detection; selected Streamlit, backend, and AI service tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; selected hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. Weekly and manual runs select the complete CI suite for drift observation.
+- `.github/workflows/ci.yml`: repository-owned change detection; selected Streamlit, backend, AI service, and operational-script tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; selected hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. Weekly and manual runs select the complete CI suite for drift observation.
 - `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, selective immutable container builds, ECR publishing and scanning, rendered task-configuration validation, migration before every backend deployment, selective ECS deployment through the `demo` environment, live Education RAG and trace-aware smoke testing, and targeted service rollback.
+- `.github/workflows/aws-operational-validation.yml`: weekly and manual privacy-safe validation against AWS, including repeated Bedrock/RAG cases, bounded synthetic load with cleanup, ECS/autoscaling state, CloudWatch dashboard and alarm existence, trace-retention enforcement, and an optional backend task-replacement exercise. Evidence is retained for 90 days.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
 
@@ -44,6 +47,7 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 | `apps/ai-service/**` or its Dockerfile | AI and backend tests, AI evals, SAST, integration, AI and backend containers | AI and compatible backend images and ECS services |
 | `infra/llmsecops/**` | AI tests and evaluation gate | No application deployment |
 | `infra/aws/**` | CloudFormation and Compose validation | No application deployment |
+| `infra/scripts/**` | Operational-script tests, infrastructure validation, and SAST; load/post-deploy smoke changes also select integration | No application deployment |
 | CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; backend deployment always runs the migration task |
 | `docs/**` only | No workflow | No release |
 
@@ -54,11 +58,11 @@ AI changes deploy the backend from the same commit because the backend persists 
 The minimum demo resources are implemented as CloudFormation in `infra/aws`. Run `infra/scripts/bootstrap_demo.ps1` to provision:
 
 - Three ECR repositories, one for each service, with enhanced Inspector scanning.
-- An ECS cluster with one minimum-size task per service, health checks, and deployment circuit-breaker rollback.
+- An ECS cluster with one minimum-size task per service, backend/AI CPU target tracking up to two tasks, Container Insights, health checks, and deployment circuit-breaker rollback.
 - Existing ECS task definitions whose container names match the GitHub variables below.
 - Secrets Manager values for `BACKEND_API_KEY` and `AI_SERVICE_API_KEY`. Streamlit receives only the backend key; the backend receives both; the AI service receives only its internal key.
 - An encrypted, non-public, Single-AZ RDS PostgreSQL instance with an RDS-managed master secret and backend-only security-group ingress.
-- CloudWatch logs, service alarms, and deployment-failure EventBridge notifications.
+- Thirty-day CloudWatch logs, an operational dashboard, service/Bedrock alarms, SNS alerts, and deployment-failure EventBridge notifications.
 - Bedrock generation access restricted to the configured APAC inference profile and destination models, with retrieval restricted to the configured Education Knowledge Base.
 
 The executable demo uses PostgreSQL for profiles, transactions, monthly budgets, goals, and backend-built snapshots. Dashboard summaries are computed by the backend from those persisted records. Investment Education uses the Bedrock Knowledge Base adapter when `RAG_PROVIDER=bedrock`; provisioning and approving the Education Knowledge Base and S3 data source are deployment prerequisites.
@@ -100,6 +104,13 @@ Create a `demo` environment and restrict it to `main`. Required environment revi
 | `FRONTEND_HEALTH_URL` | Streamlit `/_stcore/health` URL |
 | `BACKEND_HEALTH_URL` | Backend `/health` URL |
 | `COACH_SMOKE_URL` | Backend `/api/coach` URL |
+| `BEDROCK_MODEL_ID` | Expected deployed Bedrock model or inference-profile ID |
+| `OPERATIONAL_DASHBOARD_NAME` | CloudWatch dashboard verified by the operational workflow |
+| `OPERATIONAL_ALARM_PREFIX` | Prefix used to discover the demo alarms |
+| `LIVE_EVAL_MAX_P95_MS` | Live-evaluation P95 ceiling; initial characterization value is `30000` |
+| `LIVE_EVAL_MAX_COST_USD` | Maximum estimated cost for one live-evaluation run |
+| `LOAD_MAX_P95_MS` | Bounded load-test P95 ceiling; initial value is `30000` |
+| `AWS_OPERATIONAL_VALIDATION_ENABLED` | Set to `true` only after the updated AWS stacks exist; otherwise scheduled runs skip |
 
 Add `SMOKE_BACKEND_API_KEY` as a `demo` environment secret. Its value must match the backend key in Secrets Manager. Do not place `AI_SERVICE_API_KEY`, application AWS credentials, or runtime model credentials in GitHub.
 
@@ -125,4 +136,4 @@ The versioned policy also records metric baselines and maximum permitted regress
 
 The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads task definitions and changes images only for selected services. Before an AI update, it verifies the rendered deployment still selects Bedrock generation, prompt set v3, Bedrock RAG, and a non-empty Education Knowledge Base ID. Every backend deployment runs Alembic before updating the service. Post-deployment smoke verifies live Education citations and retrieves the persisted prompt-v3 decision trace. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
 
-The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. Inspector and CloudWatch continue monitoring after release because new vulnerabilities and behavioral drift can appear later.
+The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. Inspector and CloudWatch continue monitoring after release because new vulnerabilities and behavioral drift can appear later. The operational workflow requires the updated foundation, application, and OIDC stacks. Scheduled runs skip unless `AWS_OPERATIONAL_VALIDATION_ENABLED=true`; the configuration script sets it only after it can read the updated stack outputs.

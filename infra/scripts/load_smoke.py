@@ -1,10 +1,13 @@
 import argparse
 import json
 import math
+import os
 import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 
@@ -15,10 +18,50 @@ def require_http_url(url: str) -> str:
     return url
 
 
-def send_request(url: str, api_key: str, timeout_seconds: float) -> tuple[int, float]:
+def chat_session_delete_url(url: str, user_id: str, session_id: str) -> str:
+    parsed = urllib.parse.urlparse(require_http_url(url))
+    coach_path = parsed.path.rstrip("/")
+    if not coach_path.endswith("/coach"):
+        raise ValueError("load-test URL path must end with /coach")
+    api_path = coach_path[: -len("/coach")]
+    delete_path = (
+        f"{api_path}/users/{urllib.parse.quote(user_id, safe='')}"
+        f"/chat-sessions/{urllib.parse.quote(session_id, safe='')}"
+    )
+    return urllib.parse.urlunparse(parsed._replace(path=delete_path, query="", fragment=""))
+
+
+def cleanup_session(
+    url: str,
+    api_key: str,
+    user_id: str,
+    session_id: str,
+    timeout_seconds: float,
+) -> bool:
+    request = urllib.request.Request(
+        chat_session_delete_url(url, user_id, session_id),
+        headers={"Accept": "application/json", "X-API-Key": api_key},
+        method="DELETE",
+    )
+    try:
+        # B310 is contained by require_http_url in chat_session_delete_url.
+        with urllib.request.urlopen(  # nosec B310
+            request, timeout=timeout_seconds
+        ) as response:
+            response.read()
+            return response.status == 204
+    except (OSError, ValueError):
+        return False
+
+
+def send_request(
+    url: str, api_key: str, timeout_seconds: float
+) -> tuple[int, float, bool]:
+    user_id = "load-test-user"
+    session_id = str(uuid4())
     payload = {
-        "user_id": "load-test-user",
-        "session_id": str(uuid4()),
+        "user_id": user_id,
+        "session_id": session_id,
         "message": "Create a monthly budget",
         "snapshot": {
             "monthly_income": {"currency": "SGD", "amount": 4000},
@@ -32,12 +75,59 @@ def send_request(url: str, api_key: str, timeout_seconds: float) -> tuple[int, f
         method="POST",
     )
     started = time.perf_counter()
-    # B310 is contained by require_http_url before the request is constructed.
-    with urllib.request.urlopen(  # nosec B310
-        request, timeout=timeout_seconds
-    ) as response:
-        response.read()
-        return response.status, (time.perf_counter() - started) * 1000
+    try:
+        # B310 is contained by require_http_url before the request is constructed.
+        with urllib.request.urlopen(  # nosec B310
+            request, timeout=timeout_seconds
+        ) as response:
+            response.read()
+            status = response.status
+            latency_ms = (time.perf_counter() - started) * 1000
+    finally:
+        cleaned_up = cleanup_session(
+            url, api_key, user_id, session_id, timeout_seconds
+        )
+    return status, latency_ms, cleaned_up
+
+
+def percentile(values: list[float], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = max(math.ceil(len(ordered) * fraction) - 1, 0)
+    return round(ordered[index], 2)
+
+
+def build_report(
+    *,
+    url: str,
+    request_count: int,
+    concurrency: int,
+    latencies: list[float],
+    failures: list[str],
+    cleanup_failures: int,
+    elapsed_seconds: float,
+    commit_sha: str,
+) -> dict[str, object]:
+    success_rate = len(latencies) / request_count
+    return {
+        "schema_version": 1,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "commit_sha": commit_sha,
+        "target_host": urllib.parse.urlparse(require_http_url(url)).hostname,
+        "requests": request_count,
+        "concurrency": concurrency,
+        "successes": len(latencies),
+        "success_rate": round(success_rate, 4),
+        "latency_ms": {
+            "p50": percentile(latencies, 0.5),
+            "p95": percentile(latencies, 0.95),
+            "p99": percentile(latencies, 0.99),
+        },
+        "elapsed_seconds": round(elapsed_seconds, 2),
+        "failure_types": sorted(set(failures)),
+        "cleanup_failures": cleanup_failures,
+    }
 
 
 def main() -> None:
@@ -49,6 +139,8 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=float, default=30)
     parser.add_argument("--minimum-success-rate", type=float, default=1.0)
     parser.add_argument("--maximum-p95-ms", type=float, default=5000)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--commit-sha", default=os.getenv("GITHUB_SHA", "unknown"))
     args = parser.parse_args()
 
     if args.requests < 1 or args.concurrency < 1:
@@ -56,6 +148,7 @@ def main() -> None:
 
     latencies: list[float] = []
     failures: list[str] = []
+    cleanup_failures = 0
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
         futures = [
@@ -64,31 +157,41 @@ def main() -> None:
         ]
         for future in as_completed(futures):
             try:
-                status, latency = future.result()
+                status, latency, cleaned_up = future.result()
                 if status == 200:
                     latencies.append(latency)
                 else:
                     failures.append(f"HTTP {status}")
+                cleanup_failures += int(not cleaned_up)
             except (OSError, ValueError) as error:
                 failures.append(type(error).__name__)
 
-    success_rate = len(latencies) / args.requests
-    ordered = sorted(latencies)
-    p95_ms = ordered[max(math.ceil(len(ordered) * 0.95) - 1, 0)] if ordered else None
-    report = {
-        "requests": args.requests,
-        "concurrency": args.concurrency,
-        "successes": len(latencies),
-        "success_rate": round(success_rate, 4),
-        "p95_ms": round(p95_ms, 2) if p95_ms is not None else None,
-        "elapsed_seconds": round(time.perf_counter() - started, 2),
-        "failure_types": sorted(set(failures)),
-    }
-    print(json.dumps(report, indent=2))
-    if success_rate < args.minimum_success_rate:
-        raise SystemExit("Load smoke failed its success-rate threshold")
+    report = build_report(
+        url=args.url,
+        request_count=args.requests,
+        concurrency=args.concurrency,
+        latencies=latencies,
+        failures=failures,
+        cleanup_failures=cleanup_failures,
+        elapsed_seconds=time.perf_counter() - started,
+        commit_sha=args.commit_sha,
+    )
+    p95_ms = report["latency_ms"]["p95"]
+    threshold_failures = []
+    if report["success_rate"] < args.minimum_success_rate:
+        threshold_failures.append("success rate was below threshold")
     if p95_ms is None or p95_ms > args.maximum_p95_ms:
-        raise SystemExit("Load smoke failed its p95 latency threshold")
+        threshold_failures.append("p95 latency exceeded threshold")
+    if cleanup_failures:
+        threshold_failures.append("one or more synthetic chat sessions were not deleted")
+    report["threshold_failures"] = threshold_failures
+    report["passed"] = not threshold_failures
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, indent=2))
+    if threshold_failures:
+        raise SystemExit("Load smoke failed: " + "; ".join(threshold_failures))
 
 
 if __name__ == "__main__":

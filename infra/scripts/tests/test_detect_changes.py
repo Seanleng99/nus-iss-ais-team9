@@ -91,6 +91,15 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["infrastructure"])
         self.assertFalse(result["deploy"])
 
+    def test_operational_script_runs_infrastructure_tests(self):
+        result = detect_changes.classify_changes(
+            ["infra/scripts/live_evaluation.py"]
+        )
+
+        self.assertTrue(result["infrastructure"])
+        self.assertTrue(result["sast"])
+        self.assertFalse(result["deploy"])
+
     def test_docs_and_root_readme_do_not_select_service_work(self):
         result = detect_changes.classify_changes(
             ["docs/architecture.md", "README.md"]

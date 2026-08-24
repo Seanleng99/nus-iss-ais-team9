@@ -1,0 +1,225 @@
+name: AWS Operational Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: Repetitions of each live evaluation case
+        required: true
+        default: "2"
+      load_requests:
+        description: Number of bounded synthetic load requests
+        required: true
+        default: "10"
+      load_concurrency:
+        description: Maximum concurrent synthetic requests
+        required: true
+        default: "2"
+      exercise_task_replacement:
+        description: Force and verify one backend ECS task replacement
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 2 * * 0"
+
+concurrency:
+  group: operational-validation-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+  DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  AI_SERVICE: ${{ vars.ECS_AI_SERVICE }}
+  BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
+  FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
+  BACKEND_CONTAINER_NAME: ${{ vars.ECS_BACKEND_CONTAINER_NAME }}
+  COACH_URL: ${{ vars.COACH_SMOKE_URL }}
+  SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+  EXPECTED_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || 'apac.amazon.nova-lite-v1:0' }}
+  DASHBOARD_NAME: ${{ vars.OPERATIONAL_DASHBOARD_NAME || 'ai-financial-wellness-coach-demo-operational' }}
+  ALARM_PREFIX: ${{ vars.OPERATIONAL_ALARM_PREFIX || 'ai-financial-wellness-coach-demo-' }}
+  REPEATS: ${{ inputs.repeats || '2' }}
+  LOAD_REQUESTS: ${{ inputs.load_requests || '10' }}
+  LOAD_CONCURRENCY: ${{ inputs.load_concurrency || '2' }}
+
+jobs:
+  validate:
+    name: Validate live AI and AWS operations
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.AWS_OPERATIONAL_VALIDATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: demo
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate operational inputs and environment
+        run: |
+          required=(
+            DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
+            BACKEND_CONTAINER_NAME COACH_URL SMOKE_BACKEND_API_KEY
+            EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing demo environment variable or secret: $name" >&2
+              exit 1
+            fi
+          done
+          if ! [[ "$REPEATS" =~ ^[1-5]$ ]]; then
+            echo "repeats must be between 1 and 5" >&2
+            exit 1
+          fi
+          if ! [[ "$LOAD_REQUESTS" =~ ^[0-9]+$ ]] ||
+             (( LOAD_REQUESTS < 1 || LOAD_REQUESTS > 50 )); then
+            echo "load_requests must be between 1 and 50" >&2
+            exit 1
+          fi
+          if ! [[ "$LOAD_CONCURRENCY" =~ ^[0-9]+$ ]] ||
+             (( LOAD_CONCURRENCY < 1 || LOAD_CONCURRENCY > 5 )); then
+            echo "load_concurrency must be between 1 and 5" >&2
+            exit 1
+          fi
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Capture and verify ECS service state
+        run: |
+          mkdir -p artifacts
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$AI_SERVICE" "$BACKEND_SERVICE" "$FRONTEND_SERVICE" \
+            > artifacts/ecs-services.json
+          jq -e '
+            (.failures | length) == 0 and
+            ([.services[] | select(.status != "ACTIVE" or .runningCount < .desiredCount)] | length) == 0
+          ' artifacts/ecs-services.json > /dev/null
+          aws application-autoscaling describe-scalable-targets \
+            --service-namespace ecs \
+            > artifacts/ecs-scalable-targets.json
+          jq -e --arg cluster "$ECS_CLUSTER" --arg ai "$AI_SERVICE" --arg backend "$BACKEND_SERVICE" '
+            [.ScalableTargets[] |
+              select(.ResourceId == "service/\($cluster)/\($ai)" or
+                     .ResourceId == "service/\($cluster)/\($backend)")] |
+            length == 2 and all(.[]; .MinCapacity == 1 and .MaxCapacity == 2)
+          ' artifacts/ecs-scalable-targets.json > /dev/null
+
+      - name: Verify CloudWatch dashboard and alarms
+        run: |
+          aws cloudwatch get-dashboard \
+            --dashboard-name "$DASHBOARD_NAME" \
+            > artifacts/cloudwatch-dashboard.json
+          aws cloudwatch describe-alarms \
+            --alarm-name-prefix "$ALARM_PREFIX" \
+            > artifacts/cloudwatch-alarms.json
+          jq -e '(.MetricAlarms | length) >= 6' artifacts/cloudwatch-alarms.json > /dev/null
+
+      - name: Enforce trace retention in a one-shot backend task
+        run: |
+          network_configuration=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            --query 'services[0].networkConfiguration' --output json)
+          task_definition=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          overrides=$(jq -nc --arg name "$BACKEND_CONTAINER_NAME" \
+            '{containerOverrides:[{name:$name,command:["python","-m","app.jobs.purge_orchestration_traces"]}]}')
+          aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$task_definition" \
+            --launch-type FARGATE \
+            --network-configuration "$network_configuration" \
+            --overrides "$overrides" \
+            > artifacts/trace-retention-run.json
+          jq -e '(.failures | length) == 0 and (.tasks | length) == 1' \
+            artifacts/trace-retention-run.json > /dev/null
+          task_arn=$(jq -r '.tasks[0].taskArn' artifacts/trace-retention-run.json)
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
+          aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" --tasks "$task_arn" \
+            > artifacts/trace-retention-task.json
+          exit_code=$(jq -r --arg name "$BACKEND_CONTAINER_NAME" \
+            '.tasks[0].containers[] | select(.name == $name) | .exitCode' \
+            artifacts/trace-retention-task.json)
+          if [[ "$exit_code" != "0" ]]; then
+            echo "Trace-retention task failed with exit code $exit_code" >&2
+            exit 1
+          fi
+
+      - name: Run repeated live Bedrock and RAG evaluation
+        run: >-
+          python infra/scripts/live_evaluation.py
+          --url "$COACH_URL"
+          --api-key "$SMOKE_BACKEND_API_KEY"
+          --cases infra/llmsecops/live-evaluation-cases.jsonl
+          --output artifacts/live-evaluation.json
+          --repeats "$REPEATS"
+          --expected-model-id "$EXPECTED_MODEL_ID"
+          --maximum-p95-ms "${{ vars.LIVE_EVAL_MAX_P95_MS || '30000' }}"
+          --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '1.00' }}"
+
+      - name: Run bounded load and cleanup test data
+        run: >-
+          python infra/scripts/load_smoke.py
+          --url "$COACH_URL"
+          --api-key "$SMOKE_BACKEND_API_KEY"
+          --requests "$LOAD_REQUESTS"
+          --concurrency "$LOAD_CONCURRENCY"
+          --maximum-p95-ms "${{ vars.LOAD_MAX_P95_MS || '30000' }}"
+          --output artifacts/load-evidence.json
+
+      - name: Exercise and verify backend task replacement
+        if: ${{ inputs.exercise_task_replacement == true }}
+        run: |
+          before=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            --query 'services[0].deployments[?status==`PRIMARY`].id | [0]' --output text)
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" --service "$BACKEND_SERVICE" \
+            --force-new-deployment > artifacts/task-replacement-start.json
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE"
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            > artifacts/task-replacement-complete.json
+          after=$(jq -r '.services[0].deployments[] | select(.status == "PRIMARY") | .id' \
+            artifacts/task-replacement-complete.json)
+          if [[ -z "$before" || -z "$after" || "$before" == "$after" ]]; then
+            echo "ECS did not report a new stable backend deployment" >&2
+            exit 1
+          fi
+
+      - name: Summarize load evidence
+        if: always() && hashFiles('artifacts/load-evidence.json') != ''
+        run: |
+          {
+            echo "## Bounded AWS load validation"
+            echo
+            jq -r '"- Result: **\(if .passed then "PASS" else "FAIL" end)**",
+              "- Success rate: \(.success_rate * 100)%",
+              "- P50/P95/P99: \(.latency_ms.p50) / \(.latency_ms.p95) / \(.latency_ms.p99) ms",
+              "- Synthetic cleanup failures: \(.cleanup_failures)"' artifacts/load-evidence.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload privacy-safe operational evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: aws-operational-evidence-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 90

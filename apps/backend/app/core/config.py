@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     ai_service_timeout_seconds: float = Field(
         default=45.0, gt=0, le=120, alias="AI_SERVICE_TIMEOUT_SECONDS"
     )
+    trace_retention_days: int = Field(
+        default=30, ge=1, le=365, alias="TRACE_RETENTION_DAYS"
+    )
     postgres_url: str | None = Field(default=None, alias="POSTGRES_URL")
     postgres_host: str | None = Field(default=None, alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, ge=1, le=65535, alias="POSTGRES_PORT")
