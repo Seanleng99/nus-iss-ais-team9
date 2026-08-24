@@ -42,6 +42,10 @@ class BudgetAgent(BaseAgent):
                     reason_code="BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS",
                     required_output_fields=["category_totals", "transaction_count"],
                     required=False,
+                    selection_guidance=(
+                        "Request this capability when the user explicitly asks to use "
+                        "recent spending, transactions, or expense patterns in the budget."
+                    ),
                 )
             ]
         return []

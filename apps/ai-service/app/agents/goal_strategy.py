@@ -45,6 +45,10 @@ class GoalStrategyAgent(BaseAgent):
                         "estimated_savings_capacity",
                         "calculation_method",
                     ],
+                    selection_guidance=(
+                        "Request this capability when the user asks whether a supplied "
+                        "financial goal is feasible, reachable, or affordable."
+                    ),
                 ),
             )
         return ()

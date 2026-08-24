@@ -102,6 +102,50 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
     assert all(call["temperature"] > 0 for call in gateway.calls)
 
 
+def test_explicit_specialist_selection_cannot_be_overridden_by_router() -> None:
+    class RecordingGateway(LocalFixtureModelGateway):
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def generate(self, **kwargs) -> str:
+            self.calls.append(kwargs)
+            return super().generate(**kwargs)
+
+    gateway = RecordingGateway()
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway
+    ).handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="explicit-route",
+            message="Use my spending to assess my emergency fund goal.",
+            requested_agents=["goal_strategy"],
+            snapshot={
+                "monthly_income": {"amount": 5000},
+                "goals": [
+                    {
+                        "name": "Emergency fund",
+                        "target_amount": {"amount": 12000},
+                        "target_months": 12,
+                    }
+                ],
+            },
+        )
+    )
+
+    assert response.selected_agents[:2] == ["goal_strategy", "budget"]
+    assert not any(
+        call["system_prompt"].startswith("PROMPT_ID: router")
+        for call in gateway.calls
+    )
+    routing_event = next(
+        event
+        for event in response.audit["events"]
+        if event["event_type"] == "routing.completed"
+    )
+    assert routing_event["details"]["routing_mode"] == "explicit"
+
+
 def test_investment_education_returns_grounded_education_sources() -> None:
     request = CoachRequest(
         user_id="u1",

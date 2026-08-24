@@ -204,11 +204,19 @@ class DependencyRequestDraft(StrictContractModel):
     reason_code: str = Field(min_length=1, max_length=128)
     required_output_fields: list[str] = Field(default_factory=list, max_length=20)
     required: bool = True
+    selection_guidance: str = Field(min_length=1, max_length=500)
+
+
+class DependencyRequestSelection(StrictContractModel):
+    capability: CapabilityName
+    reason_code: str = Field(min_length=1, max_length=128)
+    required_output_fields: list[str] = Field(default_factory=list, max_length=20)
+    required: bool = True
 
 
 class DependencyPlanningDecision(StrictContractModel):
     status: Literal["ready", "needs_dependency", "needs_input"]
-    requests: list[DependencyRequestDraft] = Field(default_factory=list, max_length=4)
+    requests: list[DependencyRequestSelection] = Field(default_factory=list, max_length=4)
     questions: list[str] = Field(default_factory=list, max_length=4)
     reason_code: str | None = Field(default=None, max_length=128)
 

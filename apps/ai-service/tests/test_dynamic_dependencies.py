@@ -147,6 +147,7 @@ def test_model_cannot_escalate_optional_dependency_contract() -> None:
             if kwargs["system_prompt"].startswith("PROMPT_ID: dependency_planner"):
                 payload = json.loads(kwargs["user_prompt"])
                 requested = dict(payload["allowed_requests"][0])
+                requested.pop("selection_guidance")
                 requested.update(
                     {
                         "reason_code": "MODEL_SELECTED_OVERRIDE",

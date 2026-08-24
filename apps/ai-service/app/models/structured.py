@@ -51,13 +51,28 @@ def generate_structured_response(
     except ModelGatewayError as exc:
         if exc.code != "INVALID_STRUCTURED_RESPONSE":
             raise
+        cause = exc.__cause__
+        if isinstance(cause, ValidationError):
+            validation_issues = json.dumps(
+                [
+                    {
+                        "location": ".".join(str(item) for item in issue["loc"]),
+                        "message": issue["msg"],
+                    }
+                    for issue in cause.errors(include_input=False)
+                ],
+                ensure_ascii=True,
+            )
+        else:
+            validation_issues = "The response was not valid JSON."
 
     schema = json.dumps(response_type.model_json_schema(), ensure_ascii=True)
     correction_prompt = (
         f"{system_prompt}\n"
         "CORRECTION: The previous response did not satisfy the required contract. "
         "Return exactly one valid JSON object with no Markdown fence, commentary, or "
-        f"additional keys. It must validate against this JSON Schema: {schema}"
+        f"additional keys. Validation issues: {validation_issues}. "
+        f"It must validate against this JSON Schema: {schema}"
     )
     corrected = gateway.generate(
         system_prompt=correction_prompt,

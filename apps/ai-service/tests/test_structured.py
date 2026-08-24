@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.core.schemas import AgentNarrative
+from app.core.schemas import AgentNarrative, DependencyPlanningDecision
 from app.models.gateway import ModelGatewayError
 from app.models.structured import generate_structured_response
 
@@ -64,3 +64,54 @@ def test_generate_structured_response_fails_after_bounded_correction() -> None:
 
     assert raised.value.code == "INVALID_STRUCTURED_RESPONSE"
     assert len(gateway.calls) == 2
+
+
+def test_correction_prompt_includes_safe_contract_validation_issue() -> None:
+    gateway = ScriptedGateway(
+        [
+            json.dumps(
+                {
+                    "status": "ready",
+                    "requests": [
+                        {
+                            "capability": "monthly_savings_capacity",
+                            "reason_code": "GOAL_FEASIBILITY_REQUIRES_CAPACITY",
+                            "required_output_fields": ["estimated_savings_capacity"],
+                            "required": True,
+                        }
+                    ],
+                    "questions": [],
+                    "reason_code": None,
+                }
+            ),
+            json.dumps(
+                {
+                    "status": "needs_dependency",
+                    "requests": [
+                        {
+                            "capability": "monthly_savings_capacity",
+                            "reason_code": "GOAL_FEASIBILITY_REQUIRES_CAPACITY",
+                            "required_output_fields": ["estimated_savings_capacity"],
+                            "required": True,
+                        }
+                    ],
+                    "questions": [],
+                    "reason_code": "APPROVED_CAPABILITY_REQUIRED",
+                }
+            ),
+        ]
+    )
+
+    result = generate_structured_response(
+        gateway,
+        response_type=DependencyPlanningDecision,
+        system_prompt="PROMPT_ID: dependency_planner\nReturn JSON.",
+        user_prompt="{}",
+        temperature=0.35,
+        max_tokens=800,
+    )
+
+    assert result.status == "needs_dependency"
+    assert "ready dependency decisions cannot include requests" in (
+        gateway.calls[1]["system_prompt"]
+    )

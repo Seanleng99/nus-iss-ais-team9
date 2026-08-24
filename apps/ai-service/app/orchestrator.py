@@ -205,35 +205,52 @@ class AgentOrchestrator:
 
     def _route(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
-        requested_agents = [
-            agent.value
-            for agent in (request.requested_agents or [])
-            if agent != AgentName.RISK_COMPLIANCE
-        ]
-        payload = {
-            "message": state["sanitized_message"],
-            "requested_agents": requested_agents or None,
-            "snapshot_features": {
-                "has_monthly_income": request.snapshot.monthly_income is not None,
-                "recurring_expense_count": len(request.snapshot.recurring_expenses),
-                "recent_transaction_count": len(request.snapshot.recent_transactions),
-                "goal_count": len(request.snapshot.goals),
-                "has_risk_tolerance": request.snapshot.risk_tolerance is not None,
-            },
-        }
-        decision = generate_structured_response(
-            self.gateway,
-            response_type=RouterDecision,
-            system_prompt=self.prompts.get("router"),
-            user_prompt=json.dumps(payload, ensure_ascii=True),
-            temperature=self.config.router_temperature,
-            max_tokens=self.config.model_max_tokens,
+        requested_agents = list(
+            dict.fromkeys(
+                agent
+                for agent in (request.requested_agents or [])
+                if agent != AgentName.RISK_COMPLIANCE
+            )
         )
+        if requested_agents:
+            decision = RouterDecision(
+                selected_agents=requested_agents,
+                rationale=[
+                    "The caller supplied an explicit allowlisted specialist selection."
+                ],
+            )
+            routing_mode = "explicit"
+            routing_actor = "orchestrator"
+        else:
+            payload = {
+                "message": state["sanitized_message"],
+                "requested_agents": None,
+                "snapshot_features": {
+                    "has_monthly_income": request.snapshot.monthly_income is not None,
+                    "recurring_expense_count": len(request.snapshot.recurring_expenses),
+                    "recent_transaction_count": len(request.snapshot.recent_transactions),
+                    "goal_count": len(request.snapshot.goals),
+                    "has_risk_tolerance": request.snapshot.risk_tolerance is not None,
+                },
+            }
+            decision = generate_structured_response(
+                self.gateway,
+                response_type=RouterDecision,
+                system_prompt=self.prompts.get("router"),
+                user_prompt=json.dumps(payload, ensure_ascii=True),
+                temperature=self.config.router_temperature,
+                max_tokens=self.config.model_max_tokens,
+            )
+            routing_mode = "model"
+            routing_actor = "router"
         event = self._event(
             state,
             "routing.completed",
-            "router",
-            details={"selected_agents": [agent.value for agent in decision.selected_agents]},
+            routing_actor,
+            details={
+                "selected_agents": [agent.value for agent in decision.selected_agents],
+                "routing_mode": routing_mode,
+            },
         )
         return {
             "selected_agents": decision.selected_agents,

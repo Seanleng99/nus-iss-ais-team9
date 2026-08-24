@@ -174,9 +174,21 @@ class LocalFixtureModelGateway:
             }
         allowed = list(payload.get("allowed_requests", []))
         if allowed:
+            requests = [
+                {
+                    key: item[key]
+                    for key in (
+                        "capability",
+                        "reason_code",
+                        "required_output_fields",
+                        "required",
+                    )
+                }
+                for item in allowed
+            ]
             return {
                 "status": "needs_dependency",
-                "requests": allowed,
+                "requests": requests,
                 "questions": [],
                 "reason_code": "APPROVED_CAPABILITY_REQUIRED",
             }
