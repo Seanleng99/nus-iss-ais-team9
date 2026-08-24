@@ -199,7 +199,7 @@ jobs:
       - name: Install infrastructure validation tools
         run: python -m pip install "cfn-lint>=1.53,<2" "pytest>=8.2,<9"
       - name: Test deployment and operational scripts
-        run: pytest infra/scripts/tests
+        run: python -m pytest infra/scripts/tests
       - name: Validate AWS templates
         run: cfn-lint infra/aws/*.yaml
       - name: Validate local service graph
