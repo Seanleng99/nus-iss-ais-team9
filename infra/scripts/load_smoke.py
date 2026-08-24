@@ -3,6 +3,7 @@ import json
 import math
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,6 +51,8 @@ def cleanup_session(
         ) as response:
             response.read()
             return response.status == 204
+    except urllib.error.HTTPError as exc:
+        return exc.code == 404
     except (OSError, ValueError):
         return False
 

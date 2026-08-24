@@ -9,7 +9,7 @@ from app.core.schemas import (
     ComplianceDecision,
 )
 from app.models.gateway import ModelGateway
-from app.models.structured import parse_structured_response
+from app.models.structured import generate_structured_response
 from app.tools.registry import call_retrieval_tool
 
 BLOCKED_FINANCIAL_ADVICE_PATTERNS = [
@@ -69,7 +69,9 @@ class RiskComplianceAgent:
             "trusted_retriever",
             decision.sanitized_text,
         )
-        raw = self.gateway.generate(
+        review = generate_structured_response(
+            self.gateway,
+            response_type=ComplianceDecision,
             system_prompt=self.prompts.get("risk_compliance"),
             user_prompt=json.dumps(
                 {
@@ -95,7 +97,6 @@ class RiskComplianceAgent:
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
-        review = parse_structured_response(raw, ComplianceDecision)
         output_decision = inspect_prompt(
             " ".join([review.summary, *review.rationale, *review.policy_notes])
         )

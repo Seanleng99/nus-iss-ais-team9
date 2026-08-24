@@ -161,6 +161,8 @@ jobs:
           fi
 
       - name: Run repeated live Bedrock and RAG evaluation
+        id: live_evaluation
+        continue-on-error: true
         run: >-
           python infra/scripts/live_evaluation.py
           --url "$COACH_URL"
@@ -173,6 +175,8 @@ jobs:
           --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '1.00' }}"
 
       - name: Run bounded load and cleanup test data
+        id: load_validation
+        continue-on-error: true
         run: >-
           python infra/scripts/load_smoke.py
           --url "$COACH_URL"
@@ -214,6 +218,18 @@ jobs:
               "- P50/P95/P99: \(.latency_ms.p50) / \(.latency_ms.p95) / \(.latency_ms.p99) ms",
               "- Synthetic cleanup failures: \(.cleanup_failures)"' artifacts/load-evidence.json
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce live evaluation and load results
+        if: always()
+        env:
+          LIVE_EVALUATION_OUTCOME: ${{ steps.live_evaluation.outcome }}
+          LOAD_VALIDATION_OUTCOME: ${{ steps.load_validation.outcome }}
+        run: |
+          if [[ "$LIVE_EVALUATION_OUTCOME" != "success" ||
+                "$LOAD_VALIDATION_OUTCOME" != "success" ]]; then
+            echo "Operational validation failed: live=$LIVE_EVALUATION_OUTCOME load=$LOAD_VALIDATION_OUTCOME" >&2
+            exit 1
+          fi
 
       - name: Upload privacy-safe operational evidence
         if: always()

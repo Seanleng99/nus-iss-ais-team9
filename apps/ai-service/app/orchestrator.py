@@ -51,7 +51,7 @@ from app.models.gateway import (
     TracingModelGateway,
     create_model_gateway,
 )
-from app.models.structured import parse_structured_response
+from app.models.structured import generate_structured_response
 from app.rag.retriever import EducationRetriever, RetrievalError, create_education_retriever
 
 
@@ -221,13 +221,14 @@ class AgentOrchestrator:
                 "has_risk_tolerance": request.snapshot.risk_tolerance is not None,
             },
         }
-        raw = self.gateway.generate(
+        decision = generate_structured_response(
+            self.gateway,
+            response_type=RouterDecision,
             system_prompt=self.prompts.get("router"),
             user_prompt=json.dumps(payload, ensure_ascii=True),
             temperature=self.config.router_temperature,
             max_tokens=self.config.model_max_tokens,
         )
-        decision = parse_structured_response(raw, RouterDecision)
         event = self._event(
             state,
             "routing.completed",
@@ -784,13 +785,14 @@ class AgentOrchestrator:
             ],
             "sources": [source.model_dump() for source in sources],
         }
-        raw = self.gateway.generate(
+        synthesis = generate_structured_response(
+            self.gateway,
+            response_type=SynthesisDecision,
             system_prompt=self.prompts.get("synthesizer"),
             user_prompt=json.dumps(payload, ensure_ascii=True),
             temperature=self.config.agent_temperature,
             max_tokens=self.config.model_max_tokens,
         )
-        synthesis = parse_structured_response(raw, SynthesisDecision)
         events.append(
             self._event(
                 state,

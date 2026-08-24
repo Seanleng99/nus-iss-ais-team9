@@ -1,6 +1,9 @@
+import urllib.error
+
 from infra.scripts import live_evaluation
 from infra.scripts.live_evaluation import (
     chat_session_delete_url,
+    cleanup_session,
     enforce_thresholds,
     evaluate_response,
     run_live_evaluation,
@@ -17,6 +20,19 @@ def test_chat_session_delete_url_preserves_api_prefix_and_encodes_ids() -> None:
     assert result == (
         "https://example.test/api/users/live%20user/chat-sessions/session%2Fone"
     )
+
+
+def test_cleanup_treats_missing_synthetic_session_as_clean(monkeypatch) -> None:
+    def missing(*_args, **_kwargs):
+        raise urllib.error.HTTPError(
+            "https://example.test/session", 404, "Not Found", {}, None
+        )
+
+    monkeypatch.setattr(live_evaluation.urllib.request, "urlopen", missing)
+
+    assert cleanup_session(
+        "https://example.test/api/coach", "secret", "user", "session", 1
+    ) is True
 
 
 def test_evaluate_response_checks_dependencies_model_and_prompt() -> None:

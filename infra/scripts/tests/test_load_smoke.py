@@ -1,4 +1,12 @@
-from infra.scripts.load_smoke import build_report, chat_session_delete_url, percentile
+import urllib.error
+
+from infra.scripts import load_smoke
+from infra.scripts.load_smoke import (
+    build_report,
+    chat_session_delete_url,
+    cleanup_session,
+    percentile,
+)
 
 
 def test_chat_session_delete_url_preserves_api_prefix_and_encodes_ids() -> None:
@@ -11,6 +19,19 @@ def test_chat_session_delete_url_preserves_api_prefix_and_encodes_ids() -> None:
     assert result == (
         "https://example.test/api/users/load%20user/chat-sessions/session%2Fone"
     )
+
+
+def test_cleanup_treats_missing_synthetic_session_as_clean(monkeypatch) -> None:
+    def missing(*_args, **_kwargs):
+        raise urllib.error.HTTPError(
+            "https://example.test/session", 404, "Not Found", {}, None
+        )
+
+    monkeypatch.setattr(load_smoke.urllib.request, "urlopen", missing)
+
+    assert cleanup_session(
+        "https://example.test/api/coach", "secret", "user", "session", 1
+    ) is True
 
 
 def test_percentile_uses_nearest_rank() -> None:

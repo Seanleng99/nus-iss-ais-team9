@@ -18,7 +18,7 @@ from app.core.schemas import (
     NeedsInputInvocation,
 )
 from app.models.gateway import ModelGateway, ModelGatewayError
-from app.models.structured import parse_structured_response
+from app.models.structured import generate_structured_response
 
 
 class BaseAgent(ABC):
@@ -75,7 +75,9 @@ class BaseAgent(ABC):
                 result=result,
                 capabilities=self._capabilities(task, grounding, result),
             )
-        raw = self.gateway.generate(
+        narrative = generate_structured_response(
+            self.gateway,
+            response_type=AgentNarrative,
             system_prompt=self.prompts.get(self.prompt_id),
             user_prompt=json.dumps(
                 {"message": decision.sanitized_text, "grounding": grounding},
@@ -84,7 +86,6 @@ class BaseAgent(ABC):
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
-        narrative = parse_structured_response(raw, AgentNarrative)
         result = AgentResult(
             agent=self.name,
             summary=narrative.summary,
@@ -129,7 +130,9 @@ class BaseAgent(ABC):
         missing_questions = list(self._missing_input_questions(task))
         if not options and not missing_questions:
             return None
-        raw = self.gateway.generate(
+        plan = generate_structured_response(
+            self.gateway,
+            response_type=DependencyPlanningDecision,
             system_prompt=self.prompts.get("dependency_planner"),
             user_prompt=json.dumps(
                 {
@@ -149,7 +152,6 @@ class BaseAgent(ABC):
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
-        plan = parse_structured_response(raw, DependencyPlanningDecision)
         if plan.status == "ready":
             return None
         if plan.status == "needs_input":
@@ -180,12 +182,9 @@ class BaseAgent(ABC):
                     requester_task_id=task.task_id,
                     requester=self.name,
                     capability=requested.capability,
-                    reason_code=requested.reason_code,
-                    required_output_fields=(
-                        requested.required_output_fields
-                        or option.required_output_fields
-                    ),
-                    required=requested.required,
+                    reason_code=option.reason_code,
+                    required_output_fields=option.required_output_fields,
+                    required=option.required,
                 )
             )
         return NeedsDependencyInvocation(dependency_requests=requests)

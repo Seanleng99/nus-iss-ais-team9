@@ -1,3 +1,4 @@
+import json
 import time
 
 from pydantic import ValidationError
@@ -138,6 +139,63 @@ def test_budget_skips_dependency_planner_when_there_is_nothing_to_decide() -> No
         call["system_prompt"].startswith("PROMPT_ID: agent_budget")
         for call in gateway.calls
     ) == 1
+
+
+def test_model_cannot_escalate_optional_dependency_contract() -> None:
+    class OverreachingGateway(LocalFixtureModelGateway):
+        def generate(self, **kwargs) -> str:
+            if kwargs["system_prompt"].startswith("PROMPT_ID: dependency_planner"):
+                payload = json.loads(kwargs["user_prompt"])
+                requested = dict(payload["allowed_requests"][0])
+                requested.update(
+                    {
+                        "reason_code": "MODEL_SELECTED_OVERRIDE",
+                        "required_output_fields": ["unapproved_field"],
+                        "required": True,
+                    }
+                )
+                return json.dumps(
+                    {
+                        "status": "needs_dependency",
+                        "requests": [requested],
+                        "questions": [],
+                        "reason_code": "MODEL_SELECTED_OVERRIDE",
+                    }
+                )
+            return super().generate(**kwargs)
+
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=OverreachingGateway(),
+    ).handle(
+        CoachRequest(
+            user_id="u1",
+            session_id="contract-authority",
+            message="Use my recent spending to create a monthly budget.",
+            requested_agents=["budget"],
+            snapshot={
+                "monthly_income": {"amount": 4000},
+                "recent_transactions": [
+                    {
+                        "description": "Groceries",
+                        "category": "food",
+                        "amount": {"amount": 200},
+                        "occurred_on": "2026-08-02",
+                    }
+                ],
+            },
+        )
+    )
+
+    requested_event = next(
+        event
+        for event in response.audit["events"]
+        if event["event_type"] == "dependency.requested"
+    )
+    assert requested_event["details"]["required"] is False
+    assert requested_event["details"]["reason_code"] == (
+        "BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS"
+    )
 
 
 def test_capability_registry_rejects_unauthorized_requester() -> None:
