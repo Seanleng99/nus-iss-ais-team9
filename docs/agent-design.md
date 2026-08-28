@@ -30,9 +30,9 @@ The scheduler runs independent ready tasks concurrently, while preserving depend
 
 ## Model Strategy
 
-The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Investment Education evidence from a configured Amazon Bedrock Knowledge Base. The knowledge base uses its configured embedding model; the target corpus uses Titan Text Embeddings V2. Requests can be routed among the profile's APAC destination Regions. Nova Lite remains a demo default, not the approved production model choice.
+The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Investment Education evidence from a configured Amazon Bedrock Knowledge Base. The knowledge base uses its configured embedding model; the target corpus uses Titan Text Embeddings V2. Requests can be routed among the profile's APAC destination Regions. Nova Lite is the selected synthetic-demo baseline after the repeatable comparison in `docs/model-selection.md`; it is not approved for real-data production use.
 
-Before activation, compare at least one lower-cost model against the candidate on:
+The selection harness compares at least one lower-cost model against the baseline on:
 
 - Routing and tool-selection accuracy.
 - Unsafe-advice refusal and prompt-injection robustness.
@@ -41,7 +41,7 @@ Before activation, compare at least one lower-cost model against the candidate o
 - P50/P95 latency, token usage, and estimated cost.
 - Availability in `ap-southeast-1` and whether inference remains in an approved geography.
 
-Global cross-Region inference can route outside Singapore. It is acceptable only for the synthetic demo unless the privacy owner explicitly approves the data-residency posture. AWS publishes current model IDs and regional inference options in the [Amazon Bedrock model documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models.html).
+The current Lite and Micro profiles are invoked from Singapore and remain within the APAC geography, although individual requests may be routed to another listed APAC destination. Global cross-Region inference can route outside that geography and is prohibited unless the privacy owner explicitly approves the data-residency posture. AWS publishes current model IDs and regional inference options in the [Amazon Bedrock model documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models.html).
 
 The live evaluator initially estimates Nova Lite usage at USD 0.06 per million input tokens and USD 0.24 per million output tokens. These are explicit, configurable assumptions rather than billed-cost telemetry. Confirm them against the current [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) before every formal comparison, and record the rates in the evidence artifact with the token totals.
 

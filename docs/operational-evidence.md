@@ -32,10 +32,16 @@ Using the baseline above, evaluation policy v4 sets these operational gates:
 
 The GitHub environment variables enforce the 10-second live P95, 8-second load P95, and USD 0.05 cost limits. They replaced the original 30-second and USD 1.00 characterization values before run 33164881856.
 
+## Candidate Model Decision
+
+The 2026-08-28 AWS comparison ran 15 cases three times per model through the service orchestrator and prompt set v3. Both the Nova Lite and Nova Micro APAC profiles were active from Singapore, listed six APAC destinations, completed all 45 cases, and had zero execution errors.
+
+Nova Lite passed 45/45 structural runs with 8.15-second P95 and USD 0.012966 estimated cost. Nova Micro passed 44/45 with 8.78-second P95 and USD 0.005432 estimated cost. Micro failed one repeated dynamic-dependency case when Compliance converted a grounded educational emergency-fund assessment into a global block. The versioned policy therefore recorded `retain_baseline` and kept `apac.amazon.nova-lite-v1:0`; see `docs/model-selection.md`.
+
 ## Open Evidence
 
 - Human SNS or incident-channel subscription confirmation and tested delivery.
-- Human-reviewed explanation, confidence, and fairness results.
-- Candidate-model quality, safety, latency, cost, entitlement, and inference-geography comparison.
+- Representative-user validation of explanations and confidence presentation.
+- A completed blinded review when a future candidate passes every objective model-selection gate.
 - Approved Education Knowledge Base ingestion and source-freshness record.
 - Review the exact-version base-image CVE exceptions before they expire on 2026-09-18.

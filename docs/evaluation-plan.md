@@ -122,11 +122,19 @@ The gate requires every case-level structural check to pass. It also enforces a 
 
 The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads.
 
+## Candidate Model Comparison
+
+`.github/workflows/model-comparison.yml` runs the service orchestrator directly against the approved Nova Lite baseline and lower-cost Nova Micro candidate. `infra/llmsecops/model-comparison-policy.json` fixes model/profile IDs, source Regions, geography, checked token prices, repeats, and hard selection thresholds. The 15-case comparison set covers routing, dynamic dependencies, regulated-advice and injection safety, grounded and evidence-gap RAG, and paired fairness consistency.
+
+Each model must have an active catalog profile, successful account entitlement, an approved Singapore source Region and APAC geography, zero execution errors, 100 percent overall/category structural accuracy, at most 10-second per-request P95, and at most USD 0.05 estimated cost. Fairness pairs execute two requests but contribute individual request latencies to the percentile distribution. A candidate that passes every objective gate advances to the generated blinded human-review rubric; it cannot change the deployed model automatically.
+
+The 2026-08-28 three-repeat comparison retained Nova Lite. Lite passed 45/45 structural runs with 8.15-second P95 and USD 0.012966 estimated cost. Micro passed 44/45 with 8.78-second P95 and USD 0.005432 estimated cost, failing the required dependency behavior once. See `docs/model-selection.md` for the decision record and limitations.
+
 ## Fairness Consistency
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
 
-Policy v4 contains executable pairs for budget writing style, goal-name variation, and investment-education writing style. The current structural gate compares routing, block outcomes, deterministic financial data, dependency capabilities, missing-input outcomes, source IDs, and evidence status. Human review of explanation quality and confidence calibration remains required because exact text matching is not an appropriate fairness measure for non-deterministic generation.
+Policy v4 contains executable pairs for budget writing style, goal-name variation, and investment-education writing style. The current structural gate compares routing, block outcomes, deterministic financial data, dependency capabilities, missing-input outcomes, source IDs, and evidence status. The candidate comparison additionally generates a blinded explanation, groundedness, uncertainty-calibration, and safe-helpfulness rubric. Human review remains a mandatory model-change gate when a candidate passes all objective checks because exact text matching is not an appropriate fairness measure for non-deterministic generation.
 
 ## Evidence Handling
 

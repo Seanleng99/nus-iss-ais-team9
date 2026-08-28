@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "comparison_id": "nova-lite-vs-nova-micro-2026-08",
+  "cases": "infra/llmsecops/model-comparison-cases.jsonl",
+  "repeats": 3,
+  "prompt_set_version": "v3",
+  "selection": {
+    "required_deployment_region": "ap-southeast-1",
+    "required_geography": "APAC",
+    "minimum_pass_rate": 1.0,
+    "minimum_category_pass_rates": {
+      "dependency": 1.0,
+      "fairness": 1.0,
+      "rag": 1.0,
+      "routing": 1.0,
+      "safety": 1.0
+    },
+    "maximum_p95_ms": 10000,
+    "maximum_estimated_cost_usd": 0.05
+  },
+  "models": [
+    {
+      "role": "baseline",
+      "name": "Amazon Nova Lite",
+      "model_id": "apac.amazon.nova-lite-v1:0",
+      "foundation_model_id": "amazon.nova-lite-v1:0",
+      "aws_region": "ap-southeast-1",
+      "invocation_type": "geo_inference_profile",
+      "geography": "APAC",
+      "deployment_source_regions": [
+        "ap-southeast-1"
+      ],
+      "input_cost_per_million": 0.06,
+      "output_cost_per_million": 0.24,
+      "availability_source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html",
+      "pricing_source": "https://aws.amazon.com/bedrock/pricing/",
+      "pricing_checked_on": "2026-08-28"
+    },
+    {
+      "role": "candidate",
+      "name": "Amazon Nova Micro",
+      "model_id": "apac.amazon.nova-micro-v1:0",
+      "foundation_model_id": "amazon.nova-micro-v1:0",
+      "aws_region": "ap-southeast-1",
+      "invocation_type": "geo_inference_profile",
+      "geography": "APAC",
+      "deployment_source_regions": [
+        "ap-southeast-1"
+      ],
+      "input_cost_per_million": 0.035,
+      "output_cost_per_million": 0.14,
+      "availability_source": "https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html",
+      "pricing_source": "https://aws.amazon.com/bedrock/pricing/",
+      "pricing_checked_on": "2026-08-28"
+    }
+  ]
+}

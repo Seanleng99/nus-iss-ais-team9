@@ -33,6 +33,10 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
             if not path or path.startswith("docs/"):
                 continue
 
+            if path == ".github/workflows/model-comparison.yml":
+                result.update(ai_ci=True, infrastructure=True, sast=True)
+                continue
+
             if path.startswith(".github/workflows/") or path in {
                 ".dockerignore",
                 "docker-compose.yml",

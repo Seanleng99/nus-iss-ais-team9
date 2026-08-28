@@ -6,6 +6,10 @@ param(
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
     [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
     [string]$AlertEmail = "",
+    [string]$BedrockInferenceProfileId = "apac.amazon.nova-lite-v1:0",
+    [string]$BedrockFoundationModelId = "amazon.nova-lite-v1:0",
+    [string]$BedrockComparisonInferenceProfileId = "apac.amazon.nova-micro-v1:0",
+    [string]$BedrockComparisonFoundationModelId = "amazon.nova-micro-v1:0",
     [Parameter(Mandatory = $true)]
     [ValidatePattern("^[A-Za-z0-9]{10}$")]
     [string]$EducationKnowledgeBaseId
@@ -89,7 +93,10 @@ Invoke-Aws cloudformation deploy `
     --stack-name $FoundationStack `
     --region $Region `
     --capabilities CAPABILITY_NAMED_IAM `
-    --parameter-overrides "EducationKnowledgeBaseId=$EducationKnowledgeBaseId" `
+    --parameter-overrides `
+        "EducationKnowledgeBaseId=$EducationKnowledgeBaseId" `
+        "BedrockInferenceProfileId=$BedrockInferenceProfileId" `
+        "BedrockFoundationModelId=$BedrockFoundationModelId" `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
@@ -147,6 +154,7 @@ $applicationParameters = @(
     "BackendLogGroupName=$($foundation.BackendLogGroupName)",
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
+    "BedrockModelId=$BedrockInferenceProfileId",
     "AlertEmail=$AlertEmail",
     "AiImageUri=$($images.Ai)",
     "BackendImageUri=$($images.Backend)",
@@ -230,7 +238,11 @@ $oidcParameters = @(
     "EcsBackendTaskFamily=$($application.BackendTaskFamily)",
     "EcsTaskExecutionRoleArn=$($foundation.TaskExecutionRoleArn)",
     "EcsAppTaskRoleArn=$($foundation.AppTaskRoleArn)",
-    "EcsAiTaskRoleArn=$($foundation.AiTaskRoleArn)"
+    "EcsAiTaskRoleArn=$($foundation.AiTaskRoleArn)",
+    "BedrockBaselineInferenceProfileId=$BedrockInferenceProfileId",
+    "BedrockBaselineFoundationModelId=$BedrockFoundationModelId",
+    "BedrockCandidateInferenceProfileId=$BedrockComparisonInferenceProfileId",
+    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId"
 )
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\github-actions-oidc.yaml") `

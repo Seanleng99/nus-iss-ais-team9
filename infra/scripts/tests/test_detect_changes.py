@@ -113,6 +113,16 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(all(value for key, value in result.items() if key != "migrations"))
         self.assertFalse(result["migrations"])
 
+    def test_model_comparison_workflow_validates_without_service_deployment(self):
+        result = detect_changes.classify_changes(
+            [".github/workflows/model-comparison.yml"]
+        )
+
+        self.assertTrue(result["ai_ci"])
+        self.assertTrue(result["infrastructure"])
+        self.assertTrue(result["sast"])
+        self.assertFalse(result["deploy"])
+
     def test_unknown_change_selects_all_services_without_migration(self):
         result = detect_changes.classify_changes(["shared/runtime-config.toml"])
 
