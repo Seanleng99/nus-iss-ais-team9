@@ -59,6 +59,9 @@ def test_bedrock_retriever_maps_approved_metadata() -> None:
                             "manifest_schema_version": 2,
                             "review_due_at": "2099-12-31",
                             "usage_scope": "synthetic_demo_only",
+                            "x-amz-bedrock-kb-data-source-id": "DATASOURCE123",
+                            "x-amz-bedrock-kb-chunk-id": "chunk-123",
+                            "x-amz-bedrock-kb-source-file-modality": "TEXT",
                         },
                         "score": 0.91,
                     }
@@ -85,6 +88,45 @@ def test_bedrock_retriever_maps_approved_metadata() -> None:
             "vectorSearchConfiguration": {"numberOfResults": 2}
         },
     }
+
+
+def test_bedrock_retriever_rejects_unknown_non_system_metadata() -> None:
+    class UnknownMetadataClient:
+        def retrieve(self, **kwargs) -> dict:
+            del kwargs
+            return {
+                "retrievalResults": [
+                    {
+                        "content": {"text": "Diversification can reduce concentration risk."},
+                        "metadata": {
+                            "source_id": "mas-diversification-guide",
+                            "title": "Understanding diversification",
+                            "issuing_organization": "MoneySense",
+                            "canonical_url": "https://www.moneysense.gov.sg/example",
+                            "published_at": "2026-07-02",
+                            "ingested_at": "2026-08-28T00:00:00Z",
+                            "document_version": "2026-07-02",
+                            "checksum": "sha256:" + "a" * 64,
+                            "review_status": "approved",
+                            "corpus_version": "investment-education-sg@2026-08-28.1",
+                            "manifest_schema_version": 2,
+                            "review_due_at": "2099-12-31",
+                            "usage_scope": "synthetic_demo_only",
+                            "unexpected_governance_field": "must-not-be-ignored",
+                        },
+                        "score": 0.91,
+                    }
+                ]
+            }
+
+    retriever = BedrockEducationRetriever(
+        knowledge_base_id="EDUCATION123",
+        aws_region="ap-southeast-1",
+        expected_corpus_version="investment-education-sg@2026-08-28.1",
+        client=UnknownMetadataClient(),
+    )
+
+    assert retriever.retrieve("Explain diversification") == []
 
 
 def test_bedrock_retriever_excludes_weak_evidence() -> None:

@@ -168,8 +168,13 @@ class BedrockEducationRetriever:
             metadata = item["metadata"]
             if metadata.get("review_status") != "approved":
                 continue
+            governance_metadata = {
+                key: value
+                for key, value in metadata.items()
+                if not key.startswith("x-amz-bedrock-kb-")
+            }
             try:
-                governed = ApprovedDocumentMetadata.model_validate(metadata)
+                governed = ApprovedDocumentMetadata.model_validate(governance_metadata)
             except ValidationError:
                 continue
             if governed.corpus_version != self.expected_corpus_version:
