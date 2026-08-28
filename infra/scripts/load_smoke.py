@@ -141,7 +141,7 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--timeout-seconds", type=float, default=30)
     parser.add_argument("--minimum-success-rate", type=float, default=1.0)
-    parser.add_argument("--maximum-p95-ms", type=float, default=5000)
+    parser.add_argument("--maximum-p95-ms", type=float, default=8000)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--commit-sha", default=os.getenv("GITHUB_SHA", "unknown"))
     args = parser.parse_args()

@@ -112,6 +112,14 @@ def _agent_data(response: dict[str, Any], agent: str) -> dict[str, Any]:
     return {}
 
 
+def _policy_findings(response: dict[str, Any]) -> list[str]:
+    return [
+        str(finding)
+        for result in response.get("agent_results", [])
+        for finding in result.get("policy_notes", [])
+    ]
+
+
 def evaluate_response(
     response: dict[str, Any],
     expected: dict[str, Any],
@@ -132,6 +140,13 @@ def evaluate_response(
             "selected_agents",
             response.get("selected_agents", []) == expected["selected_agents"],
         )
+    if "forbidden_agents" in expected:
+        add_check(
+            "forbidden_agents",
+            set(response.get("selected_agents", [])).isdisjoint(
+                expected["forbidden_agents"]
+            ),
+        )
     if "dependency_capabilities" in expected:
         actual = {
             item.get("capability")
@@ -140,7 +155,7 @@ def evaluate_response(
         }
         add_check(
             "dependency_capabilities",
-            set(expected["dependency_capabilities"]).issubset(actual),
+            set(expected["dependency_capabilities"]) == actual,
         )
     if "needs_input_agents" in expected:
         actual = {
@@ -154,12 +169,40 @@ def evaluate_response(
             "minimum_sources",
             len(response.get("sources", [])) >= int(expected["minimum_sources"]),
         )
+    if "maximum_sources" in expected:
+        add_check(
+            "maximum_sources",
+            len(response.get("sources", [])) <= int(expected["maximum_sources"]),
+        )
     if "evidence_status" in expected:
         evidence_agent = expected.get("evidence_agent", "investment_education")
         add_check(
             "evidence_status",
             _agent_data(response, evidence_agent).get("evidence_status")
             == expected["evidence_status"],
+        )
+    if "policy_finding_prefixes" in expected:
+        findings = _policy_findings(response)
+        add_check(
+            "policy_finding_prefixes",
+            all(
+                any(finding.startswith(prefix) for finding in findings)
+                for prefix in expected["policy_finding_prefixes"]
+            ),
+        )
+    if "guardrail_finding_prefixes" in expected:
+        findings = response.get("audit", {}).get("guardrail_findings", [])
+        add_check(
+            "guardrail_finding_prefixes",
+            all(
+                any(str(finding).startswith(prefix) for finding in findings)
+                for prefix in expected["guardrail_finding_prefixes"]
+            ),
+        )
+    if "minimum_disclaimers" in expected:
+        add_check(
+            "minimum_disclaimers",
+            len(response.get("disclaimers", [])) >= int(expected["minimum_disclaimers"]),
         )
 
     audit = response.get("audit", {})
@@ -174,6 +217,18 @@ def evaluate_response(
             audit.get("prompt_set_version") == expected_prompt_version,
         )
         add_check("model_calls_recorded", bool(audit.get("model_calls")))
+        if "minimum_model_calls" in expected:
+            add_check(
+                "minimum_model_calls",
+                int(audit.get("model_call_count") or 0)
+                >= int(expected["minimum_model_calls"]),
+            )
+        if "maximum_model_calls" in expected:
+            add_check(
+                "maximum_model_calls",
+                int(audit.get("model_call_count") or 0)
+                <= int(expected["maximum_model_calls"]),
+            )
     return all(item["passed"] for item in checks), checks
 
 
@@ -382,7 +437,7 @@ def main() -> None:
     parser.add_argument("--api-key", required=True)
     parser.add_argument("--cases", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=float, default=60)
     parser.add_argument("--expected-model-provider", default="bedrock")
     parser.add_argument("--expected-model-id", required=True)
@@ -390,8 +445,8 @@ def main() -> None:
     parser.add_argument("--input-cost-per-million", type=float, default=0.06)
     parser.add_argument("--output-cost-per-million", type=float, default=0.24)
     parser.add_argument("--minimum-pass-rate", type=float, default=1.0)
-    parser.add_argument("--maximum-p95-ms", type=float, default=8000)
-    parser.add_argument("--maximum-estimated-cost-usd", type=float, default=1.0)
+    parser.add_argument("--maximum-p95-ms", type=float, default=10000)
+    parser.add_argument("--maximum-estimated-cost-usd", type=float, default=0.05)
     parser.add_argument("--commit-sha", default=os.getenv("GITHUB_SHA", "unknown"))
     args = parser.parse_args()
 

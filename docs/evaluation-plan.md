@@ -102,7 +102,7 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 ## Regression And Drift
 
-`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
+`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v4 covers routing, budgets, retrieval, guardrails, dynamic dependencies, regulated-advice behavior, and paired fairness consistency. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
 
 The fixed seed set detects behavior regression, not production input drift. After privacy approval, monitor only aggregate production distributions described in `docs/operations.md` and use observed shifts to expand representative evaluation cases.
 
@@ -116,13 +116,17 @@ Before an AWS release is approved for anything beyond the synthetic demo, run th
 
 `.github/workflows/aws-operational-validation.yml` runs `infra/scripts/live_evaluation.py` against the deployed backend weekly and on demand. The versioned cases in `infra/llmsecops/live-evaluation-cases.jsonl` cover routing, multi-hop dynamic dependencies, typed missing-input behavior, a critical prompt injection, and grounded Education RAG. Each case is repeated from a new synthetic session so the result measures the deployed Bedrock model, prompt set, orchestrator, backend persistence path, and Knowledge Base adapter together.
 
-The gate requires every case-level structural check to pass. It also enforces configurable P95 latency and estimated-cost ceilings. The initial workflow ceiling is deliberately a 30-second characterization bound; after the first retained AWS run, lower `LIVE_EVAL_MAX_P95_MS` toward the eight-second demo objective using observed variance. Cost is estimated from audited input/output token counts. The default Nova Lite rates are configurable command arguments and must be checked against the current AWS pricing page before a formal assessment.
+The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, and grounded Education RAG. The workflow repeats every case three times by default.
+
+The gate requires every case-level structural check to pass. It also enforces a default 10-second P95 ceiling and USD 0.05 estimated-cost ceiling. The bounded load gate uses an 8-second P95 ceiling. These replace the original 30-second characterization bounds using the first retained AWS baseline while leaving limited variance above the observed live P95. Cost is estimated from audited input/output token counts. The default Nova Lite rates are configurable command arguments and must be checked against the current AWS pricing page before a formal assessment.
 
 The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads.
 
 ## Fairness Consistency
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
+
+Policy v4 contains executable pairs for budget writing style, goal-name variation, and investment-education writing style. The current structural gate compares routing, block outcomes, deterministic financial data, dependency capabilities, missing-input outcomes, source IDs, and evidence status. Human review of explanation quality and confidence calibration remains required because exact text matching is not an appropriate fairness measure for non-deterministic generation.
 
 ## Evidence Handling
 

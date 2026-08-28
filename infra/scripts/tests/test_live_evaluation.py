@@ -100,6 +100,52 @@ def test_evaluate_response_requires_grounded_sources() -> None:
     assert passed is True
 
 
+def test_evaluate_response_checks_policy_guardrail_and_agent_boundaries() -> None:
+    response = {
+        "blocked": True,
+        "selected_agents": ["investment_education"],
+        "agent_results": [
+            {
+                "agent": "risk_compliance",
+                "data": {},
+                "policy_notes": ["regulated_advice:guaranteed return"],
+            }
+        ],
+        "disclaimers": ["Educational use only"],
+        "sources": [],
+        "audit": {
+            "guardrail_findings": ["email"],
+            "model_provider": "bedrock",
+            "model_id": "model",
+            "prompt_set_version": "v3",
+            "model_call_count": 3,
+            "model_calls": [{"component": "risk_compliance"}],
+            "dependency_resolutions": [],
+        },
+    }
+
+    passed, checks = evaluate_response(
+        response,
+        {
+            "blocked": True,
+            "selected_agents": ["investment_education"],
+            "forbidden_agents": ["budget"],
+            "dependency_capabilities": [],
+            "policy_finding_prefixes": ["regulated_advice:"],
+            "guardrail_finding_prefixes": ["email"],
+            "minimum_disclaimers": 1,
+            "minimum_model_calls": 2,
+            "maximum_model_calls": 4,
+        },
+        expected_model_provider="bedrock",
+        expected_model_id="model",
+        expected_prompt_version="v3",
+    )
+
+    assert passed is True
+    assert all(check["passed"] for check in checks)
+
+
 def test_thresholds_report_quality_latency_and_cost_failures() -> None:
     report = {
         "pass_rate": 0.8,

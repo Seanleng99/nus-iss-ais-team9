@@ -96,6 +96,31 @@ class SQLAlchemyUserRepository:
         self.session.flush()
         return True
 
+    def delete_if_empty(self, user_id: str) -> bool:
+        user = self.session.get(UserRecord, user_id)
+        if user is None:
+            return False
+        owned_models = (
+            FinancialProfileRecord,
+            ProfileDemographicRecord,
+            ProfileConsentRecord,
+            TransactionRecord,
+            FinancialGoalRecord,
+            MonthlyBudgetRecord,
+            ChatSessionRecord,
+        )
+        if any(
+            self.session.scalar(
+                select(model.user_id).where(model.user_id == user_id).limit(1)
+            )
+            is not None
+            for model in owned_models
+        ):
+            return False
+        self.session.delete(user)
+        self.session.flush()
+        return True
+
     def get_financial_snapshot(self, user_id: str) -> UserFinancialSnapshot | None:
         if self.session.get(UserRecord, user_id) is None:
             return None
@@ -491,6 +516,7 @@ class SQLAlchemyChatRepository:
             return False
         self.session.delete(record)
         self.session.flush()
+        SQLAlchemyUserRepository(self.session).delete_if_empty(user_id)
         return True
 
     def append_message(

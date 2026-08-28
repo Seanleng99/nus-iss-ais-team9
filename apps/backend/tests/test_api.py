@@ -161,6 +161,37 @@ def test_bare_chat_user_does_not_replace_later_request_snapshot() -> None:
     assert [goal.name for goal in snapshot.goals] == ["Emergency fund"]
 
 
+def test_deleting_only_chat_prunes_chat_only_user() -> None:
+    app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
+    headers = {"X-API-Key": settings.api_key}
+    try:
+        coached = client.post(
+            "/api/coach",
+            headers=headers,
+            json={
+                "user_id": "synthetic-cleanup-user",
+                "session_id": "synthetic-cleanup-chat",
+                "message": "Create a budget",
+                "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
+            },
+        )
+        deleted = client.delete(
+            "/api/users/synthetic-cleanup-user/chat-sessions/synthetic-cleanup-chat",
+            headers=headers,
+        )
+        recreate = client.post(
+            "/api/users/synthetic-cleanup-user/chat-sessions",
+            headers=headers,
+            json={"id": "should-not-exist", "title": "Orphan check"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert coached.status_code == 200
+    assert deleted.status_code == 204
+    assert recreate.status_code == 404
+
+
 def test_trace_is_isolated_to_its_profile() -> None:
     app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
     try:

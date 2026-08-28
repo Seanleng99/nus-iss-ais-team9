@@ -329,3 +329,8 @@ def test_chat_sessions_are_profile_scoped_and_manageable() -> None:
     assert client.get(
         "/api/users/chat-alex/chat-sessions", headers=headers
     ).json() == []
+    assert client.post(
+        "/api/users/chat-alex/chat-sessions",
+        headers=headers,
+        json={"id": "chat-2", "title": "Profile remains"},
+    ).status_code == 201
