@@ -197,7 +197,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install infrastructure validation tools
-        run: python -m pip install "cfn-lint>=1.53,<2" "pytest>=8.2,<9"
+        run: >-
+          python -m pip install
+          "cfn-lint>=1.53,<2"
+          "pytest>=8.2,<9"
+          -e "apps/ai-service"
       - name: Test deployment and operational scripts
         run: python -m pytest infra/scripts/tests
       - name: Validate AWS templates
@@ -265,6 +269,7 @@ jobs:
           --coach-url http://127.0.0.1:8080/api/coach
           --api-key change-me-locally
           --expected-model-provider local_fixture
+          --expected-corpus-version investment-education-sg@local-fixture-v1
       - name: Verify bounded concurrency
         run: >-
           python infra/scripts/load_smoke.py
