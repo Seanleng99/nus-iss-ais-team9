@@ -72,6 +72,7 @@ def test_evaluate_response_checks_dependencies_model_and_prompt() -> None:
 
 
 def test_evaluate_response_requires_grounded_sources() -> None:
+    corpus_version = "investment-education-sg@2026-08-28.1"
     response = {
         "blocked": False,
         "agent_results": [
@@ -80,24 +81,72 @@ def test_evaluate_response_requires_grounded_sources() -> None:
                 "data": {"evidence_status": "grounded"},
             }
         ],
-        "sources": [{"source_id": "approved-source"}],
+        "sources": [
+            {
+                "source_id": "approved-source",
+                "title": "Approved source",
+                "issuing_organization": "Issuer",
+                "canonical_url": "https://example.test/source",
+                "published_at": "2026-08-28",
+                "document_version": "2026-08-28",
+                "checksum": f"sha256:{'a' * 64}",
+                "corpus_version": corpus_version,
+                "review_due_at": "2026-11-14",
+            }
+        ],
         "audit": {
             "model_provider": "bedrock",
             "model_id": "model",
             "prompt_set_version": "v3",
             "model_calls": [{"component": "router"}],
+            "retrieval_corpus_versions": [corpus_version],
         },
     }
 
     passed, _ = evaluate_response(
         response,
-        {"minimum_sources": 1, "evidence_status": "grounded"},
+        {
+            "minimum_sources": 1,
+            "source_provenance": True,
+            "retrieval_corpus_version": corpus_version,
+            "evidence_status": "grounded",
+        },
         expected_model_provider="bedrock",
         expected_model_id="model",
         expected_prompt_version="v3",
     )
 
     assert passed is True
+
+
+def test_evaluate_response_rejects_mismatched_corpus_provenance() -> None:
+    response = {
+        "blocked": False,
+        "agent_results": [],
+        "sources": [{"source_id": "source-without-provenance"}],
+        "audit": {
+            "model_provider": "bedrock",
+            "model_id": "model",
+            "prompt_set_version": "v3",
+            "model_calls": [{"component": "router"}],
+            "retrieval_corpus_versions": ["unexpected-corpus"],
+        },
+    }
+
+    passed, checks = evaluate_response(
+        response,
+        {
+            "source_provenance": True,
+            "retrieval_corpus_version": "expected-corpus",
+        },
+        expected_model_provider="bedrock",
+        expected_model_id="model",
+        expected_prompt_version="v3",
+    )
+
+    assert passed is False
+    failed = {check["check"] for check in checks if not check["passed"]}
+    assert failed == {"source_provenance", "retrieval_corpus_version"}
 
 
 def test_evaluate_response_checks_policy_guardrail_and_agent_boundaries() -> None:

@@ -50,6 +50,33 @@ if ($viewer -ne $Repository.Split("/")[0]) {
 $foundation = Get-StackOutputs $FoundationStack
 $application = Get-StackOutputs $ApplicationStack
 $oidc = Get-StackOutputs $OidcStack
+$educationKnowledgeBaseId = $application.EducationKnowledgeBaseId
+if (-not $educationKnowledgeBaseId) {
+    $educationKnowledgeBaseId = Invoke-Aws cloudformation describe-stacks `
+        --stack-name $ApplicationStack `
+        --region $Region `
+        --query "Stacks[0].Parameters[?ParameterKey=='EducationKnowledgeBaseId'].ParameterValue | [0]" `
+        --output text
+}
+$educationDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
+    --knowledge-base-id $educationKnowledgeBaseId `
+    --region $Region `
+    --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
+    --output text
+if (-not $educationDataSourceId -or $educationDataSourceId -eq "None") {
+    throw "An available Education Knowledge Base data source is required."
+}
+$educationDataSource = Invoke-Aws bedrock-agent get-data-source `
+    --knowledge-base-id $educationKnowledgeBaseId `
+    --data-source-id $educationDataSourceId `
+    --region $Region `
+    --query "dataSource.dataSourceConfiguration.s3Configuration" `
+    --output json | ConvertFrom-Json
+$educationSourceBucket = $educationDataSource.bucketArn.Replace("arn:aws:s3:::", "")
+$educationSourcePrefix = [string]$educationDataSource.inclusionPrefixes[0]
+if (-not $educationSourceBucket -or -not $educationSourcePrefix) {
+    throw "Education data source must expose a governed S3 bucket and prefix."
+}
 $baseUrl = "http://$($foundation.LoadBalancerDnsName)"
 
 $oidcBody = @{ use_default = $true } | ConvertTo-Json -Compress
@@ -109,12 +136,18 @@ $variables = [ordered]@{
     BACKEND_HEALTH_URL = "$baseUrl/health"
     COACH_SMOKE_URL = "$baseUrl/api/coach"
     BEDROCK_MODEL_ID = $application.BedrockModelId
+    EDUCATION_KNOWLEDGE_BASE_ID = $educationKnowledgeBaseId
+    EDUCATION_CORPUS_VERSION = $application.EducationCorpusVersion
+    EDUCATION_DATA_SOURCE_ID = $educationDataSourceId
+    EDUCATION_SOURCE_BUCKET = $educationSourceBucket
+    EDUCATION_SOURCE_PREFIX = $educationSourcePrefix
     OPERATIONAL_DASHBOARD_NAME = $application.OperationalDashboardName
     OPERATIONAL_ALARM_PREFIX = $application.OperationalAlarmPrefix
     LIVE_EVAL_MAX_P95_MS = "10000"
     LIVE_EVAL_MAX_COST_USD = "0.05"
     LOAD_MAX_P95_MS = "8000"
     AWS_OPERATIONAL_VALIDATION_ENABLED = "true"
+    RAG_SOURCE_GOVERNANCE_ENABLED = "true"
 }
 
 foreach ($item in $variables.GetEnumerator()) {

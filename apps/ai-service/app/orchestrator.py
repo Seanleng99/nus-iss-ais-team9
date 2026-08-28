@@ -847,13 +847,26 @@ class AgentOrchestrator:
             answer = (
                 "I cannot provide that recommendation. I can still offer general financial education."
             )
+        sources = self._collect_source_citations(state["agent_results"])
+        retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
+        corpus_versions = sorted(
+            {
+                str(result.data["corpus_version"])
+                for result in state["agent_results"]
+                if result.data.get("corpus_version")
+            }
+        )
         events = [
             *state.get("audit_events", []),
             self._event(
                 state,
                 "workflow.completed",
                 "orchestrator",
-                details={"blocked": compliance.blocked},
+                details={
+                    "blocked": compliance.blocked,
+                    "retrieval_source_count": len(retrieval_evidence),
+                    "retrieval_corpus_versions": corpus_versions,
+                },
             ),
         ]
         response = CoachResponse(
@@ -862,7 +875,7 @@ class AgentOrchestrator:
             answer=answer,
             agent_results=state["agent_results"] + [compliance],
             disclaimers=[ADVISORY_DISCLAIMER],
-            sources=self._collect_source_citations(state["agent_results"]),
+            sources=sources,
             audit={
                 "trace_id": state["trace_id"],
                 "executed_at": state["executed_at"],
@@ -872,6 +885,8 @@ class AgentOrchestrator:
                 "model_provider": self.config.model_provider,
                 "model_id": self.config.model_id,
                 "prompt_set_version": self.prompts.version,
+                "retrieval_corpus_versions": corpus_versions,
+                "retrieval_sources": retrieval_evidence,
                 "dependency_rounds": state.get("dependency_round", 0),
                 "dependency_resolutions": [
                     item.model_dump(mode="json")
@@ -1063,6 +1078,27 @@ class AgentOrchestrator:
                 seen.add(source.source_id)
                 sources.append(source)
         return sources
+
+    @staticmethod
+    def _collect_retrieval_evidence(results: list[AgentResult]) -> list[dict[str, str]]:
+        evidence = []
+        seen = set()
+        for result in results:
+            for item in result.data.get("sources", []):
+                source_id = str(item.get("source_id", ""))
+                if not source_id or source_id in seen:
+                    continue
+                seen.add(source_id)
+                evidence.append(
+                    {
+                        "source_id": source_id,
+                        "document_version": str(item.get("document_version", "")),
+                        "checksum": str(item.get("checksum", "")),
+                        "corpus_version": str(item.get("corpus_version", "")),
+                        "review_due_at": str(item.get("review_due_at", "")),
+                    }
+                )
+        return evidence
 
     def handle(self, request: CoachRequest) -> CoachResponse:
         trace_id = get_correlation_id() or str(uuid4())

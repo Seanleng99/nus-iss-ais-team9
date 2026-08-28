@@ -174,6 +174,29 @@ def evaluate_response(
             "maximum_sources",
             len(response.get("sources", [])) <= int(expected["maximum_sources"]),
         )
+    if expected.get("source_provenance") is True:
+        sources = response.get("sources", [])
+        required = {
+            "source_id",
+            "title",
+            "issuing_organization",
+            "canonical_url",
+            "published_at",
+            "document_version",
+            "checksum",
+            "corpus_version",
+            "review_due_at",
+        }
+        add_check(
+            "source_provenance",
+            bool(sources)
+            and all(
+                required.issubset(source)
+                and all(source.get(field) for field in required)
+                and str(source.get("checksum", "")).startswith("sha256:")
+                for source in sources
+            ),
+        )
     if "evidence_status" in expected:
         evidence_agent = expected.get("evidence_agent", "investment_education")
         add_check(
@@ -206,6 +229,16 @@ def evaluate_response(
         )
 
     audit = response.get("audit", {})
+    if "retrieval_corpus_version" in expected:
+        expected_corpus = str(expected["retrieval_corpus_version"])
+        add_check(
+            "retrieval_corpus_version",
+            audit.get("retrieval_corpus_versions") == [expected_corpus]
+            and all(
+                source.get("corpus_version") == expected_corpus
+                for source in response.get("sources", [])
+            ),
+        )
     if audit.get("model_provider") is not None:
         add_check(
             "model_provider",

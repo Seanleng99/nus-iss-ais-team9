@@ -39,22 +39,25 @@ flowchart LR
   Sources["Approved CPF, MAS, SGX, and Government sources"] --> Review["Source approval and metadata"]
   Review --> S3["Amazon S3 document storage"]
   S3 --> Parse["Document parsing and chunking"]
-  Parse --> Embed["Amazon Titan Text Embeddings V2"]
+  Parse --> Embed["Cohere Embed Multilingual v3"]
   Embed --> KB["Amazon Bedrock Knowledge Base and vector index"]
 ```
 
 ### 3.1 Trusted sources
 
-Only approved documents are ingested. Each document should include:
+Only approved documents are ingested. The versioned source manifest requires:
 
 - `source_id`;
 - title;
 - issuing organization;
 - canonical source URL;
 - publication or effective date, when available;
-- ingestion timestamp;
-- document version or checksum; and
-- review status.
+- exact document and metadata S3 keys;
+- document version and SHA-256 checksum;
+- source, content, and usage-rights review status;
+- approved usage scope and jurisdiction;
+- last verification and next review dates; and
+- withdrawal state and ingestion approval.
 
 The initial source set should focus on:
 
@@ -67,12 +70,12 @@ Market commentary, user-uploaded documents, promotional material, and unverified
 
 ### 3.2 Ingestion process
 
-1. A document is reviewed and approved before upload.
-2. The approved document and its metadata are stored in Amazon S3.
-3. The document is parsed and divided into retrieval-sized chunks.
-4. Titan Text Embeddings V2 converts each chunk into an embedding.
-5. Amazon Bedrock Knowledge Bases stores and indexes the chunks in its configured vector store.
-6. The ingestion result, version, timestamp, and failures are logged for auditability.
+1. A document, its provenance, usage rights, content, and review deadline are approved in the manifest before upload.
+2. The governance tool validates UTF-8 content, the exact SHA-256 checksum, approved prefix, and indirect-injection controls.
+3. The approved document and generated governed metadata sidecar are stored in Amazon S3 only through an exact-version-confirmed mutation command.
+4. Bedrock divides the document into fixed-size chunks and Cohere Embed Multilingual v3 converts each chunk into an embedding.
+5. Amazon Bedrock Knowledge Bases stores and indexes the chunks in its configured S3 Vectors vector store.
+6. The ingestion job, object/checksum audit, corpus version, timestamp, freshness, and failures are retained as privacy-safe evidence.
 
 Document updates should create a traceable new version. Superseded or withdrawn guidance must be removed from active retrieval and the knowledge base resynchronized.
 
@@ -143,8 +146,8 @@ Deterministic guardrails should complement the model-based review for high-confi
 | --- | --- |
 | Approved document storage | Amazon S3 |
 | Managed ingestion and retrieval | Amazon Bedrock Knowledge Bases |
-| Embedding model | Amazon Titan Text Embeddings V2 |
-| Vector index | Vector store configured for the Bedrock Knowledge Base |
+| Embedding model | Cohere Embed Multilingual v3 |
+| Vector index | Amazon S3 Vectors through the configured Bedrock Knowledge Base |
 | Response generation | Amazon Bedrock foundation model |
 | Agent service | Existing FastAPI AI service |
 | Authentication boundary | Application authentication and service-to-service authorization |
@@ -160,10 +163,11 @@ The canonical RAG package already exists at:
 ```text
 apps/ai-service/app/rag/
 ├── __init__.py
+├── ingestion.py
 └── retriever.py
 ```
 
-This directory will remain the main RAG implementation boundary. Future ingestion, Bedrock retrieval, metadata, and evaluation modules should be added only when their implementation step begins; the project should not create a second root-level `rag/` package.
+This directory remains the runtime and contract boundary. The governed source manifest lives with the corpus in `knowledge/investment_education/source_manifest.json`, while the operator CLI and its tests live under `infra/scripts/`.
 
 Related evaluation data is located at:
 
@@ -171,19 +175,22 @@ Related evaluation data is located at:
 apps/ai-service/app/evals/datasets/rag_retrieval.jsonl
 ```
 
-## 9. Current State and Remaining Deployment Gap
+## 9. Current State and Remaining Scope
 
-Investment Education now has a dedicated `education_retriever`. Local and CI runs use a small approved-document fixture, while deployed environments require the Bedrock Knowledge Base provider and an explicit Education Knowledge Base ID.
+Investment Education has a dedicated `education_retriever`. Local and CI runs use a small approved-document fixture. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
 
 The implemented runtime boundary:
 
 - retrieves approved education context and filters weak or unapproved results;
 - sanitizes retrieved content again before grounded generation;
 - returns an explicit evidence gap instead of using unsupported model knowledge;
-- retains source metadata through synthesis, Risk and Compliance review, the API, and Streamlit; and
+- rejects stale, malformed, unapproved, or wrong-corpus chunks;
+- retains document version, checksum, corpus version, and review deadline through synthesis, Risk and Compliance review, the API, Streamlit, and the privacy-safe decision trace; and
 - supports Bedrock Knowledge Base `Retrieve` with sanitized error handling.
 
-The remaining deployment work is to provision and populate the approved Education Knowledge Base and S3 data source, retain ingestion evidence, and run the live-model and live-retrieval evaluation. The separate managed Policy knowledge base and Budget and Goal Strategy retrieval permissions remain later phases.
+The deployed six-document corpus is governed as `investment-education-sg@2026-08-28.1`. Metadata migration, ingestion, checksum/object audit, and live retrieval were completed with zero issues. `infra/scripts/rag_source_governance.py` now covers validation, staging, read-only AWS audit, exact-version apply, verified metadata publication, and reviewed exact-ID withdrawal. A weekly read-only workflow enforces freshness and deployed-state drift. See `docs/rag-source-governance.md` for the operating record.
+
+The separate managed Policy knowledge base and conditional Budget and Goal Strategy retrieval permissions remain later phases.
 
 ## 10. Acceptance Criteria for the RAG Implementation
 
@@ -191,9 +198,11 @@ The implementation will be considered complete when:
 
 - an investment-education query retrieves relevant approved chunks;
 - the Investment Education Agent uses those chunks to produce a grounded draft;
-- the answer exposes traceable source metadata;
+- the answer and persisted trace expose the pinned corpus plus traceable document version/checksum metadata;
 - insufficient retrieval produces an explicit evidence-gap response;
 - malicious instructions inside retrieved content cannot override system policy;
 - the Risk & Compliance Agent blocks personalized or unsupported advice;
 - retrieval and compliance decisions produce auditable telemetry; and
-- offline tests run without requiring live AWS access.
+- offline tests run without requiring live AWS access;
+- stale, withdrawn, tampered, or unmanifested deployed sources fail the governance gate; and
+- mutations require explicit version/source confirmation and least-privilege operator access.

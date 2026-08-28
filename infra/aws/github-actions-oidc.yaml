@@ -46,6 +46,15 @@ Parameters:
   BedrockCandidateFoundationModelId:
     Type: String
     Default: amazon.nova-micro-v1:0
+  EducationKnowledgeBaseId:
+    Type: String
+    MinLength: 10
+    MaxLength: 10
+  EducationSourceBucketName:
+    Type: String
+  EducationSourcePrefix:
+    Type: String
+    Default: investment-education/documents/
 
 Conditions:
   CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, ""]
@@ -222,6 +231,28 @@ Resources:
                 Condition:
                   StringEquals:
                     bedrock:InferenceProfileArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockCandidateInferenceProfileId}
+        - PolicyName: AuditGovernedEducationCorpus
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InspectApprovedKnowledgeBase
+                Effect: Allow
+                Action:
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:GetDataSource
+                  - bedrock:ListIngestionJobs
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+              - Sid: ListApprovedEducationPrefix
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${EducationSourceBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub ${EducationSourcePrefix}*
+              - Sid: ReadApprovedEducationObjects
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${EducationSourceBucketName}/${EducationSourcePrefix}*
 
 Outputs:
   PublishRoleArn:

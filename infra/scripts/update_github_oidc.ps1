@@ -8,7 +8,11 @@ param(
     [string]$BedrockInferenceProfileId = "apac.amazon.nova-lite-v1:0",
     [string]$BedrockFoundationModelId = "amazon.nova-lite-v1:0",
     [string]$BedrockComparisonInferenceProfileId = "apac.amazon.nova-micro-v1:0",
-    [string]$BedrockComparisonFoundationModelId = "amazon.nova-micro-v1:0"
+    [string]$BedrockComparisonFoundationModelId = "amazon.nova-micro-v1:0",
+    [string]$EducationKnowledgeBaseId = "",
+    [string]$EducationDataSourceId = "",
+    [string]$EducationSourceBucketName = "",
+    [string]$EducationSourcePrefix = "investment-education/documents/"
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,6 +81,36 @@ if (-not $oidcConfig.use_default -or -not $subjectPrefix.StartsWith("repo:")) {
 
 $foundation = Get-StackOutputs $FoundationStack
 $application = Get-StackOutputs $ApplicationStack
+if (-not $EducationKnowledgeBaseId) {
+    $EducationKnowledgeBaseId = Invoke-Aws cloudformation describe-stacks `
+        --stack-name $ApplicationStack `
+        --region $Region `
+        --query "Stacks[0].Parameters[?ParameterKey=='EducationKnowledgeBaseId'].ParameterValue | [0]" `
+        --output text
+}
+if (-not $EducationDataSourceId) {
+    $EducationDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
+        --knowledge-base-id $EducationKnowledgeBaseId `
+        --region $Region `
+        --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
+        --output text
+}
+if (-not $EducationKnowledgeBaseId -or $EducationKnowledgeBaseId -eq "None" -or
+    -not $EducationDataSourceId -or $EducationDataSourceId -eq "None") {
+    throw "The Education Knowledge Base and an available data source are required."
+}
+$educationDataSource = Invoke-Aws bedrock-agent get-data-source `
+    --knowledge-base-id $EducationKnowledgeBaseId `
+    --data-source-id $EducationDataSourceId `
+    --region $Region `
+    --query "dataSource.dataSourceConfiguration.s3Configuration" `
+    --output json | ConvertFrom-Json
+if (-not $EducationSourceBucketName) {
+    $EducationSourceBucketName = $educationDataSource.bucketArn.Replace("arn:aws:s3:::", "")
+}
+if ($educationDataSource.inclusionPrefixes -notcontains $EducationSourcePrefix) {
+    throw "Education source prefix does not match the Bedrock data source."
+}
 $ownedProviderArn = & $Aws cloudformation describe-stack-resource `
     --stack-name $OidcStack `
     --logical-resource-id GitHubOidcProvider `
@@ -110,7 +144,10 @@ $parameters = @(
     "BedrockBaselineInferenceProfileId=$BedrockInferenceProfileId",
     "BedrockBaselineFoundationModelId=$BedrockFoundationModelId",
     "BedrockCandidateInferenceProfileId=$BedrockComparisonInferenceProfileId",
-    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId"
+    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId",
+    "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
+    "EducationSourceBucketName=$EducationSourceBucketName",
+    "EducationSourcePrefix=$EducationSourcePrefix"
 )
 
 Invoke-Aws cloudformation deploy `
@@ -122,4 +159,4 @@ Invoke-Aws cloudformation deploy `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
-Write-Host "Updated the GitHub OIDC roles with the approved Bedrock comparison scope."
+Write-Host "Updated GitHub OIDC roles with approved model comparison and RAG audit scopes."

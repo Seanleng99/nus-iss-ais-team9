@@ -15,7 +15,7 @@ These are initial targets to validate with AWS load evidence, not production gua
 
 ## Telemetry
 
-Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. A failed coaching request adds only a stable error code, bounded component name, exception type, and correlation ID; it never logs the prompt, model output, provider message, or financial snapshot. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, and token usage. The backend persists the trace against the profile-scoped chat message without raw prompts or financial grounding.
+Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. A failed coaching request adds only a stable error code, bounded component name, exception type, and correlation ID; it never logs the prompt, model output, provider message, or financial snapshot. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the profile-scoped chat message without raw prompts, retrieved text, or financial grounding.
 
 In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention. Restrict log access separately from application access. The foundation enables ECS Container Insights. The application stack creates the `ai-financial-wellness-coach-demo-operational` dashboard for ECS CPU/memory, ALB backend errors/health/latency, Bedrock invocations/errors/throttles/latency/tokens, and privacy-safe AI generation-failure counts.
 
@@ -29,7 +29,7 @@ In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention
 - Authentication failure spike or prompt-injection spike.
 - Critical/high Inspector finding after deployment.
 - Scheduled evaluation failure or metric regression.
-- RAG source freshness/checksum failure after ingestion exists.
+- Education RAG manifest, freshness, checksum, ingestion, or deployed-object drift.
 
 The first five controls are provisioned by `infra/aws/demo-application.yaml`; the remaining controls require an approved metric definition or existing security service integration. Pass `-AlertEmail address@example.com` to the bootstrap script to create an email subscription, then confirm the SNS subscription. Without an endpoint, alarms still change state and publish to the topic but do not notify a person.
 
@@ -43,7 +43,7 @@ Route deployment failures through EventBridge and operational alerts through SNS
 
 ## Drift Detection
 
-The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression.
+The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression. A separate weekly read-only Education governance job compares the reviewed manifest with exact S3 objects, governed sidecars, Bedrock data-source state, the latest ingestion job, checksums, withdrawals, and review deadlines; any issue fails the job and blocks corpus promotion.
 
 After approved production telemetry exists, observe only privacy-preserving aggregates: intent distribution, selected-agent distribution, missing-input rate, message-length bands, guardrail category rate, retrieval source frequency, source age, latency, token use, and user feedback. Do not retain raw prompts merely to measure drift. A sustained distribution shift triggers dataset review first, followed by prompt, retrieval, or model changes; fine-tuning is considered only when simpler mitigations fail.
 
@@ -64,7 +64,7 @@ The utility gives each independent request a unique chat-only synthetic user, de
 
 Deleting the final chat session for a chat-only synthetic user also prunes the empty user record. PostgreSQL transaction-scoped lifecycle locks serialize same-user creation and deletion, including the boundary where the user row does not yet exist. Users with a profile, demographics, consent, transactions, goals, or budgets are never pruned by chat cleanup. This prevents weekly evaluation and load runs from accumulating empty synthetic identities.
 
-The `AWS Operational Validation` workflow performs this load test, three repetitions of the live Bedrock/RAG suite, trace-retention enforcement, dashboard/alarm verification, and autoscaling verification each week. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures. The default gates are now 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
+The `AWS Operational Validation` workflow performs this load test, three repetitions of the live Bedrock/RAG suite, trace-retention enforcement, dashboard/alarm verification, and autoscaling verification each week. The live RAG cases require citations and persisted traces to match the configured corpus pin. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures. The default gates are now 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
 
 The SNS topic and alarm actions are deployed, but no human endpoint is confirmed. Do not mark notification delivery verified until an address or incident-channel integration is supplied, confirmed, exercised with a test alarm, and linked to a named owner and runbook.
 

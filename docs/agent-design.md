@@ -30,7 +30,7 @@ The scheduler runs independent ready tasks concurrently, while preserving depend
 
 ## Model Strategy
 
-The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Investment Education evidence from a configured Amazon Bedrock Knowledge Base. The knowledge base uses its configured embedding model; the target corpus uses Titan Text Embeddings V2. Requests can be routed among the profile's APAC destination Regions. Nova Lite is the selected synthetic-demo baseline after the repeatable comparison in `docs/model-selection.md`; it is not approved for real-data production use.
+The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Investment Education evidence from a configured Amazon Bedrock Knowledge Base. The deployed corpus uses Cohere Embed Multilingual v3 and is pinned by corpus version at runtime; stale, malformed, unapproved, or wrong-version chunks are rejected. Requests can be routed among the profile's APAC destination Regions. Nova Lite remains the selected synthetic-demo baseline pending the blinded Nova Micro review in `docs/model-selection.md`; it is not approved for real-data production use.
 
 The selection harness compares at least one lower-cost model against the baseline on:
 

@@ -2,7 +2,7 @@
 
 ## Decision
 
-Amazon Nova Lite through `apac.amazon.nova-lite-v1:0` remains the selected model for the synthetic-data demo. Amazon Nova Micro is materially cheaper, but it did not satisfy the required 100 percent dependency-behavior gate. This decision does not approve either model for real personal financial data, regulated advice, or production users.
+Amazon Nova Lite through `apac.amazon.nova-lite-v1:0` remains the selected model for the synthetic-data demo while Amazon Nova Micro awaits blinded human review. The formal comparison made both models objectively eligible; it did not authorize an automatic replacement. This decision does not approve either model for real personal financial data, regulated advice, or production users.
 
 The comparison uses prompt set `v3`, the same orchestrator and deterministic tools as the service, and the local approved Education fixture so both models receive identical retrieval evidence. Both models are invoked from `ap-southeast-1` through geography-bound APAC inference profiles. Live catalog inspection must show each profile as active, account invocation must succeed, and the deployment source Region must match the selection policy before quality measurements are eligible.
 
@@ -23,25 +23,24 @@ An objectively eligible candidate does not replace the baseline automatically. I
 
 ## Comparison Evidence
 
-The completed AWS run on 2026-08-28 used comparison ID `nova-lite-vs-nova-micro-2026-08`. Both profiles were active, exposed six APAC destination Regions, completed all 45 cases, and produced no invocation errors.
+The formal AWS run on 2026-08-28 used comparison ID `nova-lite-vs-nova-micro-2026-08` at commit `9826c8cc06225affef541e8b8c1e02531756991b`. Both profiles were active, exposed six APAC destination Regions, completed all 45 cases, and produced no invocation errors. The retained workflow evidence is [run 33177819211](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33177819211).
 
 | Metric | Nova Lite baseline | Nova Micro candidate | Gate |
 |---|---:|---:|---:|
-| Overall structural pass | 45/45 (100%) | 44/45 (97.78%) | 100% |
+| Overall structural pass | 45/45 (100%) | 45/45 (100%) | 100% |
 | Routing | 100% | 100% | 100% |
-| Dynamic dependency | 100% | 88.89% | 100% |
+| Dynamic dependency | 100% | 100% | 100% |
 | Safety | 100% | 100% | 100% |
 | RAG | 100% | 100% | 100% |
 | Fairness consistency | 100% | 100% | 100% |
-| P50 per request | 4,437.41 ms | 3,898.24 ms | Informational |
-| P95 per request | 8,151.48 ms | 8,781.05 ms | At most 10,000 ms |
-| P99 per request | 8,574.00 ms | 10,242.69 ms | Informational |
-| Audited input/output tokens | 86,673 / 32,358 | 67,629 / 21,894 | Informational |
-| Estimated run cost | USD 0.012966 | USD 0.005432 | At most USD 0.05 |
+| P50 per request | 4,539.44 ms | 3,932.32 ms | Informational |
+| P95 per request | 7,689.87 ms | 7,077.01 ms | At most 10,000 ms |
+| P99 per request | 8,388.86 ms | 8,142.21 ms | Informational |
+| Audited input/output tokens | 82,831 / 30,566 | 67,536 / 21,949 | Informational |
+| Audited provider calls | 187 | 171 | Informational |
+| Estimated run cost | USD 0.012306 | USD 0.005437 | At most USD 0.05 |
 
-Micro reduced estimated comparison cost by about 58 percent, but one repetition of `goal-budget-spending-chain` converted a grounded emergency-fund assessment into a global compliance block. The expected dependency chain and deterministic calculations completed, yet the final block outcome was inconsistent with the approved educational behavior. The failure is therefore a model-behavior result, not an entitlement, routing, tool, or transport error.
-
-Because Micro failed a hard structural gate, the decision is `retain_baseline`; a subjective review is not used to override that failure. Nova Lite remains the selected synthetic-demo model.
+Micro reduced estimated comparison cost by about 56 percent and was faster at P50, P95, and P99 in this run. The machine decision is `pending_human_review`: the blinded 45-row review set must now be scored for explanation clarity, groundedness, uncertainty calibration, and safe helpfulness. Nova Lite remains the selected synthetic-demo model until reviewers approve Micro and the normal configuration change is reviewed and deployed.
 
 ## Reproduction And Evidence Handling
 

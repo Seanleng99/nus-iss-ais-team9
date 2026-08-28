@@ -24,6 +24,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/security-risk-register.md`: AI/security risks, controls, residual ratings, and owners.
 - `docs/evaluation-plan.md`: datasets, expected outputs, metrics, drift, and acceptance criteria.
 - `docs/model-selection.md`: repeatable Bedrock candidate comparison and current model decision.
+- `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
 - `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.

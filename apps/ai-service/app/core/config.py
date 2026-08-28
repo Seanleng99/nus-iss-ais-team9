@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         alias="MODEL_ID",
     )
     embedding_model_id: str = Field(
-        default="amazon.titan-embed-text-v2:0",
+        default="cohere.embed-multilingual-v3",
         alias="EMBEDDING_MODEL_ID",
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
@@ -78,6 +78,11 @@ class Settings(BaseSettings):
         default=None,
         alias="EDUCATION_KNOWLEDGE_BASE_ID",
     )
+    education_corpus_version: str = Field(
+        default="investment-education-sg@local-fixture-v1",
+        pattern=r"^[a-z0-9][a-z0-9@._-]{2,127}$",
+        alias="EDUCATION_CORPUS_VERSION",
+    )
     rag_minimum_score: float = Field(
         default=0.6,
         ge=0.0,
@@ -103,6 +108,10 @@ class Settings(BaseSettings):
             if not self.education_knowledge_base_id:
                 raise ValueError(
                     "EDUCATION_KNOWLEDGE_BASE_ID is required in deployed environments"
+                )
+            if self.education_corpus_version.endswith("@local-fixture-v1"):
+                raise ValueError(
+                    "EDUCATION_CORPUS_VERSION must identify the deployed governed corpus"
                 )
         return self
 

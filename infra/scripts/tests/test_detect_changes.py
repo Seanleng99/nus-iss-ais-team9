@@ -123,6 +123,16 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 
+    def test_rag_governance_workflow_validates_without_service_deployment(self):
+        result = detect_changes.classify_changes(
+            [".github/workflows/rag-source-governance.yml"]
+        )
+
+        self.assertTrue(result["ai_ci"])
+        self.assertTrue(result["infrastructure"])
+        self.assertTrue(result["sast"])
+        self.assertFalse(result["deploy"])
+
     def test_unknown_change_selects_all_services_without_migration(self):
         result = detect_changes.classify_changes(["shared/runtime-config.toml"])
 

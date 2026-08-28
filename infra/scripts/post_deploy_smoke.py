@@ -135,7 +135,11 @@ def check_model_backed_coaching(
     assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
 
 
-def check_investment_education_rag(url: str, api_key: str) -> None:
+def check_investment_education_rag(
+    url: str,
+    api_key: str,
+    expected_corpus_version: str,
+) -> None:
     payload = {
         "user_id": "deployment-smoke-test",
         "session_id": "deployment-rag-smoke-test",
@@ -147,7 +151,39 @@ def check_investment_education_rag(url: str, api_key: str) -> None:
     assert status == 200, f"expected HTTP 200, received {status}"
     response = json.loads(body)
     assert response.get("blocked") is False, "approved education request was blocked"
-    assert response.get("sources"), "Bedrock Knowledge Base returned no approved sources"
+    sources = response.get("sources", [])
+    assert sources, "Bedrock Knowledge Base returned no approved sources"
+    required_source_fields = {
+        "source_id",
+        "title",
+        "issuing_organization",
+        "canonical_url",
+        "published_at",
+        "document_version",
+        "checksum",
+        "corpus_version",
+        "review_due_at",
+    }
+    for source in sources:
+        assert required_source_fields.issubset(source), (
+            "education citation omitted governed provenance"
+        )
+        assert all(source.get(field) for field in required_source_fields), (
+            "education citation contained empty governed provenance"
+        )
+        assert source["corpus_version"] == expected_corpus_version, (
+            "education citation did not match the pinned corpus version"
+        )
+        assert source["checksum"].startswith("sha256:"), (
+            "education citation checksum was not SHA-256"
+        )
+    audit = response.get("audit", {})
+    assert audit.get("retrieval_corpus_versions") == [expected_corpus_version], (
+        "response trace did not identify the pinned retrieval corpus"
+    )
+    assert len(audit.get("retrieval_sources", [])) == len(sources), (
+        "response trace did not retain every retrieved source"
+    )
     investment = next(
         (
             item
@@ -160,6 +196,18 @@ def check_investment_education_rag(url: str, api_key: str) -> None:
     assert investment.get("data", {}).get("evidence_status") == "grounded", (
         "investment education response was not grounded"
     )
+    trace_id = audit.get("trace_id")
+    assert trace_id, "education response did not include a trace ID"
+    trace_url = (
+        f"{url.removesuffix('/coach')}/coach/traces/"
+        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id=deployment-smoke-test"
+    )
+    trace_status, trace_body = request(trace_url, api_key=api_key)
+    assert trace_status == 200, f"education trace retrieval returned HTTP {trace_status}"
+    trace = json.loads(trace_body)
+    assert trace.get("audit", {}).get("retrieval_corpus_versions") == [
+        expected_corpus_version
+    ], "persisted education trace did not retain the corpus version"
 
 
 def check_persistence(base_url: str, api_key: str) -> None:
@@ -239,6 +287,7 @@ def main() -> None:
     parser.add_argument("--persistence-base-url")
     parser.add_argument("--api-key")
     parser.add_argument("--expected-model-provider", default="bedrock")
+    parser.add_argument("--expected-corpus-version")
     args = parser.parse_args()
 
     if not any(
@@ -263,6 +312,8 @@ def main() -> None:
     if args.coach_url:
         if not args.api_key:
             parser.error("--api-key is required with --coach-url")
+        if not args.expected_corpus_version:
+            parser.error("--expected-corpus-version is required with --coach-url")
         retry(
             lambda: check_model_backed_coaching(
                 args.coach_url,
@@ -276,7 +327,11 @@ def main() -> None:
             "prompt-injection blocking",
         )
         retry(
-            lambda: check_investment_education_rag(args.coach_url, args.api_key),
+            lambda: check_investment_education_rag(
+                args.coach_url,
+                args.api_key,
+                args.expected_corpus_version,
+            ),
             "Bedrock Knowledge Base retrieval",
         )
     if args.persistence_base_url:

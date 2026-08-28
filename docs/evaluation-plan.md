@@ -59,6 +59,8 @@ Metrics:
 - Recall@3 for expected source IDs.
 - Prompt-injection removal rate.
 - Source attribution rate.
+- Governed corpus-version match rate.
+- Source freshness, checksum, and manifest conformance rate.
 
 Acceptance criteria:
 
@@ -66,6 +68,8 @@ Acceptance criteria:
 - 100 percent explicit evidence-gap responses when no approved source passes the threshold.
 - 100 percent removal of seed indirect prompt-injection instructions.
 - Every Investment Education response retains controlled source metadata when RAG is used.
+- Every live citation and persisted trace matches the configured corpus version and carries document version, SHA-256 checksum, and review deadline.
+- Scheduled source governance finds zero stale, withdrawn, tampered, missing, or unmanifested deployed objects.
 - Investment Education receives only `education_retriever`, not the legacy `trusted_retriever`.
 
 ## Security Controls
@@ -116,11 +120,11 @@ Before an AWS release is approved for anything beyond the synthetic demo, run th
 
 `.github/workflows/aws-operational-validation.yml` runs `infra/scripts/live_evaluation.py` against the deployed backend weekly and on demand. The versioned cases in `infra/llmsecops/live-evaluation-cases.jsonl` cover routing, multi-hop dynamic dependencies, typed missing-input behavior, a critical prompt injection, and grounded Education RAG. Each case is repeated from a new synthetic session so the result measures the deployed Bedrock model, prompt set, orchestrator, backend persistence path, and Knowledge Base adapter together.
 
-The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, and grounded Education RAG. The workflow repeats every case three times by default.
+The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, and grounded Education RAG. Grounded cases additionally require full source provenance, the exact configured corpus version in every citation, and the same version in the privacy-safe trace. The workflow repeats every case three times by default.
 
 The gate requires every case-level structural check to pass. It also enforces a default 10-second P95 ceiling and USD 0.05 estimated-cost ceiling. The bounded load gate uses an 8-second P95 ceiling. These replace the original 30-second characterization bounds using the first retained AWS baseline while leaving limited variance above the observed live P95. Cost is estimated from audited input/output token counts. The default Nova Lite rates are configurable command arguments and must be checked against the current AWS pricing page before a formal assessment.
 
-The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads.
+The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads. `.github/workflows/rag-source-governance.yml` separately performs a weekly read-only manifest/S3/Bedrock audit and retains privacy-safe corpus evidence for 90 days.
 
 ## Candidate Model Comparison
 
@@ -128,7 +132,7 @@ The evaluator deletes every synthetic chat session after its result is measured 
 
 Each model must have an active catalog profile, successful account entitlement, an approved Singapore source Region and APAC geography, zero execution errors, 100 percent overall/category structural accuracy, at most 10-second per-request P95, and at most USD 0.05 estimated cost. Fairness pairs execute two requests but contribute individual request latencies to the percentile distribution. A candidate that passes every objective gate advances to the generated blinded human-review rubric; it cannot change the deployed model automatically.
 
-The 2026-08-28 three-repeat comparison retained Nova Lite. Lite passed 45/45 structural runs with 8.15-second P95 and USD 0.012966 estimated cost. Micro passed 44/45 with 8.78-second P95 and USD 0.005432 estimated cost, failing the required dependency behavior once. See `docs/model-selection.md` for the decision record and limitations.
+The formal 2026-08-28 three-repeat comparison made both models objectively eligible. Lite passed 45/45 structural runs with 7.69-second P95 and USD 0.012306 estimated cost. Micro passed 45/45 with 7.08-second P95 and USD 0.005437 estimated cost. The decision is `pending_human_review`, so Nova Lite remains selected until the blinded Micro review and normal change control are complete. See `docs/model-selection.md` for the decision record and limitations.
 
 ## Fairness Consistency
 

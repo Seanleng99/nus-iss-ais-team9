@@ -51,7 +51,14 @@ def test_bedrock_retriever_maps_approved_metadata() -> None:
                             "issuing_organization": "MoneySense",
                             "canonical_url": "https://www.moneysense.gov.sg/example",
                             "published_at": "2026-07-02",
+                            "ingested_at": "2026-08-28T00:00:00Z",
+                            "document_version": "2026-07-02",
+                            "checksum": "sha256:" + "a" * 64,
                             "review_status": "approved",
+                            "corpus_version": "investment-education-sg@2026-08-28.1",
+                            "manifest_schema_version": 2,
+                            "review_due_at": "2099-12-31",
+                            "usage_scope": "synthetic_demo_only",
                         },
                         "score": 0.91,
                     }
@@ -62,6 +69,7 @@ def test_bedrock_retriever_maps_approved_metadata() -> None:
     retriever = BedrockEducationRetriever(
         knowledge_base_id="EDUCATION123",
         aws_region="ap-southeast-1",
+        expected_corpus_version="investment-education-sg@2026-08-28.1",
         client=client,
     )
 
@@ -103,6 +111,7 @@ def test_bedrock_retriever_excludes_weak_evidence() -> None:
     retriever = BedrockEducationRetriever(
         knowledge_base_id="EDUCATION123",
         aws_region="ap-southeast-1",
+        expected_corpus_version="investment-education-sg@2026-08-28.1",
         minimum_score=0.6,
         client=WeakResultClient(),
     )
@@ -134,6 +143,7 @@ def test_bedrock_retriever_excludes_unapproved_documents() -> None:
     retriever = BedrockEducationRetriever(
         knowledge_base_id="EDUCATION123",
         aws_region="ap-southeast-1",
+        expected_corpus_version="investment-education-sg@2026-08-28.1",
         client=PendingReviewClient(),
     )
 
@@ -149,6 +159,7 @@ def test_bedrock_retriever_hides_provider_failure_details() -> None:
     retriever = BedrockEducationRetriever(
         knowledge_base_id="EDUCATION123",
         aws_region="ap-southeast-1",
+        expected_corpus_version="investment-education-sg@2026-08-28.1",
         client=FailingClient(),
     )
 
@@ -165,6 +176,7 @@ def test_deployed_config_creates_bedrock_education_retriever() -> None:
         MODEL_PROVIDER="bedrock",
         RAG_PROVIDER="bedrock",
         EDUCATION_KNOWLEDGE_BASE_ID="EDUCATION123",
+        EDUCATION_CORPUS_VERSION="investment-education-sg@2026-08-28.1",
         RAG_MINIMUM_SCORE=0.7,
     )
 
@@ -173,3 +185,6 @@ def test_deployed_config_creates_bedrock_education_retriever() -> None:
     assert isinstance(retriever, BedrockEducationRetriever)
     assert retriever.knowledge_base_id == "EDUCATION123"
     assert retriever.minimum_score == 0.7
+    assert retriever.expected_corpus_version == (
+        "investment-education-sg@2026-08-28.1"
+    )

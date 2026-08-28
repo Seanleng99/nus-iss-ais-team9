@@ -35,11 +35,12 @@ scheduling, resolution, and task-resumption events are included in the response 
 pip install -e ".[dev]"
 $env:MODEL_PROVIDER="local_fixture"
 $env:RAG_PROVIDER="local_fixture"
+$env:EDUCATION_CORPUS_VERSION="investment-education-sg@local-fixture-v1"
 uvicorn app.main:app --reload --port 8001
 ```
 
 For a deployed environment, set `RAG_PROVIDER=bedrock` and provide
-`EDUCATION_KNOWLEDGE_BASE_ID`. The AI task role needs read-only access to that knowledge base.
+`EDUCATION_KNOWLEDGE_BASE_ID` plus the reviewed `EDUCATION_CORPUS_VERSION`. The AI task role needs read-only access to that knowledge base. The retriever rejects chunks that do not carry complete governed metadata, match the configured corpus, and remain within their review deadline.
 The current managed Education collection is owned by Investment Education. Compliance receives
 its sanitized evidence through the agent result rather than querying the Education knowledge base.
 The `/health` endpoint is public. Send `AI_SERVICE_API_KEY` through the `X-API-Key` header when

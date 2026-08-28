@@ -1,10 +1,14 @@
 {
-  "schema_version": "1.0",
+  "schema_version": 2,
   "collection_id": "investment-education-sg",
+  "corpus_version": "investment-education-sg@2026-08-28.1",
   "scope": "General investment education for the Investment Education Agent",
+  "jurisdiction": "SG",
+  "owner_role": "AI and data governance owner",
+  "approval_reference": "team9-synthetic-demo-source-review-2026-08-16",
+  "approved_at": "2026-08-16",
   "manifest_status": "approved_for_ingestion",
-  "url_verified_at": "2026-08-16",
-  "content_reviewed_at": "2026-08-16",
+  "s3_prefix": "investment-education/documents/",
   "sources": [
     {
       "source_id": "cpf-beginners-guide-to-investing",
@@ -12,15 +16,19 @@
       "issuing_organization": "CPF Board",
       "canonical_url": "https://www.cpf.gov.sg/member/infohub/educational-resources/a-beginners-guide-to-investing-in-singapore",
       "published_at": "2026-05-07",
-      "topics": [
-        "investment_basics",
-        "diversification",
-        "risk",
-        "investment_horizon"
-      ],
+      "document_version": "2026-05-07",
+      "checksum": "sha256:6ccc58448539481c9b0e48eb1a54e7a09e9259e081a53866e25863c6a5031ab8",
+      "s3_document_key": "investment-education/documents/cpf_beginner_investing.md",
+      "s3_metadata_key": "investment-education/documents/cpf_beginner_investing.md.metadata.json",
+      "topics": ["investment_basics", "diversification", "risk", "investment_horizon"],
       "source_review_status": "approved",
       "content_review_status": "approved",
-      "ingestion_approved": true
+      "rights_review_status": "public_reference_reviewed_for_demo",
+      "usage_scope": "synthetic_demo_only",
+      "ingestion_approved": true,
+      "last_verified_at": "2026-08-16",
+      "review_due_at": "2026-11-14",
+      "withdrawn_at": null
     },
     {
       "source_id": "cpf-investment-scheme-guide",
@@ -28,15 +36,19 @@
       "issuing_organization": "CPF Board",
       "canonical_url": "https://www.cpf.gov.sg/member/infohub/educational-resources/cpf-investment-scheme-what-you-need-to-know-about-cpfis",
       "published_at": "2026-02-09",
-      "topics": [
-        "cpfis",
-        "risk_return",
-        "fees",
-        "investment_limits"
-      ],
+      "document_version": "2026-02-09",
+      "checksum": "sha256:d4989883b6f95845051b98a9164ad21f107a7e90aa00d23ac7a7f4fa0cb5de91",
+      "s3_document_key": "investment-education/documents/cpf_investment_scheme.md",
+      "s3_metadata_key": "investment-education/documents/cpf_investment_scheme.md.metadata.json",
+      "topics": ["cpfis", "risk_return", "fees", "investment_limits"],
       "source_review_status": "approved",
       "content_review_status": "approved",
-      "ingestion_approved": true
+      "rights_review_status": "public_reference_reviewed_for_demo",
+      "usage_scope": "synthetic_demo_only",
+      "ingestion_approved": true,
+      "last_verified_at": "2026-08-16",
+      "review_due_at": "2026-11-14",
+      "withdrawn_at": null
     },
     {
       "source_id": "moneysense-what-is-investing",
@@ -44,15 +56,19 @@
       "issuing_organization": "MoneySense / Monetary Authority of Singapore",
       "canonical_url": "https://www.moneysense.gov.sg/investments/what-is-investing/",
       "published_at": "2026-07-02",
-      "topics": [
-        "investment_readiness",
-        "investment_basics",
-        "risk_return",
-        "investment_horizon"
-      ],
+      "document_version": "2026-07-02",
+      "checksum": "sha256:0ceb1106fd69afa428cd9b242f9a372e4040f8aadc582ca7eb56634aa5480f61",
+      "s3_document_key": "investment-education/documents/moneysense_what_is_investing.md",
+      "s3_metadata_key": "investment-education/documents/moneysense_what_is_investing.md.metadata.json",
+      "topics": ["investment_readiness", "investment_basics", "risk_return", "investment_horizon"],
       "source_review_status": "approved",
       "content_review_status": "approved",
-      "ingestion_approved": true
+      "rights_review_status": "public_reference_reviewed_for_demo",
+      "usage_scope": "synthetic_demo_only",
+      "ingestion_approved": true,
+      "last_verified_at": "2026-08-16",
+      "review_due_at": "2026-11-14",
+      "withdrawn_at": null
     },
     {
       "source_id": "moneysense-managing-investment-risk",
@@ -60,16 +76,19 @@
       "issuing_organization": "MoneySense / Monetary Authority of Singapore",
       "canonical_url": "https://www.moneysense.gov.sg/investments/investment-risk/",
       "published_at": "2026-07-02",
-      "topics": [
-        "market_risk",
-        "credit_risk",
-        "liquidity_risk",
-        "currency_risk",
-        "diversification"
-      ],
+      "document_version": "2026-07-02",
+      "checksum": "sha256:9c059618166ab8ed0051493b3ab680d6e85564fdf0db45c2dd0a1f5b05f387de",
+      "s3_document_key": "investment-education/documents/moneysense_investment_risk.md",
+      "s3_metadata_key": "investment-education/documents/moneysense_investment_risk.md.metadata.json",
+      "topics": ["market_risk", "credit_risk", "liquidity_risk", "currency_risk", "diversification"],
       "source_review_status": "approved",
       "content_review_status": "approved",
-      "ingestion_approved": true
+      "rights_review_status": "public_reference_reviewed_for_demo",
+      "usage_scope": "synthetic_demo_only",
+      "ingestion_approved": true,
+      "last_verified_at": "2026-08-16",
+      "review_due_at": "2026-11-14",
+      "withdrawn_at": null
     },
     {
       "source_id": "moneysense-types-of-investments",
@@ -77,16 +96,19 @@
       "issuing_organization": "MoneySense / Monetary Authority of Singapore",
       "canonical_url": "https://www.moneysense.gov.sg/investments/types-of-investments/",
       "published_at": "2026-07-02",
-      "topics": [
-        "shares",
-        "bonds",
-        "funds",
-        "etfs",
-        "reits"
-      ],
+      "document_version": "2026-07-02",
+      "checksum": "sha256:87c2cc4c330d932f928654756bd26f526f1c0ab1f11529753983f28a453b6592",
+      "s3_document_key": "investment-education/documents/moneysense_types_of_investments.md",
+      "s3_metadata_key": "investment-education/documents/moneysense_types_of_investments.md.metadata.json",
+      "topics": ["shares", "bonds", "funds", "etfs", "reits"],
       "source_review_status": "approved",
       "content_review_status": "approved",
-      "ingestion_approved": true
+      "rights_review_status": "public_reference_reviewed_for_demo",
+      "usage_scope": "synthetic_demo_only",
+      "ingestion_approved": true,
+      "last_verified_at": "2026-08-16",
+      "review_due_at": "2026-11-14",
+      "withdrawn_at": null
     },
     {
       "source_id": "moneysense-guide-to-etfs",
@@ -94,16 +116,19 @@
       "issuing_organization": "MoneySense / Monetary Authority of Singapore",
       "canonical_url": "https://www.moneysense.gov.sg/guide-to-etfs-understanding-exchange-traded-funds/",
       "published_at": "2026-07-02",
-      "topics": [
-        "etfs",
-        "fees",
-        "liquidity_risk",
-        "tracking_error",
-        "counterparty_risk"
-      ],
+      "document_version": "2026-07-02",
+      "checksum": "sha256:0d38a73ed5c009cb04d7c6c2cda5478f6e1bc4cc806cdf47200dfdb5c243db96",
+      "s3_document_key": "investment-education/documents/moneysense_guide_to_etfs.md",
+      "s3_metadata_key": "investment-education/documents/moneysense_guide_to_etfs.md.metadata.json",
+      "topics": ["etfs", "fees", "liquidity_risk", "tracking_error", "counterparty_risk"],
       "source_review_status": "approved",
       "content_review_status": "approved",
-      "ingestion_approved": true
+      "rights_review_status": "public_reference_reviewed_for_demo",
+      "usage_scope": "synthetic_demo_only",
+      "ingestion_approved": true,
+      "last_verified_at": "2026-08-16",
+      "review_due_at": "2026-11-14",
+      "withdrawn_at": null
     }
   ]
 }

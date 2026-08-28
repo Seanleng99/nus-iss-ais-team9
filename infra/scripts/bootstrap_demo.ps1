@@ -10,6 +10,10 @@ param(
     [string]$BedrockFoundationModelId = "amazon.nova-lite-v1:0",
     [string]$BedrockComparisonInferenceProfileId = "apac.amazon.nova-micro-v1:0",
     [string]$BedrockComparisonFoundationModelId = "amazon.nova-micro-v1:0",
+    [string]$EducationCorpusVersion = "investment-education-sg@2026-08-28.1",
+    [string]$EducationDataSourceId = "",
+    [string]$EducationSourceBucketName = "",
+    [string]$EducationSourcePrefix = "investment-education/documents/",
     [Parameter(Mandatory = $true)]
     [ValidatePattern("^[A-Za-z0-9]{10}$")]
     [string]$EducationKnowledgeBaseId
@@ -154,6 +158,7 @@ $applicationParameters = @(
     "BackendLogGroupName=$($foundation.BackendLogGroupName)",
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
+    "EducationCorpusVersion=$EducationCorpusVersion",
     "BedrockModelId=$BedrockInferenceProfileId",
     "AlertEmail=$AlertEmail",
     "AiImageUri=$($images.Ai)",
@@ -169,6 +174,29 @@ Invoke-Aws cloudformation deploy `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
 $application = Get-StackOutputs $ApplicationStack
+
+if (-not $EducationDataSourceId) {
+    $EducationDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
+        --knowledge-base-id $EducationKnowledgeBaseId `
+        --region $Region `
+        --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
+        --output text
+}
+if (-not $EducationDataSourceId -or $EducationDataSourceId -eq "None") {
+    throw "An available Education Knowledge Base data source is required."
+}
+$educationDataSource = Invoke-Aws bedrock-agent get-data-source `
+    --knowledge-base-id $EducationKnowledgeBaseId `
+    --data-source-id $EducationDataSourceId `
+    --region $Region `
+    --query "dataSource.dataSourceConfiguration.s3Configuration" `
+    --output json | ConvertFrom-Json
+if (-not $EducationSourceBucketName) {
+    $EducationSourceBucketName = $educationDataSource.bucketArn.Replace("arn:aws:s3:::", "")
+}
+if ($educationDataSource.inclusionPrefixes -notcontains $EducationSourcePrefix) {
+    throw "Education source prefix does not match the Bedrock data source."
+}
 
 Write-Host "Running initial database migration as a one-shot ECS task..."
 $migrationNetwork = "awsvpcConfiguration={subnets=[$($foundation.PublicSubnetAId),$($foundation.PublicSubnetBId)],securityGroups=[$($foundation.BackendSecurityGroupId)],assignPublicIp=ENABLED}"
@@ -242,7 +270,10 @@ $oidcParameters = @(
     "BedrockBaselineInferenceProfileId=$BedrockInferenceProfileId",
     "BedrockBaselineFoundationModelId=$BedrockFoundationModelId",
     "BedrockCandidateInferenceProfileId=$BedrockComparisonInferenceProfileId",
-    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId"
+    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId",
+    "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
+    "EducationSourceBucketName=$EducationSourceBucketName",
+    "EducationSourcePrefix=$EducationSourcePrefix"
 )
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\github-actions-oidc.yaml") `

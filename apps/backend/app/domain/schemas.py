@@ -71,6 +71,10 @@ class SourceCitation(BaseModel):
     issuing_organization: str
     canonical_url: str
     published_at: str
+    document_version: str | None = None
+    checksum: str | None = None
+    corpus_version: str | None = None
+    review_due_at: str | None = None
 
 
 class CoachResponse(BaseModel):

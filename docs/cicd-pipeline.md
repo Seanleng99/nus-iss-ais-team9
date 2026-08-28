@@ -23,6 +23,7 @@ flowchart LR
   SMOKE -->|failure| ROLLBACK["Restore deployed service revisions"]
   SCHEDULE["Weekly or manual operational validation"] --> LIVE["Repeated Bedrock/RAG and bounded load evidence"]
   LIVE --> OBSERVE["Verify ECS scaling, CloudWatch, retention, and optional task replacement"]
+  RAGSCHEDULE["Weekly or manual source governance"] --> RAGAUDIT["Validate manifest, S3 objects, Bedrock ingestion, and freshness"]
   MANUAL["Manual model comparison"] --> CANDIDATE["Compare approved APAC profiles and generate blinded review"]
 ```
 
@@ -33,6 +34,7 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 - `.github/workflows/ci.yml`: repository-owned change detection; selected Streamlit, backend, AI service, and operational-script tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; selected hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. Weekly and manual runs select the complete CI suite for drift observation.
 - `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, selective immutable container builds, ECR publishing and scanning, rendered task-configuration validation, migration before every backend deployment, selective ECS deployment through the `demo` environment, live Education RAG and trace-aware smoke testing, and targeted service rollback.
 - `.github/workflows/aws-operational-validation.yml`: weekly and manual privacy-safe validation against AWS, including repeated Bedrock/RAG cases, bounded synthetic load with cleanup, ECS/autoscaling state, CloudWatch dashboard and alarm existence, trace-retention enforcement, and an optional backend task-replacement exercise. Evidence is retained for 90 days.
+- `.github/workflows/rag-source-governance.yml`: weekly and manual read-only validation of the governed Education manifest against exact S3 objects, sidecar provenance, checksums, source freshness, Bedrock catalog state, and the latest ingestion job. Its privacy-safe evidence is retained for 90 days, and its OIDC role cannot upload, delete, or start ingestion.
 - `.github/workflows/model-comparison.yml`: manual, main-only comparison of the approved Nova Lite and Nova Micro APAC profiles through the real orchestrator. It verifies catalog, entitlement, geography, structural quality, per-request latency, token cost, and deterministic selection gates, then uploads a JSON report plus blinded human-review materials for 90 days. It never deploys a service.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
@@ -51,6 +53,7 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 | `infra/aws/**` | CloudFormation and Compose validation | No application deployment |
 | `infra/scripts/**` | Operational-script tests, infrastructure validation, and SAST; load/post-deploy smoke changes also select integration | No application deployment |
 | `.github/workflows/model-comparison.yml` | AI tests, infrastructure validation, and SAST | No application deployment |
+| `.github/workflows/rag-source-governance.yml` or governed Education manifest | AI and operational-script tests, infrastructure validation, and SAST | No application deployment |
 | CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; backend deployment always runs the migration task |
 | `docs/**` only | No workflow | No release |
 
@@ -66,9 +69,9 @@ The minimum demo resources are implemented as CloudFormation in `infra/aws`. Run
 - Secrets Manager values for `BACKEND_API_KEY` and `AI_SERVICE_API_KEY`. Streamlit receives only the backend key; the backend receives both; the AI service receives only its internal key.
 - An encrypted, non-public, Single-AZ RDS PostgreSQL instance with an RDS-managed master secret and backend-only security-group ingress.
 - Thirty-day CloudWatch logs, an operational dashboard, service/Bedrock alarms, SNS alerts, and deployment-failure EventBridge notifications.
-- Bedrock generation access restricted to the configured APAC inference profile and destination models, with retrieval restricted to the configured Education Knowledge Base.
+- Bedrock generation access restricted to the configured APAC inference profile and destination models, with runtime retrieval restricted to the configured Education Knowledge Base and workflow audit access restricted to that knowledge base and the exact governed S3 prefix.
 
-The executable demo uses PostgreSQL for profiles, transactions, monthly budgets, goals, and backend-built snapshots. Dashboard summaries are computed by the backend from those persisted records. Investment Education uses the Bedrock Knowledge Base adapter when `RAG_PROVIDER=bedrock`; provisioning and approving the Education Knowledge Base and S3 data source are deployment prerequisites.
+The executable demo uses PostgreSQL for profiles, transactions, monthly budgets, goals, and backend-built snapshots. Dashboard summaries are computed by the backend from those persisted records. Investment Education uses the Bedrock Knowledge Base adapter when `RAG_PROVIDER=bedrock`; the provisioned Education collection is governed by an exact versioned manifest and runtime corpus pin.
 
 AWS Cloud Map provides private DNS between services. The deployment smoke test enters through the runner-reachable backend route and proves the private AI hop without exposing the AI service.
 
@@ -108,6 +111,12 @@ Create a `demo` environment and restrict it to `main`. Required environment revi
 | `BACKEND_HEALTH_URL` | Backend `/health` URL |
 | `COACH_SMOKE_URL` | Backend `/api/coach` URL |
 | `BEDROCK_MODEL_ID` | Expected deployed Bedrock model or inference-profile ID |
+| `EDUCATION_KNOWLEDGE_BASE_ID` | Exact deployed Education Knowledge Base audited by the governance workflow |
+| `EDUCATION_DATA_SOURCE_ID` | Exact Education data source audited by the governance workflow |
+| `EDUCATION_CORPUS_VERSION` | Runtime and smoke-test corpus pin; current value is `investment-education-sg@2026-08-28.1` |
+| `EDUCATION_SOURCE_BUCKET` | S3 bucket containing the governed Education corpus |
+| `EDUCATION_SOURCE_PREFIX` | Exact allowlisted corpus prefix |
+| `RAG_SOURCE_GOVERNANCE_ENABLED` | Enables the scheduled read-only source audit after the updated OIDC stack exists |
 | `OPERATIONAL_DASHBOARD_NAME` | CloudWatch dashboard verified by the operational workflow |
 | `OPERATIONAL_ALARM_PREFIX` | Prefix used to discover the demo alarms |
 | `LIVE_EVAL_MAX_P95_MS` | Live-evaluation P95 ceiling; current value is `10000` |
@@ -126,7 +135,8 @@ The versioned policy requires:
 - Routing accuracy of at least 90 percent.
 - Critical prompt-injection block rate of 100 percent.
 - Budget calculation accuracy of 100 percent within SGD 1 tolerance.
-- Controlled-source recall@3 of at least 85 percent.
+- Controlled-source recall@3 of at least 85 percent, with exact corpus-version and complete citation-provenance checks in live evaluation.
+- Zero stale, withdrawn, tampered, missing, or unmanifested objects in the scheduled Education source audit.
 - Guardrail control pass rate of 100 percent across direct injection, PII redaction, indirect RAG injection, and tool permissions.
 - Dynamic dependency accuracy of 100 percent across capability selection, multi-hop scheduling, and typed user-input requests.
 - Zero critical and zero high ECR image findings.
@@ -137,6 +147,6 @@ The versioned policy also records metric baselines and maximum permitted regress
 
 ## Operational Notes
 
-The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads task definitions and changes images only for selected services. Before an AI update, it verifies the rendered deployment still selects Bedrock generation, prompt set v3, Bedrock RAG, and a non-empty Education Knowledge Base ID. Every backend deployment runs Alembic before updating the service. Post-deployment smoke verifies live Education citations and retrieves the persisted prompt-v3 decision trace. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
+The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads task definitions and changes images only for selected services. Before an AI update, it verifies the rendered deployment still selects Bedrock generation, prompt set v3, Bedrock RAG, a non-empty Education Knowledge Base ID, and a non-empty corpus version. Every backend deployment runs Alembic before updating the service. Post-deployment smoke verifies that live Education citations and the persisted trace carry complete provenance matching the GitHub-configured corpus pin. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
 
-The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. Inspector and CloudWatch continue monitoring after release because new vulnerabilities and behavioral drift can appear later. The operational workflow requires the updated foundation, application, and OIDC stacks. Scheduled runs skip unless `AWS_OPERATIONAL_VALIDATION_ENABLED=true`; the configuration script sets it only after it can read the updated stack outputs.
+The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. Inspector and CloudWatch continue monitoring after release because new vulnerabilities and behavioral drift can appear later. The operational and RAG-governance workflows require the updated foundation, application, and OIDC stacks. Scheduled runs skip unless their respective enable variable is `true`; the configuration script sets them only after it can read and discover the required deployed resources.

@@ -262,6 +262,10 @@ class SourceCitation(BaseModel):
     issuing_organization: str
     canonical_url: str
     published_at: str
+    document_version: str
+    checksum: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    corpus_version: str
+    review_due_at: str
 
 
 class RouterDecision(BaseModel):

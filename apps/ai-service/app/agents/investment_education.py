@@ -42,6 +42,10 @@ class InvestmentEducationAgent(BaseAgent):
                     "issuing_organization",
                     "canonical_url",
                     "published_at",
+                    "document_version",
+                    "checksum",
+                    "corpus_version",
+                    "review_due_at",
                 )
             }
             for context in contexts
@@ -49,6 +53,11 @@ class InvestmentEducationAgent(BaseAgent):
         return {
             "scope": "General investment education from approved sources without product advice.",
             "evidence_status": "grounded" if contexts else "insufficient",
+            "corpus_version": getattr(
+                self.education_retriever,
+                "expected_corpus_version",
+                getattr(self.education_retriever, "corpus_version", None),
+            ),
             "contexts": contexts,
             "sources": sources,
         }
