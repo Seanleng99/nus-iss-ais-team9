@@ -69,7 +69,10 @@ def test_dataset_evidence_includes_failed_case_ids(tmp_path: Path) -> None:
 
 
 def test_fairness_dataset_compares_structural_outcomes() -> None:
-    dataset = Path("app/evals/datasets/fairness_consistency.jsonl")
+    dataset = (
+        Path(__file__).parents[1]
+        / "app/evals/datasets/fairness_consistency.jsonl"
+    )
 
     metrics = run_dataset(dataset)
 
