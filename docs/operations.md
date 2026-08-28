@@ -60,9 +60,9 @@ The application stack configures CPU target tracking at 70 percent for the backe
   --output artifacts/load-evidence.json
 ```
 
-The utility deletes every synthetic chat session after measuring its request and fails if cleanup is incomplete. Its artifact records commit SHA, target host, concurrency, success rate, P50/P95/P99, failure classes, and cleanup count without prompts, answers, financial values, or credentials. Combine it with the live-evaluation token/cost artifact and captured CloudWatch/ECS state.
+The utility gives each independent request a unique chat-only synthetic user, deletes its chat session after measurement, and fails if cleanup is incomplete. Its artifact records commit SHA, target host, concurrency, success rate, P50/P95/P99, failure classes, and cleanup count without prompts, answers, financial values, or credentials. Combine it with the live-evaluation token/cost artifact and captured CloudWatch/ECS state.
 
-Deleting the final chat session for a chat-only synthetic user also prunes the empty user record. Users with a profile, demographics, consent, transactions, goals, or budgets are never pruned by chat cleanup. This prevents weekly evaluation and load runs from accumulating empty synthetic identities.
+Deleting the final chat session for a chat-only synthetic user also prunes the empty user record. PostgreSQL transaction-scoped lifecycle locks serialize same-user creation and deletion, including the boundary where the user row does not yet exist. Users with a profile, demographics, consent, transactions, goals, or budgets are never pruned by chat cleanup. This prevents weekly evaluation and load runs from accumulating empty synthetic identities.
 
 The `AWS Operational Validation` workflow performs this load test, three repetitions of the live Bedrock/RAG suite, trace-retention enforcement, dashboard/alarm verification, and autoscaling verification each week. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures. The default gates are now 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
 

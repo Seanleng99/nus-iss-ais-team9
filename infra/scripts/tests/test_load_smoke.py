@@ -1,3 +1,4 @@
+import json
 import urllib.error
 
 from infra.scripts import load_smoke
@@ -6,6 +7,7 @@ from infra.scripts.load_smoke import (
     chat_session_delete_url,
     cleanup_session,
     percentile,
+    send_request,
 )
 
 
@@ -32,6 +34,42 @@ def test_cleanup_treats_missing_synthetic_session_as_clean(monkeypatch) -> None:
     assert cleanup_session(
         "https://example.test/api/coach", "secret", "user", "session", 1
     ) is True
+
+
+def test_send_request_isolates_each_synthetic_user(monkeypatch) -> None:
+    requests = []
+
+    class StubResponse:
+        def __init__(self, status: int) -> None:
+            self.status = status
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def respond(request, timeout):
+        del timeout
+        requests.append(request)
+        return StubResponse(200 if request.method == "POST" else 204)
+
+    monkeypatch.setattr(load_smoke.urllib.request, "urlopen", respond)
+
+    status, _, cleaned_up = send_request(
+        "https://example.test/api/coach", "secret", 1
+    )
+
+    payload = json.loads(requests[0].data)
+    user_id = payload["user_id"]
+    session_id = payload["session_id"]
+    assert status == 200
+    assert cleaned_up is True
+    assert user_id == f"load-test-user-{session_id}"
+    assert f"/users/{user_id}/chat-sessions/{session_id}" in requests[1].full_url
 
 
 def test_percentile_uses_nearest_rank() -> None:

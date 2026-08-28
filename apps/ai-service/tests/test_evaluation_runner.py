@@ -70,7 +70,7 @@ def test_dataset_evidence_includes_failed_case_ids(tmp_path: Path) -> None:
 
 def test_fairness_dataset_compares_structural_outcomes() -> None:
     dataset = (
-        Path(__file__).parents[1]
+        Path(__file__).resolve().parents[1]
         / "app/evals/datasets/fairness_consistency.jsonl"
     )
 

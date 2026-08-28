@@ -31,7 +31,18 @@ FAIRNESS_EVALUATION_PURPOSE = "fairness_evaluation"
 FAIRNESS_CONSENT_VERSION = "1.0"
 
 
+def _lock_user_lifecycle(session: Session, user_id: str) -> None:
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    # Serialize creation and deletion even when the user row does not exist yet.
+    # A row lock alone cannot protect that initial-insert boundary.
+    session.scalar(
+        select(func.pg_advisory_xact_lock(2_254_477, func.hashtext(user_id)))
+    )
+
+
 def _ensure_user(session: Session, user_id: str) -> UserRecord:
+    _lock_user_lifecycle(session, user_id)
     user = session.get(UserRecord, user_id)
     if user is None:
         user = UserRecord(id=user_id)
@@ -89,6 +100,7 @@ class SQLAlchemyUserRepository:
         return record
 
     def delete_profile(self, user_id: str) -> bool:
+        _lock_user_lifecycle(self.session, user_id)
         user = self.session.get(UserRecord, user_id)
         if user is None or self.get_profile(user_id) is None:
             return False
@@ -97,6 +109,7 @@ class SQLAlchemyUserRepository:
         return True
 
     def delete_if_empty(self, user_id: str) -> bool:
+        _lock_user_lifecycle(self.session, user_id)
         user = self.session.get(UserRecord, user_id)
         if user is None:
             return False

@@ -60,8 +60,9 @@ def cleanup_session(
 def send_request(
     url: str, api_key: str, timeout_seconds: float
 ) -> tuple[int, float, bool]:
-    user_id = "load-test-user"
-    session_id = str(uuid4())
+    request_id = str(uuid4())
+    user_id = f"load-test-user-{request_id}"
+    session_id = request_id
     payload = {
         "user_id": user_id,
         "session_id": session_id,
