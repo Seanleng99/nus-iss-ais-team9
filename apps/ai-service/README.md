@@ -15,7 +15,7 @@ Private Python API containing the model-driven LangGraph orchestration layer.
 - Ground Investment Education in approved, sanitized education sources and return citations.
 - Run independent model-assisted risk and compliance validation.
 - Supply Investment Education evidence to Risk and Compliance for independent review.
-- Apply packaged controlled policy context until the separate managed Policy knowledge base is implemented.
+- Ground Risk and Compliance in a separate approved Policy collection and fail closed without current policy evidence.
 - Provide an explicit offline fixture for deterministic control and regression evaluation.
 
 ## Dynamic Dependencies
@@ -36,12 +36,13 @@ pip install -e ".[dev]"
 $env:MODEL_PROVIDER="local_fixture"
 $env:RAG_PROVIDER="local_fixture"
 $env:EDUCATION_CORPUS_VERSION="investment-education-sg@local-fixture-v1"
+$env:POLICY_RAG_PROVIDER="local_fixture"
+$env:POLICY_CORPUS_VERSION="financial-coach-policy-sg@local-fixture-v1"
 uvicorn app.main:app --reload --port 8001
 ```
 
-For a deployed environment, set `RAG_PROVIDER=bedrock` and provide
-`EDUCATION_KNOWLEDGE_BASE_ID` plus the reviewed `EDUCATION_CORPUS_VERSION`. The AI task role needs read-only access to that knowledge base. The retriever rejects chunks that do not carry complete governed metadata, match the configured corpus, and remain within their review deadline.
+For a deployed environment, set both `RAG_PROVIDER=bedrock` and `POLICY_RAG_PROVIDER=bedrock`. Provide the reviewed Education and Policy knowledge-base IDs and corpus versions. The AI task role needs read-only access to those exact knowledge bases. Both retrievers reject chunks that do not carry complete governed metadata, match the configured corpus, and remain within their review deadline.
 The current managed Education collection is owned by Investment Education. Compliance receives
-its sanitized evidence through the agent result rather than querying the Education knowledge base.
+its sanitized evidence through the agent result rather than querying the Education knowledge base, and independently retrieves only from the Policy collection.
 The `/health` endpoint is public. Send `AI_SERVICE_API_KEY` through the `X-API-Key` header when
 calling `/coach`.

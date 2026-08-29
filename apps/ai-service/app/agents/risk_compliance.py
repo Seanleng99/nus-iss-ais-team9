@@ -1,6 +1,12 @@
 import json
+from dataclasses import asdict
 
-from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt
+from app.core.guardrails import (
+    ADVISORY_DISCLAIMER,
+    inspect_prompt,
+    sanitize_rag_document,
+    validate_tool_permission,
+)
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
     AgentName,
@@ -10,7 +16,7 @@ from app.core.schemas import (
 )
 from app.models.gateway import ModelGateway
 from app.models.structured import generate_structured_response
-from app.tools.registry import call_retrieval_tool
+from app.rag.policy import PolicyRetriever
 
 BLOCKED_FINANCIAL_ADVICE_PATTERNS = [
     "guaranteed return",
@@ -29,11 +35,13 @@ class RiskComplianceAgent:
         prompts: PromptCatalog,
         temperature: float,
         max_tokens: int,
+        policy_retriever: PolicyRetriever,
     ) -> None:
         self.gateway = gateway
         self.prompts = prompts
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.policy_retriever = policy_retriever
 
     def validate(
         self,
@@ -64,11 +72,55 @@ class RiskComplianceAgent:
                 data={"disclaimer": ADVISORY_DISCLAIMER},
             )
 
-        contexts = call_retrieval_tool(
-            self.name,
-            "trusted_retriever",
-            decision.sanitized_text,
+        validate_tool_permission(self.name, "policy_retriever")
+        contexts = []
+        for item in self.policy_retriever.retrieve(decision.sanitized_text):
+            context = asdict(item)
+            inspection = sanitize_rag_document(context["text"])
+            context["text"] = inspection.sanitized_text
+            context["findings"] = list(
+                dict.fromkeys([*context["findings"], *inspection.findings])
+            )
+            contexts.append(context)
+        policy_sources = [
+            {
+                key: context[key]
+                for key in (
+                    "source_id",
+                    "title",
+                    "issuing_organization",
+                    "canonical_url",
+                    "published_at",
+                    "document_version",
+                    "checksum",
+                    "corpus_version",
+                    "review_due_at",
+                )
+            }
+            for context in contexts
+        ]
+        policy_corpus_version = getattr(
+            self.policy_retriever,
+            "expected_corpus_version",
+            getattr(self.policy_retriever, "corpus_version", None),
         )
+        if not contexts:
+            return AgentResult(
+                agent=self.name,
+                summary="The response was blocked because approved policy evidence was unavailable.",
+                rationale=[
+                    "Risk and Compliance fails closed when no current governed policy is retrieved."
+                ],
+                confidence=1.0,
+                blocked=True,
+                policy_notes=["policy_evidence:insufficient"],
+                data={
+                    "disclaimer": ADVISORY_DISCLAIMER,
+                    "policy_evidence_status": "insufficient",
+                    "policy_corpus_version": policy_corpus_version,
+                    "policy_sources": [],
+                },
+            )
         review = generate_structured_response(
             self.gateway,
             response_type=ComplianceDecision,
@@ -110,7 +162,9 @@ class RiskComplianceAgent:
             policy_notes=review.policy_notes + output_decision.findings,
             data={
                 "disclaimer": ADVISORY_DISCLAIMER,
-                "sources": [item["source_id"] for item in contexts],
-                "contexts": contexts,
+                "policy_evidence_status": "grounded",
+                "policy_corpus_version": policy_corpus_version,
+                "policy_sources": policy_sources,
+                "policy_contexts": contexts,
             },
         )

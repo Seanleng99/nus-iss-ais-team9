@@ -52,6 +52,7 @@ from app.models.gateway import (
     create_model_gateway,
 )
 from app.models.structured import generate_structured_response
+from app.rag.policy import PolicyRetriever, create_policy_retriever
 from app.rag.retriever import EducationRetriever, RetrievalError, create_education_retriever
 
 
@@ -85,6 +86,7 @@ class AgentOrchestrator:
         gateway: ModelGateway | None = None,
         prompts: PromptCatalog | None = None,
         education_retriever: EducationRetriever | None = None,
+        policy_retriever: PolicyRetriever | None = None,
         agents: Mapping[AgentName, BaseAgent] | None = None,
         capability_registry: CapabilityRegistry | None = None,
     ) -> None:
@@ -97,6 +99,7 @@ class AgentOrchestrator:
         )
         self.prompts = prompts or PromptCatalog(self.config.prompt_set_version)
         self.education_retriever = education_retriever or create_education_retriever(self.config)
+        self.policy_retriever = policy_retriever or create_policy_retriever(self.config)
         self.capability_registry = capability_registry or CapabilityRegistry()
         agent_args = (
             self.gateway,
@@ -119,6 +122,7 @@ class AgentOrchestrator:
             self.prompts,
             self.config.compliance_temperature,
             self.config.model_max_tokens,
+            self.policy_retriever,
         )
         self.graph = self._build_graph()
 
@@ -835,7 +839,12 @@ class AgentOrchestrator:
                 state,
                 "compliance.completed",
                 AgentName.RISK_COMPLIANCE.value,
-                details={"blocked": result.blocked, "policy_note_count": len(result.policy_notes)},
+                details={
+                    "blocked": result.blocked,
+                    "policy_note_count": len(result.policy_notes),
+                    "policy_source_count": len(result.data.get("policy_sources", [])),
+                    "policy_corpus_version": result.data.get("policy_corpus_version"),
+                },
             )
         )
         return {"compliance_result": result, "audit_events": events}
@@ -849,11 +858,22 @@ class AgentOrchestrator:
             )
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
+        policy_evidence = self._collect_policy_evidence(compliance)
         corpus_versions = sorted(
             {
                 str(result.data["corpus_version"])
                 for result in state["agent_results"]
                 if result.data.get("corpus_version")
+            }
+        )
+        policy_corpus_versions = sorted(
+            {
+                str(version)
+                for version in [
+                    compliance.data.get("policy_corpus_version"),
+                    *(item.get("corpus_version") for item in policy_evidence),
+                ]
+                if version
             }
         )
         events = [
@@ -866,6 +886,8 @@ class AgentOrchestrator:
                     "blocked": compliance.blocked,
                     "retrieval_source_count": len(retrieval_evidence),
                     "retrieval_corpus_versions": corpus_versions,
+                    "policy_source_count": len(policy_evidence),
+                    "policy_corpus_versions": policy_corpus_versions,
                 },
             ),
         ]
@@ -887,6 +909,8 @@ class AgentOrchestrator:
                 "prompt_set_version": self.prompts.version,
                 "retrieval_corpus_versions": corpus_versions,
                 "retrieval_sources": retrieval_evidence,
+                "policy_corpus_versions": policy_corpus_versions,
+                "policy_sources": policy_evidence,
                 "dependency_rounds": state.get("dependency_round", 0),
                 "dependency_resolutions": [
                     item.model_dump(mode="json")
@@ -1098,6 +1122,32 @@ class AgentOrchestrator:
                         "review_due_at": str(item.get("review_due_at", "")),
                     }
                 )
+        return evidence
+
+    @staticmethod
+    def _collect_policy_evidence(result: AgentResult) -> list[dict[str, str]]:
+        evidence = []
+        seen = set()
+        for item in result.data.get("policy_sources", []):
+            source_id = str(item.get("source_id", ""))
+            if not source_id or source_id in seen:
+                continue
+            seen.add(source_id)
+            evidence.append(
+                {
+                    "source_id": source_id,
+                    "title": str(item.get("title", "")),
+                    "issuing_organization": str(
+                        item.get("issuing_organization", "")
+                    ),
+                    "canonical_url": str(item.get("canonical_url", "")),
+                    "published_at": str(item.get("published_at", "")),
+                    "document_version": str(item.get("document_version", "")),
+                    "checksum": str(item.get("checksum", "")),
+                    "corpus_version": str(item.get("corpus_version", "")),
+                    "review_due_at": str(item.get("review_due_at", "")),
+                }
+            )
         return evidence
 
     def handle(self, request: CoachRequest) -> CoachResponse:

@@ -55,6 +55,15 @@ Parameters:
   EducationSourcePrefix:
     Type: String
     Default: investment-education/documents/
+  PolicyKnowledgeBaseId:
+    Type: String
+    MinLength: 10
+    MaxLength: 10
+  PolicySourceBucketName:
+    Type: String
+  PolicySourcePrefix:
+    Type: String
+    Default: policy-controls/documents/
 
 Conditions:
   CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, ""]
@@ -231,7 +240,7 @@ Resources:
                 Condition:
                   StringEquals:
                     bedrock:InferenceProfileArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockCandidateInferenceProfileId}
-        - PolicyName: AuditGovernedEducationCorpus
+        - PolicyName: AuditGovernedRagCorpora
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -253,6 +262,24 @@ Resources:
                 Effect: Allow
                 Action: s3:GetObject
                 Resource: !Sub arn:${AWS::Partition}:s3:::${EducationSourceBucketName}/${EducationSourcePrefix}*
+              - Sid: InspectApprovedPolicyKnowledgeBase
+                Effect: Allow
+                Action:
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:GetDataSource
+                  - bedrock:ListIngestionJobs
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+              - Sid: ListApprovedPolicyPrefix
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${PolicySourceBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub ${PolicySourcePrefix}*
+              - Sid: ReadApprovedPolicyObjects
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${PolicySourceBucketName}/${PolicySourcePrefix}*
 
 Outputs:
   PublishRoleArn:

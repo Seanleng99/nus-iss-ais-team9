@@ -139,6 +139,7 @@ def check_investment_education_rag(
     url: str,
     api_key: str,
     expected_corpus_version: str,
+    expected_policy_corpus_version: str,
 ) -> None:
     payload = {
         "user_id": "deployment-smoke-test",
@@ -184,6 +185,21 @@ def check_investment_education_rag(
     assert len(audit.get("retrieval_sources", [])) == len(sources), (
         "response trace did not retain every retrieved source"
     )
+    policy_sources = audit.get("policy_sources", [])
+    assert policy_sources, "Risk and Compliance returned no approved policy sources"
+    assert audit.get("policy_corpus_versions") == [expected_policy_corpus_version], (
+        "response trace did not identify the pinned policy corpus"
+    )
+    for source in policy_sources:
+        assert required_source_fields.issubset(source), (
+            "policy citation omitted governed provenance"
+        )
+        assert all(source.get(field) for field in required_source_fields), (
+            "policy citation contained empty governed provenance"
+        )
+        assert source["corpus_version"] == expected_policy_corpus_version, (
+            "policy citation did not match the pinned corpus version"
+        )
     investment = next(
         (
             item
@@ -195,6 +211,18 @@ def check_investment_education_rag(
     assert investment is not None, "investment education agent result was absent"
     assert investment.get("data", {}).get("evidence_status") == "grounded", (
         "investment education response was not grounded"
+    )
+    compliance = next(
+        (
+            item
+            for item in response.get("agent_results", [])
+            if item.get("agent") == "risk_compliance"
+        ),
+        None,
+    )
+    assert compliance is not None, "Risk and Compliance result was absent"
+    assert compliance.get("data", {}).get("policy_evidence_status") == "grounded", (
+        "Risk and Compliance response was not grounded in approved policy"
     )
     trace_id = audit.get("trace_id")
     assert trace_id, "education response did not include a trace ID"
@@ -208,6 +236,12 @@ def check_investment_education_rag(
     assert trace.get("audit", {}).get("retrieval_corpus_versions") == [
         expected_corpus_version
     ], "persisted education trace did not retain the corpus version"
+    assert trace.get("audit", {}).get("policy_corpus_versions") == [
+        expected_policy_corpus_version
+    ], "persisted trace did not retain the policy corpus version"
+    assert trace.get("audit", {}).get("policy_sources"), (
+        "persisted trace did not retain policy source provenance"
+    )
 
 
 def check_persistence(base_url: str, api_key: str) -> None:
@@ -288,6 +322,7 @@ def main() -> None:
     parser.add_argument("--api-key")
     parser.add_argument("--expected-model-provider", default="bedrock")
     parser.add_argument("--expected-corpus-version")
+    parser.add_argument("--expected-policy-corpus-version")
     args = parser.parse_args()
 
     if not any(
@@ -314,6 +349,10 @@ def main() -> None:
             parser.error("--api-key is required with --coach-url")
         if not args.expected_corpus_version:
             parser.error("--expected-corpus-version is required with --coach-url")
+        if not args.expected_policy_corpus_version:
+            parser.error(
+                "--expected-policy-corpus-version is required with --coach-url"
+            )
         retry(
             lambda: check_model_backed_coaching(
                 args.coach_url,
@@ -331,8 +370,9 @@ def main() -> None:
                 args.coach_url,
                 args.api_key,
                 args.expected_corpus_version,
+                args.expected_policy_corpus_version,
             ),
-            "Bedrock Knowledge Base retrieval",
+            "Bedrock Education and Policy Knowledge Base retrieval",
         )
     if args.persistence_base_url:
         if not args.api_key:

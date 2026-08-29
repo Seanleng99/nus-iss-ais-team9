@@ -1,6 +1,5 @@
 from app.core.guardrails import validate_tool_permission
 from app.core.schemas import AgentName, UserFinancialSnapshot
-from app.rag.retriever import retrieve_trusted_context
 
 
 def summarize_transactions(snapshot: UserFinancialSnapshot) -> dict[str, float]:
@@ -50,10 +49,3 @@ def call_tool(agent: AgentName, tool_name: str, snapshot: UserFinancialSnapshot)
     if tool_name == "goal_projection":
         return project_goals(snapshot)
     raise KeyError(f"Unknown tool: {tool_name}")
-
-
-def call_retrieval_tool(agent: AgentName, tool_name: str, query: str) -> list[dict[str, str]]:
-    validate_tool_permission(agent, tool_name)
-    if tool_name == "trusted_retriever":
-        return retrieve_trusted_context(query)
-    raise KeyError(f"Unknown retrieval tool: {tool_name}")

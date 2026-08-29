@@ -40,7 +40,10 @@ class GovernedSource(StrictGovernanceModel):
     topics: list[str] = Field(min_length=1)
     source_review_status: Literal["approved", "pending", "withdrawn"]
     content_review_status: Literal["approved", "pending", "rejected"]
-    rights_review_status: Literal["public_reference_reviewed_for_demo"]
+    rights_review_status: Literal[
+        "public_reference_reviewed_for_demo",
+        "internal_policy_approved_for_demo",
+    ]
     usage_scope: Literal["synthetic_demo_only"]
     ingestion_approved: bool
     last_verified_at: date

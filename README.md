@@ -25,6 +25,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/evaluation-plan.md`: datasets, expected outputs, metrics, drift, and acceptance criteria.
 - `docs/model-selection.md`: repeatable Bedrock candidate comparison and current model decision.
 - `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
+- `docs/policy-rag-governance.md`: separate policy-corpus lifecycle, runtime enforcement, and deployment gates.
 - `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
@@ -100,7 +101,7 @@ python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --outpu
 
 Use only synthetic financial profiles in the current demo. The production-readiness exclusions and AWS go/no-go sequence are documented in `infra/aws/README.md`.
 
-Evaluation policy v4 enforces every case conjunctively across routing, dynamic dependencies,
-RAG, deterministic guardrails, regulated-advice behavior, and paired fairness consistency.
+Evaluation policy v5 enforces every case conjunctively across routing, dynamic dependencies,
+Education and Policy RAG, deterministic guardrails, regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,
 latency, cost, or synthetic-cleanup failure.

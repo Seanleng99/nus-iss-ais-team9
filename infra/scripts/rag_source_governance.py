@@ -664,7 +664,7 @@ def _write_job_summary(report: dict[str, Any]) -> None:
     if not summary_path:
         return
     lines = [
-        "## Education RAG source governance",
+        f"## {report['collection_id']} RAG source governance",
         "",
         f"- Operation: `{report.get('operation', 'validate')}`",
         f"- Corpus version: `{report['corpus_version']}`",
@@ -692,7 +692,7 @@ def _add_aws_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Govern the approved Education RAG corpus")
+    parser = argparse.ArgumentParser(description="Govern an approved RAG corpus")
     subparsers = parser.add_subparsers(dest="operation", required=True)
     for name in (
         "validate",
@@ -807,7 +807,7 @@ def main() -> None:
         )
     )
     if not report["passed"]:
-        raise SystemExit("Education RAG source governance failed")
+        raise SystemExit(f"{manifest.collection_id} RAG source governance failed")
 
 
 if __name__ == "__main__":

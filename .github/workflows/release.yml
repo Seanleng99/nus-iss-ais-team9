@@ -256,6 +256,7 @@ jobs:
       BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
       COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
       EDUCATION_CORPUS_VERSION: ${{ vars.EDUCATION_CORPUS_VERSION }}
+      POLICY_CORPUS_VERSION: ${{ vars.POLICY_CORPUS_VERSION }}
       SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
     steps:
       - uses: actions/checkout@v6
@@ -276,7 +277,8 @@ jobs:
           required=(
             DEPLOY_ROLE ECS_CLUSTER
             FRONTEND_URL FRONTEND_HEALTH_URL BACKEND_HEALTH_URL
-            COACH_SMOKE_URL EDUCATION_CORPUS_VERSION SMOKE_BACKEND_API_KEY
+            COACH_SMOKE_URL EDUCATION_CORPUS_VERSION POLICY_CORPUS_VERSION
+            SMOKE_BACKEND_API_KEY
           )
           if [[ "$AI_CHANGED" == "true" ]]; then
             required+=(AI_SERVICE AI_TASK_FAMILY AI_CONTAINER_NAME)
@@ -360,6 +362,7 @@ jobs:
             MODEL_PROVIDER=bedrock
             PROMPT_SET_VERSION=v3
             RAG_PROVIDER=bedrock
+            POLICY_RAG_PROVIDER=bedrock
       - name: Verify AI runtime configuration has not drifted
         if: needs.release-gate.outputs.ai == 'true'
         env:
@@ -372,8 +375,11 @@ jobs:
           --expect MODEL_PROVIDER=bedrock
           --expect PROMPT_SET_VERSION=v3
           --expect RAG_PROVIDER=bedrock
+          --expect POLICY_RAG_PROVIDER=bedrock
           --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID
           --require-nonempty EDUCATION_CORPUS_VERSION
+          --require-nonempty POLICY_KNOWLEDGE_BASE_ID
+          --require-nonempty POLICY_CORPUS_VERSION
       - name: Deploy AI service
         if: needs.release-gate.outputs.ai == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
@@ -470,6 +476,7 @@ jobs:
           --backend-health-url "$BACKEND_HEALTH_URL"
           --coach-url "$COACH_SMOKE_URL"
           --expected-corpus-version "$EDUCATION_CORPUS_VERSION"
+          --expected-policy-corpus-version "$POLICY_CORPUS_VERSION"
           --persistence-base-url "${COACH_SMOKE_URL%/coach}"
           --api-key "$SMOKE_BACKEND_API_KEY"
       - name: Roll back services when post-deploy checks fail

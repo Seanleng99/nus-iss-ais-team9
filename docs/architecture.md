@@ -44,7 +44,7 @@ PostgreSQL is the system of record for personal financial data. The application 
 
 The target retrieval design separates educational knowledge from policy controls. Investment Education can retrieve trusted CPF, MAS, SGX, and government education content. Budget and Goal Strategy can retrieve only relevant education content when deterministic financial data is insufficient. Spending does not use RAG. Risk and Compliance independently retrieves advice-boundary and safety policy before approving or blocking the synthesized response.
 
-Investment Education now has a dedicated `education_retriever`, an offline fixture for local and CI execution, and a Bedrock Knowledge Base adapter for deployed environments. Retrieved source metadata is retained through synthesis, Compliance review, the API response, and the Streamlit UI. The separate managed policy collection and conditional Budget and Goal Strategy permissions remain implementation work; the legacy Compliance retriever still uses packaged controlled data.
+Investment Education has a dedicated `education_retriever`; Risk and Compliance has an independently allowlisted `policy_retriever`. Both provide offline fixtures for local and CI execution and strict Bedrock Knowledge Base adapters for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Conditional Education access for Budget and Goal Strategy remains implementation work.
 
 ## Target Physical AWS View
 
@@ -107,7 +107,7 @@ The synthetic demo uses a backend service key. Before real users, the public app
 - Streamlit frontend: provides Overview, Transactions, Budget, Goals, Coach, and Profile workflows; calls the application backend server-side; and presents answers, source citations, rationale, confidence, disclaimers, and audit metadata.
 - FastAPI application backend: owns user-facing APIs, access control, profiles, transactions, monthly budgets, goals, dashboard summaries, coaching snapshots, and PostgreSQL persistence workflows. It is the only application service allowed to call the AI service.
 - FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, enforces agent-specific retrieval permissions, and integrates with Bedrock.
-- Data services: PostgreSQL stores synthetic personal financial records, chat messages, and privacy-safe orchestration traces; S3 retains curated source documents; the Education Knowledge Base uses S3 Vectors; and the future Policy collection remains separate from education content.
+- Data services: PostgreSQL stores synthetic personal financial records, chat messages, and privacy-safe orchestration traces; S3 retains curated source documents; and separate Education and Policy Knowledge Bases preserve collection and permission boundaries.
 - AWS boundary: ECS runs the three application services, Secrets Manager supplies separate service credentials, Bedrock supplies generation, Cohere embedding, ingestion, and retrieval, and CloudWatch captures operational telemetry. Controlled source mutations are operator-initiated; GitHub Actions performs read-only scheduled governance. ECR publishing and protected deployment remain documented separately in `docs/cicd-pipeline.md`.
 
 Each FastAPI health endpoint is available for load balancer checks. Both coaching boundaries require an `X-API-Key`: Streamlit receives only `BACKEND_API_KEY`, while the backend receives `AI_SERVICE_API_KEY`. The AI service remains on private networking and is not exposed to the browser or public load balancer.
@@ -128,7 +128,7 @@ Hard boundary controls run before the first model call. Each specialist receives
 
 Every completed run emits a privacy-safe trace containing task lifecycle events, dependency edges and resolutions, selected agents, model/prompt identity, model-call durations, and token usage. The backend stores that trace against the profile-scoped session and assistant message; API-key-protected retrieval and deletion require the requested user to own the associated profile. A weekly one-shot job enforces configurable 30-day trace retention, while chat-session deletion cascades to the trace. Raw prompts and financial grounding are not copied into the trace.
 
-The next retrieval phase keeps deterministic grounding as the default while adding conditional Education access for Budget and Goal Strategy and a separate managed Policy collection for Risk and Compliance. Spending remains retrieval-free. Personal financial records remain in PostgreSQL and are never embedded into the education or policy stores.
+The next retrieval phase keeps deterministic grounding as the default while adding conditional Education access for Budget and Goal Strategy. Spending remains retrieval-free. Personal financial records remain in PostgreSQL and are never embedded into the education or policy stores.
 
 ## MCP And A2A Position
 

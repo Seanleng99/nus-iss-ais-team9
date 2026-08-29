@@ -89,6 +89,25 @@ class Settings(BaseSettings):
         le=1.0,
         alias="RAG_MINIMUM_SCORE",
     )
+    policy_rag_provider: str = Field(
+        default="local_fixture",
+        alias="POLICY_RAG_PROVIDER",
+    )
+    policy_knowledge_base_id: str | None = Field(
+        default=None,
+        alias="POLICY_KNOWLEDGE_BASE_ID",
+    )
+    policy_corpus_version: str = Field(
+        default="financial-coach-policy-sg@local-fixture-v1",
+        pattern=r"^[a-z0-9][a-z0-9@._-]{2,127}$",
+        alias="POLICY_CORPUS_VERSION",
+    )
+    policy_rag_minimum_score: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        alias="POLICY_RAG_MINIMUM_SCORE",
+    )
     api_key: str = Field(default="change-me-locally", alias="AI_SERVICE_API_KEY")
 
     @model_validator(mode="after")
@@ -112,6 +131,16 @@ class Settings(BaseSettings):
             if self.education_corpus_version.endswith("@local-fixture-v1"):
                 raise ValueError(
                     "EDUCATION_CORPUS_VERSION must identify the deployed governed corpus"
+                )
+            if self.policy_rag_provider.lower() != "bedrock":
+                raise ValueError("Deployed environments require POLICY_RAG_PROVIDER=bedrock")
+            if not self.policy_knowledge_base_id:
+                raise ValueError(
+                    "POLICY_KNOWLEDGE_BASE_ID is required in deployed environments"
+                )
+            if self.policy_corpus_version.endswith("@local-fixture-v1"):
+                raise ValueError(
+                    "POLICY_CORPUS_VERSION must identify the deployed governed corpus"
                 )
         return self
 

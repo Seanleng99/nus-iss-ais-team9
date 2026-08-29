@@ -197,6 +197,29 @@ def evaluate_response(
                 for source in sources
             ),
         )
+    if expected.get("policy_source_provenance") is True:
+        policy_sources = response.get("audit", {}).get("policy_sources", [])
+        required = {
+            "source_id",
+            "title",
+            "issuing_organization",
+            "canonical_url",
+            "published_at",
+            "document_version",
+            "checksum",
+            "corpus_version",
+            "review_due_at",
+        }
+        add_check(
+            "policy_source_provenance",
+            bool(policy_sources)
+            and all(
+                required.issubset(source)
+                and all(source.get(field) for field in required)
+                and str(source.get("checksum", "")).startswith("sha256:")
+                for source in policy_sources
+            ),
+        )
     if "evidence_status" in expected:
         evidence_agent = expected.get("evidence_agent", "investment_education")
         add_check(
@@ -237,6 +260,16 @@ def evaluate_response(
             and all(
                 source.get("corpus_version") == expected_corpus
                 for source in response.get("sources", [])
+            ),
+        )
+    if "policy_corpus_version" in expected:
+        expected_policy_corpus = str(expected["policy_corpus_version"])
+        add_check(
+            "policy_corpus_version",
+            audit.get("policy_corpus_versions") == [expected_policy_corpus]
+            and all(
+                source.get("corpus_version") == expected_policy_corpus
+                for source in audit.get("policy_sources", [])
             ),
         )
     if audit.get("model_provider") is not None:
@@ -345,6 +378,11 @@ def run_live_evaluation(
                         "source_ids": [
                             source.get("source_id")
                             for source in response.get("sources", [])
+                            if source.get("source_id")
+                        ],
+                        "policy_source_ids": [
+                            source.get("source_id")
+                            for source in audit.get("policy_sources", [])
                             if source.get("source_id")
                         ],
                     }

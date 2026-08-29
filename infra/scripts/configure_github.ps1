@@ -77,6 +77,33 @@ $educationSourcePrefix = [string]$educationDataSource.inclusionPrefixes[0]
 if (-not $educationSourceBucket -or -not $educationSourcePrefix) {
     throw "Education data source must expose a governed S3 bucket and prefix."
 }
+$policyKnowledgeBaseId = $application.PolicyKnowledgeBaseId
+if (-not $policyKnowledgeBaseId) {
+    $policyKnowledgeBaseId = Invoke-Aws cloudformation describe-stacks `
+        --stack-name $ApplicationStack `
+        --region $Region `
+        --query "Stacks[0].Parameters[?ParameterKey=='PolicyKnowledgeBaseId'].ParameterValue | [0]" `
+        --output text
+}
+$policyDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
+    --knowledge-base-id $policyKnowledgeBaseId `
+    --region $Region `
+    --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
+    --output text
+if (-not $policyDataSourceId -or $policyDataSourceId -eq "None") {
+    throw "An available Policy Knowledge Base data source is required."
+}
+$policyDataSource = Invoke-Aws bedrock-agent get-data-source `
+    --knowledge-base-id $policyKnowledgeBaseId `
+    --data-source-id $policyDataSourceId `
+    --region $Region `
+    --query "dataSource.dataSourceConfiguration.s3Configuration" `
+    --output json | ConvertFrom-Json
+$policySourceBucket = $policyDataSource.bucketArn.Replace("arn:aws:s3:::", "")
+$policySourcePrefix = [string]$policyDataSource.inclusionPrefixes[0]
+if (-not $policySourceBucket -or -not $policySourcePrefix) {
+    throw "Policy data source must expose a governed S3 bucket and prefix."
+}
 $baseUrl = "http://$($foundation.LoadBalancerDnsName)"
 
 $oidcBody = @{ use_default = $true } | ConvertTo-Json -Compress
@@ -141,6 +168,11 @@ $variables = [ordered]@{
     EDUCATION_DATA_SOURCE_ID = $educationDataSourceId
     EDUCATION_SOURCE_BUCKET = $educationSourceBucket
     EDUCATION_SOURCE_PREFIX = $educationSourcePrefix
+    POLICY_KNOWLEDGE_BASE_ID = $policyKnowledgeBaseId
+    POLICY_CORPUS_VERSION = $application.PolicyCorpusVersion
+    POLICY_DATA_SOURCE_ID = $policyDataSourceId
+    POLICY_SOURCE_BUCKET = $policySourceBucket
+    POLICY_SOURCE_PREFIX = $policySourcePrefix
     OPERATIONAL_DASHBOARD_NAME = $application.OperationalDashboardName
     OPERATIONAL_ALARM_PREFIX = $application.OperationalAlarmPrefix
     LIVE_EVAL_MAX_P95_MS = "10000"
@@ -148,6 +180,7 @@ $variables = [ordered]@{
     LOAD_MAX_P95_MS = "8000"
     AWS_OPERATIONAL_VALIDATION_ENABLED = "true"
     RAG_SOURCE_GOVERNANCE_ENABLED = "true"
+    POLICY_RAG_SOURCE_GOVERNANCE_ENABLED = "true"
 }
 
 foreach ($item in $variables.GetEnumerator()) {

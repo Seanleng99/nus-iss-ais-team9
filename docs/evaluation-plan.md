@@ -70,7 +70,20 @@ Acceptance criteria:
 - Every Investment Education response retains controlled source metadata when RAG is used.
 - Every live citation and persisted trace matches the configured corpus version and carries document version, SHA-256 checksum, and review deadline.
 - Scheduled source governance finds zero stale, withdrawn, tampered, missing, or unmanifested deployed objects.
-- Investment Education receives only `education_retriever`, not the legacy `trusted_retriever`.
+- Investment Education receives only `education_retriever`; only Risk and Compliance receives `policy_retriever`.
+
+## Policy RAG Retrieval
+
+Dataset: `apps/ai-service/app/evals/datasets/policy_retrieval.jsonl`
+
+Expected output:
+
+- Relevant approved advice-boundary, evidence, or instruction-security policy is supplied only to Risk and Compliance.
+- Policy text is sanitized as untrusted retrieved data.
+- Policy source IDs and the independent corpus version are retained in the privacy-safe trace.
+- Missing current policy evidence blocks the response rather than allowing an ungrounded compliance decision.
+
+Metric and acceptance criterion: policy source recall@3 and overall case accuracy must both be 100 percent for the seed suite. Unit tests additionally require fail-closed empty retrieval, strict metadata rejection, provider-error sanitization, and cross-agent tool denial.
 
 ## Security Controls
 
@@ -106,7 +119,7 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 ## Regression And Drift
 
-`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v4 covers routing, budgets, retrieval, guardrails, dynamic dependencies, regulated-advice behavior, and paired fairness consistency. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
+`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v5 covers routing, budgets, Education retrieval, Policy retrieval, guardrails, dynamic dependencies, regulated-advice behavior, and paired fairness consistency. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
 
 The fixed seed set detects behavior regression, not production input drift. After privacy approval, monitor only aggregate production distributions described in `docs/operations.md` and use observed shifts to expand representative evaluation cases.
 
@@ -120,11 +133,11 @@ Before an AWS release is approved for anything beyond the synthetic demo, run th
 
 `.github/workflows/aws-operational-validation.yml` runs `infra/scripts/live_evaluation.py` against the deployed backend weekly and on demand. The versioned cases in `infra/llmsecops/live-evaluation-cases.jsonl` cover routing, multi-hop dynamic dependencies, typed missing-input behavior, a critical prompt injection, and grounded Education RAG. Each case is repeated from a new synthetic session so the result measures the deployed Bedrock model, prompt set, orchestrator, backend persistence path, and Knowledge Base adapter together.
 
-The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, and grounded Education RAG. Grounded cases additionally require full source provenance, the exact configured corpus version in every citation, and the same version in the privacy-safe trace. The workflow repeats every case three times by default.
+The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, and grounded Education RAG. Grounded cases additionally require full Education and Policy source provenance, the exact configured corpus versions, and the same versions in the privacy-safe trace. The workflow repeats every case three times by default.
 
 The gate requires every case-level structural check to pass. It also enforces a default 10-second P95 ceiling and USD 0.05 estimated-cost ceiling. The bounded load gate uses an 8-second P95 ceiling. These replace the original 30-second characterization bounds using the first retained AWS baseline while leaving limited variance above the observed live P95. Cost is estimated from audited input/output token counts. The default Nova Lite rates are configurable command arguments and must be checked against the current AWS pricing page before a formal assessment.
 
-The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads. `.github/workflows/rag-source-governance.yml` separately performs a weekly read-only manifest/S3/Bedrock audit and retains privacy-safe corpus evidence for 90 days.
+The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model/profile ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, Education and Policy source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads. Separate Education and Policy workflows perform weekly read-only manifest/S3/Bedrock audits and retain privacy-safe corpus evidence for 90 days.
 
 ## Candidate Model Comparison
 
@@ -138,7 +151,7 @@ The formal 2026-08-28 three-repeat comparison made both models objectively eligi
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
 
-Policy v4 contains executable pairs for budget writing style, goal-name variation, and investment-education writing style. The current structural gate compares routing, block outcomes, deterministic financial data, dependency capabilities, missing-input outcomes, source IDs, and evidence status. The candidate comparison additionally generates a blinded explanation, groundedness, uncertainty-calibration, and safe-helpfulness rubric. Human review remains a mandatory model-change gate when a candidate passes all objective checks because exact text matching is not an appropriate fairness measure for non-deterministic generation.
+Policy v5 contains executable pairs for budget writing style, goal-name variation, and investment-education writing style. The current structural gate compares routing, block outcomes, deterministic financial data, dependency capabilities, missing-input outcomes, source IDs, and evidence status. The candidate comparison additionally generates a blinded explanation, groundedness, uncertainty-calibration, and safe-helpfulness rubric. Human review remains a mandatory model-change gate when a candidate passes all objective checks because exact text matching is not an appropriate fairness measure for non-deterministic generation.
 
 ## Evidence Handling
 

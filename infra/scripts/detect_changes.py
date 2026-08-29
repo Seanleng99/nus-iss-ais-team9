@@ -36,6 +36,7 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
             if path in {
                 ".github/workflows/model-comparison.yml",
                 ".github/workflows/rag-source-governance.yml",
+                ".github/workflows/policy-rag-source-governance.yml",
             }:
                 result.update(ai_ci=True, infrastructure=True, sast=True)
                 continue
@@ -45,6 +46,12 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 "docker-compose.yml",
             }:
                 _select_all(result)
+                continue
+
+            if path.startswith(
+                ("knowledge/investment_education/", "knowledge/policy_controls/")
+            ):
+                result.update(ai_ci=True, infrastructure=True, sast=True)
                 continue
 
             if path.startswith("apps/frontend/"):

@@ -270,6 +270,7 @@ jobs:
           --api-key change-me-locally
           --expected-model-provider local_fixture
           --expected-corpus-version investment-education-sg@local-fixture-v1
+          --expected-policy-corpus-version financial-coach-policy-sg@local-fixture-v1
       - name: Verify bounded concurrency
         run: >-
           python infra/scripts/load_smoke.py

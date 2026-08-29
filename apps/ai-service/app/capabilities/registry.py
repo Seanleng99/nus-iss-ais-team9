@@ -50,7 +50,7 @@ DEFAULT_CAPABILITIES = (
     ),
     CapabilityDefinition(
         capability=CapabilityName.POLICY_CONTEXT,
-        provider="trusted_retriever",
+        provider="policy_retriever",
         provider_type=CapabilityProviderType.TOOL,
         allowed_requesters={AgentName.RISK_COMPLIANCE},
         required_inputs=["sanitized_message"],

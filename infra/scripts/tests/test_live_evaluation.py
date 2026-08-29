@@ -100,6 +100,20 @@ def test_evaluate_response_requires_grounded_sources() -> None:
             "prompt_set_version": "v3",
             "model_calls": [{"component": "router"}],
             "retrieval_corpus_versions": [corpus_version],
+            "policy_corpus_versions": ["financial-coach-policy-sg@test-v1"],
+            "policy_sources": [
+                {
+                    "source_id": "approved-policy",
+                    "title": "Approved policy",
+                    "issuing_organization": "AI Governance",
+                    "canonical_url": "https://example.test/policy",
+                    "published_at": "2026-08-29",
+                    "document_version": "2026-08-29",
+                    "checksum": f"sha256:{'b' * 64}",
+                    "corpus_version": "financial-coach-policy-sg@test-v1",
+                    "review_due_at": "2026-11-27",
+                }
+            ],
         },
     }
 
@@ -109,6 +123,8 @@ def test_evaluate_response_requires_grounded_sources() -> None:
             "minimum_sources": 1,
             "source_provenance": True,
             "retrieval_corpus_version": corpus_version,
+            "policy_source_provenance": True,
+            "policy_corpus_version": "financial-coach-policy-sg@test-v1",
             "evidence_status": "grounded",
         },
         expected_model_provider="bedrock",

@@ -14,9 +14,16 @@ param(
     [string]$EducationDataSourceId = "",
     [string]$EducationSourceBucketName = "",
     [string]$EducationSourcePrefix = "investment-education/documents/",
+    [string]$PolicyCorpusVersion = "financial-coach-policy-sg@2026-08-29.1",
+    [string]$PolicyDataSourceId = "",
+    [string]$PolicySourceBucketName = "",
+    [string]$PolicySourcePrefix = "policy-controls/documents/",
     [Parameter(Mandatory = $true)]
     [ValidatePattern("^[A-Za-z0-9]{10}$")]
-    [string]$EducationKnowledgeBaseId
+    [string]$EducationKnowledgeBaseId,
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern("^[A-Za-z0-9]{10}$")]
+    [string]$PolicyKnowledgeBaseId
 )
 
 $ErrorActionPreference = "Stop"
@@ -99,6 +106,7 @@ Invoke-Aws cloudformation deploy `
     --capabilities CAPABILITY_NAMED_IAM `
     --parameter-overrides `
         "EducationKnowledgeBaseId=$EducationKnowledgeBaseId" `
+        "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId" `
         "BedrockInferenceProfileId=$BedrockInferenceProfileId" `
         "BedrockFoundationModelId=$BedrockFoundationModelId" `
     --no-fail-on-empty-changeset `
@@ -159,6 +167,8 @@ $applicationParameters = @(
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
     "EducationCorpusVersion=$EducationCorpusVersion",
+    "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
+    "PolicyCorpusVersion=$PolicyCorpusVersion",
     "BedrockModelId=$BedrockInferenceProfileId",
     "AlertEmail=$AlertEmail",
     "AiImageUri=$($images.Ai)",
@@ -196,6 +206,28 @@ if (-not $EducationSourceBucketName) {
 }
 if ($educationDataSource.inclusionPrefixes -notcontains $EducationSourcePrefix) {
     throw "Education source prefix does not match the Bedrock data source."
+}
+if (-not $PolicyDataSourceId) {
+    $PolicyDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
+        --knowledge-base-id $PolicyKnowledgeBaseId `
+        --region $Region `
+        --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
+        --output text
+}
+if (-not $PolicyDataSourceId -or $PolicyDataSourceId -eq "None") {
+    throw "An available Policy Knowledge Base data source is required."
+}
+$policyDataSource = Invoke-Aws bedrock-agent get-data-source `
+    --knowledge-base-id $PolicyKnowledgeBaseId `
+    --data-source-id $PolicyDataSourceId `
+    --region $Region `
+    --query "dataSource.dataSourceConfiguration.s3Configuration" `
+    --output json | ConvertFrom-Json
+if (-not $PolicySourceBucketName) {
+    $PolicySourceBucketName = $policyDataSource.bucketArn.Replace("arn:aws:s3:::", "")
+}
+if ($policyDataSource.inclusionPrefixes -notcontains $PolicySourcePrefix) {
+    throw "Policy source prefix does not match the Bedrock data source."
 }
 
 Write-Host "Running initial database migration as a one-shot ECS task..."
@@ -273,7 +305,10 @@ $oidcParameters = @(
     "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
     "EducationSourceBucketName=$EducationSourceBucketName",
-    "EducationSourcePrefix=$EducationSourcePrefix"
+    "EducationSourcePrefix=$EducationSourcePrefix",
+    "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
+    "PolicySourceBucketName=$PolicySourceBucketName",
+    "PolicySourcePrefix=$PolicySourcePrefix"
 )
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\github-actions-oidc.yaml") `

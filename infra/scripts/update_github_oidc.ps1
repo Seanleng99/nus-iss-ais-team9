@@ -12,7 +12,11 @@ param(
     [string]$EducationKnowledgeBaseId = "",
     [string]$EducationDataSourceId = "",
     [string]$EducationSourceBucketName = "",
-    [string]$EducationSourcePrefix = "investment-education/documents/"
+    [string]$EducationSourcePrefix = "investment-education/documents/",
+    [string]$PolicyKnowledgeBaseId = "",
+    [string]$PolicyDataSourceId = "",
+    [string]$PolicySourceBucketName = "",
+    [string]$PolicySourcePrefix = "policy-controls/documents/"
 )
 
 $ErrorActionPreference = "Stop"
@@ -111,6 +115,36 @@ if (-not $EducationSourceBucketName) {
 if ($educationDataSource.inclusionPrefixes -notcontains $EducationSourcePrefix) {
     throw "Education source prefix does not match the Bedrock data source."
 }
+if (-not $PolicyKnowledgeBaseId) {
+    $PolicyKnowledgeBaseId = Invoke-Aws cloudformation describe-stacks `
+        --stack-name $ApplicationStack `
+        --region $Region `
+        --query "Stacks[0].Parameters[?ParameterKey=='PolicyKnowledgeBaseId'].ParameterValue | [0]" `
+        --output text
+}
+if (-not $PolicyDataSourceId) {
+    $PolicyDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
+        --knowledge-base-id $PolicyKnowledgeBaseId `
+        --region $Region `
+        --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
+        --output text
+}
+if (-not $PolicyKnowledgeBaseId -or $PolicyKnowledgeBaseId -eq "None" -or
+    -not $PolicyDataSourceId -or $PolicyDataSourceId -eq "None") {
+    throw "The Policy Knowledge Base and an available data source are required."
+}
+$policyDataSource = Invoke-Aws bedrock-agent get-data-source `
+    --knowledge-base-id $PolicyKnowledgeBaseId `
+    --data-source-id $PolicyDataSourceId `
+    --region $Region `
+    --query "dataSource.dataSourceConfiguration.s3Configuration" `
+    --output json | ConvertFrom-Json
+if (-not $PolicySourceBucketName) {
+    $PolicySourceBucketName = $policyDataSource.bucketArn.Replace("arn:aws:s3:::", "")
+}
+if ($policyDataSource.inclusionPrefixes -notcontains $PolicySourcePrefix) {
+    throw "Policy source prefix does not match the Bedrock data source."
+}
 $ownedProviderArn = & $Aws cloudformation describe-stack-resource `
     --stack-name $OidcStack `
     --logical-resource-id GitHubOidcProvider `
@@ -147,7 +181,10 @@ $parameters = @(
     "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
     "EducationSourceBucketName=$EducationSourceBucketName",
-    "EducationSourcePrefix=$EducationSourcePrefix"
+    "EducationSourcePrefix=$EducationSourcePrefix",
+    "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
+    "PolicySourceBucketName=$PolicySourceBucketName",
+    "PolicySourcePrefix=$PolicySourcePrefix"
 )
 
 Invoke-Aws cloudformation deploy `

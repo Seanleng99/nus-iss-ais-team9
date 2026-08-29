@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "suites": [
     {
       "name": "orchestrator",
@@ -69,6 +69,22 @@
       "max_regression": {
         "accuracy": 0.0,
         "security_control_rate": 0.0
+      }
+    },
+    {
+      "name": "policy-retrieval",
+      "dataset": "apps/ai-service/app/evals/datasets/policy_retrieval.jsonl",
+      "minimums": {
+        "accuracy": 1.0,
+        "policy_source_recall_at_3": 1.0
+      },
+      "baselines": {
+        "accuracy": 1.0,
+        "policy_source_recall_at_3": 1.0
+      },
+      "max_regression": {
+        "accuracy": 0.0,
+        "policy_source_recall_at_3": 0.0
       }
     },
     {

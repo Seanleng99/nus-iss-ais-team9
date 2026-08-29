@@ -65,6 +65,14 @@ Parameters:
     Type: String
     Default: investment-education-sg@2026-08-28.1
     AllowedPattern: "^[a-z0-9][a-z0-9@._-]{2,127}$"
+  PolicyKnowledgeBaseId:
+    Type: String
+    MinLength: 10
+    MaxLength: 10
+  PolicyCorpusVersion:
+    Type: String
+    Default: financial-coach-policy-sg@2026-08-29.1
+    AllowedPattern: "^[a-z0-9][a-z0-9@._-]{2,127}$"
   AiServiceName:
     Type: String
     Default: coach-ai
@@ -205,6 +213,14 @@ Resources:
             - Name: EDUCATION_CORPUS_VERSION
               Value: !Ref EducationCorpusVersion
             - Name: RAG_MINIMUM_SCORE
+              Value: "0.6"
+            - Name: POLICY_RAG_PROVIDER
+              Value: bedrock
+            - Name: POLICY_KNOWLEDGE_BASE_ID
+              Value: !Ref PolicyKnowledgeBaseId
+            - Name: POLICY_CORPUS_VERSION
+              Value: !Ref PolicyCorpusVersion
+            - Name: POLICY_RAG_MINIMUM_SCORE
               Value: "0.6"
             - Name: ROUTER_TEMPERATURE
               Value: "0.2"
@@ -801,3 +817,7 @@ Outputs:
     Value: !Ref EducationKnowledgeBaseId
   EducationCorpusVersion:
     Value: !Ref EducationCorpusVersion
+  PolicyKnowledgeBaseId:
+    Value: !Ref PolicyKnowledgeBaseId
+  PolicyCorpusVersion:
+    Value: !Ref PolicyCorpusVersion

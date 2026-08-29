@@ -44,6 +44,13 @@ def _policy_findings(response) -> list[str]:
     ]
 
 
+def _policy_source_ids(response) -> set[str]:
+    return {
+        str(source["source_id"])
+        for source in response.audit.get("policy_sources", [])
+    }
+
+
 def _matches_expected(response, expected: dict) -> bool:
     checks: list[bool] = []
     if "dependency_capabilities" in expected:
@@ -64,6 +71,10 @@ def _matches_expected(response, expected: dict) -> bool:
     if "source_ids" in expected:
         actual = {source.source_id for source in response.sources}
         checks.append(set(expected["source_ids"]).issubset(actual))
+    if "policy_source_ids" in expected:
+        checks.append(
+            set(expected["policy_source_ids"]).issubset(_policy_source_ids(response))
+        )
     if expected.get("evidence_gap"):
         data = _agent_data(response, "investment_education")
         checks.append(
@@ -175,6 +186,8 @@ def _category(expected: dict) -> str:
         return "dependency"
     if "selected_agents" in expected:
         return "routing"
+    if "policy_source_ids" in expected:
+        return "policy_retrieval"
     if "source_ids" in expected:
         return "retrieval"
     if "evidence_gap" in expected:
@@ -196,6 +209,7 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
     failed_case_ids: list[str] = []
     grouped: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     retrieval_recalls: list[float] = []
+    policy_retrieval_recalls: list[float] = []
     with dataset.open("r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
@@ -220,6 +234,13 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
                     expected_sources = set(case["expected"]["source_ids"])
                     retrieval_recalls.append(
                         len(actual_sources.intersection(expected_sources)) / len(expected_sources)
+                    )
+                elif category == "policy_retrieval":
+                    actual_sources = list(_policy_source_ids(response))[:3]
+                    expected_sources = set(case["expected"]["policy_source_ids"])
+                    policy_retrieval_recalls.append(
+                        len(set(actual_sources).intersection(expected_sources))
+                        / len(expected_sources)
                     )
             passed += int(case_passed)
             if not case_passed:
@@ -249,6 +270,10 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
     if retrieval_recalls:
         result["source_recall_at_3"] = round(
             sum(retrieval_recalls) / len(retrieval_recalls), 4
+        )
+    if policy_retrieval_recalls:
+        result["policy_source_recall_at_3"] = round(
+            sum(policy_retrieval_recalls) / len(policy_retrieval_recalls), 4
         )
     return result
 

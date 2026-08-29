@@ -220,6 +220,9 @@ def test_deployed_config_creates_bedrock_education_retriever() -> None:
         EDUCATION_KNOWLEDGE_BASE_ID="EDUCATION123",
         EDUCATION_CORPUS_VERSION="investment-education-sg@2026-08-28.1",
         RAG_MINIMUM_SCORE=0.7,
+        POLICY_RAG_PROVIDER="bedrock",
+        POLICY_KNOWLEDGE_BASE_ID="POLICYKB12",
+        POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-08-29.1",
     )
 
     retriever = create_education_retriever(config)

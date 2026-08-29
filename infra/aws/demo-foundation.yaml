@@ -24,6 +24,10 @@ Parameters:
     Type: String
     MinLength: 10
     MaxLength: 10
+  PolicyKnowledgeBaseId:
+    Type: String
+    MinLength: 10
+    MaxLength: 10
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
@@ -404,7 +408,7 @@ Resources:
                 Condition:
                   StringEquals:
                     bedrock:InferenceProfileArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}
-        - PolicyName: RetrieveApprovedEducationKnowledgeBase
+        - PolicyName: RetrieveApprovedKnowledgeBases
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -412,7 +416,9 @@ Resources:
                 Action:
                   - bedrock:GetKnowledgeBase
                   - bedrock:Retrieve
-                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
 
   AiRepository:
     Type: AWS::ECR::Repository
