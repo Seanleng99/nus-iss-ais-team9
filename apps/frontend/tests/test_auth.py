@@ -1,7 +1,8 @@
 import tomllib
+from urllib.parse import parse_qs, urlparse
 
 import pytest
-from streamlit.auth_util import generate_default_provider_section
+from streamlit.auth_util import build_logout_url, generate_default_provider_section
 from streamlit.runtime.secrets import AttrDict
 
 from entrypoint import render_auth_secrets
@@ -49,3 +50,22 @@ def test_runtime_auth_configuration_rejects_insecure_demo_redirect(
 
     with pytest.raises(RuntimeError, match="OIDC_REDIRECT_URI must use HTTPS"):
         render_auth_secrets()
+
+
+def test_streamlit_preserves_cognito_logout_uri_from_adapted_metadata() -> None:
+    logout_url = build_logout_url(
+        end_session_endpoint=(
+            "https://auth.example/logout"
+            "?logout_uri=https%3A%2F%2Fcoach.example%2F"
+        ),
+        client_id="public-client",
+        post_logout_redirect_uri="https://coach.example/oauth2callback",
+        id_token="synthetic-id-token",
+    )
+
+    parameters = parse_qs(urlparse(logout_url).query)
+    assert parameters["client_id"] == ["public-client"]
+    assert parameters["logout_uri"] == ["https://coach.example/"]
+    assert parameters["post_logout_redirect_uri"] == [
+        "https://coach.example/oauth2callback"
+    ]

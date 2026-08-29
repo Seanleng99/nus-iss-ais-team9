@@ -75,7 +75,7 @@ Do not inject either service API key into authenticated Streamlit. Do not place 
 
 The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. Every automatic backend release runs the one-shot ECS migration task, even when no migration path was detected, and checks its exit code before updating the backend service. This makes migration state a deployment invariant and protects against path-classification drift.
 
-The authentication activation script also runs migration `20260829_0007` before changing task authentication settings. Its released-image SHA check prevents an old task definition from reporting success at an older Alembic head.
+The authentication activation script also runs migration `20260829_0007` before changing task authentication settings. Its released-image SHA check prevents an old task definition from reporting success at an older Alembic head. The frontend reads OIDC discovery through the public backend metadata adapter. That adapter verifies the configured Cognito issuer and JWKS URL, preserves Cognito's discovery document, and adds the allowed `logout_uri` required by Cognito's managed logout endpoint; it never receives browser tokens or cookies.
 
 Application releases build, scan, and update only services selected by the CI change manifest. Unchanged ECS task definitions remain active. If post-deployment checks fail, explicit rollback restores only services whose new task definitions were successfully deployed; ECS circuit-breaker rollback remains responsible for an individual service update that fails before completion.
 

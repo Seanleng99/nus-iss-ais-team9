@@ -288,14 +288,20 @@ Resources:
               Value: deployment-,live-evaluation,load-test-user-
             - Name: OIDC_AUTH_ENABLED
               Value: "true"
+            - Name: OIDC_METADATA_PROXY_ENABLED
+              Value: "true"
             - Name: OIDC_ISSUER_URL
               Value: !Ref OidcIssuerUrl
             - Name: OIDC_JWKS_URL
               Value: !Ref OidcJwksUrl
             - Name: OIDC_CLIENT_ID
               Value: !Ref OidcClientId
+            - Name: OIDC_SERVER_METADATA_URL
+              Value: !Ref OidcServerMetadataUrl
             - Name: OIDC_REQUIRED_TOKEN_USE
               Value: id
+            - Name: FRONTEND_URL
+              Value: !Ref FrontendUrl
             - Name: AI_SERVICE_BASE_URL
               Value: http://ai.coach.internal:8001
             - Name: AI_SERVICE_TIMEOUT_SECONDS
@@ -357,7 +363,7 @@ Resources:
             - Name: OIDC_REDIRECT_URI
               Value: !Ref OidcRedirectUri
             - Name: OIDC_SERVER_METADATA_URL
-              Value: !Ref OidcServerMetadataUrl
+              Value: !Sub "${FrontendUrl}/api/oidc/metadata"
           Secrets:
             - Name: OIDC_COOKIE_SECRET
               ValueFrom: !Sub "${FrontendOidcCookieSecretArn}:value::"

@@ -17,9 +17,16 @@ class Settings(BaseSettings):
         alias="AUTOMATION_USER_ID_PREFIXES",
     )
     oidc_auth_enabled: bool = Field(default=False, alias="OIDC_AUTH_ENABLED")
+    oidc_metadata_proxy_enabled: bool = Field(
+        default=False, alias="OIDC_METADATA_PROXY_ENABLED"
+    )
     oidc_issuer_url: str | None = Field(default=None, alias="OIDC_ISSUER_URL")
     oidc_jwks_url: str | None = Field(default=None, alias="OIDC_JWKS_URL")
     oidc_client_id: str | None = Field(default=None, alias="OIDC_CLIENT_ID")
+    oidc_server_metadata_url: str | None = Field(
+        default=None, alias="OIDC_SERVER_METADATA_URL"
+    )
+    frontend_url: str | None = Field(default=None, alias="FRONTEND_URL")
     oidc_required_token_use: str | None = Field(
         default=None, alias="OIDC_REQUIRED_TOKEN_USE"
     )
@@ -112,6 +119,27 @@ class Settings(BaseSettings):
                     raise ValueError(f"{', '.join(insecure_urls)} must use HTTPS")
                 if self.oidc_required_token_use != "id":
                     raise ValueError("OIDC_REQUIRED_TOKEN_USE must be id")
+            if self.oidc_metadata_proxy_enabled:
+                if not self.oidc_auth_enabled:
+                    raise ValueError(
+                        "OIDC_METADATA_PROXY_ENABLED requires OIDC_AUTH_ENABLED"
+                    )
+                metadata_values = {
+                    "OIDC_SERVER_METADATA_URL": self.oidc_server_metadata_url,
+                    "FRONTEND_URL": self.frontend_url,
+                }
+                missing_metadata = [
+                    name for name, value in metadata_values.items() if not value
+                ]
+                if missing_metadata:
+                    raise ValueError(f"{', '.join(missing_metadata)} must be configured")
+                insecure_metadata = [
+                    name
+                    for name, value in metadata_values.items()
+                    if not str(value).startswith("https://")
+                ]
+                if insecure_metadata:
+                    raise ValueError(f"{', '.join(insecure_metadata)} must use HTTPS")
         return self
 
 
