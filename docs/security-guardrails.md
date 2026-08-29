@@ -15,7 +15,11 @@ Critical safeguards are distributed across all boundaries. The Risk & Compliance
 - Output validation: agent output must include rationale, confidence, and advisory boundaries.
 - Auditability: execution metadata and policy decisions are logged with trace identifiers.
 
-Service authentication uses separate frontend-to-backend and backend-to-AI keys in the synthetic demo. The AI service is private. OIDC/JWT user identity and authorization are required before real users; service keys are not a substitute for end-user authentication.
+The staged AWS authentication boundary uses Cognito authorization code flow with PKCE at Streamlit. The frontend exposes only the ID token to its server-side client. The backend accepts RS256 JWTs only after exact issuer, audience, lifetime, subject, and Cognito `token_use=id` validation through the configured JWKS endpoint. An `Authorization` header is never downgraded to API-key authentication when malformed or invalid.
+
+Authorization binds each created profile to the token's immutable `(issuer, subject)` pair. Every profile, transaction, budget, goal, fairness, chat, coach, and trace operation checks that owner before reading or mutating data. Cross-owner and unknown-resource requests receive the same 404 response, and an existing unowned profile cannot be claimed. Multiple profiles may belong to one authenticated identity. Tokens, authorization headers, and financial request bodies are excluded from application traces and logs.
+
+`BACKEND_API_KEY` is retained only as an explicitly enabled automation credential for release smoke, evaluation, and load workflows. Outside local development, it can address only configured synthetic user-ID prefixes; those namespaces are reserved from authenticated profile creation, and the key is never injected into the authenticated frontend task. `AI_SERVICE_API_KEY` remains the separate private backend-to-AI service credential. OIDC activation is fail-closed and must follow the nullable ownership migration using the exact released backend image.
 
 ## Initial Blocked Content
 

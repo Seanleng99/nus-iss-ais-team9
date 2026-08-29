@@ -15,7 +15,7 @@ These are initial targets to validate with AWS load evidence, not production gua
 
 ## Telemetry
 
-Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, or model prompts. A failed coaching request adds only a stable error code, bounded component name, exception type, and correlation ID; it never logs the prompt, model output, provider message, or financial snapshot. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the profile-scoped chat message without raw prompts, retrieved text, or financial grounding.
+Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, bearer tokens, OIDC claims, or model prompts. A failed coaching request adds only a stable error code, bounded component name, exception type, and correlation ID; it never logs the prompt, model output, provider message, financial snapshot, or authentication material. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the owner-bound profile session without raw prompts, retrieved text, identity claims, or financial grounding.
 
 In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention. Restrict log access separately from application access. The foundation enables ECS Container Insights. The application stack creates the `ai-financial-wellness-coach-demo-operational` dashboard for ECS CPU/memory, ALB backend errors/health/latency, Bedrock invocations/errors/throttles/latency/tokens, and privacy-safe AI generation-failure counts.
 
@@ -26,7 +26,7 @@ In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention
 - AI service sustained CPU pressure and Bedrock P95 invocation latency.
 - Bedrock throttling and invocation server errors.
 - Privacy-safe AI model/retrieval generation failures derived from logs.
-- Authentication failure spike or prompt-injection spike.
+- Sanitized OIDC/authorization failure spike or prompt-injection spike.
 - Critical/high Inspector finding after deployment.
 - Scheduled evaluation failure or metric regression.
 - Education RAG manifest, freshness, checksum, ingestion, or deployed-object drift.

@@ -10,14 +10,29 @@ class BackendClient:
     def __init__(
         self,
         base_url: str | None = None,
-        api_key: str | None = None,
+        id_token: str | None = None,
+        automation_api_key: str | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.base_url = (
             base_url or os.getenv("BACKEND_BASE_URL", "http://localhost:8080")
         ).rstrip("/")
-        self.api_key = api_key or os.getenv("BACKEND_API_KEY", "change-me-locally")
+        self.id_token = id_token
+        self.automation_api_key = automation_api_key
+        if not self.id_token and not self.automation_api_key:
+            configured_automation_key = os.getenv("BACKEND_API_KEY")
+            if configured_automation_key:
+                self.automation_api_key = configured_automation_key
+            elif os.getenv("APP_ENV", "local").casefold() == "local":
+                self.automation_api_key = "change-me-locally"
         self.transport = transport
+
+    def _authentication_headers(self) -> dict[str, str]:
+        if self.id_token:
+            return {"Authorization": f"Bearer {self.id_token}"}
+        if self.automation_api_key:
+            return {"X-API-Key": self.automation_api_key}
+        raise RuntimeError("An authenticated user session is required")
 
     def _request(
         self,
@@ -31,7 +46,7 @@ class BackendClient:
     ) -> Any:
         with httpx.Client(
             base_url=self.base_url,
-            headers={"X-API-Key": self.api_key},
+            headers=self._authentication_headers(),
             transport=self.transport,
             timeout=timeout,
         ) as client:

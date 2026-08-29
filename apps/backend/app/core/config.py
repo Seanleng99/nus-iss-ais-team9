@@ -9,6 +9,23 @@ class Settings(BaseSettings):
     app_env: str = Field(default="local", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     api_key: str = Field(default="change-me-locally", alias="BACKEND_API_KEY")
+    automation_api_key_enabled: bool = Field(
+        default=True, alias="AUTOMATION_API_KEY_ENABLED"
+    )
+    automation_user_id_prefixes: str = Field(
+        default="deployment-,live-evaluation,load-test-user-",
+        alias="AUTOMATION_USER_ID_PREFIXES",
+    )
+    oidc_auth_enabled: bool = Field(default=False, alias="OIDC_AUTH_ENABLED")
+    oidc_issuer_url: str | None = Field(default=None, alias="OIDC_ISSUER_URL")
+    oidc_jwks_url: str | None = Field(default=None, alias="OIDC_JWKS_URL")
+    oidc_client_id: str | None = Field(default=None, alias="OIDC_CLIENT_ID")
+    oidc_required_token_use: str | None = Field(
+        default=None, alias="OIDC_REQUIRED_TOKEN_USE"
+    )
+    oidc_clock_skew_seconds: int = Field(
+        default=30, ge=0, le=300, alias="OIDC_CLOCK_SKEW_SECONDS"
+    )
     ai_service_base_url: str = Field(
         default="http://localhost:8001", alias="AI_SERVICE_BASE_URL"
     )
@@ -49,15 +66,26 @@ class Settings(BaseSettings):
             return url.replace("postgresql://", "postgresql+psycopg://", 1)
         return url
 
+    @property
+    def automation_user_id_prefix_list(self) -> tuple[str, ...]:
+        return tuple(
+            prefix.strip()
+            for prefix in self.automation_user_id_prefixes.split(",")
+            if prefix.strip()
+        )
+
     @model_validator(mode="after")
     def require_deployment_secrets(self) -> Self:
         if self.app_env.lower() != "local":
+            service_secrets = []
+            if self.automation_api_key_enabled:
+                service_secrets.append(("BACKEND_API_KEY", self.api_key))
+                if not self.automation_user_id_prefix_list:
+                    raise ValueError("AUTOMATION_USER_ID_PREFIXES must not be empty")
+            service_secrets.append(("AI_SERVICE_API_KEY", self.ai_service_api_key))
             invalid = [
                 name
-                for name, value in (
-                    ("BACKEND_API_KEY", self.api_key),
-                    ("AI_SERVICE_API_KEY", self.ai_service_api_key),
-                )
+                for name, value in service_secrets
                 if value == "change-me-locally" or len(value) < 20
             ]
             if invalid:
@@ -66,6 +94,24 @@ class Settings(BaseSettings):
                 )
             if self.postgres_sslmode not in {"require", "verify-ca", "verify-full"}:
                 raise ValueError("POSTGRES_SSLMODE must require TLS outside local development")
+            if self.oidc_auth_enabled:
+                oidc_values = {
+                    "OIDC_ISSUER_URL": self.oidc_issuer_url,
+                    "OIDC_JWKS_URL": self.oidc_jwks_url,
+                    "OIDC_CLIENT_ID": self.oidc_client_id,
+                }
+                missing_oidc = [name for name, value in oidc_values.items() if not value]
+                if missing_oidc:
+                    raise ValueError(f"{', '.join(missing_oidc)} must be configured")
+                insecure_urls = [
+                    name
+                    for name in ("OIDC_ISSUER_URL", "OIDC_JWKS_URL")
+                    if not str(oidc_values[name]).startswith("https://")
+                ]
+                if insecure_urls:
+                    raise ValueError(f"{', '.join(insecure_urls)} must use HTTPS")
+                if self.oidc_required_token_use != "id":
+                    raise ValueError("OIDC_REQUIRED_TOKEN_USE must be id")
         return self
 
 

@@ -258,3 +258,37 @@ def test_coach_hides_downstream_failure_details() -> None:
 def test_deployment_rejects_weak_service_keys() -> None:
     with pytest.raises(ValueError, match="BACKEND_API_KEY, AI_SERVICE_API_KEY"):
         Settings(APP_ENV="demo", BACKEND_API_KEY="short", AI_SERVICE_API_KEY="short")
+
+
+def test_deployment_requires_https_oidc_configuration_when_enabled() -> None:
+    secure_key = "a-secure-service-key-that-is-long-enough"
+    with pytest.raises(ValueError, match="OIDC_ISSUER_URL, OIDC_JWKS_URL, OIDC_CLIENT_ID"):
+        Settings(
+            APP_ENV="demo",
+            BACKEND_API_KEY=secure_key,
+            AI_SERVICE_API_KEY=secure_key,
+            POSTGRES_SSLMODE="require",
+            OIDC_AUTH_ENABLED=True,
+        )
+    with pytest.raises(ValueError, match="OIDC_ISSUER_URL, OIDC_JWKS_URL must use HTTPS"):
+        Settings(
+            APP_ENV="demo",
+            BACKEND_API_KEY=secure_key,
+            AI_SERVICE_API_KEY=secure_key,
+            POSTGRES_SSLMODE="require",
+            OIDC_AUTH_ENABLED=True,
+            OIDC_ISSUER_URL="http://issuer.example",
+            OIDC_JWKS_URL="http://issuer.example/jwks.json",
+            OIDC_CLIENT_ID="coach-client",
+        )
+    with pytest.raises(ValueError, match="OIDC_REQUIRED_TOKEN_USE must be id"):
+        Settings(
+            APP_ENV="demo",
+            BACKEND_API_KEY=secure_key,
+            AI_SERVICE_API_KEY=secure_key,
+            POSTGRES_SSLMODE="require",
+            OIDC_AUTH_ENABLED=True,
+            OIDC_ISSUER_URL="https://issuer.example",
+            OIDC_JWKS_URL="https://issuer.example/jwks.json",
+            OIDC_CLIENT_ID="coach-client",
+        )

@@ -104,7 +104,10 @@ $policySourcePrefix = [string]$policyDataSource.inclusionPrefixes[0]
 if (-not $policySourceBucket -or -not $policySourcePrefix) {
     throw "Policy data source must expose a governed S3 bucket and prefix."
 }
-$baseUrl = "http://$($foundation.LoadBalancerDnsName)"
+$baseUrl = $foundation.FrontendUrl
+if (-not $baseUrl) {
+    throw "The foundation stack must expose the authenticated HTTPS FrontendUrl."
+}
 
 $oidcBody = @{ use_default = $true } | ConvertTo-Json -Compress
 $oidcBody | & $Gh api --method PUT "repos/$Repository/actions/oidc/customization/sub" --input -

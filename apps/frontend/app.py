@@ -1,5 +1,6 @@
 import streamlit as st
 
+from ui.auth import require_authenticated_user, signed_in_label
 from ui.components import apply_styles, backend_call
 from ui.pages import (
     budget_page,
@@ -19,6 +20,7 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 apply_styles()
+require_authenticated_user()
 
 client = get_client()
 profiles = backend_call(client.list_profiles) or []
@@ -107,6 +109,10 @@ with st.sidebar:
     st.markdown('<div class="workspace-kicker">FINANCIAL WELLNESS</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-brand">Coach workspace</div>', unsafe_allow_html=True)
     st.caption("Synthetic demo")
+    if identity_label := signed_in_label():
+        st.caption(f"Signed in as {identity_label}")
+        if st.button("Sign out", use_container_width=True):
+            st.logout()
 
     st.markdown('<div class="sidebar-section">ACCOUNT</div>', unsafe_allow_html=True)
     if has_active_profile:

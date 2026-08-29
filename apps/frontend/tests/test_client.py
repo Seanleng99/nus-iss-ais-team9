@@ -17,7 +17,7 @@ def test_build_request_uses_backend_owned_snapshot() -> None:
     assert persisted_payload["session_id"] == "conversation-1"
 
 
-def test_client_sends_service_key_and_period() -> None:
+def test_client_sends_automation_key_and_period() -> None:
     captured: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -26,7 +26,7 @@ def test_client_sends_service_key_and_period() -> None:
 
     client = BackendClient(
         base_url="http://backend.test",
-        api_key="test-service-key",
+        automation_api_key="test-service-key",
         transport=httpx.MockTransport(handler),
     )
     response = client.list_transactions("demo-user", date(2026, 8, 1))
@@ -35,6 +35,25 @@ def test_client_sends_service_key_and_period() -> None:
     assert captured[0].headers["X-API-Key"] == "test-service-key"
     assert captured[0].url.path == "/api/users/demo-user/transactions"
     assert captured[0].url.params["period_start"] == "2026-08-01"
+
+
+def test_client_prefers_user_bearer_token() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=[])
+
+    client = BackendClient(
+        base_url="http://backend.test",
+        id_token="signed-user-token",
+        automation_api_key="must-not-be-sent",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert client.list_profiles() == []
+    assert captured[0].headers["Authorization"] == "Bearer signed-user-token"
+    assert "X-API-Key" not in captured[0].headers
 
 
 def test_client_supports_not_found_profile() -> None:

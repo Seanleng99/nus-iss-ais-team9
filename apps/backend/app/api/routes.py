@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
 from app.core.config import settings
-from app.core.security import require_api_key
+from app.core.security import (
+    AuthenticatedPrincipal,
+    enforce_user_access,
+    require_principal,
+)
 from app.domain.schemas import CoachRequest, CoachResponse, OrchestrationTraceResponse
 from app.infrastructure.database import get_db_session
 from app.infrastructure.repositories import (
@@ -24,13 +28,14 @@ def get_ai_service_client() -> AIServiceClient:
 @router.post(
     "/coach",
     response_model=CoachResponse,
-    dependencies=[Depends(require_api_key)],
 )
 async def coach(
     request: CoachRequest,
     ai_service: Annotated[AIServiceClient, Depends(get_ai_service_client)],
     session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> CoachResponse:
+    enforce_user_access(principal, session, request.user_id)
     user_repository = SQLAlchemyUserRepository(session)
     persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
     if persisted_snapshot is not None:
@@ -78,13 +83,14 @@ async def coach(
 @router.get(
     "/coach/traces/{trace_id}",
     response_model=OrchestrationTraceResponse,
-    dependencies=[Depends(require_api_key)],
 )
 def get_orchestration_trace(
     trace_id: str,
     user_id: str,
     session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> OrchestrationTraceResponse:
+    enforce_user_access(principal, session, user_id)
     record = SQLAlchemyOrchestrationTraceRepository(session).get_for_user(
         user_id,
         trace_id,
@@ -112,13 +118,14 @@ def get_orchestration_trace(
 @router.delete(
     "/coach/traces/{trace_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_api_key)],
 )
 def delete_orchestration_trace(
     trace_id: str,
     user_id: str,
     session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> Response:
+    enforce_user_access(principal, session, user_id)
     if not SQLAlchemyOrchestrationTraceRepository(session).delete_for_user(
         user_id, trace_id
     ):

@@ -84,6 +84,22 @@ def check_api_health(url: str) -> None:
     assert payload.get("status") == "ok", f"unexpected health response: {payload}"
 
 
+def check_user_authentication_required(url: str) -> None:
+    payload = {
+        "user_id": "deployment-unauthenticated-test",
+        "session_id": "deployment-unauthenticated-test",
+        "message": "Create a budget",
+    }
+    try:
+        request(url, method="POST", body=payload)
+    except SmokeRequestError as error:
+        assert str(error).startswith("HTTP 401;"), (
+            f"expected unauthenticated HTTP 401, received {error}"
+        )
+        return
+    raise AssertionError("unauthenticated coaching request was accepted")
+
+
 def check_prompt_injection(url: str, api_key: str) -> None:
     payload = {
         "user_id": "deployment-smoke-test",
@@ -353,6 +369,10 @@ def main() -> None:
             parser.error(
                 "--expected-policy-corpus-version is required with --coach-url"
             )
+        retry(
+            lambda: check_user_authentication_required(args.coach_url),
+            "user authentication boundary",
+        )
         retry(
             lambda: check_model_backed_coaching(
                 args.coach_url,

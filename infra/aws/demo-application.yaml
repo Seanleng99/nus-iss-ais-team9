@@ -19,6 +19,26 @@ Parameters:
     Type: AWS::EC2::SecurityGroup::Id
   LoadBalancerArn:
     Type: String
+  FrontendUrl:
+    Type: String
+    AllowedPattern: "^https://[^/]+$"
+  OidcIssuerUrl:
+    Type: String
+    AllowedPattern: "^https://.+$"
+  OidcJwksUrl:
+    Type: String
+    AllowedPattern: "^https://.+$"
+  OidcClientId:
+    Type: String
+    MinLength: 1
+  OidcServerMetadataUrl:
+    Type: String
+    AllowedPattern: "^https://.+$"
+  OidcRedirectUri:
+    Type: String
+    AllowedPattern: "^https://.+/oauth2callback$"
+  FrontendOidcCookieSecretArn:
+    Type: String
   EcsClusterName:
     Type: String
   ServiceDiscoveryNamespaceId:
@@ -262,6 +282,20 @@ Resources:
           Environment:
             - Name: APP_ENV
               Value: demo
+            - Name: AUTOMATION_API_KEY_ENABLED
+              Value: "true"
+            - Name: AUTOMATION_USER_ID_PREFIXES
+              Value: deployment-,live-evaluation,load-test-user-
+            - Name: OIDC_AUTH_ENABLED
+              Value: "true"
+            - Name: OIDC_ISSUER_URL
+              Value: !Ref OidcIssuerUrl
+            - Name: OIDC_JWKS_URL
+              Value: !Ref OidcJwksUrl
+            - Name: OIDC_CLIENT_ID
+              Value: !Ref OidcClientId
+            - Name: OIDC_REQUIRED_TOKEN_USE
+              Value: id
             - Name: AI_SERVICE_BASE_URL
               Value: http://ai.coach.internal:8001
             - Name: AI_SERVICE_TIMEOUT_SECONDS
@@ -314,11 +348,19 @@ Resources:
           Environment:
             - Name: APP_ENV
               Value: demo
+            - Name: FRONTEND_AUTH_REQUIRED
+              Value: "true"
             - Name: BACKEND_BASE_URL
               Value: http://backend.coach.internal:8080
+            - Name: OIDC_CLIENT_ID
+              Value: !Ref OidcClientId
+            - Name: OIDC_REDIRECT_URI
+              Value: !Ref OidcRedirectUri
+            - Name: OIDC_SERVER_METADATA_URL
+              Value: !Ref OidcServerMetadataUrl
           Secrets:
-            - Name: BACKEND_API_KEY
-              ValueFrom: !Sub "${BackendApiKeySecretArn}:value::"
+            - Name: OIDC_COOKIE_SECRET
+              ValueFrom: !Sub "${FrontendOidcCookieSecretArn}:value::"
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -821,3 +863,7 @@ Outputs:
     Value: !Ref PolicyKnowledgeBaseId
   PolicyCorpusVersion:
     Value: !Ref PolicyCorpusVersion
+  FrontendUrl:
+    Value: !Ref FrontendUrl
+  OidcClientId:
+    Value: !Ref OidcClientId

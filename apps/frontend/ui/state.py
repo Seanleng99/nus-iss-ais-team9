@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from client import BackendClient
+from ui.auth import current_identity_token
 
 SINGAPORE_TIMEZONE = ZoneInfo("Asia/Singapore")
 
@@ -24,8 +25,11 @@ def period_options() -> list[date]:
 
 
 def get_client() -> BackendClient:
-    if "backend_client" not in st.session_state:
-        st.session_state.backend_client = BackendClient()
+    identity_token = current_identity_token()
+    existing_token = st.session_state.get("backend_client_identity_token")
+    if "backend_client" not in st.session_state or existing_token != identity_token:
+        st.session_state.backend_client = BackendClient(id_token=identity_token)
+        st.session_state.backend_client_identity_token = identity_token
     return st.session_state.backend_client
 
 

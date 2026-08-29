@@ -50,7 +50,9 @@ Investment Education has a dedicated `education_retriever`; Risk and Compliance 
 
 ```mermaid
 flowchart LR
-  User["User Browser"] -->|"HTTPS"| ALB["Application Load Balancer"]
+  User["User Browser"] -->|"HTTPS"| CloudFront["Amazon CloudFront"]
+  User <-->|"OIDC authorization code + PKCE"| Cognito["Amazon Cognito"]
+  CloudFront --> ALB["Application Load Balancer"]
 
   subgraph AWS["AWS Account"]
     subgraph VPC["VPC across two Availability Zones"]
@@ -67,7 +69,7 @@ flowchart LR
       end
 
       ALB --> UI
-      UI -->|"Backend service key"| Backend
+      UI -->|"Bearer ID token"| Backend
       Backend -->|"Private service key + minimized snapshot"| AI
       Backend <-->|"Personal financial records"| RDS
       AI <-->|"Role-scoped retrieval"| VectorDB
@@ -82,7 +84,7 @@ flowchart LR
     Ingestion -->|"Chunk + metadata"| Bedrock
     Bedrock -->|"Document embeddings"| VectorDB
     AI <-->|"Routing, generation, compliance review"| Bedrock
-    Secrets -.-> UI
+    Secrets -.->|"OIDC cookie secret"| UI
     Secrets -.-> Backend
     Secrets -.-> AI
     UI -.-> Logs
@@ -98,9 +100,9 @@ The target architecture terminates TLS at the ALB and keeps ECS tasks and data s
 
 Trusted CPF, MAS, SGX, and government documents enter through an allowlisted, reviewed manifest. A controlled operator command validates exact checksums, freshness, usage scope, and indirect-injection controls before uploading documents and governed sidecars to S3 and synchronizing Bedrock. A separate scheduled read-only job audits manifest, S3, ingestion, and withdrawal state. Runtime AI tasks receive read-only, role-scoped retrieval access and an exact corpus pin; they cannot ingest arbitrary user or web content.
 
-The provisioned minimum demo intentionally differs: it uses an HTTP ALB and three single-task Fargate services in public subnets to avoid NAT Gateway cost. Each task receives a public IP for outbound AWS service access, but security groups deny direct internet ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. The deployment consumes an externally provisioned Education Knowledge Base and pins corpus `investment-education-sg@2026-08-28.1`; its six-document S3 data source and S3 Vectors index have completed governed ingestion and audit. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. Use synthetic data only until TLS, end-user identity, and the target private application network are implemented.
+The provisioned minimum demo intentionally keeps three single-task Fargate services in public subnets to avoid NAT Gateway cost. CloudFront provides the public HTTPS URL in front of the HTTP ALB, and Cognito provides an admin-created-user OIDC boundary. Each task receives a public IP for outbound AWS service access, but security groups deny direct task ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. The deployment consumes externally provisioned Education and Policy Knowledge Bases with exact corpus pins. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. The ALB origin remains directly addressable over HTTP, so the demo remains synthetic-only until private application networking or an origin restriction is added and live identity evidence is retained.
 
-The synthetic demo uses a backend service key. Before real users, the public application boundary moves to OIDC/JWT identity and authorization while the independent backend-to-AI credential remains a service secret.
+Authentication rollout is deliberately staged. First, compatible images and the nullable ownership migration are released while the existing task configuration still accepts the automation key. Then `activate_user_auth.ps1` verifies the exact released SHA, applies the migration, provisions Cognito/CloudFront, enables strict JWT validation, and removes the automation credential from Streamlit. The backend accepts exact-issuer, exact-audience RS256 Cognito ID tokens and stores `(issuer, subject)` on each newly created profile. Legacy unowned profiles cannot be claimed. Resource mismatches return a non-enumerating 404. The automation key remains backend-only and is constrained to configured synthetic user-ID prefixes outside local development; the independent backend-to-AI credential is unchanged.
 
 ## Service Boundaries
 
@@ -110,7 +112,7 @@ The synthetic demo uses a backend service key. Before real users, the public app
 - Data services: PostgreSQL stores synthetic personal financial records, chat messages, and privacy-safe orchestration traces; S3 retains curated source documents; and separate Education and Policy Knowledge Bases preserve collection and permission boundaries.
 - AWS boundary: ECS runs the three application services, Secrets Manager supplies separate service credentials, Bedrock supplies generation, Cohere embedding, ingestion, and retrieval, and CloudWatch captures operational telemetry. Controlled source mutations are operator-initiated; GitHub Actions performs read-only scheduled governance. ECR publishing and protected deployment remain documented separately in `docs/cicd-pipeline.md`.
 
-Each FastAPI health endpoint is available for load balancer checks. Both coaching boundaries require an `X-API-Key`: Streamlit receives only `BACKEND_API_KEY`, while the backend receives `AI_SERVICE_API_KEY`. The AI service remains on private networking and is not exposed to the browser or public load balancer.
+Each FastAPI health endpoint is available for load balancer checks. After activation, the browser authenticates through Streamlit, Streamlit forwards only the exposed ID token to the backend, and the frontend task no longer receives `BACKEND_API_KEY`. The backend validates signature, issuer, audience, expiry, issued-at time, and Cognito `token_use=id` before checking profile ownership. GitHub smoke and operational jobs continue to use the backend-only automation key for allowlisted synthetic identities. The backend receives `AI_SERVICE_API_KEY` for the separate private AI boundary; the AI service remains unexposed to the browser and public load balancer.
 
 ## Architecture Decision
 
@@ -126,7 +128,7 @@ The implemented LangGraph workflow is `guard_input -> route -> initialize_tasks 
 
 Hard boundary controls run before the first model call. Each specialist receives a role-scoped task and minimized deterministic grounding. Specialists cannot call one another or select the next specialist: they return a typed `ready`, `needs_dependency`, or `needs_input` result, and the orchestrator alone authorizes, schedules, deduplicates, traces, and resolves it. Goal Strategy can request Budget's `monthly_savings_capacity`; Budget can then request Spending's `transaction_category_totals`, demonstrating a centrally governed multi-hop dependency. Required failures fail closed, optional failures resume with a warning, and execution is bounded by retries, backoff, timeouts, provider calls, model calls, and model tokens. Investment Education alone can retrieve approved education context, and the same sanitized evidence is supplied to Risk and Compliance for independent validation. Structured model responses are schema-validated, and the independent compliance result can block the draft before release. Local and CI integration use an explicitly configured offline fixture; ECS requires the Bedrock model and RAG providers.
 
-Every completed run emits a privacy-safe trace containing task lifecycle events, dependency edges and resolutions, selected agents, model/prompt identity, model-call durations, and token usage. The backend stores that trace against the profile-scoped session and assistant message; API-key-protected retrieval and deletion require the requested user to own the associated profile. A weekly one-shot job enforces configurable 30-day trace retention, while chat-session deletion cascades to the trace. Raw prompts and financial grounding are not copied into the trace.
+Every completed run emits a privacy-safe trace containing task lifecycle events, dependency edges and resolutions, selected agents, model/prompt identity, model-call durations, and token usage. The backend stores that trace against the profile-scoped session and assistant message; JWT ownership enforcement or constrained synthetic automation scope protects retrieval and deletion. A weekly one-shot job enforces configurable 30-day trace retention, while chat-session deletion cascades to the trace. Raw prompts, identity tokens, and financial grounding are not copied into the trace.
 
 The next retrieval phase keeps deterministic grounding as the default while adding conditional Education access for Budget and Goal Strategy. Spending remains retrieval-free. Personal financial records remain in PostgreSQL and are never embedded into the education or policy stores.
 

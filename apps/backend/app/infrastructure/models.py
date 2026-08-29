@@ -34,8 +34,17 @@ class TimestampMixin:
 
 class UserRecord(TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_owner_identity", "owner_issuer", "owner_subject"),
+        CheckConstraint(
+            "(owner_issuer IS NULL) = (owner_subject IS NULL)",
+            name="owner_identity_complete",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner_issuer: Mapped[str | None] = mapped_column(String(512))
+    owner_subject: Mapped[str | None] = mapped_column(String(255))
     profile: Mapped["FinancialProfileRecord | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )

@@ -236,6 +236,117 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub HTTPS entry point for ${ProjectName}
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - DELETE
+            - GET
+            - HEAD
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: false
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          TargetOriginId: application-alb
+          ViewerProtocolPolicy: redirect-to-https
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+            DomainName: !GetAtt LoadBalancer.DNSName
+            Id: application-alb
+        PriceClass: PriceClass_200
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: demo
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      AutoVerifiedAttributes:
+        - email
+      DeletionProtection: ACTIVE
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 3
+      UserPoolName: !Sub ${ProjectName}-demo-users
+      UsernameAttributes:
+        - email
+      UserPoolTags:
+        Project: !Ref ProjectName
+        Environment: demo
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${ProjectName}-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+
+  FrontendUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs:
+        - !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+      ClientName: !Sub ${ProjectName}-streamlit
+      DefaultRedirectURI: !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+      EnableTokenRevocation: true
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      GenerateSecret: false
+      IdTokenValidity: 1
+      LogoutURLs:
+        - !Sub https://${FrontendDistribution.DomainName}/
+      PreventUserExistenceErrors: ENABLED
+      RefreshTokenValidity: 1
+      SupportedIdentityProviders:
+        - COGNITO
+      TokenValidityUnits:
+        IdToken: hours
+        RefreshToken: days
+      UserPoolId: !Ref UserPool
+
   EcsCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -275,13 +386,24 @@ Resources:
   BackendApiKeySecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Description: Synthetic demo frontend-to-backend API key
+      Description: Synthetic demo automation-to-backend API key
       GenerateSecretString:
         ExcludePunctuation: true
         GenerateStringKey: value
         PasswordLength: 40
-        SecretStringTemplate: '{"purpose":"backend-api-key"}'
+        SecretStringTemplate: '{"purpose":"backend-automation-api-key"}'
       Name: !Sub ${ProjectName}/demo/backend-api-key
+
+  FrontendOidcCookieSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Streamlit OIDC identity-cookie signing secret
+      GenerateSecretString:
+        ExcludePunctuation: true
+        GenerateStringKey: value
+        PasswordLength: 64
+        SecretStringTemplate: '{"purpose":"frontend-oidc-cookie"}'
+      Name: !Sub ${ProjectName}/demo/frontend-oidc-cookie
 
   AiServiceApiKeySecret:
     Type: AWS::SecretsManager::Secret
@@ -358,6 +480,7 @@ Resources:
                 Resource:
                   - !Ref BackendApiKeySecret
                   - !Ref AiServiceApiKeySecret
+                  - !Ref FrontendOidcCookieSecret
                   - !GetAtt Database.MasterUserSecret.SecretArn
 
   AppTaskRole:
@@ -485,6 +608,24 @@ Outputs:
     Value: !Ref LoadBalancer
   LoadBalancerDnsName:
     Value: !GetAtt LoadBalancer.DNSName
+  FrontendUrl:
+    Value: !Sub https://${FrontendDistribution.DomainName}
+  FrontendDistributionId:
+    Value: !Ref FrontendDistribution
+  OidcUserPoolId:
+    Value: !Ref UserPool
+  OidcClientId:
+    Value: !Ref FrontendUserPoolClient
+  OidcIssuerUrl:
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+  OidcJwksUrl:
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}/.well-known/jwks.json
+  OidcServerMetadataUrl:
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}/.well-known/openid-configuration
+  OidcRedirectUri:
+    Value: !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+  FrontendOidcCookieSecretArn:
+    Value: !Ref FrontendOidcCookieSecret
   EcsClusterName:
     Value: !Ref EcsCluster
   ServiceDiscoveryNamespaceId:

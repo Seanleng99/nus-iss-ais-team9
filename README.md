@@ -2,7 +2,7 @@
 
 Multi-agent financial education platform for young adults in Singapore. The system provides budgeting guidance, spending insights, goal planning, and investment education while avoiding regulated financial advice.
 
-This repository is an executable synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. End-user identity, consent controls, and production RAG ingestion remain later gates. See `docs/requirements-traceability.md` before treating a scaffolded capability as complete.
+This repository is an executable synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. OIDC user authentication and profile ownership isolation are implemented as a staged AWS rollout; they remain scaffolded until the Cognito/CloudFront deployment and live authorization checks are retained. See `docs/requirements-traceability.md` before treating a scaffolded capability as complete.
 
 ## Repository Layout
 
@@ -36,9 +36,9 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - Application tier: FastAPI backend for access control, profiles, transactions, monthly budgets, goals, dashboard summaries, and backend-built financial snapshots.
 - AI tier: private FastAPI service with a model-driven LangGraph orchestrator and five agents.
 - Data tier: PostgreSQL for transactional records and a vector database for controlled financial education content.
-- AWS services: Bedrock, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch.
+- AWS services: Cognito, CloudFront, Bedrock, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch.
 
-Streamlit calls the application backend from the server side, and the backend calls the private AI service. Separate service keys are injected from Secrets Manager and never sent to the browser. All three services can scale and roll back independently.
+After authentication activation, Streamlit completes Cognito authorization-code login with PKCE and sends the server-side ID token to the backend. The backend validates the JWT and authorizes each profile by immutable issuer and subject. A separately scoped automation key remains only for synthetic CI/operational users, and the backend-to-AI key remains an independent service secret. All three services can scale and roll back independently.
 
 ## Agents
 
@@ -59,7 +59,7 @@ docker compose up --build
 
 Open Streamlit at `http://localhost:8501`. Backend health is available at `http://localhost:8080/health`, and AI service health at `http://localhost:8001/health`.
 
-The Streamlit workspace includes Overview, Transactions, Budget, Goals, Coach, and Profile pages. The sidebar profile ID is a synthetic demo identifier, not end-user authentication.
+The Streamlit workspace includes Overview, Transactions, Budget, Goals, Coach, and Profile pages. Local Compose leaves authentication disabled for fixture-based development. The AWS activation procedure enables Cognito sign-in and owner-isolates every profile-scoped route.
 
 Compose runs `alembic upgrade head` as a one-shot task before starting the backend. When running the backend separately, start PostgreSQL and apply migrations first:
 

@@ -71,8 +71,48 @@ class SQLAlchemyUserRepository:
         )
         return list(self.session.scalars(query))
 
+    def list_profiles_for_owner(
+        self, owner_issuer: str, owner_subject: str
+    ) -> list[FinancialProfileRecord]:
+        query = (
+            select(FinancialProfileRecord)
+            .join(UserRecord, UserRecord.id == FinancialProfileRecord.user_id)
+            .where(
+                UserRecord.owner_issuer == owner_issuer,
+                UserRecord.owner_subject == owner_subject,
+            )
+            .order_by(
+                FinancialProfileRecord.updated_at.desc(),
+                FinancialProfileRecord.user_id,
+            )
+        )
+        return list(self.session.scalars(query))
+
     def exists(self, user_id: str) -> bool:
         return self.session.get(UserRecord, user_id) is not None
+
+    def create_profile(
+        self,
+        user_id: str,
+        profile: ProfileUpsert,
+        *,
+        owner_issuer: str | None = None,
+        owner_subject: str | None = None,
+    ) -> FinancialProfileRecord:
+        _lock_user_lifecycle(self.session, user_id)
+        if self.session.get(UserRecord, user_id) is not None:
+            raise ValueError("Profile already exists")
+        if (owner_issuer is None) != (owner_subject is None):
+            raise ValueError("Owner identity must be complete")
+        self.session.add(
+            UserRecord(
+                id=user_id,
+                owner_issuer=owner_issuer,
+                owner_subject=owner_subject,
+            )
+        )
+        self.session.flush()
+        return self.upsert_profile(user_id, profile)
 
     def upsert_profile(self, user_id: str, profile: ProfileUpsert) -> FinancialProfileRecord:
         _ensure_user(self.session, user_id)

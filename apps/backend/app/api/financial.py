@@ -31,7 +31,14 @@ from app.api.financial_schemas import (
     TransactionCreate,
     TransactionResponse,
 )
-from app.core.security import require_api_key
+from app.core.security import (
+    AuthenticatedPrincipal,
+    automation_user_id_allowed,
+    automation_user_id_reserved,
+    enforce_automation_user_scope,
+    require_owned_path_user,
+    require_principal,
+)
 from app.domain.schemas import MoneyAmount
 from app.infrastructure.database import get_db_session
 from app.infrastructure.models import (
@@ -52,7 +59,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyUserRepository,
 )
 
-router = APIRouter(dependencies=[Depends(require_api_key)])
+router = APIRouter(dependencies=[Depends(require_owned_path_user)])
 UserId = Annotated[str, Path(min_length=1, max_length=128)]
 
 
@@ -181,8 +188,19 @@ def _chat_session_response(
 @router.get("/profiles", response_model=list[ProfileSummary])
 def list_profiles(
     session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> list[ProfileSummary]:
-    records = SQLAlchemyUserRepository(session).list_profiles()
+    repository = SQLAlchemyUserRepository(session)
+    if principal.is_automation:
+        records = repository.list_profiles()
+        records = [
+            record for record in records if automation_user_id_allowed(record.user_id)
+        ]
+    else:
+        records = repository.list_profiles_for_owner(
+            principal.issuer or "",
+            principal.subject or "",
+        )
     return [_profile_summary(record) for record in records]
 
 
@@ -194,17 +212,32 @@ def list_profiles(
 def create_profile(
     profile: ProfileCreate,
     session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> ProfileResponse:
     repository = SQLAlchemyUserRepository(session)
-    if repository.get_profile(profile.user_id) is not None:
+    enforce_automation_user_scope(principal, profile.user_id)
+    if not principal.is_automation and automation_user_id_reserved(profile.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Profile ID is reserved",
+        )
+    owner = (
+        (None, None)
+        if principal.is_automation
+        else (principal.issuer, principal.subject)
+    )
+    try:
+        record = repository.create_profile(
+            profile.user_id,
+            ProfileUpsert(**profile.model_dump(exclude={"user_id"})),
+            owner_issuer=owner[0],
+            owner_subject=owner[1],
+        )
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Profile already exists",
-        )
-    record = repository.upsert_profile(
-        profile.user_id,
-        ProfileUpsert(**profile.model_dump(exclude={"user_id"})),
-    )
+        ) from None
     session.commit()
     return _profile_response(record)
 
