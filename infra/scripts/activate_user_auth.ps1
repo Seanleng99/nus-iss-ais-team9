@@ -65,6 +65,61 @@ function Get-ContainerImage {
     return $image
 }
 
+function Get-RunnableTaskDefinition {
+    param([string]$TaskDefinition)
+    $definition = Invoke-Aws ecs describe-task-definition `
+        --task-definition $TaskDefinition `
+        --region $Region `
+        --query "taskDefinition" `
+        --output json | ConvertFrom-Json
+    if ($definition.status -eq "ACTIVE") {
+        return $TaskDefinition
+    }
+    if ($definition.status -ne "INACTIVE") {
+        throw "Task definition $TaskDefinition has unexpected status $($definition.status)."
+    }
+
+    Write-Host "Cloning inactive deployed task definition $TaskDefinition for the ownership migration..."
+    $registration = [ordered]@{
+        family = $definition.family
+        taskRoleArn = $definition.taskRoleArn
+        executionRoleArn = $definition.executionRoleArn
+        networkMode = $definition.networkMode
+        containerDefinitions = $definition.containerDefinitions
+        volumes = $definition.volumes
+        placementConstraints = $definition.placementConstraints
+        requiresCompatibilities = $definition.requiresCompatibilities
+        cpu = $definition.cpu
+        memory = $definition.memory
+        proxyConfiguration = $definition.proxyConfiguration
+        ipcMode = $definition.ipcMode
+        pidMode = $definition.pidMode
+        inferenceAccelerators = $definition.inferenceAccelerators
+        ephemeralStorage = $definition.ephemeralStorage
+        runtimePlatform = $definition.runtimePlatform
+    }
+    foreach ($key in @($registration.Keys)) {
+        $value = $registration[$key]
+        if (
+            $null -eq $value -or
+            ($value -is [string] -and -not $value) -or
+            ($value -is [array] -and $value.Count -eq 0)
+        ) {
+            $registration.Remove($key)
+        }
+    }
+    $registrationJson = $registration | ConvertTo-Json -Depth 100 -Compress
+    $registeredTaskDefinition = Invoke-Aws ecs register-task-definition `
+        --cli-input-json $registrationJson `
+        --region $Region `
+        --query "taskDefinition.taskDefinitionArn" `
+        --output text
+    if (-not $registeredTaskDefinition -or $registeredTaskDefinition -eq "None") {
+        throw "ECS did not register a runnable copy of $TaskDefinition."
+    }
+    return $registeredTaskDefinition
+}
+
 if ($Confirmation -cne "ACTIVATE-OIDC") {
     throw "Pass -Confirmation ACTIVATE-OIDC to provision Cognito/CloudFront and enforce user authentication."
 }
@@ -111,6 +166,8 @@ if (-not $backendImage -or -not $backendImage.EndsWith(":$ExpectedReleaseSha")) 
 if (-not $frontendImage.EndsWith(":$ExpectedFrontendReleaseSha")) {
     throw "The deployed frontend image '$frontendImage' does not match release $ExpectedFrontendReleaseSha. Release the authentication code before activating OIDC."
 }
+$migrationBackendTaskDefinition = Get-RunnableTaskDefinition `
+    $deployedBackendTaskDefinition
 
 Write-Host "Applying the ownership migration before authentication is enforced..."
 $network = "awsvpcConfiguration={subnets=[$($foundationBefore.PublicSubnetAId),$($foundationBefore.PublicSubnetBId)],securityGroups=[$($foundationBefore.BackendSecurityGroupId)],assignPublicIp=ENABLED}"
@@ -124,7 +181,7 @@ $overrides = @{
 } | ConvertTo-Json -Depth 5 -Compress
 $taskArn = Invoke-Aws ecs run-task `
     --cluster $foundationBefore.EcsClusterName `
-    --task-definition $deployedBackendTaskDefinition `
+    --task-definition $migrationBackendTaskDefinition `
     --launch-type FARGATE `
     --network-configuration $network `
     --overrides $overrides `
@@ -222,9 +279,6 @@ if ($DemoUserEmail) {
     -Region $Region `
     -FoundationStack $FoundationStack `
     -ApplicationStack $ApplicationStack
-if ($LASTEXITCODE -ne 0) {
-    throw "GitHub configuration refresh failed after authentication activation."
-}
 
 [ordered]@{
     FrontendUrl = $foundation.FrontendUrl
