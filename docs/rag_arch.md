@@ -190,7 +190,7 @@ The implemented runtime boundary:
 
 The deployed six-document corpus is governed as `investment-education-sg@2026-08-28.1`. Metadata migration, ingestion, checksum/object audit, and live retrieval were completed with zero issues. `infra/scripts/rag_source_governance.py` now covers validation, staging, read-only AWS audit, exact-version apply, verified metadata publication, and reviewed exact-ID withdrawal. A weekly read-only workflow enforces freshness and deployed-state drift. See `docs/rag-source-governance.md` for the operating record.
 
-Risk and Compliance now has a separate `policy_retriever`, local fixture, strict Bedrock adapter, governed three-document manifest, dedicated corpus pin, independent trace fields, release smoke assertions, and weekly read-only governance workflow. AWS provisioning, ingestion, and retained live evidence remain before this Policy collection is marked implemented. Conditional Budget and Goal Strategy retrieval permissions remain a later phase. See `docs/policy-rag-governance.md`.
+Risk and Compliance has a separate `policy_retriever`, local fixture, strict Bedrock adapter, governed three-document manifest, dedicated corpus pin, independent trace fields, release smoke assertions, and weekly read-only governance workflow. The Policy collection is deployed as Knowledge Base `MLOCSOIFML` and data source `WMLKUDKZX5`; ingestion, exact-version audit, runtime deployment, live provenance/trace smoke checks, and the first retained governance workflow completed successfully on 2026-08-29. Conditional Budget and Goal Strategy retrieval permissions remain a later phase. See `docs/policy-rag-governance.md`.
 
 ## 10. Acceptance Criteria for the RAG Implementation
 
