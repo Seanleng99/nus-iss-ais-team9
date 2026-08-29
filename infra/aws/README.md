@@ -2,11 +2,11 @@
 
 The repository includes a minimum-size, synthetic-data deployment for AWS account `902552928492` in `ap-southeast-1`:
 
-- `demo-foundation.yaml` creates two public application subnets, two private database subnets, an internet-facing ALB behind a public HTTPS CloudFront distribution, an admin-created-user Cognito pool and public PKCE client, security groups, a minimum Single-AZ RDS PostgreSQL instance, three scan-on-push ECR repositories with ten-image retention, a Container-Insights-enabled ECS cluster, Cloud Map, generated service secrets, 30-day log groups, and separate application and AI task roles.
-- `demo-application.yaml` creates three minimum-size Fargate services, backend/AI CPU target tracking from one to two tasks, private DNS, task definitions, target groups, ALB routing, a CloudWatch dashboard, seven alarms, SNS alerts, and an ECS deployment-failure EventBridge rule.
+- `demo-foundation.yaml` creates two public application subnets, two private database subnets, an internet-facing ALB behind a public HTTPS CloudFront distribution, CloudFront origin verification, an admin-created-user Cognito pool and public PKCE client, security groups, a minimum Single-AZ RDS PostgreSQL instance, three scan-on-push ECR repositories with ten-image retention, a Container-Insights-enabled ECS cluster, Cloud Map, generated service secrets, 30-day log groups, and separate application and AI task roles.
+- `demo-application.yaml` creates three minimum-size Fargate services, backend/AI CPU target tracking from one to two tasks, private DNS, task definitions, target groups, header-gated ALB routing, an optional modern HTTPS origin listener, a CloudWatch dashboard, seven alarms, SNS alerts, and an ECS deployment-failure EventBridge rule.
 - `github-actions-oidc.yaml` creates narrowly scoped image-publishing and ECS-deployment roles using GitHub OIDC. The deployment role can read the operational dashboard, alarms, logs, and scaling configuration for evidence collection, plus audit only the exact Education and Policy Knowledge Bases and governed S3 prefixes.
 
-The public-subnet task design avoids NAT Gateway cost. Tasks receive public IPs for outbound ECR, Secrets Manager, Cognito, and Bedrock access, but their security groups permit inbound traffic only from the ALB or the calling service. CloudFront supplies the browser-facing HTTPS endpoint with its default-domain certificate; that certificate cannot select the target modern TLS policy, and the ALB origin remains HTTP and directly addressable. Use synthetic data only until a custom domain/ACM policy and restricted or private origin are added and live authentication evidence is retained.
+The public-subnet task design avoids NAT Gateway cost. Tasks receive public IPs for outbound ECR, Secrets Manager, Cognito, and Bedrock access, but their security groups permit inbound traffic only from the ALB or the calling service. Bootstrap and edge hardening discover AWS's maintained CloudFront origin-facing prefix list, restrict ALB ingress to it, and require a generated `X-Coach-Origin-Verify` value before either listener forwards. The default CloudFront hostname still cannot select the target modern viewer TLS policy, and its origin remains HTTP until the guarded custom-domain path is activated. Use synthetic data only until the custom domain and both ACM certificates are supplied and validated.
 
 RDS PostgreSQL is encrypted, has no public address, accepts port 5432 only from the backend security group, and uses an RDS-managed master secret. Investment Education and Risk and Compliance retrieve from separately provisioned Amazon Bedrock Knowledge Bases; CloudFormation scopes the AI task role to those exact resources.
 
@@ -51,6 +51,33 @@ If a frontend-only corrective release follows the main authentication release, p
 8. Manually run `AWS Operational Validation`, retain its evidence artifact, and optionally enable the task-replacement exercise.
 9. Run `protect_main.ps1` after the first successful workflow creates the required status-check contexts. Upgrade the GitHub plan if branch protection remains unavailable for the private repository.
 
+## Edge Hardening
+
+After a compatible release is stable, activate the CloudFront managed-prefix and origin-header restrictions without changing the public hostname:
+
+```powershell
+.\infra\scripts\harden_edge.ps1 `
+  -ExpectedReleaseSha <released-main-commit-sha> `
+  -Confirmation HARDEN-EDGE
+```
+
+The command pins all deployed images, updates CloudFront before making the ALB default action deny access, waits for the services, proves the CloudFront health path still works, and verifies that a headerless direct-origin request is denied at the network layer or with HTTP 403.
+
+To complete custom-domain TLS, first create or import an issued ACM certificate in `us-east-1` for the viewer name and an issued certificate in the deployment Region for the origin name. Both names must be in the supplied public Route 53 hosted zone. Then run:
+
+```powershell
+.\infra\scripts\harden_edge.ps1 `
+  -ExpectedReleaseSha <released-main-commit-sha> `
+  -CustomDomainName coach.example.com `
+  -CustomDomainHostedZoneId Z1234567890ABC `
+  -CloudFrontViewerCertificateArn <us-east-1-certificate-arn> `
+  -OriginDomainName origin.coach.example.com `
+  -OriginCertificateArn <regional-certificate-arn> `
+  -Confirmation HARDEN-EDGE
+```
+
+The script rejects incomplete inputs, private hosted zones, certificates that are not issued, certificates that do not cover their assigned names, and images that do not match the expected release. It creates the HTTPS ALB listener before switching CloudFront to the custom origin, retains the default CloudFront callback temporarily for safe transition, updates Cognito and application URLs, refreshes GitHub variables, and runs the edge security probe. Certificate issuance and DNS ownership are operator prerequisites; the script does not request certificates or bypass domain validation.
+
 ## Task Configuration Matrix
 
 | Task | Plain environment | Secrets | Task-role access |
@@ -63,8 +90,9 @@ Do not inject either service API key into authenticated Streamlit. Do not place 
 
 ## Network Rules
 
-- Internet to CloudFront: HTTPS, with HTTP redirected to HTTPS. The default CloudFront certificate cannot enforce the target modern TLS policy; use a custom domain and ACM certificate before real users. CloudFront forwards to the ALB origin over HTTP.
-- Direct internet to demo ALB: TCP 80 remains a documented synthetic-demo residual risk; add an origin secret restriction, AWS WAF design, or private origin before real-user approval.
+- Internet to CloudFront: HTTPS, with HTTP redirected to HTTPS. Custom-domain activation uses an ACM certificate from `us-east-1`, SNI, and `TLSv1.2_2021`; the default hostname remains a synthetic-demo fallback.
+- CloudFront to ALB: the default-hostname stage uses HTTP plus a generated origin-verification header. Custom-domain activation uses HTTPS with TLS 1.2 or later and a regional ACM certificate whose name matches the origin DNS record.
+- Direct internet to demo ALB: the security group admits only the AWS-managed CloudFront origin-facing prefix list after activation. One weighted prefix-list rule covers the staged listener range to remain within the default security-group quota; the ALB has listeners only on ports 80 and 443. Both listeners return HTTP 403 unless CloudFront supplies the generated verification header.
 - ALB to frontend/backend target security groups: only their container ports.
 - Backend to AI: TCP 8001 only.
 - Backend to private RDS PostgreSQL: TCP 5432 only.
@@ -75,7 +103,7 @@ Do not inject either service API key into authenticated Streamlit. Do not place 
 
 The backend image contains Alembic and the versioned migration history. Bootstrap runs `alembic upgrade head` once after the ECS application stack is created. Every automatic backend release runs the one-shot ECS migration task, even when no migration path was detected, and checks its exit code before updating the backend service. This makes migration state a deployment invariant and protects against path-classification drift.
 
-The authentication activation script also runs migration `20260829_0007` before changing task authentication settings. Its released-image SHA check prevents an old task definition from reporting success at an older Alembic head. The frontend reads OIDC discovery through the public backend metadata adapter. That adapter verifies the configured Cognito issuer and JWKS URL, preserves Cognito's discovery document, and adds the allowed `logout_uri` required by Cognito's managed logout endpoint; it never receives browser tokens or cookies.
+The authentication activation script also runs migration `20260829_0007` before changing task authentication settings. Its released-image SHA check prevents an old task definition from reporting success at an older Alembic head. It now discovers the CloudFront origin-facing prefix list and supplies the generated origin-verification secret to the application stack. The frontend reads OIDC discovery through the public backend metadata adapter. That adapter verifies the configured Cognito issuer and JWKS URL, preserves Cognito's discovery document, and adds the allowed `logout_uri` required by Cognito's managed logout endpoint; it never receives browser tokens or cookies.
 
 Application releases build, scan, and update only services selected by the CI change manifest. Unchanged ECS task definitions remain active. If post-deployment checks fail, explicit rollback restores only services whose new task definitions were successfully deployed; ECS circuit-breaker rollback remains responsible for an individual service update that fails before completion.
 
@@ -95,4 +123,4 @@ The complete GitHub variable list and smoke-test secret are in `docs/cicd-pipeli
 
 ## Go/No-Go
 
-Do not deploy when any required variable is absent, a database migration fails, a service lacks circuit-breaker rollback, an image has a Critical/High finding above policy, an AI/security evaluation fails, model residency is unresolved for the selected data class, or no previous stable task revision exists for rollback. Do not claim authentication evidence until a Cognito user completes login and automated checks demonstrate unauthenticated rejection plus cross-owner isolation. Do not claim operational readiness until the updated stacks are deployed, the default-certificate and ALB-origin residual risks are dispositioned, an SNS notification path is tested, and a successful AWS operational-evidence artifact is retained.
+Do not deploy when any required variable is absent, a database migration fails, a service lacks circuit-breaker rollback, an image has a Critical/High finding above policy, an AI/security evaluation fails, model residency is unresolved for the selected data class, or no previous stable task revision exists for rollback. Do not claim authentication evidence until a Cognito user completes login and automated checks demonstrate unauthenticated rejection plus cross-owner isolation. Do not claim operational readiness until the origin restriction is live, custom-domain TLS is activated, an SNS notification path is tested, and a successful AWS operational-evidence artifact is retained.

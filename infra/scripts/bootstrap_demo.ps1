@@ -93,6 +93,15 @@ if (-not $subjectPrefix -or -not $subjectPrefix.StartsWith("repo:")) {
     throw "GitHub did not return a usable OIDC subject prefix."
 }
 
+$cloudFrontOriginPrefixListId = Invoke-Aws ec2 describe-managed-prefix-lists `
+    --filters "Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing" `
+    --region $Region `
+    --query "PrefixLists[0].PrefixListId" `
+    --output text
+if (-not $cloudFrontOriginPrefixListId -or $cloudFrontOriginPrefixListId -eq "None") {
+    throw "The regional CloudFront origin-facing managed prefix list was not found."
+}
+
 & docker info *> $null
 if ($LASTEXITCODE -ne 0) {
     throw "Docker Desktop must be running before bootstrapping the demo."
@@ -109,6 +118,7 @@ Invoke-Aws cloudformation deploy `
         "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId" `
         "BedrockInferenceProfileId=$BedrockInferenceProfileId" `
         "BedrockFoundationModelId=$BedrockFoundationModelId" `
+        "CloudFrontOriginPrefixListId=$cloudFrontOriginPrefixListId" `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
@@ -151,6 +161,7 @@ $applicationParameters = @(
     "BackendSecurityGroupId=$($foundation.BackendSecurityGroupId)",
     "AiSecurityGroupId=$($foundation.AiSecurityGroupId)",
     "LoadBalancerArn=$($foundation.LoadBalancerArn)",
+    "CloudFrontOriginSecretArn=$($foundation.CloudFrontOriginSecretArn)",
     "FrontendUrl=$($foundation.FrontendUrl)",
     "OidcIssuerUrl=$($foundation.OidcIssuerUrl)",
     "OidcJwksUrl=$($foundation.OidcJwksUrl)",

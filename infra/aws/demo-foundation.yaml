@@ -42,6 +42,52 @@ Parameters:
     Type: String
     Default: coachadmin
     AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
+  CloudFrontOriginPrefixListId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^pl-[0-9a-f]+$"
+    Description: Regional ID of com.amazonaws.global.cloudfront.origin-facing.
+  CustomDomainName:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    Description: Optional browser-facing DNS name for the CloudFront distribution.
+  CustomDomainHostedZoneId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^Z[A-Z0-9]+$"
+    Description: Public Route 53 hosted zone containing both custom DNS names.
+  CloudFrontViewerCertificateArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:aws:acm:us-east-1:[0-9]{12}:certificate/[0-9a-f-]+$"
+    Description: Optional us-east-1 ACM certificate covering CustomDomainName.
+  OriginDomainName:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    Description: Optional public DNS name whose regional ACM certificate fronts the ALB.
+
+Rules:
+  CompleteCustomDomainConfiguration:
+    Assertions:
+      - Assert:
+          Fn::Or:
+            - Fn::And:
+                - Fn::Equals: [!Ref CustomDomainName, ""]
+                - Fn::Equals: [!Ref CustomDomainHostedZoneId, ""]
+                - Fn::Equals: [!Ref CloudFrontViewerCertificateArn, ""]
+                - Fn::Equals: [!Ref OriginDomainName, ""]
+            - Fn::And:
+                - Fn::Not: [!Equals [!Ref CustomDomainName, ""]]
+                - Fn::Not: [!Equals [!Ref CustomDomainHostedZoneId, ""]]
+                - Fn::Not: [!Equals [!Ref CloudFrontViewerCertificateArn, ""]]
+                - Fn::Not: [!Equals [!Ref OriginDomainName, ""]]
+        AssertDescription: Custom domain, hosted zone, viewer certificate, and origin domain must be supplied together.
+
+Conditions:
+  HasCloudFrontOriginPrefixList: !Not [!Equals [!Ref CloudFrontOriginPrefixListId, ""]]
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, ""]]
 
 Resources:
   Vpc:
@@ -148,16 +194,28 @@ Resources:
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Public HTTP entry point for the synthetic demo
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
+      GroupDescription: CloudFront-only entry point for the application origin
       VpcId: !Ref Vpc
       Tags:
         - Key: Name
           Value: !Sub ${ProjectName}-alb
+
+  AlbHttpIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !If [HasCloudFrontOriginPrefixList, !Ref AWS::NoValue, 0.0.0.0/0]
+      Description: !If
+        - HasCloudFrontOriginPrefixList
+        - CloudFront origin-facing staged HTTP and HTTPS listener range
+        - Temporary public HTTP fallback until the managed prefix list is supplied
+      FromPort: 80
+      GroupId: !Ref AlbSecurityGroup
+      IpProtocol: tcp
+      SourcePrefixListId: !If
+        - HasCloudFrontOriginPrefixList
+        - !Ref CloudFrontOriginPrefixListId
+        - !Ref AWS::NoValue
+      ToPort: !If [HasCloudFrontOriginPrefixList, 443, 80]
 
   FrontendSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -236,8 +294,29 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
+  CloudFrontOriginSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Verification value shared only by CloudFront and ALB listener rules
+      GenerateSecretString:
+        ExcludePunctuation: true
+        GenerateStringKey: value
+        PasswordLength: 64
+        SecretStringTemplate: "{}"
+      Name: !Sub ${ProjectName}/demo/cloudfront-origin-verification
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: demo
+
   FrontendDistribution:
     Type: AWS::CloudFront::Distribution
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W1030
     Properties:
       DistributionConfig:
         Comment: !Sub HTTPS entry point for ${ProjectName}
@@ -265,18 +344,61 @@ Resources:
         Origins:
           - CustomOriginConfig:
               HTTPPort: 80
-              OriginProtocolPolicy: http-only
+              HTTPSPort: 443
+              OriginProtocolPolicy: !If [HasCustomDomain, https-only, http-only]
               OriginReadTimeout: 60
-            DomainName: !GetAtt LoadBalancer.DNSName
+              OriginSSLProtocols: !If
+                - HasCustomDomain
+                - [TLSv1.2]
+                - !Ref AWS::NoValue
+            DomainName: !If
+              - HasCustomDomain
+              - !Ref OriginDomainName
+              - !GetAtt LoadBalancer.DNSName
             Id: application-alb
+            OriginCustomHeaders:
+              - HeaderName: X-Coach-Origin-Verify
+                HeaderValue: !Sub "{{resolve:secretsmanager:${CloudFrontOriginSecret}:SecretString:value}}"
         PriceClass: PriceClass_200
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+        Aliases: !If
+          - HasCustomDomain
+          - [!Ref CustomDomainName]
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - HasCustomDomain
+          - AcmCertificateArn: !Ref CloudFrontViewerCertificateArn
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
       Tags:
         - Key: Project
           Value: !Ref ProjectName
         - Key: Environment
           Value: demo
+
+  CustomDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasCustomDomain
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt FrontendDistribution.DomainName
+        EvaluateTargetHealth: false
+        HostedZoneId: Z2FDTNDATAQYW2
+      HostedZoneId: !Ref CustomDomainHostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+
+  OriginDomainRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasCustomDomain
+    Properties:
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+      HostedZoneId: !Ref CustomDomainHostedZoneId
+      Name: !Ref OriginDomainName
+      Type: A
 
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -327,9 +449,19 @@ Resources:
         - openid
         - profile
       CallbackURLs:
-        - !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+        - !If
+          - HasCustomDomain
+          - !Sub https://${CustomDomainName}/oauth2callback
+          - !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+        - !If
+          - HasCustomDomain
+          - !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+          - !Ref AWS::NoValue
       ClientName: !Sub ${ProjectName}-streamlit
-      DefaultRedirectURI: !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+      DefaultRedirectURI: !If
+        - HasCustomDomain
+        - !Sub https://${CustomDomainName}/oauth2callback
+        - !Sub https://${FrontendDistribution.DomainName}/oauth2callback
       EnableTokenRevocation: true
       ExplicitAuthFlows:
         - ALLOW_REFRESH_TOKEN_AUTH
@@ -337,7 +469,14 @@ Resources:
       GenerateSecret: false
       IdTokenValidity: 1
       LogoutURLs:
-        - !Sub https://${FrontendDistribution.DomainName}/
+        - !If
+          - HasCustomDomain
+          - !Sub https://${CustomDomainName}/
+          - !Sub https://${FrontendDistribution.DomainName}/
+        - !If
+          - HasCustomDomain
+          - !Sub https://${FrontendDistribution.DomainName}/
+          - !Ref AWS::NoValue
       PreventUserExistenceErrors: ENABLED
       RefreshTokenValidity: 1
       SupportedIdentityProviders:
@@ -609,9 +748,27 @@ Outputs:
   LoadBalancerDnsName:
     Value: !GetAtt LoadBalancer.DNSName
   FrontendUrl:
-    Value: !Sub https://${FrontendDistribution.DomainName}
+    Value: !If
+      - HasCustomDomain
+      - !Sub https://${CustomDomainName}
+      - !Sub https://${FrontendDistribution.DomainName}
   FrontendDistributionId:
     Value: !Ref FrontendDistribution
+  CloudFrontOriginSecretArn:
+    Value: !Ref CloudFrontOriginSecret
+  OriginRestrictionEnabled:
+    Value: "true"
+  CloudFrontOriginPrefixListId:
+    Value: !If
+      - HasCloudFrontOriginPrefixList
+      - !Ref CloudFrontOriginPrefixListId
+      - not-configured
+  CustomDomainEnabled:
+    Value: !If [HasCustomDomain, "true", "false"]
+  OriginProtocol:
+    Value: !If [HasCustomDomain, HTTPS, HTTP]
+  ViewerTlsPolicy:
+    Value: !If [HasCustomDomain, TLSv1.2_2021, CloudFrontDefault]
   OidcUserPoolId:
     Value: !Ref UserPool
   OidcClientId:
@@ -623,7 +780,10 @@ Outputs:
   OidcServerMetadataUrl:
     Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}/.well-known/openid-configuration
   OidcRedirectUri:
-    Value: !Sub https://${FrontendDistribution.DomainName}/oauth2callback
+    Value: !If
+      - HasCustomDomain
+      - !Sub https://${CustomDomainName}/oauth2callback
+      - !Sub https://${FrontendDistribution.DomainName}/oauth2callback
   FrontendOidcCookieSecretArn:
     Value: !Ref FrontendOidcCookieSecret
   EcsClusterName:

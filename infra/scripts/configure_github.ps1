@@ -108,6 +108,16 @@ $baseUrl = $foundation.FrontendUrl
 if (-not $baseUrl) {
     throw "The foundation stack must expose the authenticated HTTPS FrontendUrl."
 }
+$originRestrictionEnabled = if ($foundation.OriginRestrictionEnabled -eq "true") {
+    "true"
+} else {
+    "false"
+}
+$customDomainEnabled = if ($foundation.CustomDomainEnabled -eq "true") {
+    "true"
+} else {
+    "false"
+}
 
 $oidcBody = @{ use_default = $true } | ConvertTo-Json -Compress
 $oidcBody | & $Gh api --method PUT "repos/$Repository/actions/oidc/customization/sub" --input -
@@ -165,6 +175,9 @@ $variables = [ordered]@{
     FRONTEND_HEALTH_URL = "$baseUrl/_stcore/health"
     BACKEND_HEALTH_URL = "$baseUrl/health"
     COACH_SMOKE_URL = "$baseUrl/api/coach"
+    ALB_ORIGIN_URL = "http://$($foundation.LoadBalancerDnsName)"
+    EDGE_ORIGIN_RESTRICTION_ENABLED = $originRestrictionEnabled
+    EDGE_CUSTOM_DOMAIN_ENABLED = $customDomainEnabled
     BEDROCK_MODEL_ID = $application.BedrockModelId
     EDUCATION_KNOWLEDGE_BASE_ID = $educationKnowledgeBaseId
     EDUCATION_CORPUS_VERSION = $application.EducationCorpusVersion

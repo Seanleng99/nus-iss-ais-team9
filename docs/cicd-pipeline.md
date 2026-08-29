@@ -112,6 +112,9 @@ Create a `demo` environment and restrict it to `main`. Required environment revi
 | `FRONTEND_HEALTH_URL` | Streamlit `/_stcore/health` URL |
 | `BACKEND_HEALTH_URL` | Backend `/health` URL |
 | `COACH_SMOKE_URL` | Backend `/api/coach` URL |
+| `ALB_ORIGIN_URL` | Direct ALB URL used only to prove that CloudFront bypass is denied |
+| `EDGE_ORIGIN_RESTRICTION_ENABLED` | Enables the operational direct-origin denial and TLS evidence check after guarded activation |
+| `EDGE_CUSTOM_DOMAIN_ENABLED` | Requires the operational edge check to verify the configured custom frontend hostname |
 | `BEDROCK_MODEL_ID` | Expected deployed Bedrock model or inference-profile ID |
 | `EDUCATION_KNOWLEDGE_BASE_ID` | Exact deployed Education Knowledge Base audited by the governance workflow |
 | `EDUCATION_DATA_SOURCE_ID` | Exact Education data source audited by the governance workflow |

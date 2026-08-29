@@ -39,6 +39,10 @@ env:
   BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
   FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
   BACKEND_CONTAINER_NAME: ${{ vars.ECS_BACKEND_CONTAINER_NAME }}
+  FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+  ALB_ORIGIN_URL: ${{ vars.ALB_ORIGIN_URL }}
+  EDGE_ORIGIN_RESTRICTION_ENABLED: ${{ vars.EDGE_ORIGIN_RESTRICTION_ENABLED || 'false' }}
+  EDGE_CUSTOM_DOMAIN_ENABLED: ${{ vars.EDGE_CUSTOM_DOMAIN_ENABLED || 'false' }}
   COACH_URL: ${{ vars.COACH_SMOKE_URL }}
   SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
   EXPECTED_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || 'apac.amazon.nova-lite-v1:0' }}
@@ -89,6 +93,11 @@ jobs:
             echo "load_concurrency must be between 1 and 5" >&2
             exit 1
           fi
+          if [[ "$EDGE_ORIGIN_RESTRICTION_ENABLED" == "true" ]] &&
+             [[ -z "$FRONTEND_URL" || -z "$ALB_ORIGIN_URL" ]]; then
+            echo "Edge hardening validation requires FRONTEND_URL and ALB_ORIGIN_URL" >&2
+            exit 1
+          fi
 
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -127,6 +136,19 @@ jobs:
             --alarm-name-prefix "$ALARM_PREFIX" \
             > artifacts/cloudwatch-alarms.json
           jq -e '(.MetricAlarms | length) >= 6' artifacts/cloudwatch-alarms.json > /dev/null
+
+      - name: Verify CloudFront TLS and direct-origin denial
+        if: env.EDGE_ORIGIN_RESTRICTION_ENABLED == 'true'
+        run: |
+          custom_domain_args=()
+          if [[ "$EDGE_CUSTOM_DOMAIN_ENABLED" == "true" ]]; then
+            custom_domain_args=(--expected-custom-domain "${FRONTEND_URL#https://}")
+          fi
+          python infra/scripts/edge_security_validation.py \
+            --frontend-url "$FRONTEND_URL" \
+            --origin-url "$ALB_ORIGIN_URL" \
+            --output artifacts/edge-security.json \
+            "${custom_domain_args[@]}"
 
       - name: Enforce trace retention in a one-shot backend task
         run: |

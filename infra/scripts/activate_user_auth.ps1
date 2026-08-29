@@ -135,6 +135,15 @@ if ($identity.Account -ne $AccountId) {
     throw "Authenticated AWS account $($identity.Account) does not match expected account $AccountId"
 }
 
+$cloudFrontOriginPrefixListId = Invoke-Aws ec2 describe-managed-prefix-lists `
+    --filters "Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing" `
+    --region $Region `
+    --query "PrefixLists[0].PrefixListId" `
+    --output text
+if (-not $cloudFrontOriginPrefixListId -or $cloudFrontOriginPrefixListId -eq "None") {
+    throw "The regional CloudFront origin-facing managed prefix list was not found."
+}
+
 $foundationBefore = Get-StackOutputs $FoundationStack
 $applicationBefore = Get-StackOutputs $ApplicationStack
 if (-not $applicationBefore.EducationKnowledgeBaseId -or -not $applicationBefore.PolicyKnowledgeBaseId) {
@@ -214,6 +223,7 @@ Invoke-Aws cloudformation deploy `
     --parameter-overrides `
         "EducationKnowledgeBaseId=$($applicationBefore.EducationKnowledgeBaseId)" `
         "PolicyKnowledgeBaseId=$($applicationBefore.PolicyKnowledgeBaseId)" `
+        "CloudFrontOriginPrefixListId=$cloudFrontOriginPrefixListId" `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
@@ -225,7 +235,8 @@ $requiredOutputs = @(
     "OidcClientId",
     "OidcServerMetadataUrl",
     "OidcRedirectUri",
-    "FrontendOidcCookieSecretArn"
+    "FrontendOidcCookieSecretArn",
+    "CloudFrontOriginSecretArn"
 )
 foreach ($name in $requiredOutputs) {
     if (-not $foundation[$name]) {
@@ -238,6 +249,7 @@ $applicationParameters = @(
     "AiServiceImageUri=$aiImage",
     "BackendImageUri=$backendImage",
     "FrontendImageUri=$frontendImage",
+    "CloudFrontOriginSecretArn=$($foundation.CloudFrontOriginSecretArn)",
     "FrontendUrl=$($foundation.FrontendUrl)",
     "OidcIssuerUrl=$($foundation.OidcIssuerUrl)",
     "OidcJwksUrl=$($foundation.OidcJwksUrl)",

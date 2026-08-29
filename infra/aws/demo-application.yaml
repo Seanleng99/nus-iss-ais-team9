@@ -19,6 +19,14 @@ Parameters:
     Type: AWS::EC2::SecurityGroup::Id
   LoadBalancerArn:
     Type: String
+  CloudFrontOriginSecretArn:
+    Type: String
+    AllowedPattern: "^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$"
+  OriginCertificateArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/[0-9a-f-]+$"
+    Description: Optional regional ACM certificate for the CloudFront-to-ALB HTTPS listener.
   FrontendUrl:
     Type: String
     AllowedPattern: "^https://[^/]+$"
@@ -109,6 +117,7 @@ Parameters:
 
 Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  HasOriginCertificate: !Not [!Equals [!Ref OriginCertificateArn, ""]]
 
 Resources:
   AiDiscoveryService:
@@ -175,11 +184,31 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref FrontendTargetGroup
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: application/json
+            MessageBody: '{"detail":"Origin access denied"}'
+            StatusCode: "403"
       LoadBalancerArn: !Ref LoadBalancerArn
       Port: 80
       Protocol: HTTP
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasOriginCertificate
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref OriginCertificateArn
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: application/json
+            MessageBody: '{"detail":"Origin access denied"}'
+            StatusCode: "403"
+      LoadBalancerArn: !Ref LoadBalancerArn
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
 
   BackendListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
@@ -188,6 +217,11 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref BackendTargetGroup
       Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-Coach-Origin-Verify
+            Values:
+              - !Sub "{{resolve:secretsmanager:${CloudFrontOriginSecretArn}:SecretString:value}}"
         - Field: path-pattern
           PathPatternConfig:
             Values:
@@ -195,6 +229,66 @@ Resources:
               - /health
       ListenerArn: !Ref HttpListener
       Priority: 10
+
+  FrontendListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-Coach-Origin-Verify
+            Values:
+              - !Sub "{{resolve:secretsmanager:${CloudFrontOriginSecretArn}:SecretString:value}}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - /*
+      ListenerArn: !Ref HttpListener
+      Priority: 20
+
+  BackendHttpsListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasOriginCertificate
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-Coach-Origin-Verify
+            Values:
+              - !Sub "{{resolve:secretsmanager:${CloudFrontOriginSecretArn}:SecretString:value}}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - /api/*
+              - /health
+      ListenerArn: !Ref HttpsListener
+      Priority: 10
+
+  FrontendHttpsListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasOriginCertificate
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-Coach-Origin-Verify
+            Values:
+              - !Sub "{{resolve:secretsmanager:${CloudFrontOriginSecretArn}:SecretString:value}}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - /*
+      ListenerArn: !Ref HttpsListener
+      Priority: 20
 
   AiTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -442,7 +536,7 @@ Resources:
 
   FrontendService:
     Type: AWS::ECS::Service
-    DependsOn: HttpListener
+    DependsOn: FrontendListenerRule
     Properties:
       Cluster: !Ref EcsClusterName
       DeploymentConfiguration:
@@ -873,3 +967,5 @@ Outputs:
     Value: !Ref FrontendUrl
   OidcClientId:
     Value: !Ref OidcClientId
+  OriginTlsEnabled:
+    Value: !If [HasOriginCertificate, "true", "false"]
