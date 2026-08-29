@@ -7,6 +7,7 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern("^[0-9a-f]{40}$")]
     [string]$ExpectedReleaseSha,
+    [string]$ExpectedFrontendReleaseSha = "",
     [string]$DemoUserEmail = "",
     [string]$Confirmation = ""
 )
@@ -37,8 +38,41 @@ function Get-StackOutputs {
     return $outputs
 }
 
+function Get-ServiceTaskDefinition {
+    param([string]$ClusterName, [string]$ServiceName)
+    $taskDefinition = Invoke-Aws ecs describe-services `
+        --cluster $ClusterName `
+        --services $ServiceName `
+        --region $Region `
+        --query "services[0].taskDefinition" `
+        --output text
+    if (-not $taskDefinition -or $taskDefinition -eq "None") {
+        throw "Could not resolve the task definition attached to stable service $ServiceName."
+    }
+    return $taskDefinition
+}
+
+function Get-ContainerImage {
+    param([string]$TaskDefinition, [string]$ContainerName)
+    $image = Invoke-Aws ecs describe-task-definition `
+        --task-definition $TaskDefinition `
+        --region $Region `
+        --query "taskDefinition.containerDefinitions[?name=='$ContainerName'].image | [0]" `
+        --output text
+    if (-not $image -or $image -eq "None") {
+        throw "Could not resolve container $ContainerName in task definition $TaskDefinition."
+    }
+    return $image
+}
+
 if ($Confirmation -cne "ACTIVATE-OIDC") {
     throw "Pass -Confirmation ACTIVATE-OIDC to provision Cognito/CloudFront and enforce user authentication."
+}
+if (-not $ExpectedFrontendReleaseSha) {
+    $ExpectedFrontendReleaseSha = $ExpectedReleaseSha
+}
+if ($ExpectedFrontendReleaseSha -notmatch "^[0-9a-f]{40}$") {
+    throw "ExpectedFrontendReleaseSha must be a lowercase 40-character Git SHA."
 }
 
 $identity = Invoke-Aws sts get-caller-identity --output json | ConvertFrom-Json
@@ -54,24 +88,28 @@ if (-not $applicationBefore.EducationKnowledgeBaseId -or -not $applicationBefore
 
 Invoke-Aws ecs wait services-stable `
     --cluster $foundationBefore.EcsClusterName `
-    --services $applicationBefore.BackendServiceName `
+    --services `
+        $applicationBefore.BackendServiceName `
+        $applicationBefore.FrontendServiceName `
+        $applicationBefore.AiServiceName `
     --region $Region
-$deployedBackendTaskDefinition = Invoke-Aws ecs describe-services `
-    --cluster $foundationBefore.EcsClusterName `
-    --services $applicationBefore.BackendServiceName `
-    --region $Region `
-    --query "services[0].taskDefinition" `
-    --output text
-if (-not $deployedBackendTaskDefinition -or $deployedBackendTaskDefinition -eq "None") {
-    throw "Could not resolve the task definition attached to the stable backend service."
-}
-$backendImage = Invoke-Aws ecs describe-task-definition `
-    --task-definition $deployedBackendTaskDefinition `
-    --region $Region `
-    --query "taskDefinition.containerDefinitions[?name=='$($applicationBefore.BackendContainerName)'].image | [0]" `
-    --output text
+$deployedBackendTaskDefinition = Get-ServiceTaskDefinition `
+    $foundationBefore.EcsClusterName $applicationBefore.BackendServiceName
+$deployedFrontendTaskDefinition = Get-ServiceTaskDefinition `
+    $foundationBefore.EcsClusterName $applicationBefore.FrontendServiceName
+$deployedAiTaskDefinition = Get-ServiceTaskDefinition `
+    $foundationBefore.EcsClusterName $applicationBefore.AiServiceName
+$backendImage = Get-ContainerImage `
+    $deployedBackendTaskDefinition $applicationBefore.BackendContainerName
+$frontendImage = Get-ContainerImage `
+    $deployedFrontendTaskDefinition $applicationBefore.FrontendContainerName
+$aiImage = Get-ContainerImage `
+    $deployedAiTaskDefinition $applicationBefore.AiContainerName
 if (-not $backendImage -or -not $backendImage.EndsWith(":$ExpectedReleaseSha")) {
     throw "The deployed backend image '$backendImage' does not match release $ExpectedReleaseSha. Release the authentication code before activating OIDC."
+}
+if (-not $frontendImage.EndsWith(":$ExpectedFrontendReleaseSha")) {
+    throw "The deployed frontend image '$frontendImage' does not match release $ExpectedFrontendReleaseSha. Release the authentication code before activating OIDC."
 }
 
 Write-Host "Applying the ownership migration before authentication is enforced..."
@@ -140,6 +178,9 @@ foreach ($name in $requiredOutputs) {
 
 Write-Host "Enforcing OIDC and removing the frontend automation credential..."
 $applicationParameters = @(
+    "AiServiceImageUri=$aiImage",
+    "BackendImageUri=$backendImage",
+    "FrontendImageUri=$frontendImage",
     "FrontendUrl=$($foundation.FrontendUrl)",
     "OidcIssuerUrl=$($foundation.OidcIssuerUrl)",
     "OidcJwksUrl=$($foundation.OidcJwksUrl)",

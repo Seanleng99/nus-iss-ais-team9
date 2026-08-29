@@ -18,6 +18,7 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     groupadd --system app && \
     useradd --system --gid app --create-home --home-dir /home/app app && \
+    install -d -m 0700 -o app -g app /home/app/.streamlit && \
     apt-get purge -y --allow-remove-essential perl-base && \
     rm -rf /var/lib/apt/lists/*
 

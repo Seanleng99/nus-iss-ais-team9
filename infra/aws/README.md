@@ -35,7 +35,9 @@ For an existing demo stack that predates user authentication, first release the 
   -Confirmation ACTIVATE-OIDC
 ```
 
-The script refuses to continue unless the deployed backend image uses that SHA. It applies the nullable ownership migration before enabling OIDC, updates both stacks, removes the automation credential from the frontend task, optionally sends an admin-created Cognito invitation, and refreshes GitHub URLs. Existing unowned synthetic profiles remain accessible only to allowlisted automation identities and cannot be claimed by an authenticated user.
+The script refuses to continue unless the stable deployed backend and frontend images use that SHA. It captures all three currently deployed immutable image URIs and passes them back to CloudFormation so older stack parameters cannot replace images deployed by the release workflow. It applies the nullable ownership migration before enabling OIDC, updates both stacks, removes the automation credential from the frontend task, optionally sends an admin-created Cognito invitation, and refreshes GitHub URLs. Existing unowned synthetic profiles remain accessible only to allowlisted automation identities and cannot be claimed by an authenticated user.
+
+If a frontend-only corrective release follows the main authentication release, pass its SHA separately as `-ExpectedFrontendReleaseSha`; the backend remains pinned by `-ExpectedReleaseSha`.
 
 ## Deployment Order
 
