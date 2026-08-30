@@ -131,14 +131,27 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
             (200, json.dumps({"audit": audit})),
         ]
     )
+    calls = []
+
+    def record_request(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(responses)
+
     monkeypatch.setattr(
         post_deploy_smoke,
         "request",
-        lambda *args, **kwargs: next(responses),
+        record_request,
     )
 
     post_deploy_smoke.check_conditional_education_rag(
         "https://example.test/api/coach",
         "synthetic-api-key",
         corpus,
+    )
+
+    assert calls[0][1]["body"]["user_id"] == (
+        "deployment-conditional-rag-smoke-test"
+    )
+    assert calls[1][0][0].endswith(
+        "?user_id=deployment-conditional-rag-smoke-test"
     )

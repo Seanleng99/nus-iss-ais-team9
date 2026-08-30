@@ -265,8 +265,9 @@ def check_conditional_education_rag(
     api_key: str,
     expected_corpus_version: str,
 ) -> None:
+    user_id = "deployment-conditional-rag-smoke-test"
     payload = {
-        "user_id": "deployment-smoke-test",
+        "user_id": user_id,
         "session_id": "deployment-conditional-rag-smoke-test",
         "message": (
             "Create my monthly budget and explain how diversification and investment "
@@ -322,7 +323,7 @@ def check_conditional_education_rag(
     assert trace_id, "conditional Education response did not include a trace ID"
     trace_url = (
         f"{url.removesuffix('/coach')}/coach/traces/"
-        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id=deployment-smoke-test"
+        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id={user_id}"
     )
     trace_status, trace_body = request(trace_url, api_key=api_key)
     assert trace_status == 200, f"conditional trace retrieval returned HTTP {trace_status}"
