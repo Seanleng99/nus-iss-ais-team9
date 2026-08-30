@@ -48,6 +48,7 @@ env:
   EXPECTED_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || 'apac.amazon.nova-lite-v1:0' }}
   DASHBOARD_NAME: ${{ vars.OPERATIONAL_DASHBOARD_NAME || 'ai-financial-wellness-coach-demo-operational' }}
   ALARM_PREFIX: ${{ vars.OPERATIONAL_ALARM_PREFIX || 'ai-financial-wellness-coach-demo-' }}
+  OPERATIONAL_ALERTS_TOPIC_ARN: ${{ vars.OPERATIONAL_ALERTS_TOPIC_ARN }}
   REPEATS: ${{ inputs.repeats || '3' }}
   LOAD_REQUESTS: ${{ inputs.load_requests || '10' }}
   LOAD_CONCURRENCY: ${{ inputs.load_concurrency || '2' }}
@@ -71,7 +72,7 @@ jobs:
           required=(
             DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
             BACKEND_CONTAINER_NAME COACH_URL SMOKE_BACKEND_API_KEY
-            EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX
+            EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX OPERATIONAL_ALERTS_TOPIC_ARN
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
@@ -136,6 +137,22 @@ jobs:
             --alarm-name-prefix "$ALARM_PREFIX" \
             > artifacts/cloudwatch-alarms.json
           jq -e '(.MetricAlarms | length) >= 6' artifacts/cloudwatch-alarms.json > /dev/null
+
+      - name: Verify a confirmed human notification path
+        run: |
+          confirmed_count=$(aws sns list-subscriptions-by-topic \
+            --topic-arn "$OPERATIONAL_ALERTS_TOPIC_ARN" \
+            --query "length(Subscriptions[?Protocol=='email' && SubscriptionArn!='PendingConfirmation' && SubscriptionArn!='Deleted'])" \
+            --output text)
+          if [[ "$confirmed_count" -lt 1 ]]; then
+            echo "No confirmed operational email subscription is available" >&2
+            exit 1
+          fi
+          jq -n \
+            --arg topic_arn "$OPERATIONAL_ALERTS_TOPIC_ARN" \
+            --argjson confirmed_email_subscription_count "$confirmed_count" \
+            '{topic_arn: $topic_arn, confirmed_email_subscription_count: $confirmed_email_subscription_count}' \
+            > artifacts/confirmed-email-subscriptions.json
 
       - name: Verify CloudFront TLS and direct-origin denial
         if: env.EDGE_ORIGIN_RESTRICTION_ENABLED == 'true'

@@ -184,7 +184,8 @@ $parameters = @(
     "EducationSourcePrefix=$EducationSourcePrefix",
     "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
     "PolicySourceBucketName=$PolicySourceBucketName",
-    "PolicySourcePrefix=$PolicySourcePrefix"
+    "PolicySourcePrefix=$PolicySourcePrefix",
+    "OperationalAlertsTopicArn=$($application.OperationalAlertsTopicArn)"
 )
 
 Invoke-Aws cloudformation deploy `
@@ -196,4 +197,4 @@ Invoke-Aws cloudformation deploy `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
-Write-Host "Updated GitHub OIDC roles with approved model comparison and RAG audit scopes."
+Write-Host "Updated GitHub OIDC roles with approved model, RAG audit, and operational-alert inspection scopes."

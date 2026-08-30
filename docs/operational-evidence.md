@@ -18,6 +18,7 @@ This register contains privacy-safe evidence for the synthetic-data AWS demo. It
 | Education RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit; evidence retained for 90 days | [GitHub Actions run 33193755856](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33193755856) |
 | Policy RAG CI and AWS release | Passed Policy retrieval/evaluation controls, immutable-image scanning, deployment, and live provenance/persisted-trace smoke checks | [CI run 33229618646](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229618646) and [release run 33229698149](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229698149) |
 | Policy RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit with three approved sources and zero issues; evidence retained for 90 days | [GitHub Actions run 33231041612](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33231041612) |
+| Custom-domain and HTTPS edge activation | Passed custom viewer hostname, TLS 1.2 policy, HTTPS-only TLS 1.2+ ALB origin, origin-header enforcement, and direct-origin denial | [GitHub Actions run 33280566917](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33280566917) |
 
 The operational artifact recorded 33 of 33 live runs passed across 11 cases repeated three times, 100 percent dependency/RAG/routing/safety category rates, 6.41-second live P95, 102,681 audited tokens, and USD 0.010126 estimated model cost. The bounded load artifact recorded 10 of 10 successes at concurrency two, 4.34-second P95, and zero chat-session cleanup failures. Task replacement was not re-exercised in this run; the successful replacement evidence from [run 32715294232](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/32715294232) remains applicable.
 
@@ -56,9 +57,15 @@ The post-ingestion AWS audit passed with zero issues: the Knowledge Base was act
 
 The first retained read-only workflow audit passed with three approved sources and zero issues in run `33231041612`. Artifact `policy-rag-governance-33231041612` has digest `sha256:2ef977fde63649b78ec22374928ccfc39c7e5a30b32a7c68c25e0090496a3d04` and expires on 2026-11-27. All three current sources must be reviewed by 2026-11-27 or replaced by a newly approved corpus version. The versioned evidence and operating procedure are in `docs/policy-rag-governance.md`; the weekly workflow retains subsequent audits for 90 days.
 
+## Operational Alert Notification
+
+On 2026-08-30, the application stack created and confirmed one managed email subscription to the operational SNS topic. The first controlled alarm exercise exposed that the topic policy allowed EventBridge but did not authorize the CloudWatch Alarms service; historical alarm actions showed the same publish denial. The policy was corrected with account and source-ARN restrictions for the exact EventBridge deployment rule and the project alarm prefix.
+
+Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5xx alarm from `OK` to `ALARM`, recorded a successful SNS action at `2026-08-29T23:59:31.854Z`, and restored the alarm to `OK`. The local privacy-safe artifact records one confirmed subscription without the email address. On 2026-08-30, the Team 9 mailbox operator acknowledged receipt of both the `ALARM` and restoration/`OK` messages, completing end-to-end delivery verification. The next successful operational workflow artifact must retain the automated confirmed-subscription check.
+
 ## Open Evidence
 
-- Human SNS or incident-channel subscription confirmation and tested delivery.
+- Retained post-change operational workflow evidence containing the confirmed-subscription check.
 - Representative-user validation of explanations and confidence presentation.
 - Complete and approve the current blinded Nova Micro review before any model change.
 - Review the exact-version base-image CVE exceptions before they expire on 2026-09-18.

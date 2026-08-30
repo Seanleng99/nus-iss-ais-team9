@@ -130,6 +130,7 @@ Create a `demo` environment and restrict it to `main`. Required environment revi
 | `POLICY_RAG_SOURCE_GOVERNANCE_ENABLED` | Enables the scheduled read-only Policy audit after the updated OIDC stack exists |
 | `OPERATIONAL_DASHBOARD_NAME` | CloudWatch dashboard verified by the operational workflow |
 | `OPERATIONAL_ALARM_PREFIX` | Prefix used to discover the demo alarms |
+| `OPERATIONAL_ALERTS_TOPIC_ARN` | Exact SNS topic whose confirmed human subscription is verified without retaining its endpoint |
 | `LIVE_EVAL_MAX_P95_MS` | Live-evaluation P95 ceiling; current value is `10000` |
 | `LIVE_EVAL_MAX_COST_USD` | Maximum estimated cost for one live-evaluation run |
 | `LOAD_MAX_P95_MS` | Bounded load-test P95 ceiling; current value is `8000` |

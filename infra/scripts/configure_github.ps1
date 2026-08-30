@@ -191,6 +191,7 @@ $variables = [ordered]@{
     POLICY_SOURCE_PREFIX = $policySourcePrefix
     OPERATIONAL_DASHBOARD_NAME = $application.OperationalDashboardName
     OPERATIONAL_ALARM_PREFIX = $application.OperationalAlarmPrefix
+    OPERATIONAL_ALERTS_TOPIC_ARN = $application.OperationalAlertsTopicArn
     LIVE_EVAL_MAX_P95_MS = "10000"
     LIVE_EVAL_MAX_COST_USD = "0.05"
     LOAD_MAX_P95_MS = "8000"

@@ -31,7 +31,7 @@ In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention
 - Scheduled evaluation failure or metric regression.
 - Education RAG manifest, freshness, checksum, ingestion, or deployed-object drift.
 
-The first five controls are provisioned by `infra/aws/demo-application.yaml`; the remaining controls require an approved metric definition or existing security service integration. Pass `-AlertEmail address@example.com` to the bootstrap script to create an email subscription, then confirm the SNS subscription. Without an endpoint, alarms still change state and publish to the topic but do not notify a person.
+The first five controls are provisioned by `infra/aws/demo-application.yaml`; the remaining controls require an approved metric definition or existing security service integration. Pass `-AlertEmail address@example.com` to the bootstrap script to create an email subscription, then confirm the SNS subscription. The weekly operational workflow verifies that at least one confirmed email subscription remains, without retaining the address in its artifact. Without a confirmed endpoint, alarms still change state and publish to the topic but do not notify a person.
 
 ## Database Changes
 
@@ -39,7 +39,7 @@ CI applies every Alembic migration to PostgreSQL and runs `alembic check` for mo
 
 Orchestration traces use a configurable 30-day retention period. The weekly AWS operational workflow runs `python -m app.jobs.purge_orchestration_traces` as a one-shot task against the current backend task definition. A user-scoped `DELETE /api/coach/traces/{trace_id}?user_id=...` endpoint supports individual removal, and deleting the owning chat session cascades to its traces. Lookup and deletion are profile-isolated at the backend boundary; monitor missing traces and rejected cross-profile operations without logging request content.
 
-Route deployment failures through EventBridge and operational alerts through SNS or the team incident channel. Every alert needs an owner, severity, runbook link, and tested notification path.
+Route deployment failures through EventBridge and operational alerts through SNS or the team incident channel. Every alert needs an owner, severity, runbook link, and tested notification path. `docs/operational-alert-runbook.md` assigns the Team 9 operations owner, severity-specific response targets, specialist escalation, privacy-safe evidence requirements, and the controlled notification-test procedure.
 
 ## Drift Detection
 
@@ -66,7 +66,7 @@ Deleting the final chat session for a chat-only synthetic user also prunes the e
 
 The `AWS Operational Validation` workflow performs this load test, three repetitions of the live Bedrock/RAG suite, trace-retention enforcement, dashboard/alarm verification, and autoscaling verification each week. The live RAG cases require citations and persisted traces to match the configured corpus pin. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures. The default gates are now 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
 
-The SNS topic and alarm actions are deployed, but no human endpoint is confirmed. Do not mark notification delivery verified until an address or incident-channel integration is supplied, confirmed, exercised with a test alarm, and linked to a named owner and runbook.
+The SNS topic, alarm actions, and managed team-mailbox subscription are deployed and confirmed. A controlled test on 2026-08-30 verified the CloudWatch-to-SNS action, restored the alarm to `OK`, and received human acknowledgement of both the `ALARM` and restoration emails. End-to-end delivery is verified. Use `infra/scripts/test_operational_alert.ps1` for repeatable tests. Ownership, severity, response targets, and recovery steps are defined in `docs/operational-alert-runbook.md`.
 
 ## Incident And Rollback Procedure
 

@@ -326,7 +326,8 @@ $oidcParameters = @(
     "EducationSourcePrefix=$EducationSourcePrefix",
     "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
     "PolicySourceBucketName=$PolicySourceBucketName",
-    "PolicySourcePrefix=$PolicySourcePrefix"
+    "PolicySourcePrefix=$PolicySourcePrefix",
+    "OperationalAlertsTopicArn=$($application.OperationalAlertsTopicArn)"
 )
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\github-actions-oidc.yaml") `
