@@ -119,6 +119,7 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 continue
 
             if path.startswith("infra/scripts/"):
+                result["ai_ci"] = True
                 result["sast"] = True
                 result["infrastructure"] = True
                 if path.endswith(("load_smoke.py", "post_deploy_smoke.py")):

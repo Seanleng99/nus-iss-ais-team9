@@ -97,6 +97,7 @@ class ChangeDetectionTests(unittest.TestCase):
         )
 
         self.assertTrue(result["infrastructure"])
+        self.assertTrue(result["ai_ci"])
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 

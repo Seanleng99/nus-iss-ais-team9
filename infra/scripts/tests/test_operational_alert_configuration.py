@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ALERT_TEST_SCRIPT = PROJECT_ROOT / "infra" / "scripts" / "test_operational_alert.ps1"
 OIDC_TEMPLATE = PROJECT_ROOT / "infra" / "aws" / "github-actions-oidc.yaml"
