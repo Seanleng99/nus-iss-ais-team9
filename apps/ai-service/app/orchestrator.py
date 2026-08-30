@@ -12,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agents.base import BaseAgent
 from app.agents.budget import BudgetAgent
+from app.agents.education_access import build_minimal_education_query
 from app.agents.goal_strategy import GoalStrategyAgent
 from app.agents.investment_education import InvestmentEducationAgent
 from app.agents.risk_compliance import RiskComplianceAgent
@@ -19,7 +20,7 @@ from app.agents.spending import SpendingAgent
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
 from app.core.config import Settings
 from app.core.config import settings as runtime_settings
-from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt
+from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
 from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -53,7 +54,12 @@ from app.models.gateway import (
 )
 from app.models.structured import generate_structured_response
 from app.rag.policy import PolicyRetriever, create_policy_retriever
-from app.rag.retriever import EducationRetriever, RetrievalError, create_education_retriever
+from app.rag.retriever import (
+    EducationRetriever,
+    RetrievalError,
+    build_education_context,
+    create_education_retriever,
+)
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -72,6 +78,7 @@ class OrchestratorState(TypedDict, total=False):
     dependency_edges: list[DependencyEdge]
     dependency_resolutions: list[DependencyResolution]
     dependency_round: int
+    tool_call_counts: dict[str, int]
     audit_events: list[AuditEvent]
     draft_answer: str
     compliance_result: AgentResult
@@ -286,6 +293,7 @@ class AgentOrchestrator:
             "dependency_edges": [],
             "dependency_resolutions": [],
             "dependency_round": 0,
+            "tool_call_counts": {},
             "audit_events": events,
         }
 
@@ -562,6 +570,7 @@ class AgentOrchestrator:
         edges = list(state.get("dependency_edges", []))
         resolutions = list(state.get("dependency_resolutions", []))
         events = list(state.get("audit_events", []))
+        tool_call_counts = dict(state.get("tool_call_counts", {}))
         unresolved: list[DependencyRequest] = []
         touched_requesters: set[str] = set()
 
@@ -603,6 +612,17 @@ class AgentOrchestrator:
             if existing is not None:
                 self._validate_dependency_fields(request, existing)
                 requester_task.resolved_dependencies[request.capability] = existing
+                reused_edge = DependencyEdge(
+                    requester_task_id=request.requester_task_id,
+                    provider_task_id=existing.provider_task_id,
+                    capability=request.capability,
+                )
+                if reused_edge not in edges:
+                    if self._creates_cycle(edges, reused_edge):
+                        raise ModelGatewayError(
+                            "A circular specialist dependency was detected."
+                        )
+                    edges.append(reused_edge)
                 was_scheduled = any(
                     item.request_id == request.request_id and item.resolution == "scheduled"
                     for item in resolutions
@@ -633,6 +653,175 @@ class AgentOrchestrator:
                         },
                     )
                 )
+                continue
+
+            if definition.provider_type == CapabilityProviderType.TOOL:
+                provider_task_id = f"tool:{definition.provider}:{fingerprint}"
+                edge = DependencyEdge(
+                    requester_task_id=request.requester_task_id,
+                    provider_task_id=provider_task_id,
+                    capability=request.capability,
+                )
+                if edge not in edges:
+                    edges.append(edge)
+                if (
+                    request.capability != CapabilityName.EDUCATION_CONTEXT
+                    or definition.provider != "education_retriever"
+                ):
+                    raise ModelGatewayError(
+                        "A dynamic dependency did not resolve to an approved tool provider."
+                    )
+                provider_call_count = tool_call_counts.get(definition.provider, 0)
+                if provider_call_count >= definition.maximum_calls_per_run:
+                    if request.required:
+                        raise ModelGatewayError(
+                            "A capability exceeded its maximum provider calls per run."
+                        )
+                    warning = (
+                        f"Optional capability {request.capability.value} was unavailable."
+                    )
+                    if warning not in requester_task.dependency_warnings:
+                        requester_task.dependency_warnings.append(warning)
+                    resolutions.append(
+                        DependencyResolution(
+                            request_id=request.request_id,
+                            capability=request.capability,
+                            requester_task_id=request.requester_task_id,
+                            provider_task_id=provider_task_id,
+                            resolution="rejected",
+                            reason_code="OPTIONAL_TOOL_CALL_LIMIT",
+                            input_fingerprint=fingerprint,
+                        )
+                    )
+                    events.append(
+                        self._event(
+                            state,
+                            "dependency.rejected",
+                            "orchestrator",
+                            task_id=request.requester_task_id,
+                            parent_task_id=provider_task_id,
+                            details={
+                                "request_id": request.request_id,
+                                "capability": request.capability.value,
+                                "reason_code": "OPTIONAL_TOOL_CALL_LIMIT",
+                            },
+                        )
+                    )
+                    continue
+                tool_call_counts[definition.provider] = provider_call_count + 1
+                try:
+                    validate_tool_permission(request.requester, definition.provider)
+                    education_query, query_topics = build_minimal_education_query(
+                        state["sanitized_message"]
+                    )
+                    data = build_education_context(
+                        self.education_retriever,
+                        education_query,
+                        scope=(
+                            "Approved investment education relevant to a budget or goal; "
+                            "not product advice."
+                        ),
+                    )
+                    data["query_topics"] = list(query_topics)
+                    capability_result = CapabilityResult(
+                        capability=request.capability,
+                        provider=definition.provider,
+                        provider_task_id=provider_task_id,
+                        data=data,
+                        evidence_refs=[
+                            (
+                                f"{source['source_id']}@"
+                                f"{source['document_version']}"
+                            )
+                            for source in data["sources"]
+                        ],
+                        warnings=(
+                            []
+                            if data["evidence_status"] == "grounded"
+                            else ["No relevant approved Education source was retrieved."]
+                        ),
+                        input_fingerprint=fingerprint,
+                    )
+                    self._validate_dependency_fields(request, capability_result)
+                    capabilities[capability_key] = capability_result
+                    requester_task.resolved_dependencies[request.capability] = capability_result
+                    resolutions.append(
+                        DependencyResolution(
+                            request_id=request.request_id,
+                            capability=request.capability,
+                            requester_task_id=request.requester_task_id,
+                            provider_task_id=provider_task_id,
+                            resolution="resolved",
+                            input_fingerprint=fingerprint,
+                        )
+                    )
+                    events.extend(
+                        [
+                            self._event(
+                                state,
+                                "capability.tool_completed",
+                                definition.provider,
+                                task_id=provider_task_id,
+                                parent_task_id=request.requester_task_id,
+                                details={
+                                    "capability": request.capability.value,
+                                    "requester": request.requester.value,
+                                    "evidence_status": data["evidence_status"],
+                                    "source_count": len(data["sources"]),
+                                    "corpus_version": data["corpus_version"],
+                                    "query_topics": list(query_topics),
+                                },
+                            ),
+                            self._event(
+                                state,
+                                "dependency.resolved",
+                                "orchestrator",
+                                task_id=request.requester_task_id,
+                                parent_task_id=provider_task_id,
+                                details={
+                                    "request_id": request.request_id,
+                                    "capability": request.capability.value,
+                                    "resolution": "resolved",
+                                    "input_fingerprint": fingerprint,
+                                },
+                            ),
+                        ]
+                    )
+                except (RetrievalError, ValueError) as exc:
+                    if request.required:
+                        raise ModelGatewayError(
+                            "A required tool dependency was unavailable."
+                        ) from exc
+                    warning = (
+                        f"Optional capability {request.capability.value} was unavailable."
+                    )
+                    if warning not in requester_task.dependency_warnings:
+                        requester_task.dependency_warnings.append(warning)
+                    resolutions.append(
+                        DependencyResolution(
+                            request_id=request.request_id,
+                            capability=request.capability,
+                            requester_task_id=request.requester_task_id,
+                            provider_task_id=provider_task_id,
+                            resolution="rejected",
+                            reason_code="OPTIONAL_TOOL_UNAVAILABLE",
+                            input_fingerprint=fingerprint,
+                        )
+                    )
+                    events.append(
+                        self._event(
+                            state,
+                            "dependency.rejected",
+                            "orchestrator",
+                            task_id=request.requester_task_id,
+                            parent_task_id=provider_task_id,
+                            details={
+                                "request_id": request.request_id,
+                                "capability": request.capability.value,
+                                "reason_code": "OPTIONAL_TOOL_UNAVAILABLE",
+                            },
+                        )
+                    )
                 continue
 
             if definition.provider_type != CapabilityProviderType.AGENT:
@@ -779,6 +968,7 @@ class AgentOrchestrator:
             "dependency_edges": edges,
             "dependency_resolutions": resolutions,
             "dependency_round": dependency_round,
+            "tool_call_counts": tool_call_counts,
             "audit_events": events,
         }
 
@@ -858,6 +1048,13 @@ class AgentOrchestrator:
             )
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
+        retrieval_consumers = sorted(
+            {
+                str(result.data["retrieval_consumer"])
+                for result in state["agent_results"]
+                if result.data.get("retrieval_consumer")
+            }
+        )
         policy_evidence = self._collect_policy_evidence(compliance)
         corpus_versions = sorted(
             {
@@ -886,6 +1083,7 @@ class AgentOrchestrator:
                     "blocked": compliance.blocked,
                     "retrieval_source_count": len(retrieval_evidence),
                     "retrieval_corpus_versions": corpus_versions,
+                    "retrieval_consumers": retrieval_consumers,
                     "policy_source_count": len(policy_evidence),
                     "policy_corpus_versions": policy_corpus_versions,
                 },
@@ -909,6 +1107,7 @@ class AgentOrchestrator:
                 "prompt_set_version": self.prompts.version,
                 "retrieval_corpus_versions": corpus_versions,
                 "retrieval_sources": retrieval_evidence,
+                "retrieval_consumers": retrieval_consumers,
                 "policy_corpus_versions": policy_corpus_versions,
                 "policy_sources": policy_evidence,
                 "dependency_rounds": state.get("dependency_round", 0),

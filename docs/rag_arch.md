@@ -1,8 +1,8 @@
-# RAG Architecture for Investment Education
+# RAG Architecture for Governed Education
 
 ## 1. Purpose and Scope
 
-The Retrieval-Augmented Generation (RAG) capability supports the Investment Education Agent with grounded, explainable financial education. It retrieves relevant content from approved sources before the language model generates an answer.
+The Retrieval-Augmented Generation (RAG) capability supports Investment Education directly and Budget or Goal Strategy conditionally with grounded, explainable financial education. It retrieves relevant content from approved sources before the language model generates an answer; deterministic budget and goal calculations remain authoritative.
 
 The capability must:
 
@@ -12,7 +12,7 @@ The capability must:
 - state when the knowledge base does not contain sufficient information; and
 - send every generated answer to the Risk & Compliance Agent before release.
 
-RAG is an internal capability of the Investment Education Agent. It is not a separate specialist agent. The Agent Orchestrator decides when the Investment Education Agent should participate, while the Risk & Compliance Agent remains the final validation layer.
+RAG is a governed tool capability, not a separate specialist agent. The Agent Orchestrator decides when Investment Education should participate and resolves conditional `education_context` requests from Budget or Goal Strategy. Risk & Compliance remains the final validation layer.
 
 ## 2. Target Logical Architecture
 
@@ -20,7 +20,9 @@ RAG is an internal capability of the Investment Education Agent. It is not a sep
 flowchart TD
   User["User question"] --> Orchestrator["Agent Orchestrator"]
   Orchestrator -->|"Investment education intent"| Investment["Investment Education Agent"]
+  Orchestrator -->|"Conditional education_context"| BudgetGoal["Budget or Goal Strategy"]
   Investment --> Retriever["RAG Retriever"]
+  BudgetGoal --> Retriever
   Retriever --> KnowledgeBase["Amazon Bedrock Knowledge Base"]
   KnowledgeBase --> Context["Relevant document chunks and source metadata"]
   Context --> Prompt["Grounded prompt construction"]
@@ -82,8 +84,8 @@ Document updates should create a traceable new version. Superseded or withdrawn 
 ## 4. Runtime RAG Process
 
 1. The user submits a question through the application.
-2. The Agent Orchestrator identifies investment-education intent and selects the Investment Education Agent.
-3. The agent sends a sanitized, minimal retrieval query to the knowledge base.
+2. The Agent Orchestrator either selects Investment Education or authorizes an `education_context` request from Budget or Goal Strategy after allowlisted topic detection.
+3. Investment Education sends its sanitized question; for Budget or Goal Strategy the orchestrator constructs a topic-only query that excludes personal financial values.
 4. The retriever returns the most relevant approved chunks together with their source metadata and retrieval scores.
 5. Retrieved content is sanitized and treated as untrusted data, not as system instructions.
 6. The system constructs a grounded prompt containing the user question, retrieved context, source metadata, and response constraints.
@@ -177,20 +179,22 @@ apps/ai-service/app/evals/datasets/rag_retrieval.jsonl
 
 ## 9. Current State and Remaining Scope
 
-Investment Education has a dedicated `education_retriever`. Local and CI runs use a small approved-document fixture. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
+Investment Education has a dedicated `education_retriever`. Budget and Goal Strategy can receive the same result through the orchestrator-resolved `education_context` tool capability only for investment topics such as risk, diversification, fees, ETFs, CPFIS, and investment time horizon. Local and CI runs use a small approved-document fixture. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
 
 The implemented runtime boundary:
 
 - retrieves approved education context and filters weak or unapproved results;
+- excludes personal amounts and records from conditional retrieval queries;
+- caches and reuses identical within-run Education results across Budget and Goal Strategy;
 - sanitizes retrieved content again before grounded generation;
-- returns an explicit evidence gap instead of using unsupported model knowledge;
+- preserves deterministic calculations while returning an explicit evidence gap instead of using unsupported model knowledge;
 - rejects stale, malformed, unapproved, or wrong-corpus chunks;
 - retains document version, checksum, corpus version, and review deadline through synthesis, Risk and Compliance review, the API, Streamlit, and the privacy-safe decision trace; and
 - supports Bedrock Knowledge Base `Retrieve` with sanitized error handling.
 
 The deployed six-document corpus is governed as `investment-education-sg@2026-08-28.1`. Metadata migration, ingestion, checksum/object audit, and live retrieval were completed with zero issues. `infra/scripts/rag_source_governance.py` now covers validation, staging, read-only AWS audit, exact-version apply, verified metadata publication, and reviewed exact-ID withdrawal. A weekly read-only workflow enforces freshness and deployed-state drift. See `docs/rag-source-governance.md` for the operating record.
 
-Risk and Compliance has a separate `policy_retriever`, local fixture, strict Bedrock adapter, governed three-document manifest, dedicated corpus pin, independent trace fields, release smoke assertions, and weekly read-only governance workflow. The Policy collection is deployed as Knowledge Base `MLOCSOIFML` and data source `WMLKUDKZX5`; ingestion, exact-version audit, runtime deployment, live provenance/trace smoke checks, and the first retained governance workflow completed successfully on 2026-08-29. Conditional Budget and Goal Strategy retrieval permissions remain a later phase. See `docs/policy-rag-governance.md`.
+Risk and Compliance has a separate `policy_retriever`, local fixture, strict Bedrock adapter, governed three-document manifest, dedicated corpus pin, independent trace fields, release smoke assertions, and weekly read-only governance workflow. The Policy collection is deployed as Knowledge Base `MLOCSOIFML` and data source `WMLKUDKZX5`; ingestion, exact-version audit, runtime deployment, live provenance/trace smoke checks, and the first retained governance workflow completed successfully on 2026-08-29. Compliance reviews Education evidence carried by Investment Education, Budget, or Goal Strategy but cannot query the Education collection itself. See `docs/policy-rag-governance.md`.
 
 ## 10. Acceptance Criteria for the RAG Implementation
 
@@ -198,6 +202,8 @@ The implementation will be considered complete when:
 
 - an investment-education query retrieves relevant approved chunks;
 - the Investment Education Agent uses those chunks to produce a grounded draft;
+- Budget and Goal Strategy retrieve only for explicit allowlisted investment topics, without scheduling Investment Education or embedding personal financial records;
+- calculation-only Budget and Goal requests and all Spending requests remain retrieval-free;
 - the answer and persisted trace expose the pinned corpus plus traceable document version/checksum metadata;
 - insufficient retrieval produces an explicit evidence-gap response;
 - malicious instructions inside retrieved content cannot override system policy;

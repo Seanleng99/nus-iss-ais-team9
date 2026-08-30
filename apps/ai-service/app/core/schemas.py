@@ -19,7 +19,7 @@ class CapabilityName(StrEnum):
     MONTHLY_BUDGET_BASELINE = "monthly_budget_baseline"
     MONTHLY_SAVINGS_CAPACITY = "monthly_savings_capacity"
     GOAL_PROJECTION = "goal_projection"
-    INVESTMENT_EDUCATION_EVIDENCE = "investment_education_evidence"
+    EDUCATION_CONTEXT = "education_context"
     POLICY_CONTEXT = "policy_context"
 
 

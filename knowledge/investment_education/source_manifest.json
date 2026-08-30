@@ -2,7 +2,7 @@
   "schema_version": 2,
   "collection_id": "investment-education-sg",
   "corpus_version": "investment-education-sg@2026-08-28.1",
-  "scope": "General investment education for the Investment Education Agent",
+  "scope": "General investment education for Investment Education and conditional Budget or Goal Strategy explanations",
   "jurisdiction": "SG",
   "owner_role": "AI and data governance owner",
   "approval_reference": "team9-synthetic-demo-source-review-2026-08-16",

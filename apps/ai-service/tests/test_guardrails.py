@@ -41,12 +41,15 @@ def test_only_risk_compliance_can_use_policy_retriever() -> None:
             validate_tool_permission(agent, "policy_retriever")
 
 
-def test_only_investment_education_can_retrieve_education_context() -> None:
-    validate_tool_permission(AgentName.INVESTMENT_EDUCATION, "education_retriever")
+def test_only_approved_education_consumers_can_retrieve_context() -> None:
     for agent in (
-        AgentName.SPENDING,
+        AgentName.INVESTMENT_EDUCATION,
         AgentName.BUDGET,
         AgentName.GOAL_STRATEGY,
+    ):
+        validate_tool_permission(agent, "education_retriever")
+    for agent in (
+        AgentName.SPENDING,
         AgentName.RISK_COMPLIANCE,
     ):
         with pytest.raises(PermissionError):

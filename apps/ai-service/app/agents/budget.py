@@ -1,4 +1,5 @@
 from app.agents.base import BaseAgent
+from app.agents.education_access import should_request_education_context
 from app.core.schemas import (
     AgentName,
     AgentResult,
@@ -38,16 +39,23 @@ class BudgetAgent(BaseAgent):
                 required_output_fields=["category_totals", "transaction_count"],
                 required=False,
             )
-        ] if explicit_spending_context and self._dependency_options(task) else []
+        ] if (
+            explicit_spending_context
+            and int(task.context_features.get("recent_transaction_count", 0)) > 0
+            and CapabilityName.TRANSACTION_CATEGORY_TOTALS
+            not in task.resolved_dependencies
+            and not task.dependency_warnings
+        ) else []
 
     def _dependency_options(self, task: AgentTask) -> list[DependencyRequestDraft]:
+        options: list[DependencyRequestDraft] = []
         if (
             int(task.context_features.get("recent_transaction_count", 0)) > 0
             and CapabilityName.TRANSACTION_CATEGORY_TOTALS
             not in task.resolved_dependencies
             and not task.dependency_warnings
         ):
-            return [
+            options.append(
                 DependencyRequestDraft(
                     capability=CapabilityName.TRANSACTION_CATEGORY_TOTALS,
                     reason_code="BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS",
@@ -58,8 +66,35 @@ class BudgetAgent(BaseAgent):
                         "recent spending, transactions, or expense patterns in the budget."
                     ),
                 )
-            ]
-        return []
+            )
+        if (
+            should_request_education_context(task.sanitized_message)
+            and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
+            and not any(
+                CapabilityName.EDUCATION_CONTEXT.value in warning
+                for warning in task.dependency_warnings
+            )
+        ):
+            options.append(
+                DependencyRequestDraft(
+                    capability=CapabilityName.EDUCATION_CONTEXT,
+                    reason_code="BUDGET_EXPLANATION_REQUIRES_EDUCATION",
+                    required_output_fields=[
+                        "evidence_status",
+                        "contexts",
+                        "sources",
+                        "corpus_version",
+                    ],
+                    required=False,
+                    selection_guidance=(
+                        "Request approved Education context only when the user asks "
+                        "about investment concepts such as risk, diversification, fees, "
+                        "CPFIS, ETFs, or time horizon in relation to a budget. Never "
+                        "request it for a calculation-only budget."
+                    ),
+                )
+            )
+        return options
 
     def _missing_input_questions(self, task: AgentTask) -> list[str]:
         if not task.context_features.get("has_monthly_income"):
@@ -75,9 +110,43 @@ class BudgetAgent(BaseAgent):
         )
         if spending is not None:
             grounding["spending_context"] = spending.data
+        education = task.resolved_dependencies.get(CapabilityName.EDUCATION_CONTEXT)
+        if education is not None:
+            grounding.update(education.data)
+            grounding["retrieval_consumer"] = self.name.value
+        elif any(
+            CapabilityName.EDUCATION_CONTEXT.value in warning
+            for warning in task.dependency_warnings
+        ):
+            grounding.update(
+                {
+                    "evidence_status": "insufficient",
+                    "contexts": [],
+                    "sources": [],
+                    "retrieval_consumer": self.name.value,
+                }
+            )
         if task.dependency_warnings:
             grounding["dependency_warnings"] = task.dependency_warnings
         return grounding
+
+    def _evidence_gap_result(self, grounding: dict) -> AgentResult:
+        return AgentResult(
+            agent=self.name,
+            summary=(
+                "The deterministic budget calculation is available, but the approved "
+                "Education knowledge base does not contain enough information for the "
+                "requested investment explanation."
+            ),
+            rationale=[
+                (
+                    "Calculated values were preserved while unsupported educational "
+                    "claims were withheld."
+                )
+            ],
+            confidence=1.0,
+            data=grounding,
+        )
 
     def _capabilities(
         self,

@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -40,6 +40,51 @@ class RetrievalError(RuntimeError):
     def __init__(self, message: str, *, component: str = "education_retriever") -> None:
         super().__init__(message)
         self.component = component
+
+
+SOURCE_METADATA_FIELDS = (
+    "source_id",
+    "title",
+    "issuing_organization",
+    "canonical_url",
+    "published_at",
+    "document_version",
+    "checksum",
+    "corpus_version",
+    "review_due_at",
+)
+
+
+def build_education_context(
+    retriever: EducationRetriever,
+    query: str,
+    *,
+    scope: str,
+) -> dict[str, Any]:
+    contexts = []
+    for item in retriever.retrieve(query):
+        context = asdict(item)
+        decision = sanitize_rag_document(context["text"])
+        context["text"] = decision.sanitized_text
+        context["findings"] = list(
+            dict.fromkeys([*context["findings"], *decision.findings])
+        )
+        contexts.append(context)
+    sources = [
+        {key: context[key] for key in SOURCE_METADATA_FIELDS}
+        for context in contexts
+    ]
+    return {
+        "scope": scope,
+        "evidence_status": "grounded" if contexts else "insufficient",
+        "corpus_version": getattr(
+            retriever,
+            "expected_corpus_version",
+            getattr(retriever, "corpus_version", None),
+        ),
+        "contexts": contexts,
+        "sources": sources,
+    }
 
 
 EDUCATION_DOCUMENTS = [

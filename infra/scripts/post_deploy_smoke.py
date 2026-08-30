@@ -147,7 +147,7 @@ def check_model_backed_coaching(
     assert trace_status == 200, f"trace retrieval returned HTTP {trace_status}"
     trace = json.loads(trace_body)
     assert trace.get("trace_id") == trace_id, "persisted trace ID did not match"
-    assert trace.get("prompt_set_version") == "v3", "unexpected persisted prompt version"
+    assert trace.get("prompt_set_version") == "v4", "unexpected persisted prompt version"
     assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
 
 
@@ -258,6 +258,82 @@ def check_investment_education_rag(
     assert trace.get("audit", {}).get("policy_sources"), (
         "persisted trace did not retain policy source provenance"
     )
+
+
+def check_conditional_education_rag(
+    url: str,
+    api_key: str,
+    expected_corpus_version: str,
+) -> None:
+    payload = {
+        "user_id": "deployment-smoke-test",
+        "session_id": "deployment-conditional-rag-smoke-test",
+        "message": (
+            "Create my monthly budget and explain how diversification and investment "
+            "risk relate to it using approved education sources."
+        ),
+        "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
+        "requested_agents": ["budget"],
+    }
+    status, body = request(url, method="POST", body=payload, api_key=api_key)
+    assert status == 200, f"expected HTTP 200, received {status}"
+    response = json.loads(body)
+    assert response.get("blocked") is False, "conditional education request was blocked"
+    assert response.get("selected_agents") == ["budget"], (
+        "conditional retrieval scheduled an unrequested specialist"
+    )
+    budget = next(
+        (
+            item
+            for item in response.get("agent_results", [])
+            if item.get("agent") == "budget"
+        ),
+        None,
+    )
+    assert budget is not None, "Budget result was absent"
+    budget_data = budget.get("data", {})
+    assert budget_data.get("income") == 4000, "deterministic budget input changed"
+    assert budget_data.get("evidence_status") == "grounded", (
+        "Budget education was not grounded"
+    )
+    assert budget_data.get("contexts"), "Budget did not receive Education contexts"
+    assert budget_data.get("sources"), "Budget did not receive Education sources"
+    assert all(
+        source.get("corpus_version") == expected_corpus_version
+        for source in budget_data["sources"]
+    ), "Budget source did not match the pinned corpus"
+    audit = response.get("audit", {})
+    assert audit.get("retrieval_consumers") == ["budget"], (
+        "trace did not identify Budget as the retrieval consumer"
+    )
+    assert any(
+        item.get("capability") == "education_context"
+        and item.get("resolution") in {"resolved", "reused"}
+        for item in audit.get("dependency_resolutions", [])
+    ), "Education capability resolution was absent"
+    assert any(
+        item.get("capability") == "education_context"
+        and str(item.get("provider_task_id", "")).startswith(
+            "tool:education_retriever:"
+        )
+        for item in audit.get("dependency_edges", [])
+    ), "Education tool dependency edge was absent"
+    trace_id = audit.get("trace_id")
+    assert trace_id, "conditional Education response did not include a trace ID"
+    trace_url = (
+        f"{url.removesuffix('/coach')}/coach/traces/"
+        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id=deployment-smoke-test"
+    )
+    trace_status, trace_body = request(trace_url, api_key=api_key)
+    assert trace_status == 200, f"conditional trace retrieval returned HTTP {trace_status}"
+    trace = json.loads(trace_body)
+    trace_audit = trace.get("audit", {})
+    assert trace_audit.get("retrieval_consumers") == ["budget"], (
+        "persisted trace lost the retrieval consumer"
+    )
+    assert trace_audit.get("retrieval_corpus_versions") == [
+        expected_corpus_version
+    ], "persisted trace lost the Education corpus version"
 
 
 def check_persistence(base_url: str, api_key: str) -> None:
@@ -393,6 +469,14 @@ def main() -> None:
                 args.expected_policy_corpus_version,
             ),
             "Bedrock Education and Policy Knowledge Base retrieval",
+        )
+        retry(
+            lambda: check_conditional_education_rag(
+                args.coach_url,
+                args.api_key,
+                args.expected_corpus_version,
+            ),
+            "conditional Budget Education Knowledge Base retrieval",
         )
     if args.persistence_base_url:
         if not args.api_key:

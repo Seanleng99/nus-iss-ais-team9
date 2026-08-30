@@ -1,6 +1,7 @@
 import json
 import time
 
+import pytest
 from pydantic import ValidationError
 
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
@@ -244,6 +245,9 @@ def test_capability_registry_rejects_unauthorized_requester() -> None:
         assert "cannot request" in str(exc)
     else:
         raise AssertionError("Expected an unauthorized capability request to be rejected")
+
+    with pytest.raises(CapabilityRegistryError, match="cannot request"):
+        registry.authorize(AgentName.SPENDING, CapabilityName.EDUCATION_CONTEXT)
 
 
 class RequestingAgent:

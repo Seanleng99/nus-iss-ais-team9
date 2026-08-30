@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
     prompt_set_version: str = Field(
-        default="v3",
-        pattern=r"^v(?:2|3)$",
+        default="v4",
+        pattern=r"^v(?:2|3|4)$",
         alias="PROMPT_SET_VERSION",
     )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     )
     model_max_tokens: int = Field(default=800, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
     max_dependency_rounds: int = Field(
-        default=4,
+        default=6,
         ge=1,
         le=10,
         alias="MAX_DEPENDENCY_ROUNDS",

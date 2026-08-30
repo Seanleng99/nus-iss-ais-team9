@@ -1,4 +1,5 @@
 import io
+import json
 import urllib.error
 
 import pytest
@@ -87,3 +88,57 @@ def test_authentication_smoke_rejects_success(monkeypatch) -> None:
         post_deploy_smoke.check_user_authentication_required(
             "https://example.test/api/coach"
         )
+
+
+def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
+    corpus = "investment-education-sg@test-v1"
+    audit = {
+        "trace_id": "trace-conditional",
+        "retrieval_consumers": ["budget"],
+        "retrieval_corpus_versions": [corpus],
+        "dependency_resolutions": [
+            {
+                "capability": "education_context",
+                "resolution": "resolved",
+            }
+        ],
+        "dependency_edges": [
+            {
+                "capability": "education_context",
+                "provider_task_id": "tool:education_retriever:fingerprint",
+            }
+        ],
+    }
+    coach_response = {
+        "blocked": False,
+        "selected_agents": ["budget"],
+        "agent_results": [
+            {
+                "agent": "budget",
+                "data": {
+                    "income": 4000,
+                    "evidence_status": "grounded",
+                    "contexts": [{"source_id": "approved-source"}],
+                    "sources": [{"corpus_version": corpus}],
+                },
+            }
+        ],
+        "audit": audit,
+    }
+    responses = iter(
+        [
+            (200, json.dumps(coach_response)),
+            (200, json.dumps({"audit": audit})),
+        ]
+    )
+    monkeypatch.setattr(
+        post_deploy_smoke,
+        "request",
+        lambda *args, **kwargs: next(responses),
+    )
+
+    post_deploy_smoke.check_conditional_education_rag(
+        "https://example.test/api/coach",
+        "synthetic-api-key",
+        corpus,
+    )

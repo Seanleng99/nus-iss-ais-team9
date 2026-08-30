@@ -1,8 +1,10 @@
 from collections.abc import Sequence
 
 from app.agents.base import BaseAgent
+from app.agents.education_access import should_request_education_context
 from app.core.schemas import (
     AgentName,
+    AgentResult,
     AgentTask,
     CapabilityName,
     DependencyRequest,
@@ -51,6 +53,34 @@ class GoalStrategyAgent(BaseAgent):
                     ),
                 ),
             )
+        if (
+            goals
+            and should_request_education_context(task.sanitized_message)
+            and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
+            and not any(
+                CapabilityName.EDUCATION_CONTEXT.value in warning
+                for warning in task.dependency_warnings
+            )
+        ):
+            return (
+                DependencyRequestDraft(
+                    capability=CapabilityName.EDUCATION_CONTEXT,
+                    reason_code="GOAL_EXPLANATION_REQUIRES_EDUCATION",
+                    required_output_fields=[
+                        "evidence_status",
+                        "contexts",
+                        "sources",
+                        "corpus_version",
+                    ],
+                    required=False,
+                    selection_guidance=(
+                        "Request approved Education context only when the user asks "
+                        "about investment concepts such as risk, diversification, fees, "
+                        "CPFIS, ETFs, or time horizon in relation to a goal. Never "
+                        "request it for a calculation-only goal projection."
+                    ),
+                ),
+            )
         return ()
 
     def _missing_input_questions(self, task: AgentTask) -> Sequence[str]:
@@ -68,29 +98,67 @@ class GoalStrategyAgent(BaseAgent):
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)
         projections = call_tool(self.name, "goal_projection", snapshot)
         capacity = task.resolved_dependencies.get(CapabilityName.MONTHLY_SAVINGS_CAPACITY)
-        if capacity is None:
-            return {"projections": projections}
+        grounding: dict = {"projections": projections}
+        if capacity is not None:
+            monthly_capacity = float(capacity.data["estimated_savings_capacity"])
+            feasibility = [
+                {
+                    "name": projection["name"],
+                    "monthly_required": projection["monthly_required"],
+                    "estimated_savings_capacity": monthly_capacity,
+                    "monthly_shortfall": round(
+                        max(float(projection["monthly_required"]) - monthly_capacity, 0.0),
+                        2,
+                    ),
+                    "status": (
+                        "feasible"
+                        if monthly_capacity >= float(projection["monthly_required"])
+                        else "shortfall"
+                    ),
+                }
+                for projection in projections
+            ]
+            grounding.update(
+                {
+                    "monthly_savings_capacity": capacity.data,
+                    "feasibility": feasibility,
+                }
+            )
 
-        monthly_capacity = float(capacity.data["estimated_savings_capacity"])
-        feasibility = [
-            {
-                "name": projection["name"],
-                "monthly_required": projection["monthly_required"],
-                "estimated_savings_capacity": monthly_capacity,
-                "monthly_shortfall": round(
-                    max(float(projection["monthly_required"]) - monthly_capacity, 0.0),
-                    2,
-                ),
-                "status": (
-                    "feasible"
-                    if monthly_capacity >= float(projection["monthly_required"])
-                    else "shortfall"
-                ),
-            }
-            for projection in projections
-        ]
-        return {
-            "projections": projections,
-            "monthly_savings_capacity": capacity.data,
-            "feasibility": feasibility,
-        }
+        education = task.resolved_dependencies.get(CapabilityName.EDUCATION_CONTEXT)
+        if education is not None:
+            grounding.update(education.data)
+            grounding["retrieval_consumer"] = self.name.value
+        elif any(
+            CapabilityName.EDUCATION_CONTEXT.value in warning
+            for warning in task.dependency_warnings
+        ):
+            grounding.update(
+                {
+                    "evidence_status": "insufficient",
+                    "contexts": [],
+                    "sources": [],
+                    "retrieval_consumer": self.name.value,
+                }
+            )
+        if task.dependency_warnings:
+            grounding["dependency_warnings"] = task.dependency_warnings
+        return grounding
+
+    def _evidence_gap_result(self, grounding: dict) -> AgentResult:
+        return AgentResult(
+            agent=self.name,
+            summary=(
+                "The deterministic goal projection is available, but the approved "
+                "Education knowledge base does not contain enough information for the "
+                "requested investment explanation."
+            ),
+            rationale=[
+                (
+                    "Calculated values were preserved while unsupported educational "
+                    "claims were withheld."
+                )
+            ],
+            confidence=1.0,
+            data=grounding,
+        )

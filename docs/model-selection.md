@@ -4,7 +4,7 @@
 
 Amazon Nova Lite through `apac.amazon.nova-lite-v1:0` remains the selected model for the synthetic-data demo while Amazon Nova Micro awaits blinded human review. The formal comparison made both models objectively eligible; it did not authorize an automatic replacement. This decision does not approve either model for real personal financial data, regulated advice, or production users.
 
-The comparison uses prompt set `v3`, the same orchestrator and deterministic tools as the service, and the local approved Education fixture so both models receive identical retrieval evidence. Both models are invoked from `ap-southeast-1` through geography-bound APAC inference profiles. Live catalog inspection must show each profile as active, account invocation must succeed, and the deployment source Region must match the selection policy before quality measurements are eligible.
+The recorded comparison used prompt set `v3`, the then-current orchestrator and deterministic tools, and the local approved Education fixture so both models received identical retrieval evidence. It remains historical decision evidence. The active service now uses prompt set `v4` and conditional Education tool dependencies, so the comparison must be rerun before any model replacement decision. Both models are invoked from `ap-southeast-1` through geography-bound APAC inference profiles. Live catalog inspection must show each profile as active, account invocation must succeed, and the deployment source Region must match the selection policy before quality measurements are eligible.
 
 ## Selection Policy
 

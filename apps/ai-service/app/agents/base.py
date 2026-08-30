@@ -61,16 +61,7 @@ class BaseAgent(ABC):
 
         grounding = self._ground(task, decision.sanitized_text)
         if grounding.get("evidence_status") == "insufficient":
-            result = AgentResult(
-                agent=self.name,
-                summary=(
-                    "The approved knowledge base does not contain enough information "
-                    "to answer this question."
-                ),
-                rationale=["No relevant approved source was retrieved."],
-                confidence=1.0,
-                data=grounding,
-            )
+            result = self._evidence_gap_result(grounding)
             return CompletedInvocation(
                 result=result,
                 capabilities=self._capabilities(task, grounding, result),
@@ -210,6 +201,18 @@ class BaseAgent(ABC):
     ) -> list[CapabilityResult]:
         del task, grounding, result
         return []
+
+    def _evidence_gap_result(self, grounding: dict) -> AgentResult:
+        return AgentResult(
+            agent=self.name,
+            summary=(
+                "The approved knowledge base does not contain enough information "
+                "to answer this question."
+            ),
+            rationale=["No relevant approved source was retrieved."],
+            confidence=1.0,
+            data=grounding,
+        )
 
     @abstractmethod
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:

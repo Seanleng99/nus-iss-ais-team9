@@ -16,8 +16,8 @@ def local_orchestrator() -> AgentOrchestrator:
     return AgentOrchestrator(config=config, gateway=LocalFixtureModelGateway())
 
 
-def test_prompt_catalog_defaults_to_active_v3() -> None:
-    assert PromptCatalog().version == "v3"
+def test_prompt_catalog_defaults_to_active_v4() -> None:
+    assert PromptCatalog().version == "v4"
 
 
 def test_settings_rejects_superseded_v1_prompt() -> None:
@@ -284,7 +284,7 @@ def test_compliance_review_receives_investment_evidence() -> None:
     } == {"coach-evidence-policy"}
 
 
-def test_investment_rag_reports_v3_prompt_set_and_model_telemetry() -> None:
+def test_investment_rag_reports_v4_prompt_set_and_model_telemetry() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s9",
@@ -294,13 +294,14 @@ def test_investment_rag_reports_v3_prompt_set_and_model_telemetry() -> None:
 
     response = local_orchestrator().handle(request)
 
-    assert response.audit["prompt_set_version"] == "v3"
+    assert response.audit["prompt_set_version"] == "v4"
     assert response.audit["model_call_count"] == len(response.audit["model_calls"])
     assert response.audit["model_call_count"] >= 4
     assert response.audit["workflow_duration_ms"] >= 0
     assert response.audit["retrieval_corpus_versions"] == [
         "investment-education-sg@local-fixture-v1"
     ]
+    assert response.audit["retrieval_consumers"] == ["investment_education"]
     assert response.audit["retrieval_sources"][0]["source_id"] == (
         "cpf-beginners-guide-to-investing"
     )

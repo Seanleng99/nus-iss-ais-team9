@@ -18,7 +18,7 @@ def test_loads_named_container_environment(tmp_path) -> None:
                     {
                         "name": "ai-service",
                         "environment": [
-                            {"name": "PROMPT_SET_VERSION", "value": "v3"},
+                            {"name": "PROMPT_SET_VERSION", "value": "v4"},
                             {"name": "RAG_PROVIDER", "value": "bedrock"},
                         ],
                     }
@@ -29,7 +29,7 @@ def test_loads_named_container_environment(tmp_path) -> None:
     )
 
     assert load_container_environment(task, "ai-service") == {
-        "PROMPT_SET_VERSION": "v3",
+        "PROMPT_SET_VERSION": "v4",
         "RAG_PROVIDER": "bedrock",
     }
 
@@ -37,7 +37,7 @@ def test_loads_named_container_environment(tmp_path) -> None:
 def test_reports_mismatched_and_missing_configuration() -> None:
     errors = verify_environment(
         {"PROMPT_SET_VERSION": "v2"},
-        {"PROMPT_SET_VERSION": "v3", "RAG_PROVIDER": "bedrock"},
+        {"PROMPT_SET_VERSION": "v4", "RAG_PROVIDER": "bedrock"},
         {"EDUCATION_KNOWLEDGE_BASE_ID"},
     )
 

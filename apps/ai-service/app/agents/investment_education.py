@@ -1,11 +1,9 @@
-from dataclasses import asdict
-
 from app.agents.base import BaseAgent
-from app.core.guardrails import sanitize_rag_document, validate_tool_permission
+from app.core.guardrails import validate_tool_permission
 from app.core.prompts import PromptCatalog
 from app.core.schemas import AgentName, AgentTask
 from app.models.gateway import ModelGateway
-from app.rag.retriever import EducationRetriever
+from app.rag.retriever import EducationRetriever, build_education_context
 
 
 class InvestmentEducationAgent(BaseAgent):
@@ -26,38 +24,10 @@ class InvestmentEducationAgent(BaseAgent):
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del task
         validate_tool_permission(self.name, "education_retriever")
-        contexts = []
-        for item in self.education_retriever.retrieve(sanitized_message):
-            context = asdict(item)
-            decision = sanitize_rag_document(context["text"])
-            context["text"] = decision.sanitized_text
-            context["findings"] = list(dict.fromkeys([*context["findings"], *decision.findings]))
-            contexts.append(context)
-        sources = [
-            {
-                key: context[key]
-                for key in (
-                    "source_id",
-                    "title",
-                    "issuing_organization",
-                    "canonical_url",
-                    "published_at",
-                    "document_version",
-                    "checksum",
-                    "corpus_version",
-                    "review_due_at",
-                )
-            }
-            for context in contexts
-        ]
-        return {
-            "scope": "General investment education from approved sources without product advice.",
-            "evidence_status": "grounded" if contexts else "insufficient",
-            "corpus_version": getattr(
-                self.education_retriever,
-                "expected_corpus_version",
-                getattr(self.education_retriever, "corpus_version", None),
-            ),
-            "contexts": contexts,
-            "sources": sources,
-        }
+        grounding = build_education_context(
+            self.education_retriever,
+            sanitized_message,
+            scope="General investment education from approved sources without product advice.",
+        )
+        grounding["retrieval_consumer"] = self.name.value
+        return grounding

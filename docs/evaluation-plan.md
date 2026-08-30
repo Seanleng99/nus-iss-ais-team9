@@ -49,7 +49,7 @@ Dataset: `apps/ai-service/app/evals/datasets/rag_retrieval.jsonl`
 
 Expected output:
 
-- Relevant approved source metadata attached to the Investment Education result and top-level response.
+- Relevant approved source metadata attached to the Investment Education, conditional Budget, or conditional Goal Strategy result and top-level response.
 - The same sanitized education evidence supplied to Risk and Compliance for independent review.
 - No use of live web content.
 - Sanitized context with unsafe document instructions removed.
@@ -67,10 +67,10 @@ Acceptance criteria:
 - Recall@3 of at least 85 percent after the knowledge base is populated.
 - 100 percent explicit evidence-gap responses when no approved source passes the threshold.
 - 100 percent removal of seed indirect prompt-injection instructions.
-- Every Investment Education response retains controlled source metadata when RAG is used.
+- Every Investment Education, conditional Budget, or conditional Goal Strategy response retains controlled source metadata when RAG is used.
 - Every live citation and persisted trace matches the configured corpus version and carries document version, SHA-256 checksum, and review deadline.
 - Scheduled source governance finds zero stale, withdrawn, tampered, missing, or unmanifested deployed objects.
-- Investment Education receives only `education_retriever`; only Risk and Compliance receives `policy_retriever`.
+- Investment Education may call `education_retriever`; Budget and Goal Strategy may receive it only through authorized `education_context` dependencies; Spending and Compliance are denied Education retrieval; only Risk and Compliance receives `policy_retriever`.
 
 ## Policy RAG Retrieval
 
@@ -106,6 +106,8 @@ Expected output:
 
 - The requested capability names and their centrally authorized providers.
 - Correct multi-hop edges for Goal Strategy -> Budget -> Spending.
+- Correct tool edges and within-run reuse for conditional Budget/Goal Strategy -> `education_retriever`.
+- No Education retrieval for calculation-only Budget/Goal requests or Spending.
 - Typed `needs_input` questions when required user facts are absent.
 - No direct specialist invocation or unauthorized capability request.
 
@@ -119,7 +121,7 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 ## Regression And Drift
 
-`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v5 covers routing, budgets, Education retrieval, Policy retrieval, guardrails, dynamic dependencies, regulated-advice behavior, and paired fairness consistency. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
+`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v6 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, and paired fairness consistency across 52 cases/pairs. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
 
 The fixed seed set detects behavior regression, not production input drift. After privacy approval, monitor only aggregate production distributions described in `docs/operations.md` and use observed shifts to expand representative evaluation cases.
 
@@ -133,7 +135,7 @@ Before an AWS release is approved for anything beyond the synthetic demo, run th
 
 `.github/workflows/aws-operational-validation.yml` runs `infra/scripts/live_evaluation.py` against the deployed backend weekly and on demand. The versioned cases in `infra/llmsecops/live-evaluation-cases.jsonl` cover routing, multi-hop dynamic dependencies, typed missing-input behavior, a critical prompt injection, and grounded Education RAG. Each case is repeated from a new synthetic session so the result measures the deployed Bedrock model, prompt set, orchestrator, backend persistence path, and Knowledge Base adapter together.
 
-The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, and grounded Education RAG. Grounded cases additionally require full Education and Policy source provenance, the exact configured corpus versions, and the same versions in the privacy-safe trace. The workflow repeats every case three times by default.
+The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, agent and tool provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, direct Investment Education RAG, and conditional Budget/Goal Strategy Education RAG. Grounded cases additionally require full Education and Policy source provenance, the exact configured corpus versions, and the same versions in the privacy-safe trace. The workflow repeats every case three times by default.
 
 The gate requires every case-level structural check to pass. It also enforces a default 10-second P95 ceiling and USD 0.05 estimated-cost ceiling. The bounded load gate uses an 8-second P95 ceiling. These replace the original 30-second characterization bounds using the first retained AWS baseline while leaving limited variance above the observed live P95. Cost is estimated from audited input/output token counts. The default Nova Lite rates are configurable command arguments and must be checked against the current AWS pricing page before a formal assessment.
 

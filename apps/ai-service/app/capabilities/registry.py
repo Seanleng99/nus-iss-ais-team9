@@ -42,10 +42,10 @@ DEFAULT_CAPABILITIES = (
         required_inputs=["goals"],
     ),
     CapabilityDefinition(
-        capability=CapabilityName.INVESTMENT_EDUCATION_EVIDENCE,
-        provider=AgentName.INVESTMENT_EDUCATION.value,
-        provider_type=CapabilityProviderType.AGENT,
-        allowed_requesters={AgentName.RISK_COMPLIANCE},
+        capability=CapabilityName.EDUCATION_CONTEXT,
+        provider="education_retriever",
+        provider_type=CapabilityProviderType.TOOL,
+        allowed_requesters={AgentName.BUDGET, AgentName.GOAL_STRATEGY},
         required_inputs=["sanitized_message"],
     ),
     CapabilityDefinition(

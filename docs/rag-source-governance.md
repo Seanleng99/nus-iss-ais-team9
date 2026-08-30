@@ -2,7 +2,7 @@
 
 ## Governed Corpus
 
-The Investment Education knowledge base uses the versioned manifest at `knowledge/investment_education/source_manifest.json` as its source of truth. Corpus version `investment-education-sg@2026-08-28.1` contains six approved public-reference documents for the synthetic-data demo. Approval does not grant a production-content licence or authorize real personal financial data.
+The governed Education knowledge base uses the versioned manifest at `knowledge/investment_education/source_manifest.json` as its source of truth. Corpus version `investment-education-sg@2026-08-28.1` contains six approved public-reference documents for the synthetic-data demo. It supports Investment Education directly and conditional Budget or Goal Strategy explanations through the orchestrator. Approval does not grant a production-content licence or authorize real personal financial data.
 
 Each manifest entry records:
 
@@ -54,7 +54,7 @@ The ECS task definition pins `EDUCATION_CORPUS_VERSION`. The Bedrock retriever a
 - has not passed its review deadline; and
 - carries a valid SHA-256 checksum and required provenance.
 
-Accepted citations expose document version, checksum, corpus version, and review deadline through the AI and backend APIs. Privacy-safe orchestration traces additionally record the corpus versions and source/version/checksum tuples used by a response. Evidence-gap traces still record the configured corpus version through the Investment Education result.
+Accepted citations expose document version, checksum, corpus version, and review deadline through the AI and backend APIs. Privacy-safe orchestration traces additionally record the retrieval consumer, dependency edge, corpus versions, and source/version/checksum tuples used by a response. Conditional retrieval queries contain canonical topic labels rather than personal financial amounts. Evidence-gap traces still record the configured corpus version through the consuming Investment Education, Budget, or Goal Strategy result.
 
 ## AWS Evidence
 
