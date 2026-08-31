@@ -1,7 +1,12 @@
 import pytest
 
 from app.core.config import Settings
-from app.models.gateway import BedrockModelGateway, ModelGatewayError
+from app.models.gateway import (
+    BedrockModelGateway,
+    ModelGatewayError,
+    ModelGeneration,
+    TracingModelGateway,
+)
 
 
 class StubBedrockClient:
@@ -12,6 +17,22 @@ class StubBedrockClient:
     def converse(self, **kwargs) -> dict:
         self.request = kwargs
         return self.response
+
+
+class UsageGateway:
+    def __init__(self, total_tokens: int) -> None:
+        self.total_tokens = total_tokens
+
+    def generate(self, **kwargs) -> str:
+        del kwargs
+        return ModelGeneration(
+            "ok",
+            usage={
+                "inputTokens": self.total_tokens - 500,
+                "outputTokens": 500,
+                "totalTokens": self.total_tokens,
+            },
+        )
 
 
 def test_bedrock_gateway_uses_converse_and_inference_controls() -> None:
@@ -67,3 +88,54 @@ def test_bedrock_gateway_preserves_only_safe_provider_error_code() -> None:
 
     assert raised.value.code == "BEDROCK_ACCESSDENIEDEXCEPTION"
     assert "provider detail" not in str(raised.value)
+
+
+def test_default_model_token_budget_allows_assessment_workflow_headroom() -> None:
+    assert Settings().max_model_tokens_per_run == 20_000
+
+
+def test_tracing_gateway_allows_exact_model_token_budget() -> None:
+    settings = Settings(MAX_MODEL_TOKENS_PER_RUN=20_000)
+    gateway = TracingModelGateway(UsageGateway(10_000), settings)
+    token = gateway.bind_trace("at-budget")
+
+    try:
+        for _ in range(2):
+            result = gateway.generate(
+                system_prompt="PROMPT_ID: test",
+                user_prompt="{}",
+                temperature=0.1,
+                max_tokens=500,
+            )
+    finally:
+        gateway.reset_trace(token)
+        gateway.clear("at-budget")
+
+    assert result == "ok"
+
+
+def test_tracing_gateway_reports_model_token_budget_overrun() -> None:
+    settings = Settings(MAX_MODEL_TOKENS_PER_RUN=20_000)
+    gateway = TracingModelGateway(UsageGateway(10_001), settings)
+    token = gateway.bind_trace("over-budget")
+
+    try:
+        gateway.generate(
+            system_prompt="PROMPT_ID: test",
+            user_prompt="{}",
+            temperature=0.1,
+            max_tokens=500,
+        )
+        with pytest.raises(ModelGatewayError) as raised:
+            gateway.generate(
+                system_prompt="PROMPT_ID: test",
+                user_prompt="{}",
+                temperature=0.1,
+                max_tokens=500,
+            )
+    finally:
+        gateway.reset_trace(token)
+        gateway.clear("over-budget")
+
+    assert raised.value.code == "MODEL_TOKEN_BUDGET_EXCEEDED"
+    assert raised.value.component == "model_budget"

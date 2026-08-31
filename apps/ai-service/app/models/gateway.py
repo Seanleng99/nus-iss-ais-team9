@@ -363,4 +363,8 @@ class TracingModelGateway:
                             int(item.get("total_tokens") or 0) for item in calls
                         )
                 if total_tokens > self.settings.max_model_tokens_per_run and status == "completed":
-                    raise ModelGatewayError("The workflow exceeded its model-token budget.")
+                    raise ModelGatewayError(
+                        "The workflow exceeded its model-token budget.",
+                        code="MODEL_TOKEN_BUDGET_EXCEEDED",
+                        component="model_budget",
+                    )
