@@ -2,9 +2,9 @@
 
 ## Decision
 
-Amazon Nova Lite through `apac.amazon.nova-lite-v1:0` remains the selected model for the synthetic-data demo while Amazon Nova Micro awaits blinded human review. The formal comparison made both models objectively eligible; it did not authorize an automatic replacement. This decision does not approve either model for real personal financial data, regulated advice, or production users.
+Amazon Nova Lite through `apac.amazon.nova-lite-v1:0` remains the selected model for the synthetic-data demo. The current prompt-set-v4 comparison rejected Amazon Nova Micro at the objective dependency gate, so Micro does not advance to blinded human review. This decision does not approve either model for real personal financial data, regulated advice, or production users.
 
-The recorded comparison used prompt set `v3`, the then-current orchestrator and deterministic tools, and the local approved Education fixture so both models received identical retrieval evidence. It remains historical decision evidence. The active service now uses prompt set `v4` and conditional Education tool dependencies, so the comparison must be rerun before any model replacement decision. Both models are invoked from `ap-southeast-1` through geography-bound APAC inference profiles. Live catalog inspection must show each profile as active, account invocation must succeed, and the deployment source Region must match the selection policy before quality measurements are eligible.
+The earlier prompt-set-v3 comparison remains historical decision evidence only. The current comparison used prompt set `v4`, the deployed orchestrator and deterministic tools, and the local approved Education fixture so both models received identical retrieval evidence. Both models were invoked from `ap-southeast-1` through geography-bound APAC inference profiles. Live catalog inspection showed each profile as active, account invocation succeeded, and the deployment source Region matched the selection policy before quality measurements were considered eligible.
 
 ## Selection Policy
 
@@ -23,24 +23,24 @@ An objectively eligible candidate does not replace the baseline automatically. I
 
 ## Comparison Evidence
 
-The formal AWS run on 2026-08-28 used comparison ID `nova-lite-vs-nova-micro-2026-08` at commit `9826c8cc06225affef541e8b8c1e02531756991b`. Both profiles were active, exposed six APAC destination Regions, completed all 45 cases, and produced no invocation errors. The retained workflow evidence is [run 33177819211](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33177819211).
+The formal AWS run on 2026-08-31 used comparison ID `nova-lite-vs-nova-micro-v4-2026-08-31` at commit `d5e1b4a6b0f225c91ebd926f9a3a32f1060b49ed`. Both profiles were active, exposed six APAC destination Regions, completed all 45 executions, and produced no invocation errors. The retained workflow evidence is [run 33354207859](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33354207859).
 
 | Metric | Nova Lite baseline | Nova Micro candidate | Gate |
 |---|---:|---:|---:|
-| Overall structural pass | 45/45 (100%) | 45/45 (100%) | 100% |
+| Overall structural pass | 45/45 (100%) | 42/45 (93.33%) | 100% |
 | Routing | 100% | 100% | 100% |
-| Dynamic dependency | 100% | 100% | 100% |
+| Dynamic dependency | 100% | 66.67% | 100% |
 | Safety | 100% | 100% | 100% |
 | RAG | 100% | 100% | 100% |
 | Fairness consistency | 100% | 100% | 100% |
-| P50 per request | 4,539.44 ms | 3,932.32 ms | Informational |
-| P95 per request | 7,689.87 ms | 7,077.01 ms | At most 10,000 ms |
-| P99 per request | 8,388.86 ms | 8,142.21 ms | Informational |
-| Audited input/output tokens | 82,831 / 30,566 | 67,536 / 21,949 | Informational |
-| Audited provider calls | 187 | 171 | Informational |
-| Estimated run cost | USD 0.012306 | USD 0.005437 | At most USD 0.05 |
+| P50 per request | 4,626.03 ms | 3,981.25 ms | Informational |
+| P95 per request | 7,542.90 ms | 8,022.82 ms | At most 10,000 ms |
+| P99 per request | 7,855.37 ms | 8,624.78 ms | Informational |
+| Audited input/output tokens | 113,794 / 32,984 | 94,077 / 22,808 | Informational |
+| Audited provider calls | 189 | 171 | Informational |
+| Estimated run cost | USD 0.014744 | USD 0.006486 | At most USD 0.05 |
 
-Micro reduced estimated comparison cost by about 56 percent and was faster at P50, P95, and P99 in this run. The machine decision is `pending_human_review`: the blinded 45-row review set must now be scored for explanation clarity, groundedness, uncertainty calibration, and safe helpfulness. Nova Lite remains the selected synthetic-demo model until reviewers approve Micro and the normal configuration change is reviewed and deployed.
+Micro reduced estimated comparison cost by about 56 percent and was faster at P50, but it was slower at P95 and P99. More importantly, Micro incorrectly marked the synthetic missing-income request as blocked in all three repeats, even though it correctly identified that the Budget agent needed user input. That yielded `PASS_RATE_BELOW_THRESHOLD` and `DEPENDENCY_PASS_RATE_BELOW_THRESHOLD`. The deterministic machine decision is `retain_baseline`, with `human_review_required: false`; the generated 45-row blinded file is retained for diagnosis but is not an approval gate for this failed candidate run.
 
 ## Reproduction And Evidence Handling
 
@@ -58,4 +58,4 @@ The workflow uses short-lived GitHub OIDC credentials and a least-privilege role
 
 The report records model/profile and foundation IDs, source Region, inference geography, catalog destinations, prompt version, commit SHA, case and repeat IDs, structural checks, latency, audited tokens, price assumptions, execution errors, gate failures, and the deterministic selection reason. Recheck current [Bedrock inference-profile support](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html) and [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) before every formal run.
 
-Rerun the comparison after changes to models, prompts, orchestration, tools, retrieval behavior, policy thresholds, or the case set. A future model change requires a fresh all-green objective run, completed blinded review, documented inference-residency approval, and a reviewed configuration change.
+Rerun the comparison after changes to models, prompts, orchestration, tools, retrieval behavior, policy thresholds, or the case set. A future model change requires a fresh all-green objective run, completed blinded review, documented inference-residency approval, and a reviewed configuration change. The historical prompt-set-v3 run is [run 33177819211](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33177819211).

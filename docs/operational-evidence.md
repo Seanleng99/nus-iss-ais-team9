@@ -14,7 +14,7 @@ This register contains privacy-safe evidence for the synthetic-data AWS demo. It
 | CI and LLMSecOps | Passed 159 AI-service tests, two subtests, all 52 policy-v6 evaluation cases/pairs, migrations, SAST, integration/load smoke, and hardened image builds | [GitHub Actions run 33347157673](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33347157673) |
 | AWS release | Passed immutable image scanning, migration task, all three ECS deployments, and health/AI-safety smoke tests; AI revision 36 and backend revision 67 reached steady state | [GitHub Actions run 33347260233](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33347260233) |
 | AWS operational validation | Passed service, autoscaling, dashboard, alarm and confirmed-subscription, edge-security, trace-retention, repeated live-model/RAG, bounded-load, and cleanup gates | [GitHub Actions run 33349636155](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33349636155) |
-| Formal Bedrock model comparison | Both profiles passed 45/45 structural runs; candidate awaits blinded human review | [GitHub Actions run 33177819211](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33177819211) |
+| Formal Bedrock model comparison | Nova Lite passed 45/45; Nova Micro passed 42/45 and was rejected at the dependency gate; baseline retained | [GitHub Actions run 33354207859](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33354207859) |
 | Education RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit; evidence retained for 90 days | [GitHub Actions run 33193755856](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33193755856) |
 | Policy RAG CI and AWS release | Passed Policy retrieval/evaluation controls, immutable-image scanning, deployment, and live provenance/persisted-trace smoke checks | [CI run 33229618646](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229618646) and [release run 33229698149](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229698149) |
 | Policy RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit with three approved sources and zero issues; evidence retained for 90 days | [GitHub Actions run 33231041612](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33231041612) |
@@ -41,9 +41,9 @@ The GitHub environment variables enforce the 10-second live P95, 8-second load P
 
 ## Candidate Model Decision
 
-The formal 2026-08-28 AWS comparison ran 15 cases three times per model through the service orchestrator and prompt set v3. Both the Nova Lite and Nova Micro APAC profiles were active from Singapore, listed six APAC destinations, completed all 45 cases, and had zero execution errors.
+The formal 2026-08-31 AWS comparison ran 15 cases three times per model through the service orchestrator and prompt set v4. Both the Nova Lite and Nova Micro APAC profiles were active from Singapore, listed six APAC destinations, completed all 45 executions, and had zero invocation errors.
 
-Nova Lite passed 45/45 structural runs with 7.69-second P95 and USD 0.012306 estimated cost. Nova Micro also passed 45/45, with 7.08-second P95 and USD 0.005437 estimated cost. The versioned policy therefore recorded `pending_human_review`. The blinded 45-row review remains required, and `apac.amazon.nova-lite-v1:0` stays selected in the meantime; see `docs/model-selection.md`.
+Nova Lite passed 45/45 structural runs with 7.54-second P95 and USD 0.014744 estimated cost. Nova Micro passed 42/45, with 8.02-second P95 and USD 0.006486 estimated cost. Micro failed all three repeats of the missing-income dependency case by marking the request blocked while correctly identifying that the Budget agent needed user input. Its overall pass rate was 93.33 percent and its dependency pass rate was 66.67 percent against 100-percent gates. The versioned policy therefore recorded `retain_baseline` and `human_review_required: false`; `apac.amazon.nova-lite-v1:0` remains selected. The JSON report, 45-row blinded diagnostic file, and separate review key are retained for 90 days in [run 33354207859](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33354207859). See `docs/model-selection.md` for the complete decision record.
 
 ## Education RAG Source Governance
 
@@ -68,5 +68,5 @@ Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5x
 ## Open Evidence
 
 - Representative-user validation of explanations and confidence presentation.
-- Complete and approve the current blinded Nova Micro review before any model change.
+- If a Nova Micro change is pursued, first correct or otherwise resolve its repeatable missing-input dependency behavior, then produce a fresh all-green comparison before blinded review.
 - Review the exact-version base-image CVE exceptions before they expire on 2026-09-18.
