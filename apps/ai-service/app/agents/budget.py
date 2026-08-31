@@ -20,6 +20,7 @@ class BudgetAgent(BaseAgent):
 
     def _dependency_requests(self, task: AgentTask) -> list[DependencyRequest]:
         message = task.sanitized_message.casefold()
+        requests: list[DependencyRequest] = []
         explicit_spending_context = any(
             term in message
             for term in (
@@ -30,22 +31,47 @@ class BudgetAgent(BaseAgent):
                 "recent purchases",
             )
         )
-        return [
-            DependencyRequest(
-                requester_task_id=task.task_id,
-                requester=self.name,
-                capability=CapabilityName.TRANSACTION_CATEGORY_TOTALS,
-                reason_code="BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS",
-                required_output_fields=["category_totals", "transaction_count"],
-                required=False,
-            )
-        ] if (
+        if (
             explicit_spending_context
             and int(task.context_features.get("recent_transaction_count", 0)) > 0
             and CapabilityName.TRANSACTION_CATEGORY_TOTALS
             not in task.resolved_dependencies
             and not task.dependency_warnings
-        ) else []
+        ):
+            requests.append(
+                DependencyRequest(
+                    requester_task_id=task.task_id,
+                    requester=self.name,
+                    capability=CapabilityName.TRANSACTION_CATEGORY_TOTALS,
+                    reason_code="BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS",
+                    required_output_fields=["category_totals", "transaction_count"],
+                    required=False,
+                )
+            )
+        if (
+            should_request_education_context(task.sanitized_message)
+            and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
+            and not any(
+                CapabilityName.EDUCATION_CONTEXT.value in warning
+                for warning in task.dependency_warnings
+            )
+        ):
+            requests.append(
+                DependencyRequest(
+                    requester_task_id=task.task_id,
+                    requester=self.name,
+                    capability=CapabilityName.EDUCATION_CONTEXT,
+                    reason_code="BUDGET_EXPLANATION_REQUIRES_EDUCATION",
+                    required_output_fields=[
+                        "evidence_status",
+                        "contexts",
+                        "sources",
+                        "corpus_version",
+                    ],
+                    required=False,
+                )
+            )
+        return requests
 
     def _dependency_options(self, task: AgentTask) -> list[DependencyRequestDraft]:
         options: list[DependencyRequestDraft] = []
@@ -64,33 +90,6 @@ class BudgetAgent(BaseAgent):
                     selection_guidance=(
                         "Request this capability when the user explicitly asks to use "
                         "recent spending, transactions, or expense patterns in the budget."
-                    ),
-                )
-            )
-        if (
-            should_request_education_context(task.sanitized_message)
-            and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
-            and not any(
-                CapabilityName.EDUCATION_CONTEXT.value in warning
-                for warning in task.dependency_warnings
-            )
-        ):
-            options.append(
-                DependencyRequestDraft(
-                    capability=CapabilityName.EDUCATION_CONTEXT,
-                    reason_code="BUDGET_EXPLANATION_REQUIRES_EDUCATION",
-                    required_output_fields=[
-                        "evidence_status",
-                        "contexts",
-                        "sources",
-                        "corpus_version",
-                    ],
-                    required=False,
-                    selection_guidance=(
-                        "Request approved Education context only when the user asks "
-                        "about investment concepts such as risk, diversification, fees, "
-                        "CPFIS, ETFs, or time horizon in relation to a budget. Never "
-                        "request it for a calculation-only budget."
                     ),
                 )
             )

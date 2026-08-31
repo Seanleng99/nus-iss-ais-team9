@@ -81,6 +81,34 @@ def test_budget_resolves_education_tool_without_scheduling_investment_agent() ->
     )
 
 
+def test_allowlisted_education_topic_does_not_use_stochastic_planner() -> None:
+    class PlannerRejectingGateway(LocalFixtureModelGateway):
+        def generate(self, **kwargs) -> str:
+            assert not kwargs["system_prompt"].startswith(
+                "PROMPT_ID: dependency_planner"
+            )
+            return super().generate(**kwargs)
+
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=PlannerRejectingGateway(),
+        education_retriever=CountingEducationRetriever(),
+    ).handle(
+        budget_request(
+            "Create my monthly budget and explain diversification using approved "
+            "education sources."
+        )
+    )
+
+    assert response.blocked is False
+    assert response.audit["retrieval_consumers"] == ["budget"]
+    assert any(
+        item["capability"] == "education_context"
+        and item["resolution"] == "resolved"
+        for item in response.audit["dependency_resolutions"]
+    )
+
+
 def test_calculation_only_budget_does_not_query_education() -> None:
     retriever = CountingEducationRetriever()
     response = orchestrator(retriever).handle(
@@ -273,7 +301,7 @@ def test_goal_budget_spending_and_education_chain_completes_within_bound() -> No
     response = orchestrator(retriever).handle(CoachRequest.model_validate(payload))
 
     assert response.selected_agents == ["goal_strategy", "budget", "spending"]
-    assert response.audit["dependency_rounds"] == 6
+    assert response.audit["dependency_rounds"] == 5
     assert retriever.queries and len(retriever.queries) == 1
     assert {
         item["capability"] for item in response.audit["dependency_resolutions"]

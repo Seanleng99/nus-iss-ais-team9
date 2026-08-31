@@ -13,6 +13,18 @@ from typing import Any
 from uuid import uuid4
 
 
+class LiveEndpointError(OSError):
+    """Privacy-safe live endpoint failure retained in evaluation evidence."""
+
+    def __init__(self, status_code: int, correlation_id: str | None) -> None:
+        self.status_code = status_code
+        self.correlation_id = correlation_id or "missing"
+        super().__init__(
+            f"live endpoint returned HTTP {status_code}; "
+            f"correlation_id={self.correlation_id}"
+        )
+
+
 def require_http_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -46,9 +58,7 @@ def request_json(
             return body, response.headers.get("X-Correlation-ID")
     except urllib.error.HTTPError as exc:
         correlation_id = exc.headers.get("X-Correlation-ID") if exc.headers else None
-        raise OSError(
-            f"live endpoint returned HTTP {exc.code}; correlation_id={correlation_id or 'missing'}"
-        ) from exc
+        raise LiveEndpointError(exc.code, correlation_id) from exc
 
 
 def chat_session_delete_url(url: str, user_id: str, session_id: str) -> str:
@@ -396,6 +406,13 @@ def run_live_evaluation(
                         "error_type": type(exc).__name__,
                     }
                 )
+                if isinstance(exc, LiveEndpointError):
+                    record.update(
+                        {
+                            "http_status": exc.status_code,
+                            "correlation_id": exc.correlation_id,
+                        }
+                    )
             cleaned_up = cleanup_session(
                 url,
                 api_key,

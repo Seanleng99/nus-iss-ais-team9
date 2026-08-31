@@ -34,6 +34,30 @@ class GoalStrategyAgent(BaseAgent):
                     ],
                 ),
             )
+        if (
+            goals
+            and should_request_education_context(task.sanitized_message)
+            and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
+            and not any(
+                CapabilityName.EDUCATION_CONTEXT.value in warning
+                for warning in task.dependency_warnings
+            )
+        ):
+            return (
+                DependencyRequest(
+                    requester_task_id=task.task_id,
+                    requester=self.name,
+                    capability=CapabilityName.EDUCATION_CONTEXT,
+                    reason_code="GOAL_EXPLANATION_REQUIRES_EDUCATION",
+                    required_output_fields=[
+                        "evidence_status",
+                        "contexts",
+                        "sources",
+                        "corpus_version",
+                    ],
+                    required=False,
+                ),
+            )
         return ()
 
     def _dependency_options(self, task: AgentTask) -> Sequence[DependencyRequestDraft]:
@@ -50,34 +74,6 @@ class GoalStrategyAgent(BaseAgent):
                     selection_guidance=(
                         "Request this capability when the user asks whether a supplied "
                         "financial goal is feasible, reachable, or affordable."
-                    ),
-                ),
-            )
-        if (
-            goals
-            and should_request_education_context(task.sanitized_message)
-            and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
-            and not any(
-                CapabilityName.EDUCATION_CONTEXT.value in warning
-                for warning in task.dependency_warnings
-            )
-        ):
-            return (
-                DependencyRequestDraft(
-                    capability=CapabilityName.EDUCATION_CONTEXT,
-                    reason_code="GOAL_EXPLANATION_REQUIRES_EDUCATION",
-                    required_output_fields=[
-                        "evidence_status",
-                        "contexts",
-                        "sources",
-                        "corpus_version",
-                    ],
-                    required=False,
-                    selection_guidance=(
-                        "Request approved Education context only when the user asks "
-                        "about investment concepts such as risk, diversification, fees, "
-                        "CPFIS, ETFs, or time horizon in relation to a goal. Never "
-                        "request it for a calculation-only goal projection."
                     ),
                 ),
             )

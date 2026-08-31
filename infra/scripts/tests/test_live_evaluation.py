@@ -2,6 +2,7 @@ import urllib.error
 
 from infra.scripts import live_evaluation
 from infra.scripts.live_evaluation import (
+    LiveEndpointError,
     chat_session_delete_url,
     cleanup_session,
     enforce_thresholds,
@@ -287,3 +288,44 @@ def test_live_report_excludes_content_and_requires_cleanup(monkeypatch) -> None:
     assert "Private synthetic prompt" not in serialized
     assert "Content that must not enter evidence" not in serialized
     assert "secret" not in serialized
+
+
+def test_live_report_retains_bounded_http_failure_diagnostics(monkeypatch) -> None:
+    def unavailable(*_args, **_kwargs):
+        raise LiveEndpointError(503, "correlation-503")
+
+    monkeypatch.setattr(live_evaluation, "request_json", unavailable)
+    monkeypatch.setattr(
+        live_evaluation,
+        "cleanup_session",
+        lambda *_args, **_kwargs: True,
+    )
+
+    report = run_live_evaluation(
+        url="https://example.test/api/coach",
+        api_key="secret",
+        cases=[
+            {
+                "id": "unavailable",
+                "category": "routing",
+                "request": {"message": "Private synthetic prompt"},
+                "expected": {"selected_agents": ["budget"]},
+            }
+        ],
+        repeats=1,
+        timeout_seconds=1,
+        expected_model_provider="bedrock",
+        expected_model_id="model",
+        expected_prompt_version="v4",
+        input_cost_per_million=0.06,
+        output_cost_per_million=0.24,
+        commit_sha="abc123",
+    )
+
+    record = report["records"][0]
+    assert record["passed"] is False
+    assert record["error_type"] == "LiveEndpointError"
+    assert record["http_status"] == 503
+    assert record["correlation_id"] == "correlation-503"
+    assert "Private synthetic prompt" not in str(report)
+    assert "secret" not in str(report)
