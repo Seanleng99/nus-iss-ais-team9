@@ -4,23 +4,25 @@ This register contains privacy-safe evidence for the synthetic-data AWS demo. It
 
 ## Verified Baseline
 
-- Baseline date: 2026-08-28
-- Commit: `a1cb89353da855f5253dbdbbee2c396414053aac`
+- Baseline date: 2026-08-31
+- Commit: `2cc386ec4ac724876fa92e226237a969a2ce8db7`
 - Model/profile: `apac.amazon.nova-lite-v1:0`
-- Prompt set: `v3`
+- Prompt set: `v4`
 
 | Evidence | Result | Reference |
 |---|---|---|
-| CI and LLMSecOps | Passed backend/AI tests, migrations, SAST, policy-v4 evaluation, integration/load smoke, and hardened image builds | [GitHub Actions run 33140409703](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33140409703) |
-| AWS release | Passed immutable image scanning, migration task, all three ECS deployments, and health/AI-safety smoke tests | [GitHub Actions run 33140505433](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33140505433) |
-| AWS operational validation | Passed service, autoscaling, dashboard, alarm, trace-retention, expanded repeated live-model, RAG, load, and cleanup gates | [GitHub Actions run 33164881856](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33164881856) |
+| CI and LLMSecOps | Passed 159 AI-service tests, two subtests, all 52 policy-v6 evaluation cases/pairs, migrations, SAST, integration/load smoke, and hardened image builds | [GitHub Actions run 33347157673](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33347157673) |
+| AWS release | Passed immutable image scanning, migration task, all three ECS deployments, and health/AI-safety smoke tests; AI revision 36 and backend revision 67 reached steady state | [GitHub Actions run 33347260233](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33347260233) |
+| AWS operational validation | Passed service, autoscaling, dashboard, alarm and confirmed-subscription, edge-security, trace-retention, repeated live-model/RAG, bounded-load, and cleanup gates | [GitHub Actions run 33349636155](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33349636155) |
 | Formal Bedrock model comparison | Both profiles passed 45/45 structural runs; candidate awaits blinded human review | [GitHub Actions run 33177819211](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33177819211) |
 | Education RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit; evidence retained for 90 days | [GitHub Actions run 33193755856](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33193755856) |
 | Policy RAG CI and AWS release | Passed Policy retrieval/evaluation controls, immutable-image scanning, deployment, and live provenance/persisted-trace smoke checks | [CI run 33229618646](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229618646) and [release run 33229698149](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229698149) |
 | Policy RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit with three approved sources and zero issues; evidence retained for 90 days | [GitHub Actions run 33231041612](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33231041612) |
 | Custom-domain and HTTPS edge activation | Passed custom viewer hostname, TLS 1.2 policy, HTTPS-only TLS 1.2+ ALB origin, origin-header enforcement, and direct-origin denial | [GitHub Actions run 33280566917](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33280566917) |
 
-The operational artifact recorded 33 of 33 live runs passed across 11 cases repeated three times, 100 percent dependency/RAG/routing/safety category rates, 6.41-second live P95, 102,681 audited tokens, and USD 0.010126 estimated model cost. The bounded load artifact recorded 10 of 10 successes at concurrency two, 4.34-second P95, and zero chat-session cleanup failures. Task replacement was not re-exercised in this run; the successful replacement evidence from [run 32715294232](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/32715294232) remains applicable.
+The post-change operational artifact recorded 39 of 39 live runs passed across 13 cases repeated three times, 100 percent dependency/RAG/routing/safety category rates, 8.68-second live P95, 260,859 audited tokens, and USD 0.021336 estimated model cost. The bounded load artifact recorded 10 of 10 successes at concurrency two, 6.35-second P95, and zero chat-session cleanup failures. The workflow also recorded one confirmed email subscription, valid custom-domain TLS, denied direct-origin access, and a successful trace-retention task. Task replacement was intentionally not re-exercised in this run; the successful replacement evidence from [run 32715294232](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/32715294232) remains applicable.
+
+The first post-change attempt, [run 33346011494](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33346011494), passed its infrastructure, notification, edge, retention, and load checks but failed the live-evaluation gate at 32 of 39 runs. Seven HTTP 503 responses mapped to exhausted model-gateway retries while Budget and Goal agents stochastically replanned Education dependencies that deterministic topic rules had already established. Commit `2cc386ec4ac724876fa92e226237a969a2ce8db7` made those allowlisted Education requests deterministic, removed the redundant planner calls, and added privacy-safe HTTP status and correlation diagnostics. CI, release, and run 33349636155 then passed without a live failure.
 
 GitHub retains the operational artifact for 90 days. Copy the final approved artifact and workflow summaries into the assessment evidence store before that retention period expires.
 
@@ -61,11 +63,10 @@ The first retained read-only workflow audit passed with three approved sources a
 
 On 2026-08-30, the application stack created and confirmed one managed email subscription to the operational SNS topic. The first controlled alarm exercise exposed that the topic policy allowed EventBridge but did not authorize the CloudWatch Alarms service; historical alarm actions showed the same publish denial. The policy was corrected with account and source-ARN restrictions for the exact EventBridge deployment rule and the project alarm prefix.
 
-Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5xx alarm from `OK` to `ALARM`, recorded a successful SNS action at `2026-08-29T23:59:31.854Z`, and restored the alarm to `OK`. The local privacy-safe artifact records one confirmed subscription without the email address. On 2026-08-30, the Team 9 mailbox operator acknowledged receipt of both the `ALARM` and restoration/`OK` messages, completing end-to-end delivery verification. The next successful operational workflow artifact must retain the automated confirmed-subscription check.
+Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5xx alarm from `OK` to `ALARM`, recorded a successful SNS action at `2026-08-29T23:59:31.854Z`, and restored the alarm to `OK`. The local privacy-safe artifact records one confirmed subscription without the email address. On 2026-08-30, the Team 9 mailbox operator acknowledged receipt of both the `ALARM` and restoration/`OK` messages, completing end-to-end delivery verification. Operational validation run 33349636155 subsequently retained the automated confirmed-subscription check in its 90-day artifact.
 
 ## Open Evidence
 
-- Retained post-change operational workflow evidence containing the confirmed-subscription check.
 - Representative-user validation of explanations and confidence presentation.
 - Complete and approve the current blinded Nova Micro review before any model change.
 - Review the exact-version base-image CVE exceptions before they expire on 2026-09-18.
