@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
@@ -17,6 +17,9 @@ from app.api.financial_schemas import (
     ChatSessionSummary,
     ChatSessionUpdate,
     DashboardResponse,
+    DataConsentResponse,
+    DataConsentUpdate,
+    DataLifecycleResponse,
     DemographicResponse,
     DemographicUpsert,
     FairnessConsentResponse,
@@ -32,6 +35,17 @@ from app.api.financial_schemas import (
     SnapshotResponse,
     TransactionCreate,
     TransactionResponse,
+    UserDataDeletionReceipt,
+    UserDataDeletionRequest,
+    UserDataExportResponse,
+)
+from app.core.config import settings
+from app.core.data_lifecycle import (
+    DATA_EXPORT_SCHEMA_VERSION,
+    DATA_LIFECYCLE_POLICY,
+    DATA_LIFECYCLE_POLICY_VERSION,
+    DURABLE_MEMORY_CONSENT_VERSION,
+    DURABLE_MEMORY_PURPOSE,
 )
 from app.core.security import (
     AuthenticatedPrincipal,
@@ -52,10 +66,12 @@ from app.infrastructure.models import (
     ProfileConsentRecord,
     ProfileDemographicRecord,
     TransactionRecord,
+    UserRecord,
 )
 from app.infrastructure.repositories import (
     SQLAlchemyBudgetRepository,
     SQLAlchemyChatRepository,
+    SQLAlchemyConsentRepository,
     SQLAlchemyFairnessProfileRepository,
     SQLAlchemyGoalRepository,
     SQLAlchemyTransactionRepository,
@@ -411,6 +427,148 @@ def _fairness_consent_response(
         granted_at=record.granted_at,
         withdrawn_at=record.withdrawn_at,
     )
+
+
+def _durable_memory_consent_response(
+    record: ProfileConsentRecord | None,
+) -> DataConsentResponse:
+    policy_feature_enabled = bool(
+        DATA_LIFECYCLE_POLICY["consent"][DURABLE_MEMORY_PURPOSE]["feature_enabled"]
+    )
+    values = {
+        "purpose": DURABLE_MEMORY_PURPOSE,
+        "consent_version": DURABLE_MEMORY_CONSENT_VERSION,
+        "granted": False,
+        "granted_at": None,
+        "withdrawn_at": None,
+    }
+    if record is not None:
+        values.update(
+            {
+                "purpose": record.purpose,
+                "consent_version": record.consent_version,
+                "granted": record.granted,
+                "granted_at": record.granted_at,
+                "withdrawn_at": record.withdrawn_at,
+            }
+        )
+    return DataConsentResponse(
+        **values,
+        feature_enabled=(
+            settings.durable_agent_memory_enabled and policy_feature_enabled
+        ),
+    )
+
+
+def _data_lifecycle_response(
+    consent: ProfileConsentRecord | None,
+) -> DataLifecycleResponse:
+    return DataLifecycleResponse(
+        policy_version=DATA_LIFECYCLE_POLICY_VERSION,
+        effective_on=date.fromisoformat(DATA_LIFECYCLE_POLICY["effective_on"]),
+        export_schema_version=DATA_EXPORT_SCHEMA_VERSION,
+        retention=_effective_retention(),
+        durable_memory=_durable_memory_consent_response(consent),
+    )
+
+
+def _effective_retention() -> dict[str, int | str]:
+    return {
+        "authenticated_financial_workspace": "until_owner_deletion",
+        "orchestration_traces_days": settings.trace_retention_days,
+        "chat_history_days": settings.chat_retention_days,
+        "synthetic_automation_users_days": settings.synthetic_user_retention_days,
+    }
+
+
+@router.get(
+    "/users/{user_id}/data-lifecycle",
+    response_model=DataLifecycleResponse,
+)
+def get_data_lifecycle(
+    user_id: UserId,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DataLifecycleResponse:
+    if not SQLAlchemyUserRepository(session).exists(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    consent = SQLAlchemyConsentRepository(session).get(
+        user_id, DURABLE_MEMORY_PURPOSE
+    )
+    return _data_lifecycle_response(consent)
+
+
+@router.put(
+    "/users/{user_id}/memory-consent",
+    response_model=DataConsentResponse,
+)
+def put_memory_consent(
+    user_id: UserId,
+    update: DataConsentUpdate,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DataConsentResponse:
+    if not SQLAlchemyUserRepository(session).exists(user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    record = SQLAlchemyConsentRepository(session).set_durable_memory_consent(
+        user_id, update.granted
+    )
+    session.commit()
+    return _durable_memory_consent_response(record)
+
+
+@router.get(
+    "/users/{user_id}/data-export",
+    response_model=UserDataExportResponse,
+)
+def export_user_data(
+    user_id: UserId,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> UserDataExportResponse:
+    repository = SQLAlchemyUserRepository(session)
+    data = repository.export_user_data(user_id)
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user = session.get(UserRecord, user_id)
+    return UserDataExportResponse(
+        schema_version=DATA_EXPORT_SCHEMA_VERSION,
+        policy_version=DATA_LIFECYCLE_POLICY_VERSION,
+        exported_at=datetime.now(UTC),
+        user_id=user_id,
+        ownership={"authenticated_owner_bound": bool(user and user.owner_issuer)},
+        retention=_effective_retention(),
+        data=data,
+    )
+
+
+@router.delete(
+    "/users/{user_id}/data",
+    response_model=UserDataDeletionReceipt,
+)
+def delete_user_data(
+    user_id: UserId,
+    request: UserDataDeletionRequest,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> UserDataDeletionReceipt:
+    if request.confirm_user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="confirm_user_id must match the user being deleted",
+        )
+    if request.policy_version != DATA_LIFECYCLE_POLICY_VERSION:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Data lifecycle policy version has changed; review it before deleting",
+        )
+    deleted_counts = SQLAlchemyUserRepository(session).delete_user_data(user_id)
+    if deleted_counts is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    receipt = UserDataDeletionReceipt(
+        request_id=uuid4(),
+        policy_version=DATA_LIFECYCLE_POLICY_VERSION,
+        completed_at=datetime.now(UTC),
+        deleted_counts=deleted_counts,
+    )
+    session.commit()
+    return receipt
 
 
 def _demographic_response(record: ProfileDemographicRecord) -> DemographicResponse:

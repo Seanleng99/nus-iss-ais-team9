@@ -74,6 +74,29 @@ class BackendClient:
         self._request("DELETE", f"/api/users/{user_id}/profile")
         return True
 
+    def get_data_lifecycle(self, user_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/users/{user_id}/data-lifecycle")
+
+    def save_memory_consent(self, user_id: str, granted: bool) -> dict[str, Any]:
+        return self._request(
+            "PUT",
+            f"/api/users/{user_id}/memory-consent",
+            json={"granted": granted},
+        )
+
+    def export_user_data(self, user_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/users/{user_id}/data-export")
+
+    def delete_user_data(self, user_id: str, policy_version: str) -> dict[str, Any]:
+        return self._request(
+            "DELETE",
+            f"/api/users/{user_id}/data",
+            json={
+                "confirm_user_id": user_id,
+                "policy_version": policy_version,
+            },
+        )
+
     def get_fairness_profile(self, user_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/users/{user_id}/fairness-profile")
 

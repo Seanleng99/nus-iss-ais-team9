@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import date
 
@@ -837,8 +838,8 @@ def profile_page() -> None:
     if not profile:
         st.info("This profile has not been created yet.")
         return
-    context_tab, fairness_tab, delete_tab = st.tabs(
-        ["Financial context", "Fairness data", "Delete profile"]
+    context_tab, fairness_tab, privacy_tab = st.tabs(
+        ["Financial context", "Fairness data", "Privacy & data"]
     )
 
     with context_tab:
@@ -1062,32 +1063,100 @@ def profile_page() -> None:
                     if backend_call(lambda: client.save_demographics(user_id, payload)):
                         st.success("Fairness data saved.")
 
-    with delete_tab:
+    with privacy_tab:
+        lifecycle = backend_call(lambda: client.get_data_lifecycle(user_id))
+        if not lifecycle:
+            return
+        retention = lifecycle["retention"]
+        st.subheader("Data lifecycle")
+        st.caption(f"Policy version · {lifecycle['policy_version']}")
+        st.write(
+            "Your financial workspace is kept until you delete it. "
+            f"Conversation history is kept for {retention['chat_history_days']} days, "
+            f"and detailed AI decision traces for {retention['orchestration_traces_days']} days."
+        )
+
+        memory = lifecycle["durable_memory"]
+        if not memory["feature_enabled"]:
+            st.info(
+                "Durable agent memory is currently disabled. Your preference is recorded "
+                "for a future release, but granting consent does not activate memory."
+            )
+        with st.form("durable-memory-consent"):
+            memory_granted = st.toggle(
+                "Allow durable agent memory when the feature becomes available",
+                value=memory["granted"],
+            )
+            memory_saved = st.form_submit_button(
+                "Update memory consent", icon=":material/privacy_tip:"
+            )
+        if memory_saved:
+            result = backend_call(
+                lambda: client.save_memory_consent(user_id, memory_granted)
+            )
+            if result:
+                st.session_state.profile_saved_notice = (
+                    "Durable-memory consent preference updated."
+                )
+                st.rerun()
+
+        st.divider()
+        st.subheader("Export your data")
+        st.write(
+            "Prepare a portable JSON copy of your profile, financial records, "
+            "conversations, consents, and available AI decision traces."
+        )
+        export_key = f"profile-data-export-{user_id}"
+        if st.button(
+            "Prepare data export",
+            icon=":material/download:",
+            key=f"prepare-data-export-{user_id}",
+        ):
+            export = backend_call(lambda: client.export_user_data(user_id))
+            if export:
+                st.session_state[export_key] = export
+        prepared_export = st.session_state.get(export_key)
+        if prepared_export:
+            st.download_button(
+                "Download JSON export",
+                data=json.dumps(prepared_export, indent=2),
+                file_name=f"{user_id}-data-export.json",
+                mime="application/json",
+                icon=":material/download:",
+                key=f"download-data-export-{user_id}",
+            )
+
+        st.divider()
+        st.subheader("Delete your workspace")
         st.warning(
-            "This permanently deletes the profile and all associated financial and fairness "
-            "data. This action cannot be undone."
+            "This permanently deletes the profile, transactions, goals, budgets, "
+            "fairness data, consent records, conversations, and available AI decision "
+            "traces. This action cannot be undone."
         )
         confirmed = st.checkbox(
-            "I understand that all data for this profile will be deleted",
+            "I understand that all data for this workspace will be deleted",
             key=f"delete-profile-confirmed-{user_id}",
         )
         delete_requested = st.button(
-            "Delete profile",
+            "Delete workspace data",
             icon=":material/delete_forever:",
             disabled=not confirmed,
             key=f"delete-profile-{user_id}",
         )
-        if delete_requested and backend_call(lambda: client.delete_profile(user_id)):
+        if delete_requested and backend_call(
+            lambda: client.delete_user_data(user_id, lifecycle["policy_version"])
+        ):
             st.session_state.pop("active_user_id", None)
             st.session_state.pop("coach_active_session_id", None)
             st.session_state.pop("coach_history", None)
             st.session_state.pop("coach_pending_question", None)
             st.session_state.pop("coach_rename_open", None)
             st.session_state.pop("coach_delete_open", None)
+            st.session_state.pop(export_key, None)
             st.session_state.profile_switcher_version = (
                 st.session_state.get("profile_switcher_version", 0) + 1
             )
-            st.session_state.profile_deleted_notice = "Profile deleted."
+            st.session_state.profile_deleted_notice = "Workspace data deleted."
             st.session_state.profile_deleted_redirect = True
             st.rerun()
 

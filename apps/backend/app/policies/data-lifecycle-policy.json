@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "policy_version": "data-lifecycle-v1",
+  "effective_on": "2026-08-31",
+  "export_schema_version": 1,
+  "retention": {
+    "authenticated_financial_workspace": "until_owner_deletion",
+    "orchestration_traces_days": 30,
+    "chat_history_days": 90,
+    "synthetic_automation_users_days": 30
+  },
+  "consent": {
+    "fairness_evaluation": {
+      "consent_version": "1.0",
+      "withdrawal_action": "delete_demographics_immediately"
+    },
+    "durable_agent_memory": {
+      "consent_version": "1.0",
+      "feature_enabled": false,
+      "withdrawal_action": "delete_memory_immediately"
+    }
+  }
+}

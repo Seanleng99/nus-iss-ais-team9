@@ -108,6 +108,12 @@ def test_oidc_profiles_and_resources_are_owner_isolated(monkeypatch: pytest.Monk
     malformed = client.get(
         "/api/profiles", headers={"Authorization": "Basic invalid"}
     )
+    cross_lifecycle = client.get(
+        "/api/users/bob-profile/data-lifecycle", headers=_bearer("alice-token")
+    )
+    cross_export = client.get(
+        "/api/users/bob-profile/data-export", headers=_bearer("alice-token")
+    )
 
     assert alice_profile.status_code == 201
     assert bob_profile.status_code == 201
@@ -115,6 +121,8 @@ def test_oidc_profiles_and_resources_are_owner_isolated(monkeypatch: pytest.Monk
     assert cross_profile.status_code == 404
     assert cross_transaction.status_code == 404
     assert cross_coach.status_code == 404
+    assert cross_lifecycle.status_code == 404
+    assert cross_export.status_code == 404
     assert malformed.status_code == 401
     assert malformed.headers["WWW-Authenticate"] == "Bearer"
 

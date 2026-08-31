@@ -144,6 +144,49 @@ class FairnessProfileResponse(BaseModel):
     demographics: DemographicResponse | None
 
 
+class DataConsentUpdate(BaseModel):
+    granted: bool
+
+
+class DataConsentResponse(BaseModel):
+    purpose: str
+    consent_version: str
+    granted: bool
+    granted_at: datetime | None
+    withdrawn_at: datetime | None
+    feature_enabled: bool
+
+
+class DataLifecycleResponse(BaseModel):
+    policy_version: str
+    effective_on: date
+    export_schema_version: int
+    retention: dict[str, int | str]
+    durable_memory: DataConsentResponse
+
+
+class UserDataExportResponse(BaseModel):
+    schema_version: int
+    policy_version: str
+    exported_at: datetime
+    user_id: str
+    ownership: dict[str, bool]
+    retention: dict[str, int | str]
+    data: dict[str, Any]
+
+
+class UserDataDeletionRequest(BaseModel):
+    confirm_user_id: str = Field(min_length=1, max_length=128)
+    policy_version: str = Field(min_length=1, max_length=64)
+
+
+class UserDataDeletionReceipt(BaseModel):
+    request_id: UUID
+    policy_version: str
+    completed_at: datetime
+    deleted_counts: dict[str, int]
+
+
 class TransactionCreate(BaseModel):
     description: str = Field(min_length=1, max_length=255)
     category: str = Field(min_length=1, max_length=64)

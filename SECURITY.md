@@ -19,6 +19,6 @@ If a credential is committed or printed, revoke or rotate it immediately, review
 - All authorization, prompt-injection, PII, RAG sanitization, and tool-permission tests pass.
 - GitHub OIDC is used instead of stored AWS access keys.
 - The AI service has no public ingress.
-- Real user access is blocked until OIDC/JWT authorization and privacy controls are implemented.
+- Real personal financial data remains prohibited until the implemented OIDC/JWT and lifecycle controls pass formal privacy, representative-user, and production-operating approval.
 
 See `docs/security-risk-register.md` and `docs/security-guardrails.md` for the threat model and control limitations.

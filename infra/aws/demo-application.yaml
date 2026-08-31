@@ -402,6 +402,12 @@ Resources:
               Value: "45"
             - Name: TRACE_RETENTION_DAYS
               Value: "30"
+            - Name: CHAT_RETENTION_DAYS
+              Value: "90"
+            - Name: SYNTHETIC_USER_RETENTION_DAYS
+              Value: "30"
+            - Name: DURABLE_AGENT_MEMORY_ENABLED
+              Value: "false"
             - Name: POSTGRES_HOST
               Value: !Ref DatabaseEndpoint
             - Name: POSTGRES_PORT

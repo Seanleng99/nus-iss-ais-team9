@@ -85,7 +85,7 @@ The script rejects incomplete inputs, private hosted zones, certificates that ar
 | Task | Plain environment | Secrets | Task-role access |
 |---|---|---|---|
 | Frontend | `APP_ENV=demo`, `BACKEND_BASE_URL`, auth-required flag, Cognito client/metadata/redirect settings | OIDC cookie secret | None |
-| Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, database host/name/port, TLS mode, 30-day trace retention, strict Cognito issuer/JWKS/client/token-use settings, automation user-ID prefixes | Automation-only `BACKEND_API_KEY`, `AI_SERVICE_API_KEY`, RDS username/password | None |
+| Backend | `APP_ENV=demo`, `AI_SERVICE_BASE_URL`, timeout, database host/name/port, TLS mode, 30-day trace/90-day chat/30-day synthetic-user retention, disabled durable memory, strict Cognito issuer/JWKS/client/token-use settings, automation user-ID prefixes | Automation-only `BACKEND_API_KEY`, `AI_SERVICE_API_KEY`, RDS username/password | None |
 | AI service | `APP_ENV=demo`, `MODEL_PROVIDER=bedrock`, both RAG providers, model ID, Education and Policy Knowledge Base IDs, exact corpus versions, retrieval thresholds, temperatures, prompt version | `AI_SERVICE_API_KEY` | Approved Bedrock profile, destination models, and read-only retrieval from both exact Knowledge Bases |
 
 Do not inject either service API key into authenticated Streamlit. Do not place runtime AWS credentials in GitHub or application secrets. ECS tasks obtain AWS permissions from task roles. The frontend writes its Streamlit OIDC configuration from environment/Secrets Manager at process startup with owner-only file permissions; tokens and the cookie secret must never enter logs or traces.

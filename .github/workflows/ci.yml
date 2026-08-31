@@ -267,6 +267,7 @@ jobs:
           --backend-health-url http://127.0.0.1:8080/health
           --ai-health-url http://127.0.0.1:8001/health
           --coach-url http://127.0.0.1:8080/api/coach
+          --persistence-base-url http://127.0.0.1:8080/api
           --api-key change-me-locally
           --expected-model-provider local_fixture
           --expected-corpus-version investment-education-sg@local-fixture-v1

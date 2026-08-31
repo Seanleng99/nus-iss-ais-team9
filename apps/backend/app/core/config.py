@@ -4,6 +4,8 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 from sqlalchemy import URL
 
+from app.core.data_lifecycle import DATA_LIFECYCLE_POLICY
+
 
 class Settings(BaseSettings):
     app_env: str = Field(default="local", alias="APP_ENV")
@@ -45,6 +47,15 @@ class Settings(BaseSettings):
     trace_retention_days: int = Field(
         default=30, ge=1, le=365, alias="TRACE_RETENTION_DAYS"
     )
+    chat_retention_days: int = Field(
+        default=90, ge=1, le=730, alias="CHAT_RETENTION_DAYS"
+    )
+    synthetic_user_retention_days: int = Field(
+        default=30, ge=1, le=365, alias="SYNTHETIC_USER_RETENTION_DAYS"
+    )
+    durable_agent_memory_enabled: bool = Field(
+        default=False, alias="DURABLE_AGENT_MEMORY_ENABLED"
+    )
     postgres_url: str | None = Field(default=None, alias="POSTGRES_URL")
     postgres_host: str | None = Field(default=None, alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, ge=1, le=65535, alias="POSTGRES_PORT")
@@ -83,6 +94,36 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_deployment_secrets(self) -> Self:
+        policy_retention = DATA_LIFECYCLE_POLICY["retention"]
+        configured_retention = {
+            "TRACE_RETENTION_DAYS": (
+                self.trace_retention_days,
+                policy_retention["orchestration_traces_days"],
+            ),
+            "CHAT_RETENTION_DAYS": (
+                self.chat_retention_days,
+                policy_retention["chat_history_days"],
+            ),
+            "SYNTHETIC_USER_RETENTION_DAYS": (
+                self.synthetic_user_retention_days,
+                policy_retention["synthetic_automation_users_days"],
+            ),
+        }
+        extended = [
+            name
+            for name, (configured, maximum) in configured_retention.items()
+            if configured > maximum
+        ]
+        if extended:
+            raise ValueError(
+                f"{', '.join(extended)} cannot extend data lifecycle policy retention"
+            )
+        if self.durable_agent_memory_enabled and not DATA_LIFECYCLE_POLICY["consent"][
+            "durable_agent_memory"
+        ]["feature_enabled"]:
+            raise ValueError(
+                "DURABLE_AGENT_MEMORY_ENABLED cannot override the disabled lifecycle policy"
+            )
         if self.app_env.lower() != "local":
             service_secrets = []
             if self.automation_api_key_enabled:

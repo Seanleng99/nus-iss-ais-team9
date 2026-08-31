@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.api.routes import get_ai_service_client
 from app.clients.ai_service import AIServiceUnavailableError
 from app.core.config import Settings, settings
+from app.core.data_lifecycle import DATA_LIFECYCLE_POLICY_VERSION
 from app.domain.schemas import CoachRequest, CoachResponse
 from app.main import app
 
@@ -270,6 +271,52 @@ def test_trace_can_only_be_deleted_by_its_profile() -> None:
     assert conversation.json()["messages"][1]["explanation"] is None
 
 
+def test_complete_workspace_deletion_cascades_to_messages_and_traces() -> None:
+    app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
+    headers = {"X-API-Key": settings.api_key}
+    try:
+        assert client.put(
+            "/api/users/cascade-user/profile", headers=headers, json={}
+        ).status_code == 200
+        coached = client.post(
+            "/api/coach",
+            headers=headers,
+            json={
+                "user_id": "cascade-user",
+                "session_id": "cascade-chat",
+                "message": "Create a budget",
+            },
+        )
+        exported = client.get(
+            "/api/users/cascade-user/data-export", headers=headers
+        )
+        deleted = client.request(
+            "DELETE",
+            "/api/users/cascade-user/data",
+            headers=headers,
+            json={
+                "confirm_user_id": "cascade-user",
+                "policy_version": DATA_LIFECYCLE_POLICY_VERSION,
+            },
+        )
+        missing_trace = client.get(
+            "/api/coach/traces/trace-cascade-chat?user_id=cascade-user",
+            headers=headers,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert coached.status_code == 200
+    exported_trace = exported.json()["data"]["chat_sessions"][0]["messages"][1][
+        "orchestration_trace"
+    ]
+    assert exported_trace["trace_id"] == "trace-cascade-chat"
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted_counts"]["chat_messages"] == 2
+    assert deleted.json()["deleted_counts"]["orchestration_traces"] == 1
+    assert missing_trace.status_code == 404
+
+
 def test_coach_hides_downstream_failure_details() -> None:
     app.dependency_overrides[get_ai_service_client] = UnavailableAIServiceClient
     try:
@@ -288,6 +335,13 @@ def test_coach_hides_downstream_failure_details() -> None:
 def test_deployment_rejects_weak_service_keys() -> None:
     with pytest.raises(ValueError, match="BACKEND_API_KEY, AI_SERVICE_API_KEY"):
         Settings(APP_ENV="demo", BACKEND_API_KEY="short", AI_SERVICE_API_KEY="short")
+
+
+def test_runtime_cannot_extend_retention_or_enable_policy_disabled_memory() -> None:
+    with pytest.raises(ValueError, match="TRACE_RETENTION_DAYS"):
+        Settings(TRACE_RETENTION_DAYS=31)
+    with pytest.raises(ValueError, match="DURABLE_AGENT_MEMORY_ENABLED"):
+        Settings(DURABLE_AGENT_MEMORY_ENABLED=True)
 
 
 def test_deployment_requires_https_oidc_configuration_when_enabled() -> None:

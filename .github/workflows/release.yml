@@ -401,6 +401,23 @@ jobs:
           task-definition: backend-task-definition.json
           container-name: ${{ env.BACKEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.backend-image }}
+          environment-variables: |
+            TRACE_RETENTION_DAYS=30
+            CHAT_RETENTION_DAYS=90
+            SYNTHETIC_USER_RETENTION_DAYS=30
+            DURABLE_AGENT_MEMORY_ENABLED=false
+      - name: Verify backend data-lifecycle configuration has not drifted
+        if: needs.release-gate.outputs.backend == 'true'
+        env:
+          RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
+        run: >-
+          python infra/scripts/verify_ecs_task_config.py
+          --task-definition "$RENDERED_BACKEND_TASK"
+          --container "$BACKEND_CONTAINER_NAME"
+          --expect TRACE_RETENTION_DAYS=30
+          --expect CHAT_RETENTION_DAYS=90
+          --expect SYNTHETIC_USER_RETENTION_DAYS=30
+          --expect DURABLE_AGENT_MEMORY_ENABLED=false
       - name: Apply and verify database migrations as a one-shot task
         if: needs.release-gate.outputs.backend == 'true'
         env:

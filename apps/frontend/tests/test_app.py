@@ -58,6 +58,20 @@ class SparseProfileClient:
         self.deleted_user_id = user_id
         return True
 
+    def get_data_lifecycle(self, user_id: str) -> dict:
+        return {
+            "policy_version": "data-lifecycle-v1",
+            "retention": {
+                "chat_history_days": 90,
+                "orchestration_traces_days": 30,
+            },
+            "durable_memory": {"granted": False, "feature_enabled": False},
+        }
+
+    def delete_user_data(self, user_id: str, policy_version: str) -> dict:
+        self.deleted_user_id = user_id
+        return {"policy_version": policy_version, "deleted_counts": {"profiles": 1}}
+
 
 class WorkspaceDefaultsClient:
     def get_dashboard(self, user_id: str, period_start: date) -> None:
@@ -268,7 +282,7 @@ def test_profile_deletion_requires_confirmation() -> None:
     assert "coach_history" not in app.session_state
     assert "coach_rename_open" not in app.session_state
     assert "coach_delete_open" not in app.session_state
-    assert app.session_state["profile_deleted_notice"] == "Profile deleted."
+    assert app.session_state["profile_deleted_notice"] == "Workspace data deleted."
     assert app.session_state["profile_deleted_redirect"] is True
 
 

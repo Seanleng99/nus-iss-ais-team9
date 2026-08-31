@@ -352,7 +352,7 @@ def check_persistence(base_url: str, api_key: str) -> None:
     )
     assert status == 200, f"profile upsert returned HTTP {status}"
 
-    transaction_id: str | None = None
+    policy_version: str | None = None
     try:
         status, body = request(
             f"{user_url}/transactions",
@@ -396,14 +396,42 @@ def check_persistence(base_url: str, api_key: str) -> None:
         dashboard = json.loads(body)
         assert dashboard.get("transaction_count") >= 1
         assert dashboard.get("budget", {}).get("total_limit") == 10
+
+        status, body = request(f"{user_url}/data-lifecycle", api_key=api_key)
+        assert status == 200, f"data lifecycle read returned HTTP {status}"
+        lifecycle = json.loads(body)
+        policy_version = lifecycle.get("policy_version")
+        assert policy_version == "data-lifecycle-v1", "unexpected lifecycle policy"
+        assert lifecycle.get("retention", {}).get("chat_history_days") == 90
+        assert lifecycle.get("retention", {}).get("orchestration_traces_days") == 30
+        assert lifecycle.get("durable_memory", {}).get("feature_enabled") is False
+
+        status, body = request(f"{user_url}/data-export", api_key=api_key)
+        assert status == 200, f"data export returned HTTP {status}"
+        export = json.loads(body)
+        assert export.get("policy_version") == policy_version
+        assert export.get("data", {}).get("profile", {}).get("monthly_income", {}).get(
+            "amount"
+        ) == 4100
+        assert any(
+            item.get("id") == transaction_id
+            for item in export.get("data", {}).get("transactions", [])
+        ), "data export omitted the smoke transaction"
+        assert "owner_issuer" not in body and "owner_subject" not in body
     finally:
-        if transaction_id:
-            status, _ = request(
-                f"{user_url}/transactions/{transaction_id}",
+        if policy_version:
+            status, body = request(
+                f"{user_url}/data",
                 method="DELETE",
+                body={
+                    "confirm_user_id": "deployment-smoke-test",
+                    "policy_version": policy_version,
+                },
                 api_key=api_key,
             )
-            assert status == 204, f"transaction cleanup returned HTTP {status}"
+            assert status == 200, f"workspace cleanup returned HTTP {status}"
+            receipt = json.loads(body)
+            assert receipt.get("deleted_counts", {}).get("profiles") == 1
 
 
 def main() -> None:

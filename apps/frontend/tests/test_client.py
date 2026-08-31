@@ -124,6 +124,35 @@ def test_client_manages_separate_fairness_profile() -> None:
     assert json.loads(captured[1].content) == {"granted": True}
 
 
+def test_client_manages_data_lifecycle_export_and_deletion() -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"policy_version": "data-lifecycle-v1"})
+
+    client = BackendClient(
+        base_url="http://backend.test",
+        transport=httpx.MockTransport(handler),
+    )
+    client.get_data_lifecycle("alex")
+    client.save_memory_consent("alex", True)
+    client.export_user_data("alex")
+    client.delete_user_data("alex", "data-lifecycle-v1")
+
+    assert [(request.method, request.url.path) for request in captured] == [
+        ("GET", "/api/users/alex/data-lifecycle"),
+        ("PUT", "/api/users/alex/memory-consent"),
+        ("GET", "/api/users/alex/data-export"),
+        ("DELETE", "/api/users/alex/data"),
+    ]
+    assert json.loads(captured[1].content) == {"granted": True}
+    assert json.loads(captured[3].content) == {
+        "confirm_user_id": "alex",
+        "policy_version": "data-lifecycle-v1",
+    }
+
+
 def test_client_updates_budget_and_coaching_routes() -> None:
     captured: list[httpx.Request] = []
 

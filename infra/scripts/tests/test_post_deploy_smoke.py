@@ -158,3 +158,67 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
     assert calls[1][0][0].endswith(
         "?user_id=deployment-conditional-rag-smoke-test"
     )
+
+
+def test_persistence_smoke_verifies_lifecycle_export_and_complete_cleanup(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, str, dict | None]] = []
+
+    def fake_request(url, method="GET", body=None, api_key=None):
+        del api_key
+        calls.append((method, url, body))
+        if url.endswith("/transactions") and method == "POST":
+            return 201, '{"id":"transaction-1"}'
+        if url.endswith("/snapshot"):
+            return 200, json.dumps(
+                {
+                    "monthly_income": {"amount": 4100},
+                    "recent_transactions": [
+                        {"description": "Deployment smoke transaction"}
+                    ],
+                }
+            )
+        if "dashboard?" in url:
+            return 200, json.dumps(
+                {"transaction_count": 1, "budget": {"total_limit": 10}}
+            )
+        if url.endswith("/data-lifecycle"):
+            return 200, json.dumps(
+                {
+                    "policy_version": "data-lifecycle-v1",
+                    "retention": {
+                        "chat_history_days": 90,
+                        "orchestration_traces_days": 30,
+                    },
+                    "durable_memory": {"feature_enabled": False},
+                }
+            )
+        if url.endswith("/data-export"):
+            return 200, json.dumps(
+                {
+                    "policy_version": "data-lifecycle-v1",
+                    "data": {
+                        "profile": {"monthly_income": {"amount": 4100}},
+                        "transactions": [{"id": "transaction-1"}],
+                    },
+                }
+            )
+        if url.endswith("/data") and method == "DELETE":
+            return 200, json.dumps({"deleted_counts": {"profiles": 1}})
+        return 200, "{}"
+
+    monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
+
+    post_deploy_smoke.check_persistence(
+        "https://example.test/api", "synthetic-api-key"
+    )
+
+    assert calls[-1] == (
+        "DELETE",
+        "https://example.test/api/users/deployment-smoke-test/data",
+        {
+            "confirm_user_id": "deployment-smoke-test",
+            "policy_version": "data-lifecycle-v1",
+        },
+    )

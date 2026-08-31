@@ -18,7 +18,7 @@ The architecture is hybrid rather than unconstrained. Deterministic calculators,
 | Investment Education | Explain general investment concepts | Sanitized request and approved education context | `education_retriever` | Uses only approved sources, exposes citations, reports evidence gaps, and avoids product instructions |
 | Risk and Compliance | Validate requests and specialist outputs against governed policy evidence | Sanitized request, specialist evidence, and approved policy context | `policy_retriever` | Uses only the separate Policy collection, sanitizes retrieved text, records policy provenance, and fails closed when current policy evidence is unavailable |
 
-No specialist has private or self-managed durable memory. The backend persists synthetic profiles, transactions, monthly budgets, goals, chat history, and privacy-safe orchestration traces, then assembles a minimized request-scoped snapshot. Capability results live only for the current orchestration run. Before cross-session agent memory is enabled, the team must define purpose limitation, user access, correction, deletion, encryption, retention, and isolation tests.
+No specialist has private or self-managed durable memory. The backend persists synthetic profiles, transactions, monthly budgets, goals, chat history, and privacy-safe orchestration traces, then assembles a minimized request-scoped snapshot. Capability results live only for the current orchestration run. Policy `data-lifecycle-v1` now provides owner export/deletion, versioned future-memory consent, automatic chat/trace retention, synthetic-user expiry, and isolation tests; durable memory remains disabled until purpose-limited storage, correction, encryption review, and an explicit activation decision are implemented.
 
 ## Communication
 
@@ -30,7 +30,7 @@ The scheduler runs independent ready tasks concurrently, while preserving depend
 
 ## Model Strategy
 
-The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Education and Policy evidence from separate configured Amazon Bedrock Knowledge Bases. Each collection is independently pinned by corpus version at runtime; stale, malformed, unapproved, or wrong-version chunks are rejected. Requests can be routed among the profile's APAC destination Regions. Nova Lite remains the selected synthetic-demo baseline pending the blinded Nova Micro review in `docs/model-selection.md`; it is not approved for real-data production use.
+The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Education and Policy evidence from separate configured Amazon Bedrock Knowledge Bases. Each collection is independently pinned by corpus version at runtime; stale, malformed, unapproved, or wrong-version chunks are rejected. Requests can be routed among the profile's APAC destination Regions. Nova Lite remains the selected synthetic-demo baseline because the prompt-set-v4 Nova Micro candidate failed the objective dependency gate and did not advance to blinded review; it is not approved for real-data production use.
 
 The selection harness compares at least one lower-cost model against the baseline on:
 

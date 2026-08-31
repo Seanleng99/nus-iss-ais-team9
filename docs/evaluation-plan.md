@@ -147,7 +147,7 @@ The evaluator deletes every synthetic chat session after its result is measured 
 
 Each model must have an active catalog profile, successful account entitlement, an approved Singapore source Region and APAC geography, zero execution errors, 100 percent overall/category structural accuracy, at most 10-second per-request P95, and at most USD 0.05 estimated cost. Fairness pairs execute two requests but contribute individual request latencies to the percentile distribution. A candidate that passes every objective gate advances to the generated blinded human-review rubric; it cannot change the deployed model automatically.
 
-The formal 2026-08-28 three-repeat comparison made both models objectively eligible. Lite passed 45/45 structural runs with 7.69-second P95 and USD 0.012306 estimated cost. Micro passed 45/45 with 7.08-second P95 and USD 0.005437 estimated cost. The decision is `pending_human_review`, so Nova Lite remains selected until the blinded Micro review and normal change control are complete. See `docs/model-selection.md` for the decision record and limitations.
+The formal prompt-set-v4 comparison on 2026-08-31 retained Nova Lite. Lite passed 45/45 structural runs with 7.54-second P95 and USD 0.014744 estimated cost. Micro passed 42/45 with 8.02-second P95 and USD 0.006486 estimated cost, failing all three repeats of the missing-income dependency case. The deterministic decision is `retain_baseline` with `human_review_required: false`; Micro must first produce a fresh all-green objective run before any blinded approval review. See `docs/model-selection.md` for the decision record and limitations.
 
 ## Representative-User Explainability Validation
 

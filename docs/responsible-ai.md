@@ -32,7 +32,7 @@ Every release must have named human owners for these roles. The Risk and Complia
 - Minimize collection and redact direct identifiers before any model prompt or log.
 - Keep controlled knowledge sources versioned with provenance, effective date, jurisdiction, and checksum.
 - Treat retrieved content as untrusted data and remove embedded instructions.
-- Define retention and deletion before persistent memory is enabled.
+- Keep durable memory disabled until its versioned consent is paired with purpose-limited storage, correction, deletion, encryption review, and approved retention.
 
 ### Development And Evaluation
 
@@ -53,7 +53,7 @@ Every release must have named human owners for these roles. The Risk and Complia
 
 The system does not use race, nationality, religion, gender, disability, or inferred socioeconomic class to alter guidance. Fairness tests should hold financial facts constant while varying names, writing style, and irrelevant profile details; routing, calculations, safety decisions, and educational depth should remain materially consistent.
 
-The synthetic profile workspace stores agent-relevant financial context separately from optional fairness-evaluation demographics. Demographics require explicit versioned consent, are available only through dedicated backend endpoints, and are never included in the coaching snapshot. Withdrawing consent deletes the stored demographic record. The demo collects only coarse age bands and residential regions; it does not collect exact birth dates, home addresses, employers, legal names, phone numbers, or email addresses.
+The synthetic profile workspace stores agent-relevant financial context separately from optional fairness-evaluation demographics. Demographics require explicit versioned consent, are available only through dedicated backend endpoints, and are never included in the coaching snapshot. Withdrawing consent deletes the stored demographic record. The demo collects only coarse age bands and residential regions; it does not collect exact birth dates, home addresses, employers, legal names, phone numbers, or email addresses. Policy `data-lifecycle-v1` adds owner-scoped JSON export, confirmed whole-workspace deletion, 90-day conversation retention, 30-day trace retention, narrowly scoped synthetic-user expiry, and explicit future-memory consent while keeping durable memory disabled. See `docs/data-lifecycle.md`.
 
 Potential harms still include lower-quality explanations for non-standard English, assumptions hidden in budgeting heuristics, uneven source coverage, and confidence scores that users may over-trust. Mitigations include plain-language review, transparent assumptions, user-editable inputs, source coverage audits, and explicit uncertainty.
 
@@ -62,7 +62,7 @@ Potential harms still include lower-quality explanations for non-standard Englis
 - Users retain control over financial actions and may change all planning inputs.
 - Blocked responses state the policy category without revealing hidden instructions.
 - High-impact or ambiguous scenarios are redirected to a licensed professional.
-- Future persistent records must support correction and deletion requests.
+- Any future persistent record must be added to correction, export, deletion-cascade, and retention tests before release.
 - Incidents and harmful outputs are reviewed by a human owner before policy or prompt changes are released.
 
 ## Governance Alignment

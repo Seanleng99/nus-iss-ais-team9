@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.financial_schemas import (
@@ -11,6 +11,10 @@ from app.api.financial_schemas import (
     GoalCreate,
     ProfileUpsert,
     TransactionCreate,
+)
+from app.core.data_lifecycle import (
+    DURABLE_MEMORY_CONSENT_VERSION,
+    DURABLE_MEMORY_PURPOSE,
 )
 from app.domain.schemas import FinancialGoal, MoneyAmount, Transaction, UserFinancialSnapshot
 from app.infrastructure.models import (
@@ -48,7 +52,14 @@ def _ensure_user(session: Session, user_id: str) -> UserRecord:
         user = UserRecord(id=user_id)
         session.add(user)
         session.flush()
+    user.last_activity_at = datetime.now(UTC)
     return user
+
+
+def _touch_user(session: Session, user_id: str) -> None:
+    user = session.get(UserRecord, user_id)
+    if user is not None:
+        user.last_activity_at = datetime.now(UTC)
 
 
 def next_month(period_start: date) -> date:
@@ -147,6 +158,235 @@ class SQLAlchemyUserRepository:
         self.session.delete(user)
         self.session.flush()
         return True
+
+    def export_user_data(self, user_id: str) -> dict[str, Any] | None:
+        user = self.session.get(UserRecord, user_id)
+        if user is None:
+            return None
+        profile = self.get_profile(user_id)
+        demographics = self.session.get(ProfileDemographicRecord, user_id)
+        consents = list(
+            self.session.scalars(
+                select(ProfileConsentRecord)
+                .where(ProfileConsentRecord.user_id == user_id)
+                .order_by(ProfileConsentRecord.purpose)
+            )
+        )
+        transactions = list(
+            self.session.scalars(
+                SQLAlchemyTransactionRepository._query(user_id)
+            )
+        )
+        goals = SQLAlchemyGoalRepository(self.session).list_records(user_id)
+        budgets = list(
+            self.session.scalars(
+                select(MonthlyBudgetRecord)
+                .options(selectinload(MonthlyBudgetRecord.categories))
+                .where(MonthlyBudgetRecord.user_id == user_id)
+                .order_by(MonthlyBudgetRecord.period_start)
+            )
+        )
+        chat_sessions = list(
+            self.session.scalars(
+                select(ChatSessionRecord)
+                .options(
+                    selectinload(ChatSessionRecord.messages).selectinload(
+                        ChatMessageRecord.orchestration_trace
+                    )
+                )
+                .where(ChatSessionRecord.user_id == user_id)
+                .order_by(ChatSessionRecord.created_at)
+            )
+        )
+        return {
+            "profile": (
+                {
+                    "monthly_income": (
+                        {
+                            "currency": profile.currency,
+                            "amount": float(profile.monthly_income),
+                        }
+                        if profile.monthly_income is not None
+                        else None
+                    ),
+                    "risk_tolerance": profile.risk_tolerance,
+                    "employment_status": profile.employment_status,
+                    "occupation_category": profile.occupation_category,
+                    "income_frequency": profile.income_frequency,
+                    "income_stability": profile.income_stability,
+                    "household_size": profile.household_size,
+                    "dependants": profile.dependants,
+                    "housing_status": profile.housing_status,
+                    "financial_literacy": profile.financial_literacy,
+                    "preferred_language": profile.preferred_language,
+                    "accessibility_preferences": profile.accessibility_preferences,
+                    "preferences": profile.preferences,
+                }
+                if profile is not None
+                else None
+            ),
+            "demographics": (
+                {
+                    "age_band": demographics.age_band,
+                    "gender_identity": demographics.gender_identity,
+                    "race_ethnicity": demographics.race_ethnicity,
+                    "nationality_residency": demographics.nationality_residency,
+                    "disability_status": demographics.disability_status,
+                    "marital_status": demographics.marital_status,
+                    "residential_region": demographics.residential_region,
+                }
+                if demographics is not None
+                else None
+            ),
+            "consents": [
+                {
+                    "purpose": record.purpose,
+                    "consent_version": record.consent_version,
+                    "granted": record.granted,
+                    "granted_at": (
+                        record.granted_at.isoformat() if record.granted_at else None
+                    ),
+                    "withdrawn_at": (
+                        record.withdrawn_at.isoformat() if record.withdrawn_at else None
+                    ),
+                }
+                for record in consents
+            ],
+            "transactions": [
+                {
+                    "id": str(record.id),
+                    "description": record.description,
+                    "category": record.category,
+                    "amount": {
+                        "currency": record.currency,
+                        "amount": float(record.amount),
+                    },
+                    "occurred_on": record.occurred_on.isoformat(),
+                    "recurring": record.recurring,
+                }
+                for record in transactions
+            ],
+            "goals": [
+                {
+                    "id": str(record.id),
+                    "name": record.name,
+                    "target_amount": {
+                        "currency": record.currency,
+                        "amount": float(record.target_amount),
+                    },
+                    "current_amount": {
+                        "currency": record.currency,
+                        "amount": float(record.current_amount),
+                    },
+                    "target_months": record.target_months,
+                }
+                for record in goals
+            ],
+            "budgets": [
+                {
+                    "period_start": record.period_start.isoformat(),
+                    "currency": record.currency,
+                    "categories": [
+                        {
+                            "category": category.category,
+                            "limit_amount": float(category.limit_amount),
+                        }
+                        for category in sorted(
+                            record.categories, key=lambda item: item.category
+                        )
+                    ],
+                }
+                for record in budgets
+            ],
+            "chat_sessions": [
+                {
+                    "id": record.id,
+                    "title": record.title,
+                    "created_at": record.created_at.isoformat(),
+                    "updated_at": record.updated_at.isoformat(),
+                    "messages": [
+                        {
+                            "id": str(message.id),
+                            "role": message.role,
+                            "content": message.content,
+                            "sources": message.sources,
+                            "created_at": message.created_at.isoformat(),
+                            "orchestration_trace": (
+                                {
+                                    "trace_id": message.orchestration_trace.trace_id,
+                                    "selected_agents": message.orchestration_trace.selected_agents,
+                                    "agent_results": message.orchestration_trace.agent_results,
+                                    "audit": message.orchestration_trace.audit,
+                                    "blocked": message.orchestration_trace.blocked,
+                                    "model_provider": message.orchestration_trace.model_provider,
+                                    "model_id": message.orchestration_trace.model_id,
+                                    "prompt_set_version": message.orchestration_trace.prompt_set_version,
+                                    "created_at": message.orchestration_trace.created_at.isoformat(),
+                                }
+                                if message.orchestration_trace is not None
+                                else None
+                            ),
+                        }
+                        for message in record.messages
+                    ],
+                }
+                for record in chat_sessions
+            ],
+        }
+
+    def delete_user_data(self, user_id: str) -> dict[str, int] | None:
+        _lock_user_lifecycle(self.session, user_id)
+        user = self.session.get(UserRecord, user_id)
+        if user is None:
+            return None
+
+        def count(model: type[Any]) -> int:
+            return int(
+                self.session.scalar(
+                    select(func.count()).select_from(model).where(model.user_id == user_id)
+                )
+                or 0
+            )
+
+        counts = {
+            "profiles": count(FinancialProfileRecord),
+            "demographics": count(ProfileDemographicRecord),
+            "consents": count(ProfileConsentRecord),
+            "transactions": count(TransactionRecord),
+            "goals": count(FinancialGoalRecord),
+            "budgets": count(MonthlyBudgetRecord),
+            "budget_categories": int(
+                self.session.scalar(
+                    select(func.count())
+                    .select_from(BudgetCategoryRecord)
+                    .join(MonthlyBudgetRecord)
+                    .where(MonthlyBudgetRecord.user_id == user_id)
+                )
+                or 0
+            ),
+            "chat_sessions": count(ChatSessionRecord),
+            "chat_messages": int(
+                self.session.scalar(
+                    select(func.count())
+                    .select_from(ChatMessageRecord)
+                    .join(ChatSessionRecord)
+                    .where(ChatSessionRecord.user_id == user_id)
+                )
+                or 0
+            ),
+            "orchestration_traces": int(
+                self.session.scalar(
+                    select(func.count())
+                    .select_from(OrchestrationTraceRecord)
+                    .join(ChatSessionRecord)
+                    .where(ChatSessionRecord.user_id == user_id)
+                )
+                or 0
+            ),
+        }
+        self.session.delete(user)
+        self.session.flush()
+        return counts
 
     def delete_if_empty(self, user_id: str) -> bool:
         _lock_user_lifecycle(self.session, user_id)
@@ -266,6 +506,35 @@ class SQLAlchemyFairnessProfileRepository:
             self.session.add(record)
         for field, value in demographics.model_dump().items():
             setattr(record, field, value)
+        _touch_user(self.session, user_id)
+        self.session.flush()
+        return record
+
+
+class SQLAlchemyConsentRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get(self, user_id: str, purpose: str) -> ProfileConsentRecord | None:
+        return self.session.get(ProfileConsentRecord, (user_id, purpose))
+
+    def set_durable_memory_consent(
+        self, user_id: str, granted: bool
+    ) -> ProfileConsentRecord:
+        _ensure_user(self.session, user_id)
+        record = self.get(user_id, DURABLE_MEMORY_PURPOSE)
+        now = datetime.now(UTC)
+        if record is None:
+            record = ProfileConsentRecord(
+                user_id=user_id,
+                purpose=DURABLE_MEMORY_PURPOSE,
+                consent_version=DURABLE_MEMORY_CONSENT_VERSION,
+            )
+            self.session.add(record)
+        record.consent_version = DURABLE_MEMORY_CONSENT_VERSION
+        record.granted = granted
+        record.granted_at = now if granted else record.granted_at
+        record.withdrawn_at = None if granted else now
         self.session.flush()
         return record
 
@@ -339,6 +608,7 @@ class SQLAlchemyTransactionRepository:
         record.currency = transaction.amount.currency
         record.occurred_on = transaction.occurred_on
         record.recurring = transaction.recurring
+        _touch_user(self.session, user_id)
         self.session.flush()
         return record
 
@@ -352,6 +622,7 @@ class SQLAlchemyTransactionRepository:
         if record is None:
             return False
         self.session.delete(record)
+        _touch_user(self.session, user_id)
         self.session.flush()
         return True
 
@@ -417,6 +688,7 @@ class SQLAlchemyGoalRepository:
         record.current_amount = goal.current_amount.amount
         record.currency = goal.target_amount.currency
         record.target_months = goal.target_months
+        _touch_user(self.session, user_id)
         self.session.flush()
         return record
 
@@ -430,6 +702,7 @@ class SQLAlchemyGoalRepository:
         if record is None:
             return False
         self.session.delete(record)
+        _touch_user(self.session, user_id)
         self.session.flush()
         return True
 
@@ -564,6 +837,7 @@ class SQLAlchemyChatRepository:
         if record is None:
             return None
         record.title = title
+        _touch_user(self.session, user_id)
         self.session.flush()
         return record
 
@@ -571,6 +845,7 @@ class SQLAlchemyChatRepository:
         record = self.get(user_id, session_id)
         if record is None:
             return False
+        _touch_user(self.session, user_id)
         self.session.delete(record)
         self.session.flush()
         SQLAlchemyUserRepository(self.session).delete_if_empty(user_id)
@@ -592,6 +867,7 @@ class SQLAlchemyChatRepository:
         )
         self.session.add(message)
         chat_session.updated_at = datetime.now(UTC)
+        _touch_user(self.session, chat_session.user_id)
         self.session.flush()
         return message
 
@@ -660,3 +936,39 @@ class SQLAlchemyOrchestrationTraceRepository:
             )
         )
         return int(getattr(result, "rowcount", 0) or 0)
+
+
+class SQLAlchemyDataLifecycleRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def delete_expired_chat_sessions(self, cutoff: datetime) -> int:
+        records = list(
+            self.session.scalars(
+                select(ChatSessionRecord).where(ChatSessionRecord.updated_at < cutoff)
+            )
+        )
+        for record in records:
+            self.session.delete(record)
+        self.session.flush()
+        return len(records)
+
+    def delete_expired_synthetic_users(
+        self, cutoff: datetime, prefixes: tuple[str, ...]
+    ) -> int:
+        if not prefixes:
+            return 0
+        records = list(
+            self.session.scalars(
+                select(UserRecord).where(
+                    UserRecord.owner_issuer.is_(None),
+                    UserRecord.owner_subject.is_(None),
+                    UserRecord.last_activity_at < cutoff,
+                    or_(*(UserRecord.id.startswith(prefix) for prefix in prefixes)),
+                )
+            )
+        )
+        for record in records:
+            self.session.delete(record)
+        self.session.flush()
+        return len(records)
