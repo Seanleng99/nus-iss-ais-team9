@@ -1,13 +1,26 @@
 import argparse
 import json
+import os
 import subprocess
 import time
 from collections import Counter
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 READY_STATUSES = {"ACTIVE", "COMPLETE"}
 FAILED_STATUSES = {"FAILED", "UNSUPPORTED_IMAGE", "SCAN_ELIGIBILITY_EXPIRED"}
+MAX_EXCEPTION_LIFETIME = timedelta(days=30)
+REQUIRED_EXCEPTION_FIELDS = {
+    "id",
+    "package_name",
+    "package_version",
+    "repositories",
+    "reviewed_on",
+    "reviewed_by",
+    "expires_on",
+    "reason",
+    "source",
+}
 
 
 def describe_findings(repository: str, image_tag: str) -> dict | None:
@@ -23,7 +36,18 @@ def describe_findings(repository: str, image_tag: str) -> dict | None:
         "json",
         "--no-cli-pager",
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    environment = os.environ.copy()
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=environment,
+        check=False,
+    )
     if completed.returncode == 0:
         return json.loads(completed.stdout)
     retryable_errors = ("ScanNotFoundException", "ImageNotFoundException", "LIMIT_EXCEEDED")
@@ -110,12 +134,42 @@ def load_exceptions(path: Path, today: date | None = None) -> list[dict]:
     current_date = today or datetime.now(UTC).date()
     payload = json.loads(path.read_text(encoding="utf-8"))
     active = []
+    exception_keys: set[tuple[str, str, str, str]] = set()
     for exception in payload.get("exceptions", []):
+        missing = sorted(REQUIRED_EXCEPTION_FIELDS - exception.keys())
+        if missing:
+            raise ValueError(
+                "Scan exception is missing required fields: " + ", ".join(missing)
+            )
+        reviewed_on = date.fromisoformat(exception["reviewed_on"])
         expires_on = date.fromisoformat(exception["expires_on"])
+        if reviewed_on > current_date:
+            raise ValueError("Scan exception review date cannot be in the future")
+        if expires_on < reviewed_on:
+            raise ValueError("Scan exception expiry cannot precede its review date")
+        if expires_on - reviewed_on > MAX_EXCEPTION_LIFETIME:
+            raise ValueError("Scan exception lifetime cannot exceed 30 days")
+        repositories = exception["repositories"]
+        if not isinstance(repositories, list) or not repositories:
+            raise ValueError("Scan exceptions require at least one repository")
+        if len(repositories) != len(set(repositories)):
+            raise ValueError("Scan exception repositories must be unique")
+        if not exception["reason"] or not exception["source"] or not exception["reviewed_by"]:
+            raise ValueError(
+                "Scan exceptions require a reason, authoritative source, and reviewer"
+            )
+        for repository in repositories:
+            key = (
+                exception["id"],
+                exception["package_name"],
+                exception["package_version"],
+                repository,
+            )
+            if key in exception_keys:
+                raise ValueError("Duplicate exact-version scan exception")
+            exception_keys.add(key)
         if expires_on < current_date:
             continue
-        if not exception.get("reason") or not exception.get("source"):
-            raise ValueError("Scan exceptions require a reason and authoritative source")
         active.append(exception)
     return active
 

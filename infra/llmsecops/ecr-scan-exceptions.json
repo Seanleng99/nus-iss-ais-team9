@@ -9,9 +9,11 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "expires_on": "2026-09-18",
-      "reason": "The services use PostgreSQL and do not open attacker-supplied SQLite databases or expose arbitrary SQL/FTS5. SQLite documents those conditions as prerequisites; review when Debian publishes a fixed stable package.",
-      "source": "https://www.sqlite.org/cves.html"
+      "reviewed_on": "2026-08-31",
+      "reviewed_by": "NUS ISS AIS Team 9",
+      "expires_on": "2026-09-30",
+      "reason": "The runtime services use PostgreSQL and neither open attacker-supplied SQLite databases nor expose arbitrary SQL or FTS5. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-11822"
     },
     {
       "id": "CVE-2026-11824",
@@ -22,9 +24,11 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "expires_on": "2026-09-18",
-      "reason": "The services use PostgreSQL and do not open attacker-supplied SQLite databases or expose arbitrary SQL/FTS5. SQLite documents those conditions as prerequisites; review when Debian publishes a fixed stable package.",
-      "source": "https://www.sqlite.org/cves.html"
+      "reviewed_on": "2026-08-31",
+      "reviewed_by": "NUS ISS AIS Team 9",
+      "expires_on": "2026-09-30",
+      "reason": "The runtime services use PostgreSQL and neither open attacker-supplied SQLite databases nor expose arbitrary SQL or FTS5. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-11824"
     },
     {
       "id": "CVE-2026-5928",
@@ -35,8 +39,10 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "expires_on": "2026-09-18",
-      "reason": "The services use standard UTF-8 and do not expose ungetwc over attacker-selected overlapping encodings. Debian classifies the Trixie issue as minor/no-DSA; review when a fixed stable package is available.",
+      "reviewed_on": "2026-08-31",
+      "reviewed_by": "NUS ISS AIS Team 9",
+      "expires_on": "2026-09-30",
+      "reason": "The services use standard Unicode encodings and do not expose ungetwc over attacker-selected overlapping encodings. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-5928"
     },
     {
@@ -48,8 +54,10 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "expires_on": "2026-09-18",
-      "reason": "The services do not invoke scanf %mc with attacker-controlled widths. Debian classifies the Trixie issue as minor/no-DSA; review when a fixed stable package is available.",
+      "reviewed_on": "2026-08-31",
+      "reviewed_by": "NUS ISS AIS Team 9",
+      "expires_on": "2026-09-30",
+      "reason": "The services do not invoke scanf %mc with attacker-controlled width values. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-5450"
     }
   ]

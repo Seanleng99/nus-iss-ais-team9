@@ -30,6 +30,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
+- `docs/container-security.md`: exact-version image-scan exceptions, current risk review, and expiry controls.
 
 ## Target Architecture
 
