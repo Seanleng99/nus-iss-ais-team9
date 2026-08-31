@@ -73,7 +73,8 @@ On 2026-08-30, the application stack created and confirmed one managed email sub
 
 Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5xx alarm from `OK` to `ALARM`, recorded a successful SNS action at `2026-08-29T23:59:31.854Z`, and restored the alarm to `OK`. The local privacy-safe artifact records one confirmed subscription without the email address. On 2026-08-30, the Team 9 mailbox operator acknowledged receipt of both the `ALARM` and restoration/`OK` messages, completing end-to-end delivery verification. Operational validation run 33349636155 subsequently retained the automated confirmed-subscription check in its 90-day artifact.
 
-## Open Evidence
+## Deferred Or Conditional Evidence
 
-- Representative-user validation of explanations and confidence presentation.
+- Representative-user validation of explanations and confidence presentation was explicitly deferred from this project scope; the prepared protocol remains an activation gate for real users.
+- Backup restoration and disaster-recovery exercises are outside the bounded academic demo; revisit them before a production recoverability claim.
 - If a Nova Micro change is pursued, first correct or otherwise resolve its repeatable missing-input dependency behavior, then produce a fresh all-green comparison before blinded review.

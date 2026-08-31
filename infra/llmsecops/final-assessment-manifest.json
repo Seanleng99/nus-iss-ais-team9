@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "AI Financial Wellness Coach",
+    "data_classification": "synthetic-data-only",
+    "assessment_target": "NUS-ISS Architecting AI Systems practice-module demonstration",
+    "runbook_path": "docs/demo-runbook.md"
+  },
+  "requirements": [
+    {
+      "id": "ARCH-01",
+      "name": "Logical and deployed AWS architecture",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "architecture", "path": "docs/architecture.md"},
+        {"kind": "architecture", "path": "docs/final-assessment.md"},
+        {"kind": "implementation", "path": "infra/aws/demo-application.yaml"},
+        {"kind": "implementation", "path": "infra/aws/demo-foundation.yaml"}
+      ],
+      "demo_scenarios": ["DEMO-01"]
+    },
+    {
+      "id": "AGENT-01",
+      "name": "Model-driven multi-agent orchestration and specialist roles",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "documentation", "path": "docs/agent-design.md"},
+        {"kind": "implementation", "path": "apps/ai-service/app/orchestrator.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_orchestrator.py"}
+      ],
+      "demo_scenarios": ["DEMO-02", "DEMO-03"]
+    },
+    {
+      "id": "COMM-01",
+      "name": "Typed dynamic dependency communication",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "decision", "path": "docs/adr/0002-dynamic-agent-dependencies.md"},
+        {"kind": "implementation", "path": "apps/ai-service/app/core/schemas.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_dynamic_dependencies.py"}
+      ],
+      "demo_scenarios": ["DEMO-02", "DEMO-03"]
+    },
+    {
+      "id": "MODEL-01",
+      "name": "Model selection and versioned prompts",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "documentation", "path": "docs/model-selection.md"},
+        {"kind": "implementation", "path": "apps/ai-service/app/models/gateway.py"},
+        {"kind": "implementation", "path": "apps/ai-service/prompts/v4/prompts.json"},
+        {"kind": "workflow", "path": ".github/workflows/model-comparison.yml"}
+      ],
+      "demo_scenarios": ["DEMO-02"]
+    },
+    {
+      "id": "MEMORY-01",
+      "name": "Request-scoped agent state and disabled durable memory",
+      "status": "controlled",
+      "evidence": [
+        {"kind": "documentation", "path": "docs/agent-design.md"},
+        {"kind": "policy", "path": "apps/backend/app/policies/data-lifecycle-policy.json"},
+        {"kind": "test", "path": "apps/backend/tests/test_data_lifecycle_api.py"}
+      ],
+      "demo_scenarios": ["DEMO-05"]
+    },
+    {
+      "id": "TOOLS-01",
+      "name": "Role-scoped deterministic tools and capabilities",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "implementation", "path": "apps/ai-service/app/tools/registry.py"},
+        {"kind": "implementation", "path": "apps/ai-service/app/capabilities/registry.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_conditional_education_dependencies.py"}
+      ],
+      "demo_scenarios": ["DEMO-02", "DEMO-03"]
+    },
+    {
+      "id": "TRACE-01",
+      "name": "Explainability and decision traceability",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "documentation", "path": "docs/agent-design.md"},
+        {"kind": "implementation", "path": "apps/frontend/ui/pages.py"},
+        {"kind": "implementation", "path": "apps/backend/app/infrastructure/models.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_trace_retention.py"}
+      ],
+      "demo_scenarios": ["DEMO-02", "DEMO-03"]
+    },
+    {
+      "id": "RAI-01",
+      "name": "Responsible AI, human control, and scope boundaries",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "policy", "path": "docs/responsible-ai.md"},
+        {"kind": "policy", "path": "docs/security-risk-register.md"},
+        {"kind": "documentation", "path": "docs/requirements-traceability.md"}
+      ],
+      "demo_scenarios": ["DEMO-04"]
+    },
+    {
+      "id": "SEC-01",
+      "name": "Prompt, retrieval, identity, and service-boundary security",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "policy", "path": "docs/security-guardrails.md"},
+        {"kind": "implementation", "path": "apps/ai-service/app/core/guardrails.py"},
+        {"kind": "implementation", "path": "apps/backend/app/core/security.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_guardrails.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_security.py"}
+      ],
+      "demo_scenarios": ["DEMO-01", "DEMO-04"]
+    },
+    {
+      "id": "EVAL-01",
+      "name": "Conjunctive quality, safety, fairness, and dependency evaluation",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "evaluation", "path": "docs/evaluation-plan.md"},
+        {"kind": "policy", "path": "infra/llmsecops/evaluation-policy.json"},
+        {"kind": "evaluation", "path": "infra/llmsecops/live-evaluation-cases.jsonl"},
+        {"kind": "implementation", "path": "apps/ai-service/app/evals/gate.py"}
+      ],
+      "demo_scenarios": ["DEMO-06"]
+    },
+    {
+      "id": "RAG-01",
+      "name": "Separated and governed Education and Policy RAG",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "policy", "path": "docs/rag-source-governance.md"},
+        {"kind": "policy", "path": "docs/policy-rag-governance.md"},
+        {"kind": "implementation", "path": "apps/ai-service/app/rag/retriever.py"},
+        {"kind": "implementation", "path": "apps/ai-service/app/rag/policy.py"},
+        {"kind": "workflow", "path": ".github/workflows/rag-source-governance.yml"},
+        {"kind": "workflow", "path": ".github/workflows/policy-rag-source-governance.yml"}
+      ],
+      "demo_scenarios": ["DEMO-03", "DEMO-04"]
+    },
+    {
+      "id": "IDENTITY-01",
+      "name": "Cognito authentication and owner isolation",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "implementation", "path": "apps/frontend/ui/auth.py"},
+        {"kind": "implementation", "path": "apps/backend/app/api/oidc.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_security.py"},
+        {"kind": "operations", "path": "docs/operational-evidence.md"}
+      ],
+      "demo_scenarios": ["DEMO-01"]
+    },
+    {
+      "id": "CICD-01",
+      "name": "CI/CD and LLMSecOps release controls",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "documentation", "path": "docs/cicd-pipeline.md"},
+        {"kind": "workflow", "path": ".github/workflows/ci.yml"},
+        {"kind": "workflow", "path": ".github/workflows/release.yml"},
+        {"kind": "workflow", "path": ".github/workflows/final-assessment.yml"},
+        {"kind": "policy", "path": "infra/llmsecops/final-assessment-manifest.json"},
+        {"kind": "implementation", "path": "infra/scripts/final_assessment.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_final_assessment.py"}
+      ],
+      "demo_scenarios": ["DEMO-06"]
+    },
+    {
+      "id": "OPS-01",
+      "name": "Monitoring, alerting, load, and retained operational evidence",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "operations", "path": "docs/operations.md"},
+        {"kind": "operations", "path": "docs/operational-evidence.md"},
+        {"kind": "workflow", "path": ".github/workflows/aws-operational-validation.yml"}
+      ],
+      "demo_scenarios": ["DEMO-06"]
+    },
+    {
+      "id": "LIFECYCLE-01",
+      "name": "Data consent, export, deletion, and retention",
+      "status": "implemented",
+      "evidence": [
+        {"kind": "policy", "path": "docs/data-lifecycle.md"},
+        {"kind": "implementation", "path": "apps/backend/app/core/data_lifecycle.py"},
+        {"kind": "implementation", "path": "apps/backend/app/jobs/purge_data_lifecycle.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_data_lifecycle_retention.py"}
+      ],
+      "demo_scenarios": ["DEMO-05", "DEMO-06"]
+    }
+  ],
+  "demo_scenarios": [
+    {
+      "id": "DEMO-01",
+      "name": "Authenticated owner isolation",
+      "runbook_section": "1-authentication-and-owner-isolation",
+      "expected_evidence": ["Two Cognito sessions show different owner-bound workspaces", "Unauthenticated backend access is rejected"]
+    },
+    {
+      "id": "DEMO-02",
+      "name": "Dynamic multi-hop dependency resolution",
+      "runbook_section": "2-dynamic-multi-hop-dependencies",
+      "expected_evidence": ["Goal Strategy receives monthly_savings_capacity", "Budget receives transaction_category_totals", "The orchestrator records both dependency edges"]
+    },
+    {
+      "id": "DEMO-03",
+      "name": "Independent fan-out and governed Education RAG",
+      "runbook_section": "3-parallel-specialists-and-education-rag",
+      "expected_evidence": ["Spending and Investment Education are selected", "Education sources expose governed provenance", "Policy evidence remains separate"]
+    },
+    {
+      "id": "DEMO-04",
+      "name": "Safety and advice-boundary enforcement",
+      "runbook_section": "4-safety-and-advice-boundary",
+      "expected_evidence": ["Prompt injection is blocked", "Personalized investment instruction is blocked", "A privacy-safe reference ID is shown"]
+    },
+    {
+      "id": "DEMO-05",
+      "name": "User data lifecycle controls",
+      "runbook_section": "5-data-lifecycle-and-memory-boundary",
+      "expected_evidence": ["Policy version and retention periods are visible", "Durable memory is visibly disabled", "Export and confirmed deletion controls are available"]
+    },
+    {
+      "id": "DEMO-06",
+      "name": "Automated assessment and retained evidence",
+      "runbook_section": "6-automated-final-assessment",
+      "expected_evidence": ["Repository evidence integrity passes", "Live evaluation and bounded load pass", "Privacy-safe artifacts are retained for 90 days"]
+    }
+  ],
+  "deferred": [
+    {
+      "id": "DEFER-DR",
+      "reason": "Backup restoration and disaster-recovery exercises are not required for the bounded academic demo.",
+      "activation_condition": "Required before a production availability or recoverability claim."
+    },
+    {
+      "id": "DEFER-DURABLE-MEMORY",
+      "reason": "Request-scoped state is sufficient and durable agent memory remains disabled by policy.",
+      "activation_condition": "Requires approved purpose, consent, correction, isolation, encryption, retention, and deletion design."
+    },
+    {
+      "id": "DEFER-MCP-A2A",
+      "reason": "Agents and tools share one service owner and runtime, so typed in-process contracts are sufficient.",
+      "activation_condition": "Revisit when agents or tools become independently owned or remotely deployed services."
+    },
+    {
+      "id": "DEFER-PRODUCTION",
+      "reason": "The project is explicitly assessed as a synthetic-data demonstration, not a production financial service.",
+      "activation_condition": "Requires formal privacy, security, legal, operational, and real-data approval."
+    },
+    {
+      "id": "DEFER-REPRESENTATIVE-USERS",
+      "reason": "The prepared human study was explicitly deferred from this project scope.",
+      "activation_condition": "Required before claiming representative-user validation or approving real users."
+    }
+  ]
+}

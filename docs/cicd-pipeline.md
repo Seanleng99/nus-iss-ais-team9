@@ -37,6 +37,7 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 - `.github/workflows/rag-source-governance.yml`: weekly and manual read-only validation of the governed Education manifest against exact S3 objects, sidecar provenance, checksums, source freshness, Bedrock catalog state, and the latest ingestion job. Its privacy-safe evidence is retained for 90 days, and its OIDC role cannot upload, delete, or start ingestion.
 - `.github/workflows/policy-rag-source-governance.yml`: equivalent weekly and manual read-only validation for the separate Policy manifest, Knowledge Base, data source, and S3 prefix, with independently retained 90-day evidence.
 - `.github/workflows/model-comparison.yml`: manual, main-only comparison of the approved Nova Lite and Nova Micro APAC profiles through the real orchestrator. It verifies catalog, entitlement, geography, structural quality, per-request latency, token cost, and deterministic selection gates, then uploads a JSON report plus blinded human-review materials for 90 days. It never deploys a service.
+- `.github/workflows/final-assessment.yml`: manual, main-only assessment gate that integrity-inventories the machine-readable requirement evidence and then calls the established AWS operational workflow with explicit bounded inputs. Both privacy-safe artifacts are retained for 90 days; it never deploys an application or mutates a governed corpus.
 - `.github/dependabot.yml`: weekly GitHub Actions and Python dependency updates.
 - `infra/llmsecops/evaluation-policy.json`: versioned release thresholds.
 
@@ -54,6 +55,7 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 | `infra/aws/**` | CloudFormation and Compose validation | No application deployment |
 | `infra/scripts/**` | Operational-script tests, infrastructure validation, and SAST; load/post-deploy smoke changes also select integration | No application deployment |
 | `.github/workflows/model-comparison.yml` | AI tests, infrastructure validation, and SAST | No application deployment |
+| `.github/workflows/final-assessment.yml` or `.github/workflows/aws-operational-validation.yml` | AI tests, operational-script tests, infrastructure validation, and SAST | No application deployment |
 | `.github/workflows/rag-source-governance.yml` or governed Education manifest | AI and operational-script tests, infrastructure validation, and SAST | No application deployment |
 | `.github/workflows/policy-rag-source-governance.yml` or governed Policy manifest | AI and operational-script tests, infrastructure validation, and SAST | No application deployment |
 | CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; backend deployment always runs the migration task |

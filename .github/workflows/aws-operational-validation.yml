@@ -20,6 +20,24 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      repeats:
+        description: Repetitions of each live evaluation case
+        required: true
+        type: string
+      load_requests:
+        description: Number of bounded synthetic load requests
+        required: true
+        type: string
+      load_concurrency:
+        description: Maximum concurrent synthetic requests
+        required: true
+        type: string
+      exercise_task_replacement:
+        description: Force and verify one backend ECS task replacement
+        required: true
+        type: boolean
   schedule:
     - cron: "0 2 * * 0"
 
@@ -58,6 +76,7 @@ jobs:
     name: Validate live AI and AWS operations
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_call' ||
       vars.AWS_OPERATIONAL_VALIDATION_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30

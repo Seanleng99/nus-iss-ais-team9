@@ -124,6 +124,18 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 
+    def test_assessment_workflows_validate_without_service_deployment(self):
+        for path in (
+            ".github/workflows/aws-operational-validation.yml",
+            ".github/workflows/final-assessment.yml",
+        ):
+            with self.subTest(path=path):
+                result = detect_changes.classify_changes([path])
+                self.assertTrue(result["ai_ci"])
+                self.assertTrue(result["infrastructure"])
+                self.assertTrue(result["sast"])
+                self.assertFalse(result["deploy"])
+
     def test_rag_governance_workflow_validates_without_service_deployment(self):
         result = detect_changes.classify_changes(
             [".github/workflows/rag-source-governance.yml"]

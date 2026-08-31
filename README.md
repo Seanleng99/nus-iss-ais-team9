@@ -2,7 +2,7 @@
 
 Multi-agent financial education platform for young adults in Singapore. The system provides budgeting guidance, spending insights, goal planning, and investment education while avoiding regulated financial advice.
 
-This repository is an executable synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. OIDC user authentication and profile ownership isolation are implemented as a staged AWS rollout; they remain scaffolded until the Cognito/CloudFront deployment and live authorization checks are retained. See `docs/requirements-traceability.md` before treating a scaffolded capability as complete.
+This repository is an executable synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. Cognito OIDC authentication, immutable profile ownership, CloudFront custom-domain TLS, HTTPS origin restriction, and live cross-owner isolation evidence are implemented for the AWS demo. This does not approve real personal financial data or production users.
 
 ## Repository Layout
 
@@ -32,6 +32,8 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
 - `docs/container-security.md`: exact-version image-scan exceptions, current risk review, and expiry controls.
+- `docs/final-assessment.md`: assessor-facing scope, architecture, interaction, evidence baseline, and acceptance gate.
+- `docs/demo-runbook.md`: reproducible six-scenario final demonstration procedure.
 
 ## Target Architecture
 

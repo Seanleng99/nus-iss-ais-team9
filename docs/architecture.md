@@ -1,6 +1,6 @@
 # Architecture
 
-## Target Logical View
+## Implemented Logical View
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ The retrieval design separates educational knowledge from policy controls. Inves
 
 Investment Education has a dedicated `education_retriever`; Budget and Goal Strategy can request the same governed retriever through the orchestrator's typed `education_context` capability; Risk and Compliance has an independently allowlisted `policy_retriever`. Both collections provide offline fixtures for local and CI execution and strict Bedrock Knowledge Base adapters for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Spending remains retrieval-free.
 
-## Target Physical AWS View
+## Implemented Physical AWS View
 
 ```mermaid
 flowchart LR
