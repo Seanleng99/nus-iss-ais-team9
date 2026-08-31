@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "comparison_id": "nova-lite-vs-nova-micro-2026-08",
+  "comparison_id": "nova-lite-vs-nova-micro-v4-2026-08-31",
   "cases": "infra/llmsecops/model-comparison-cases.jsonl",
   "repeats": 3,
-  "prompt_set_version": "v3",
+  "prompt_set_version": "v4",
   "selection": {
     "required_deployment_region": "ap-southeast-1",
     "required_geography": "APAC",
@@ -34,7 +34,7 @@
       "output_cost_per_million": 0.24,
       "availability_source": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-lite.html",
       "pricing_source": "https://aws.amazon.com/bedrock/pricing/",
-      "pricing_checked_on": "2026-08-28"
+      "pricing_checked_on": "2026-08-31"
     },
     {
       "role": "candidate",
@@ -51,7 +51,7 @@
       "output_cost_per_million": 0.14,
       "availability_source": "https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html",
       "pricing_source": "https://aws.amazon.com/bedrock/pricing/",
-      "pricing_checked_on": "2026-08-28"
+      "pricing_checked_on": "2026-08-31"
     }
   ]
 }

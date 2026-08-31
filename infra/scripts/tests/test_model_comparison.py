@@ -26,12 +26,16 @@ def test_policy_defines_one_baseline_and_a_lower_cost_candidate() -> None:
     baseline = next(model for model in policy["models"] if model["role"] == "baseline")
     candidate = next(model for model in policy["models"] if model["role"] == "candidate")
 
+    assert policy["comparison_id"] == "nova-lite-vs-nova-micro-v4-2026-08-31"
+    assert policy["prompt_set_version"] == "v4"
     assert baseline["model_id"] == "apac.amazon.nova-lite-v1:0"
     assert candidate["model_id"] == "apac.amazon.nova-micro-v1:0"
     assert candidate["aws_region"] == "ap-southeast-1"
     assert candidate["invocation_type"] == "geo_inference_profile"
     assert candidate["input_cost_per_million"] < baseline["input_cost_per_million"]
     assert candidate["output_cost_per_million"] < baseline["output_cost_per_million"]
+    assert baseline["pricing_checked_on"] == "2026-08-31"
+    assert candidate["pricing_checked_on"] == "2026-08-31"
 
 
 def test_case_set_covers_every_required_selection_category() -> None:
