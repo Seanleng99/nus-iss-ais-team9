@@ -27,6 +27,12 @@ Every accepted finding matched one of these exact source-package versions, with 
 
 The SQLite project states that these two findings require crafted FTS5 data and arbitrary SQL or a hostile database. The Debian tracker records the stable-package status and no-DSA classification for all four findings. Review the authoritative records directly: [SQLite vulnerability conditions](https://www.sqlite.org/cves.html), [CVE-2026-11822](https://security-tracker.debian.org/tracker/CVE-2026-11822), [CVE-2026-11824](https://security-tracker.debian.org/tracker/CVE-2026-11824), [CVE-2026-5928](https://security-tracker.debian.org/tracker/CVE-2026-5928), and [CVE-2026-5450](https://security-tracker.debian.org/tracker/CVE-2026-5450).
 
+## Renewal Validation
+
+Commit `e68333a75e89d3236c6b5215f2b75d0859d2e0f5` passed [CI and LLMSecOps run 33367930852](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33367930852), including all service tests, the policy evaluation, 79 infrastructure-script tests, SAST, integration/load smoke, and all three hardened container builds.
+
+[Release run 33368100527](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33368100527) rebuilt and pushed all three immutable images, passed the exact-version Inspector/ECR gate, verified migrations, deployed the images, and passed the health and AI-safety smoke suite. ECS then reported all three services at steady state on that commit: AI task revision 37, backend revision 71, and frontend revision 44.
+
 ## Enforcement And Next Review
 
 `infra/scripts/ecr_scan_gate.py` requires an exception to identify the exact CVE, source package, package version, and repository. It also requires a review date, reviewer, rationale, authoritative source, and expiry no more than 30 days after review. Expired exceptions are ignored, so a still-present critical or high finding blocks release automatically.

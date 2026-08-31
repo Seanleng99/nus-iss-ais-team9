@@ -5,14 +5,14 @@ This register contains privacy-safe evidence for the synthetic-data AWS demo. It
 ## Verified Baseline
 
 - Baseline date: 2026-08-31
-- Commit: `2cc386ec4ac724876fa92e226237a969a2ce8db7`
+- Commit: `e68333a75e89d3236c6b5215f2b75d0859d2e0f5`
 - Model/profile: `apac.amazon.nova-lite-v1:0`
 - Prompt set: `v4`
 
 | Evidence | Result | Reference |
 |---|---|---|
-| CI and LLMSecOps | Passed 159 AI-service tests, two subtests, all 52 policy-v6 evaluation cases/pairs, migrations, SAST, integration/load smoke, and hardened image builds | [GitHub Actions run 33347157673](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33347157673) |
-| AWS release | Passed immutable image scanning, migration task, all three ECS deployments, and health/AI-safety smoke tests; AI revision 36 and backend revision 67 reached steady state | [GitHub Actions run 33347260233](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33347260233) |
+| CI and LLMSecOps | Passed all service tests, policy evaluations, 79 infrastructure-script tests, migrations, SAST, integration/load smoke, and all three hardened image builds | [GitHub Actions run 33367930852](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33367930852) |
+| AWS release | Rebuilt all three images and passed exact-version Inspector/ECR gating, migration verification, all ECS deployments, and health/AI-safety smoke tests; AI revision 37, backend revision 71, and frontend revision 44 reached steady state | [GitHub Actions run 33368100527](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33368100527) |
 | AWS operational validation | Passed service, autoscaling, dashboard, alarm and confirmed-subscription, edge-security, trace-retention, repeated live-model/RAG, bounded-load, and cleanup gates | [GitHub Actions run 33349636155](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33349636155) |
 | Formal Bedrock model comparison | Nova Lite passed 45/45; Nova Micro passed 42/45 and was rejected at the dependency gate; baseline retained | [GitHub Actions run 33354207859](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33354207859) |
 | Education RAG source governance | Passed manifest, S3 object, checksum, metadata, freshness, Knowledge Base, data source, and ingestion-state audit; evidence retained for 90 days | [GitHub Actions run 33193755856](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33193755856) |
@@ -38,6 +38,12 @@ Using the baseline above, evaluation policy v4 sets these operational gates:
 - estimated live-evaluation cost no greater than USD 0.05 per workflow run.
 
 The GitHub environment variables enforce the 10-second live P95, 8-second load P95, and USD 0.05 cost limits. They replaced the original 30-second and USD 1.00 characterization values before run 33164881856.
+
+## Container Security Exceptions
+
+On 2026-08-31, all four exact-version image-scan exceptions were rechecked against live `COMPLETE` Inspector/ECR results, the current official Python base-image digest, and current Debian stable-package status. The deployed images contained one critical and three high findings each, all matching the reviewed `sqlite3` `3.46.1-7+deb13u1` or `glibc` `2.41-12+deb13u3` exceptions; there were zero unexcepted critical or high findings. Debian still had no Trixie fix and classified each as minor/no-DSA, while the application did not expose the required vulnerable operations.
+
+The gate now requires review metadata and limits every exception to 30 days. The exceptions expire on 2026-09-30, and a package-version change cannot reuse them. CI run 33367930852 and release run 33368100527 validated the hardened policy, rebuilt all images, passed fresh Inspector/ECR scans, and deployed the same immutable commit to all services. The detailed decision and source links are in `docs/container-security.md`.
 
 ## Candidate Model Decision
 
@@ -69,4 +75,3 @@ Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5x
 
 - Representative-user validation of explanations and confidence presentation.
 - If a Nova Micro change is pursued, first correct or otherwise resolve its repeatable missing-input dependency behavior, then produce a fresh all-green comparison before blinded review.
-- Review the exact-version base-image CVE exceptions before they expire on 2026-09-18.
