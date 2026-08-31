@@ -1,0 +1,19 @@
+{
+  "study_id": "representative-user-explainability",
+  "study_version": "v1",
+  "conducted_at": "YYYY-MM-DD",
+  "application_commit_sha": "REPLACE_WITH_DEPLOYED_COMMIT_SHA",
+  "model_id": "apac.amazon.nova-lite-v1:0",
+  "prompt_set_version": "v4",
+  "recruitment": {
+    "participants_consented": 0,
+    "participants_intended_users": 0,
+    "participants_independent_of_implementation": 0,
+    "financial_familiarity_counts": {
+      "beginner": 0,
+      "intermediate": 0,
+      "advanced": 0
+    },
+    "accessibility_needs_represented": 0
+  }
+}

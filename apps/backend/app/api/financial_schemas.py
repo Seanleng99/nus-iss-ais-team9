@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.domain.schemas import MoneyAmount, SourceCitation, UserFinancialSnapshot
+from app.domain.schemas import AgentName, MoneyAmount, SourceCitation, UserFinancialSnapshot
 
 EmploymentStatus = Literal[
     "employed", "self-employed", "student", "unemployed", "retired", "prefer not to say"
@@ -267,11 +267,28 @@ class ChatSessionUpdate(BaseModel):
         return self
 
 
+class AgentExplanationResponse(BaseModel):
+    agent: AgentName
+    rationale: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    blocked: bool = False
+
+
+class ChatExplanationResponse(BaseModel):
+    trace_id: str
+    selected_agents: list[AgentName] = Field(default_factory=list)
+    routing_rationale: list[str] = Field(default_factory=list)
+    agent_results: list[AgentExplanationResponse] = Field(default_factory=list)
+    blocked: bool = False
+    prompt_set_version: str | None = None
+
+
 class ChatMessageResponse(BaseModel):
     id: UUID
     role: Literal["user", "assistant"]
     content: str
     sources: list[SourceCitation] = Field(default_factory=list)
+    explanation: ChatExplanationResponse | None = None
     created_at: datetime
 
 

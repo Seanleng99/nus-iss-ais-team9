@@ -37,6 +37,7 @@ Every release must have named human owners for these roles. The Risk and Complia
 ### Development And Evaluation
 
 - Test normal, edge, missing-data, adversarial, fairness-consistency, and unsafe-advice cases.
+- Validate the deployed explanation, confidence, uncertainty, source, and safety presentation with representative users under the synthetic-data protocol in `docs/representative-user-validation.md`.
 - Compare model candidates on task quality, safety, latency, cost, regional availability, and data-residency implications.
 - Version prompts, model IDs, policies, retrieval data, and evaluation datasets.
 - Block releases on critical safety failures or unacceptable regression from the approved baseline.

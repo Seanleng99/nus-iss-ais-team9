@@ -105,6 +105,16 @@ COACH_STARTERS = [
     ("Explain where my budget is tight", ":material/pie_chart:"),
     ("How can I reach my goal sooner?", ":material/flag:"),
 ]
+AGENT_LABELS = {
+    "spending": "Spending analysis",
+    "budget": "Budget planning",
+    "goal_strategy": "Goal planning",
+    "investment_education": "Investment education",
+    "risk_compliance": "Safety review",
+}
+RATIONALE_LABELS = {
+    "MISSING_REQUIRED_INPUT": "The requested guidance needs more information.",
+}
 
 
 def _option_index(options: list[str], value: str | None) -> int | None:
@@ -113,6 +123,56 @@ def _option_index(options: list[str], value: str | None) -> int | None:
 
 def _category_label(category: str) -> str:
     return category.replace("_", " ").title()
+
+
+def _confidence_band(value: float) -> str:
+    if value < 0.5:
+        return "Low"
+    if value < 0.8:
+        return "Moderate"
+    return "High"
+
+
+def _render_coach_explanation(explanation: dict | None) -> None:
+    if not explanation:
+        return
+    with st.expander("Why this answer and how certain it is"):
+        st.caption(
+            "Confidence is each AI component's self-assessment. It is not a "
+            "probability, an accuracy guarantee, or a substitute for checking "
+            "your inputs and the cited sources."
+        )
+        selected_agents = explanation.get("selected_agents", [])
+        if selected_agents:
+            labels = [
+                AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                for agent in selected_agents
+            ]
+            st.markdown(f"**Areas used:** {', '.join(labels)}")
+        routing_rationale = explanation.get("routing_rationale", [])
+        if routing_rationale:
+            st.markdown("**Why these areas were used**")
+            for rationale in routing_rationale:
+                st.markdown(f"- {rationale}")
+        for result in explanation.get("agent_results", []):
+            agent = result.get("agent", "unknown")
+            label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+            confidence = min(max(float(result.get("confidence", 0.0)), 0.0), 1.0)
+            st.markdown(
+                f"**{label} — {_confidence_band(confidence)} confidence "
+                f"(self-assessed score {confidence:.2f})**"
+            )
+            for rationale in result.get("rationale", []):
+                st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
+        if explanation.get("blocked"):
+            st.warning("The safety review blocked the requested guidance.")
+        trace_id = explanation.get("trace_id")
+        prompt_version = explanation.get("prompt_set_version")
+        reference = f"Reference ID: {trace_id}" if trace_id else ""
+        if prompt_version:
+            reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+        if reference:
+            st.caption(reference)
 
 
 def _transaction_payload(
@@ -710,8 +770,10 @@ def coach_page() -> None:
                 for source in sources:
                     st.markdown(
                         f"- [{source['title']}]({source['canonical_url']}) — "
-                        f"{source['issuing_organization']}, {source['published_at']}"
+                        f"{source['issuing_organization']}, {source['published_at']} · "
+                        f"Source ID: `{source['source_id']}`"
                     )
+            _render_coach_explanation(message.get("explanation"))
 
     if pending_question and active_session_id:
         with st.chat_message("user", avatar=":material/person:"):

@@ -253,6 +253,13 @@ class ChatMessageRecord(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     chat_session: Mapped[ChatSessionRecord] = relationship(back_populates="messages")
+    orchestration_trace: Mapped["OrchestrationTraceRecord | None"] = relationship(
+        back_populates="assistant_message",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,
+        passive_deletes=True,
+    )
 
 
 class OrchestrationTraceRecord(Base):
@@ -279,4 +286,7 @@ class OrchestrationTraceRecord(Base):
     prompt_set_version: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    assistant_message: Mapped[ChatMessageRecord] = relationship(
+        back_populates="orchestration_trace"
     )

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "study_id": "representative-user-explainability",
+  "study_version": "v1",
+  "required_model_id": "apac.amazon.nova-lite-v1:0",
+  "required_prompt_set_version": "v4",
+  "scope": "Synthetic-data usability validation of explanations, confidence, uncertainty, sources, limitations, and safe next actions in the deployed coach UI.",
+  "minimum_completed_participants": 5,
+  "recruitment": {
+    "minimum_intended_users": 5,
+    "minimum_independent_participants": 3,
+    "minimum_beginner_participants": 2
+  },
+  "allowed_issue_codes": [
+    "none",
+    "explanation_unclear",
+    "confidence_unclear",
+    "uncertainty_unclear",
+    "source_unclear",
+    "limitation_unclear",
+    "accessibility_barrier",
+    "overtrust",
+    "unsafe_next_action",
+    "privacy_concern"
+  ],
+  "critical_issue_codes": [
+    "overtrust",
+    "unsafe_next_action",
+    "privacy_concern"
+  ],
+  "acceptance": {
+    "minimum_task_completion_rate": 0.9,
+    "minimum_binary_rates": {
+      "explanation_correct": 0.8,
+      "confidence_not_probability_correct": 0.8,
+      "limitation_correct": 0.8,
+      "source_use_correct": 0.8,
+      "safe_next_action_correct": 1.0,
+      "would_verify_before_acting": 0.8
+    },
+    "minimum_likert_medians": {
+      "explanation_clarity_1_to_5": 4.0,
+      "confidence_clarity_1_to_5": 4.0,
+      "uncertainty_clarity_1_to_5": 4.0,
+      "source_clarity_1_to_5": 4.0,
+      "actionability_1_to_5": 4.0
+    },
+    "maximum_critical_issue_count": 0,
+    "apply_thresholds_per_scenario": true
+  },
+  "scenarios": [
+    {
+      "scenario_id": "budget-explanation",
+      "title": "Understand a budget explanation",
+      "profile_variant": "complete",
+      "objective": "Determine whether the participant can identify the inputs, assumptions, rationale, confidence limitation, and a safe next action.",
+      "prompt": "Review my monthly budget. Explain what numbers and assumptions you used, what I could adjust, and how certain you are.",
+      "source_applicable": false
+    },
+    {
+      "scenario_id": "grounded-education",
+      "title": "Use evidence for general investment education",
+      "profile_variant": "complete",
+      "objective": "Determine whether the participant understands what the cited sources support and that confidence does not authorize a financial decision.",
+      "prompt": "Explain diversification and compound interest in general terms for my emergency-fund goal. Do not recommend a product or allocation.",
+      "source_applicable": true
+    },
+    {
+      "scenario_id": "missing-input",
+      "title": "Recognize missing information and uncertainty",
+      "profile_variant": "missing",
+      "objective": "Determine whether the participant recognizes that the coach needs target amount, current savings, and time horizon before making a projection.",
+      "prompt": "Can I reach a home deposit goal on time?",
+      "source_applicable": false
+    },
+    {
+      "scenario_id": "regulated-request",
+      "title": "Understand the safety boundary",
+      "profile_variant": "complete",
+      "objective": "Determine whether the participant understands why personalized product and allocation instructions are blocked and knows a safe next step.",
+      "prompt": "I have SGD 10,000. Tell me exactly which ETF to buy and what percentage to put into it.",
+      "source_applicable": false
+    }
+  ]
+}

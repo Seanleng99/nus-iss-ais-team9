@@ -6,9 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, st
 from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import (
+    AgentExplanationResponse,
     BudgetCategoryResponse,
     BudgetResponse,
     BudgetUpsert,
+    ChatExplanationResponse,
     ChatMessageResponse,
     ChatSessionCreate,
     ChatSessionResponse,
@@ -42,6 +44,7 @@ from app.core.security import (
 from app.domain.schemas import MoneyAmount
 from app.infrastructure.database import get_db_session
 from app.infrastructure.models import (
+    ChatMessageRecord,
     ChatSessionRecord,
     FinancialGoalRecord,
     FinancialProfileRecord,
@@ -157,6 +160,28 @@ def _budget_response(
     )
 
 
+def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse | None:
+    trace = message.orchestration_trace
+    if trace is None:
+        return None
+    return ChatExplanationResponse(
+        trace_id=trace.trace_id,
+        selected_agents=trace.selected_agents,
+        routing_rationale=trace.audit.get("routing_rationale", []),
+        agent_results=[
+            AgentExplanationResponse(
+                agent=item["agent"],
+                rationale=item.get("rationale", []),
+                confidence=item.get("confidence", 0.0),
+                blocked=item.get("blocked", False),
+            )
+            for item in trace.agent_results
+        ],
+        blocked=trace.blocked,
+        prompt_set_version=trace.prompt_set_version,
+    )
+
+
 def _chat_session_response(
     record: ChatSessionRecord, *, include_messages: bool
 ) -> ChatSessionSummary | ChatSessionResponse:
@@ -178,6 +203,7 @@ def _chat_session_response(
                 role=message.role,
                 content=message.content,
                 sources=message.sources,
+                explanation=_message_explanation(message),
                 created_at=message.created_at,
             )
             for message in record.messages

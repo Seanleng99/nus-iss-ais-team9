@@ -17,8 +17,21 @@ class StubAIServiceClient:
             session_id=request.session_id,
             selected_agents=["budget"],
             answer="Test guidance",
-            agent_results=[],
-            disclaimers=[],
+            agent_results=[
+                {
+                    "agent": "budget",
+                    "summary": "Test budget summary",
+                    "rationale": ["The saved income was used."],
+                    "confidence": 0.76,
+                },
+                {
+                    "agent": "risk_compliance",
+                    "summary": "Test safety review",
+                    "rationale": ["The response remains educational."],
+                    "confidence": 0.91,
+                },
+            ],
+            disclaimers=["Educational guidance only."],
             sources=[
                 {
                     "source_id": "cpf-beginners-guide-to-investing",
@@ -110,6 +123,16 @@ def test_coach_forwards_valid_request() -> None:
     assert conversation.json()["messages"][1]["sources"][0]["source_id"] == (
         "cpf-beginners-guide-to-investing"
     )
+    explanation = conversation.json()["messages"][1]["explanation"]
+    assert explanation["trace_id"] == "trace-s1"
+    assert explanation["selected_agents"] == ["budget"]
+    assert explanation["agent_results"][0] == {
+        "agent": "budget",
+        "rationale": ["The saved income was used."],
+        "confidence": 0.76,
+        "blocked": False,
+    }
+    assert explanation["prompt_set_version"] == "v3"
     assert trace.status_code == 200
     assert trace.json()["trace_id"] == "trace-s1"
     assert trace.json()["session_id"] == "s1"
@@ -231,6 +254,10 @@ def test_trace_can_only_be_deleted_by_its_profile() -> None:
             "/api/coach/traces/trace-deletable?user_id=owner",
             headers={"X-API-Key": settings.api_key},
         )
+        conversation = client.get(
+            "/api/users/owner/chat-sessions/deletable",
+            headers={"X-API-Key": settings.api_key},
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -238,6 +265,9 @@ def test_trace_can_only_be_deleted_by_its_profile() -> None:
     assert wrong_owner.status_code == 404
     assert deleted.status_code == 204
     assert missing.status_code == 404
+    assert conversation.status_code == 200
+    assert conversation.json()["messages"][1]["content"] == "Test guidance"
+    assert conversation.json()["messages"][1]["explanation"] is None
 
 
 def test_coach_hides_downstream_failure_details() -> None:

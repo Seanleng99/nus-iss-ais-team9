@@ -521,7 +521,11 @@ class SQLAlchemyChatRepository:
     def get(self, user_id: str, session_id: str) -> ChatSessionRecord | None:
         query = (
             select(ChatSessionRecord)
-            .options(selectinload(ChatSessionRecord.messages))
+            .options(
+                selectinload(ChatSessionRecord.messages).selectinload(
+                    ChatMessageRecord.orchestration_trace
+                )
+            )
             .where(
                 ChatSessionRecord.id == session_id,
                 ChatSessionRecord.user_id == user_id,

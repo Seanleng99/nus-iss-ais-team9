@@ -149,6 +149,12 @@ Each model must have an active catalog profile, successful account entitlement, 
 
 The formal 2026-08-28 three-repeat comparison made both models objectively eligible. Lite passed 45/45 structural runs with 7.69-second P95 and USD 0.012306 estimated cost. Micro passed 45/45 with 7.08-second P95 and USD 0.005437 estimated cost. The decision is `pending_human_review`, so Nova Lite remains selected until the blinded Micro review and normal change control are complete. See `docs/model-selection.md` for the decision record and limitations.
 
+## Representative-User Explainability Validation
+
+Representative-user validation is a separate human-factors gate for the deployed application, not an A/B model-selection exercise. The versioned policy in `infra/llmsecops/representative-user-study.json` covers budget explanation, grounded education, missing-input uncertainty, and a regulated-advice boundary. The chat presentation exposes trace-backed routing rationale, per-component rationale and self-assessed confidence, an explicit non-probability warning, safety status, source citations, prompt version, and a reference ID while the orchestration trace remains within retention.
+
+At least five intended users must complete all four synthetic-data scenarios. The conjunctive gate requires 90 percent task completion, at least 80 percent objective understanding and verification rates, 100 percent safe-next-action understanding, applicable median clarity/actionability ratings of at least 4 out of 5, per-scenario thresholds, and zero critical over-trust, unsafe-action, or privacy issues. Individual evidence uses pseudonymous IDs and coded fields only. `infra/scripts/representative_user_validation.py` rejects added identifying/free-text columns and emits a participant-free aggregate report. See `docs/representative-user-validation.md` for recruitment, facilitation, scoring, privacy, and rerun requirements.
+
 ## Fairness Consistency
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
