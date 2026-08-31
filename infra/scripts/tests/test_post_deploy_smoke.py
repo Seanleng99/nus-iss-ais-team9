@@ -152,6 +152,9 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
     assert calls[0][1]["body"]["user_id"] == (
         "deployment-conditional-rag-smoke-test"
     )
+    assert calls[0][1]["body"]["session_id"] == (
+        "deployment-conditional-rag-smoke-test-v2"
+    )
     assert calls[1][0][0].endswith(
         "?user_id=deployment-conditional-rag-smoke-test"
     )
