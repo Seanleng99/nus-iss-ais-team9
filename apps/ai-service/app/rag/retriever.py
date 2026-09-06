@@ -1,6 +1,7 @@
 import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -147,9 +148,14 @@ EDUCATION_DOCUMENTS = [
         "text": (
             "Investment education should consider time horizon, risk tolerance, fees, and "
             "diversification. Exchange-traded funds are one investment type, and all "
-            "investments can lose value."
+            "investments can lose value. Treasury bills are issued at a discount and "
+            "redeemed at face value at maturity. Singapore Savings Bonds are "
+            "government-issued savings bonds."
         ),
-        "keywords": {"beginner", "diversification", "etf", "investment", "risk"},
+        "keywords": {
+            "beginner", "diversification", "etf", "investment", "risk",
+            "treasury", "bills", "singapore", "savings",
+        },
     },
     {
         "source_id": "cpf-investment-scheme-guide",
@@ -201,7 +207,8 @@ EDUCATION_DOCUMENTS = [
         "text": (
             "This approved guide covers market, credit, liquidity, and currency risk, "
             "as well as diversification. Diversification can reduce concentration but "
-            "does not remove the possibility of loss."
+            "does not remove the possibility of loss. Dollar-cost averaging means "
+            "investing a fixed sum at regular intervals regardless of market movements."
         ),
         "keywords": {
             "investment",
@@ -211,6 +218,7 @@ EDUCATION_DOCUMENTS = [
             "liquidity",
             "currency",
             "diversification",
+            "dollar", "cost", "averaging",
         },
     },
     {
@@ -235,6 +243,7 @@ EDUCATION_DOCUMENTS = [
             "funds",
             "etf",
             "reits",
+            "real", "estate", "trusts",
             "types",
         },
     },
@@ -335,10 +344,15 @@ class BedrockEducationRetriever:
     def client(self) -> Any:
         if self._client is None:
             import boto3
+            from botocore.config import Config
 
             self._client = boto3.client(
                 "bedrock-agent-runtime",
                 region_name=self.aws_region,
+                config=Config(
+                    connect_timeout=3, read_timeout=5,
+                    retries={"mode": "standard", "total_max_attempts": 2},
+                ),
             )
         return self._client
 
@@ -355,10 +369,19 @@ class BedrockEducationRetriever:
             knowledgeBaseId=self.knowledge_base_id,
             retrievalQuery={"text": query},
             retrievalConfiguration={
-                "vectorSearchConfiguration": {"numberOfResults": top_k}
+                "vectorSearchConfiguration": {
+                    "numberOfResults": top_k,
+                    "filter": {
+                        "andAll": [
+                            {"equals": {"key": "corpus_version", "value": self.expected_corpus_version}},
+                            {"equals": {"key": "review_status", "value": "approved"}},
+                        ]
+                    },
+                }
             },
         )
         results = []
+        seen = set()
         for item in response.get("retrievalResults", []):
             if not isinstance(item, dict):
                 continue
@@ -366,7 +389,7 @@ class BedrockEducationRetriever:
                 score = float(item.get("score", 0.0))
             except (TypeError, ValueError):
                 continue
-            if score < self.minimum_score:
+            if not isfinite(score) or score < self.minimum_score:
                 continue
             metadata = item.get("metadata")
             content = item.get("content")
@@ -392,6 +415,10 @@ class BedrockEducationRetriever:
                 continue
             if governed.review_due_at < datetime.now(UTC).date():
                 continue
+            identity = (governed.source_id, governed.document_version, text.strip())
+            if identity in seen:
+                continue
+            seen.add(identity)
             results.append(
                 RetrievedChunk(
                     source_id=governed.source_id,

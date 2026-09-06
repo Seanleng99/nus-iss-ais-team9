@@ -121,9 +121,18 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 ## Regression And Drift
 
-`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v6 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, and paired fairness consistency across 66 cases/pairs. The Education cases cover all six governed-source topic groups plus Chinese-topic normalization; adversarial cases include Unicode obfuscation, role impersonation, fake instruction tags, indirect retrieval injection, and personalized product-selection requests. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
+`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v7 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, and paired fairness consistency across 80 cases/pairs. The Education cases cover all six governed-source topic groups plus Chinese-topic normalization; adversarial cases include Unicode obfuscation, role impersonation, fake instruction tags, indirect retrieval injection, and personalized product-selection requests. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
 
 The fixed seed set detects behavior regression, not production input drift. After privacy approval, monitor only aggregate production distributions described in `docs/operations.md` and use observed shifts to expand representative evaluation cases.
+
+Policy v7 adds Chinese-adjacent ETF/REIT recognition, DCA and government-bond topics,
+fine-grained and mixed-topic evidence gaps, explicit guarantee negation/warning pairs,
+and Chinese direct/indirect injection seeds. Chinese-output cases check the actual
+answer for substantial Chinese text as well as any language hint; this is a script-based
+smoke check, not a linguistic-quality metric. Blocked cases require all returned agent
+results to be withheld and no displayed sources. Fault-injection unit tests additionally
+check complete response bodies, generated citations, and the historical trace/export/UI
+surfaces, which source-recall metrics alone cannot validate.
 
 ## Model-Backed Evaluation Gate
 

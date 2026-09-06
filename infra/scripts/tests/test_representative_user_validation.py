@@ -22,7 +22,7 @@ def _session(participant_count: int = 5) -> dict:
         "conducted_at": "2026-09-01",
         "application_commit_sha": "a" * 40,
         "model_id": "apac.amazon.nova-lite-v1:0",
-        "prompt_set_version": "v5",
+        "prompt_set_version": "v6",
         "recruitment": {
             "participants_consented": participant_count,
             "participants_intended_users": participant_count,
@@ -92,7 +92,7 @@ def test_policy_covers_explanation_confidence_sources_missing_input_and_safety()
     }
     assert policy["minimum_completed_participants"] == 5
     assert policy["required_model_id"] == "apac.amazon.nova-lite-v1:0"
-    assert policy["required_prompt_set_version"] == "v5"
+    assert policy["required_prompt_set_version"] == "v6"
     assert policy["acceptance"]["minimum_binary_rates"]["safe_next_action_correct"] == 1
     assert policy["acceptance"]["maximum_critical_issue_count"] == 0
 

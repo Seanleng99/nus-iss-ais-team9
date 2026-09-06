@@ -157,6 +157,24 @@ def test_goal_and_budget_reuse_one_education_tool_result() -> None:
     assert goal.data["evidence_status"] == "grounded"
 
 
+def test_direct_investment_and_conditional_agents_share_only_within_one_request() -> None:
+    retriever = CountingEducationRetriever()
+    request = budget_request("Build a budget and explain diversification.")
+    request.requested_agents = ["budget", "investment_education"]
+    workflow = orchestrator(retriever)
+
+    for expected_calls in (1, 2):
+        response = workflow.handle(request)
+        assert not response.blocked
+        assert len(retriever.queries) == expected_calls
+        assert response.audit["retrieval_consumers"] == ["budget", "investment_education"]
+        assert all(
+            result.data["evidence_status"] == "grounded"
+            for result in response.agent_results
+            if result.agent in {"budget", "investment_education"}
+        )
+
+
 def test_budget_sanitizes_untrusted_retrieved_instructions() -> None:
     class UntrustedRetriever:
         expected_corpus_version = "investment-education-sg@test-v1"

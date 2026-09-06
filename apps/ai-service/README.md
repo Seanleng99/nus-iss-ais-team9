@@ -44,7 +44,10 @@ uvicorn app.main:app --reload --port 8001
 For a deployed environment, set both `RAG_PROVIDER=bedrock` and `POLICY_RAG_PROVIDER=bedrock`. Provide the reviewed Education and Policy knowledge-base IDs and corpus versions. The AI task role needs read-only access to those exact knowledge bases. Both retrievers reject chunks that do not carry complete governed metadata, match the configured corpus, and remain within their review deadline.
 The current six-source managed Education collection is owned by Investment Education. Its
 retrieval request contains canonical education topics rather than the raw user question or
-personal values. Compliance receives
+personal values. Prompt set v6 retains fine-grained concepts and a canonical question-intent
+hint, explicitly records unsupported topics, and preserves partial-evidence notices through
+synthesis. Final citation markers are validated and links are generated from approved metadata.
+Blocked narratives are withheld across the response and backend/UI read boundaries. Compliance receives
 its sanitized evidence through the agent result rather than querying the Education knowledge base, and independently retrieves only from the Policy collection.
 The `/health` endpoint is public. Send `AI_SERVICE_API_KEY` through the `X-API-Key` header when
 calling `/coach`.

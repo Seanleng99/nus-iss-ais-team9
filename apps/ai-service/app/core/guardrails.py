@@ -41,6 +41,8 @@ PROMPT_INJECTION_PATTERNS = [
         r"(?:^|\n)\s*(?:system|developer|assistant)\s*:",
         re.IGNORECASE,
     ),
+    re.compile(r"(?:忽略|无视|忽視|無視).{0,12}(?:之前|以前|系统|系統|开发者|開發者).{0,8}(?:指令|提示|规则|規則)"),
+    re.compile(r"(?:输出|輸出|显示|顯示|透露|泄露|洩露).{0,12}(?:系统提示|系統提示|隐藏指令|隱藏指令)"),
 ]
 
 ADVISORY_DISCLAIMER = (

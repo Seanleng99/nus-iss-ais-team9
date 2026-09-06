@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, delete, func, or_, select
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.financial_schemas import (
@@ -16,7 +16,15 @@ from app.core.data_lifecycle import (
     DURABLE_MEMORY_CONSENT_VERSION,
     DURABLE_MEMORY_PURPOSE,
 )
-from app.domain.schemas import FinancialGoal, MoneyAmount, Transaction, UserFinancialSnapshot
+from app.domain.schemas import (
+    BLOCKED_RESPONSE_ANSWER,
+    FinancialGoal,
+    MoneyAmount,
+    Transaction,
+    UserFinancialSnapshot,
+    sanitize_blocked_agent_results,
+    sanitize_blocked_audit,
+)
 from app.infrastructure.models import (
     BudgetCategoryRecord,
     ChatMessageRecord,
@@ -308,15 +316,39 @@ class SQLAlchemyUserRepository:
                         {
                             "id": str(message.id),
                             "role": message.role,
-                            "content": message.content,
-                            "sources": message.sources,
+                            "content": (
+                                BLOCKED_RESPONSE_ANSWER
+                                if message.role == "assistant"
+                                and message.orchestration_trace is not None
+                                and message.orchestration_trace.blocked
+                                else message.content
+                            ),
+                            "sources": (
+                                []
+                                if message.role == "assistant"
+                                and message.orchestration_trace is not None
+                                and message.orchestration_trace.blocked
+                                else message.sources
+                            ),
                             "created_at": message.created_at.isoformat(),
                             "orchestration_trace": (
                                 {
                                     "trace_id": message.orchestration_trace.trace_id,
                                     "selected_agents": message.orchestration_trace.selected_agents,
-                                    "agent_results": message.orchestration_trace.agent_results,
-                                    "audit": message.orchestration_trace.audit,
+                                    "agent_results": (
+                                        sanitize_blocked_agent_results(
+                                            message.orchestration_trace.agent_results
+                                        )
+                                        if message.orchestration_trace.blocked
+                                        else message.orchestration_trace.agent_results
+                                    ),
+                                    "audit": (
+                                        sanitize_blocked_audit(
+                                            message.orchestration_trace.audit
+                                        )
+                                        if message.orchestration_trace.blocked
+                                        else message.orchestration_trace.audit
+                                    ),
                                     "blocked": message.orchestration_trace.blocked,
                                     "model_provider": message.orchestration_trace.model_provider,
                                     "model_id": message.orchestration_trace.model_id,
@@ -925,17 +957,35 @@ class SQLAlchemyOrchestrationTraceRepository:
         record = self.get_for_user(user_id, trace_id)
         if record is None:
             return False
+        self._sanitize_blocked_assistant_message(record)
         self.session.delete(record)
         self.session.flush()
         return True
 
     def delete_expired(self, cutoff: datetime) -> int:
-        result = self.session.execute(
-            delete(OrchestrationTraceRecord).where(
-                OrchestrationTraceRecord.created_at < cutoff
-            )
+        expired = OrchestrationTraceRecord.created_at < cutoff
+        blocked_message_ids = select(OrchestrationTraceRecord.assistant_message_id).where(
+            expired, OrchestrationTraceRecord.blocked.is_(True)
         )
+        self.session.execute(
+            update(ChatMessageRecord)
+            .where(
+                ChatMessageRecord.id.in_(blocked_message_ids),
+                ChatMessageRecord.role == "assistant",
+            )
+            .values(content=BLOCKED_RESPONSE_ANSWER, sources=[])
+            .execution_options(synchronize_session="fetch")
+        )
+        result = self.session.execute(delete(OrchestrationTraceRecord).where(expired))
         return int(getattr(result, "rowcount", 0) or 0)
+
+    def _sanitize_blocked_assistant_message(
+        self, record: OrchestrationTraceRecord
+    ) -> None:
+        message = record.assistant_message
+        if record.blocked and message is not None and message.role == "assistant":
+            message.content = BLOCKED_RESPONSE_ANSWER
+            message.sources = []
 
 
 class SQLAlchemyDataLifecycleRepository:

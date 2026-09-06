@@ -284,6 +284,33 @@ class LocalFixtureModelGateway:
                 if contexts
                 else "Approved investment-education evidence was unavailable."
             )
+            if contexts and grounding.get("response_language") == "Chinese":
+                translations = {
+                    "cpf-beginners-guide-to-investing": (
+                        "投资需考虑期限、风险承受能力、费用和分散投资，投资可能亏损。"
+                        "国库券以低于面值的价格发行，到期按面值偿还；新加坡储蓄债券由政府发行。"
+                    ),
+                    "cpf-investment-scheme-guide": (
+                        "公积金投资计划提供不同风险与回报的投资选择。需了解目标、期限、"
+                        "风险承受能力、分散投资和费用；公积金局不为特定投资产品背书。"
+                    ),
+                    "moneysense-what-is-investing": (
+                        "开始投资前应了解准备条件、风险与回报和投资期限。投资可能亏损，回报并不确定。"
+                    ),
+                    "moneysense-managing-investment-risk": (
+                        "投资风险包括市场、信用、流动性和汇率风险。分散投资可减少集中风险，"
+                        "但无法消除亏损。定投是在固定时间间隔投入固定金额，不随市场涨跌改变。"
+                    ),
+                    "moneysense-types-of-investments": (
+                        "股票、债券、基金、交易所交易基金和房地产投资信托是不同投资类别，"
+                        "其结构、风险、流动性、费用和潜在回报不同。"
+                    ),
+                    "moneysense-guide-to-etfs": (
+                        "了解交易所交易基金时，应关注费用、流动性、跟踪误差和交易对手风险。"
+                        "基金价值可能下降，回报并不确定。"
+                    ),
+                }
+                summary = translations.get(contexts[0]["source_id"], summary)
         response = {
             "summary": summary,
             "rationale": ["The response is grounded in the supplied, allowlisted tool output."],

@@ -2,6 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from app.agents.education_access import education_gap_message
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -252,10 +253,7 @@ class BaseAgent(ABC):
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
         return AgentResult(
             agent=self.name,
-            summary=(
-                "The approved knowledge base does not contain enough information "
-                "to answer this question."
-            ),
+            summary=education_gap_message(grounding),
             rationale=["No relevant approved source was retrieved."],
             confidence=1.0,
             data=grounding,

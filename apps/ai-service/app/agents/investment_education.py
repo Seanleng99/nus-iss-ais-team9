@@ -1,8 +1,12 @@
 from app.agents.base import BaseAgent
 from app.agents.education_access import (
     build_minimal_education_query,
+    education_question_intent,
     education_response_language,
+    missing_education_topics,
+    unsupported_education_topics,
 )
+from app.core.citations import validate_citations
 from app.core.guardrails import validate_tool_permission
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -10,6 +14,7 @@ from app.core.schemas import (
     AgentNarrative,
     AgentTask,
     GroundedEducationNarrative,
+    SourceCitation,
 )
 from app.models.gateway import ModelGateway, ModelGatewayError
 from app.rag.retriever import EducationRetriever, build_education_context
@@ -29,13 +34,14 @@ class InvestmentEducationAgent(BaseAgent):
     ) -> None:
         super().__init__(gateway, prompts, temperature, max_tokens)
         self.education_retriever = education_retriever
-        if prompts.version == "v5":
+        if prompts.version in {"v5", "v6"}:
             self.narrative_type = GroundedEducationNarrative
 
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del task
         validate_tool_permission(self.name, "education_retriever")
         response_language = education_response_language(sanitized_message)
+        unsupported_topics = unsupported_education_topics(sanitized_message)
         try:
             query, query_topics = build_minimal_education_query(sanitized_message)
         except ValueError:
@@ -53,6 +59,7 @@ class InvestmentEducationAgent(BaseAgent):
                 "contexts": [],
                 "sources": [],
                 "query_topics": [],
+                "unanswered_topics": unsupported_topics,
                 "response_language": response_language,
                 "retrieval_consumer": self.name.value,
             }
@@ -62,6 +69,15 @@ class InvestmentEducationAgent(BaseAgent):
             scope="General investment education from approved sources without product advice.",
         )
         grounding["query_topics"] = query_topics
+        missing_topics = missing_education_topics(query_topics, grounding["contexts"])
+        grounding["unanswered_topics"] = list(dict.fromkeys(unsupported_topics + missing_topics))
+        grounding["question_intent"] = education_question_intent(sanitized_message)
+        if missing_topics and set(query_topics).issubset(missing_topics):
+            grounding["contexts"] = []
+            grounding["sources"] = []
+            grounding["evidence_status"] = "insufficient"
+        elif grounding["contexts"] and grounding["unanswered_topics"]:
+            grounding["evidence_status"] = "partial"
         grounding["response_language"] = response_language
         grounding["retrieval_consumer"] = self.name.value
         return grounding
@@ -84,6 +100,12 @@ class InvestmentEducationAgent(BaseAgent):
                 code="UNAPPROVED_CITATION",
                 component=self.name.value,
             )
+        sources = [
+            SourceCitation.model_validate(source) for source in grounding["sources"]
+            if source["source_id"] in cited_source_ids
+        ]
+        for text in (narrative.summary, *narrative.rationale, *narrative.uncertainties):
+            validate_citations(text, sources)
         grounding["cited_source_ids"] = cited_source_ids
         grounding["uncertainties"] = narrative.uncertainties
         return narrative
@@ -97,5 +119,8 @@ class InvestmentEducationAgent(BaseAgent):
         del task, sanitized_message
         return (
             "General investment education about "
-            + ", ".join(grounding["query_topics"])
+            + ", ".join(
+                topic for topic in grounding["query_topics"]
+                if topic not in grounding.get("unanswered_topics", [])
+            )
         )

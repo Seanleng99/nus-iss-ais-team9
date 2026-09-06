@@ -170,10 +170,15 @@ class BedrockPolicyRetriever:
     def client(self) -> Any:
         if self._client is None:
             import boto3
+            from botocore.config import Config
 
             self._client = boto3.client(
                 "bedrock-agent-runtime",
                 region_name=self.aws_region,
+                config=Config(
+                    connect_timeout=3, read_timeout=5,
+                    retries={"mode": "standard", "total_max_attempts": 2},
+                ),
             )
         return self._client
 
