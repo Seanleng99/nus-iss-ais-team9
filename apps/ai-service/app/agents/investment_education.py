@@ -1,9 +1,8 @@
 from app.agents.base import BaseAgent
 from app.agents.education_access import (
+    apply_education_scope,
     build_minimal_education_query,
-    education_question_intent,
     education_response_language,
-    missing_education_topics,
     unsupported_education_topics,
 )
 from app.core.citations import validate_citations
@@ -68,17 +67,7 @@ class InvestmentEducationAgent(BaseAgent):
             query,
             scope="General investment education from approved sources without product advice.",
         )
-        grounding["query_topics"] = query_topics
-        missing_topics = missing_education_topics(query_topics, grounding["contexts"])
-        grounding["unanswered_topics"] = list(dict.fromkeys(unsupported_topics + missing_topics))
-        grounding["question_intent"] = education_question_intent(sanitized_message)
-        if missing_topics and set(query_topics).issubset(missing_topics):
-            grounding["contexts"] = []
-            grounding["sources"] = []
-            grounding["evidence_status"] = "insufficient"
-        elif grounding["contexts"] and grounding["unanswered_topics"]:
-            grounding["evidence_status"] = "partial"
-        grounding["response_language"] = response_language
+        apply_education_scope(grounding, sanitized_message, query_topics)
         grounding["retrieval_consumer"] = self.name.value
         return grounding
 

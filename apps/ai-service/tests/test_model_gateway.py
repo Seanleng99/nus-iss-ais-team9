@@ -139,3 +139,26 @@ def test_tracing_gateway_reports_model_token_budget_overrun() -> None:
 
     assert raised.value.code == "MODEL_TOKEN_BUDGET_EXCEEDED"
     assert raised.value.component == "model_budget"
+
+
+def test_exhausted_token_budget_rejects_next_call_before_provider_invocation() -> None:
+    class CountingUsageGateway(UsageGateway):
+        calls = 0
+
+        def generate(self, **kwargs):
+            self.calls += 1
+            return super().generate(**kwargs)
+
+    delegate = CountingUsageGateway(20_000)
+    gateway = TracingModelGateway(delegate, Settings(MAX_MODEL_TOKENS_PER_RUN=20_000))
+    token = gateway.bind_trace("spent-budget")
+    arguments = {"system_prompt": "PROMPT_ID: test", "user_prompt": "{}", "temperature": 0.2, "max_tokens": 500}
+    try:
+        assert gateway.generate(**arguments) == "ok"
+        with pytest.raises(ModelGatewayError) as error:
+            gateway.generate(**arguments)
+        assert error.value.code == "MODEL_TOKEN_BUDGET_EXCEEDED"
+        assert delegate.calls == 1
+    finally:
+        gateway.reset_trace(token)
+        gateway.clear("spent-budget")

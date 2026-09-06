@@ -98,6 +98,8 @@ Expected output:
 
 Metric and acceptance criterion: 100 percent security-control pass rate. Any critical failure blocks release regardless of aggregate quality.
 
+Fault-injection regression tests separately cover prohibited advice in router and Compliance explanations, Chinese and obfuscated Unicode/whitespace variants, fabricated auxiliary citations, unusable Policy chunks, malformed retrieval results, and partial Education scope in conditional Budget access. Concurrency tests verify call-slot reservation, exhausted-token rejection before the next provider call, and cleanup after late completions. API tests require independent server trace IDs when callers reuse correlation headers. These checks supplement the versioned offline evaluation; they do not establish live-model semantic safety or deployed database behavior.
+
 ## Dynamic Dependencies
 
 Dataset: `apps/ai-service/app/evals/datasets/dynamic_dependencies.jsonl`

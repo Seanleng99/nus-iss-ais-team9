@@ -351,12 +351,10 @@ class TracingModelGateway:
         self.settings = settings
         self._lock = threading.Lock()
         self._calls: dict[str, list[dict[str, Any]]] = {}
-        self._closed: set[str] = set()
 
     def bind_trace(self, trace_id: str) -> Token:
         with self._lock:
             self._calls[trace_id] = []
-            self._closed.discard(trace_id)
         return _model_trace_id.set(trace_id)
 
     @staticmethod
@@ -370,7 +368,6 @@ class TracingModelGateway:
     def clear(self, trace_id: str) -> None:
         with self._lock:
             self._calls.pop(trace_id, None)
-            self._closed.add(trace_id)
 
     def generate(
         self,
@@ -381,12 +378,35 @@ class TracingModelGateway:
         max_tokens: int,
     ) -> str:
         trace_id = _model_trace_id.get()
+        started = perf_counter()
         if trace_id:
             with self._lock:
-                if len(self._calls.get(trace_id, [])) >= self.settings.max_model_calls_per_run:
+                calls = self._calls.get(trace_id)
+                if calls is None:
+                    raise ModelGatewayError(
+                        "The workflow has already closed.",
+                        code="WORKFLOW_CLOSED", component="model_budget",
+                    )
+                if len(calls) >= self.settings.max_model_calls_per_run:
                     raise ModelGatewayError("The workflow exceeded its model-call budget.")
+                if sum(int(item.get("total_tokens") or 0) for item in calls) >= self.settings.max_model_tokens_per_run:
+                    raise ModelGatewayError(
+                        "The workflow exceeded its model-token budget.",
+                        code="MODEL_TOKEN_BUDGET_EXCEEDED", component="model_budget",
+                    )
+                call = {
+                    "component": system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip() or "unknown",
+                    "status": "running",
+                    "duration_ms": 0.0,
+                    "input_characters": len(user_prompt),
+                    "output_characters": 0,
+                    "input_tokens": None,
+                    "output_tokens": None,
+                    "total_tokens": None,
+                    "error_code": None,
+                }
+                calls.append(call)
 
-        started = perf_counter()
         status = "completed"
         generation: str = ""
         error_code: str | None = None
@@ -405,12 +425,9 @@ class TracingModelGateway:
         finally:
             if trace_id:
                 usage = getattr(generation, "usage", {})
-                prompt_id = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
-                call = {
-                    "component": prompt_id or "unknown",
+                completed = {
                     "status": status,
                     "duration_ms": round((perf_counter() - started) * 1000, 2),
-                    "input_characters": len(user_prompt),
                     "output_characters": len(generation),
                     "input_tokens": usage.get("inputTokens"),
                     "output_tokens": usage.get("outputTokens"),
@@ -418,11 +435,10 @@ class TracingModelGateway:
                     "error_code": error_code,
                 }
                 with self._lock:
-                    if trace_id in self._closed:
+                    if self._calls.get(trace_id) is not calls:
                         total_tokens = 0
                     else:
-                        calls = self._calls.setdefault(trace_id, [])
-                        calls.append(call)
+                        call.update(completed)
                         total_tokens = sum(
                             int(item.get("total_tokens") or 0) for item in calls
                         )

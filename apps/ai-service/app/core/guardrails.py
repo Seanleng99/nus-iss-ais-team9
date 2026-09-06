@@ -68,7 +68,7 @@ def redact_sensitive_text(text: str) -> tuple[str, list[str]]:
     return redacted, findings
 
 
-def _normalize_for_security_inspection(text: str) -> str:
+def normalize_for_security_inspection(text: str) -> str:
     normalized = unicodedata.normalize("NFKC", text)
     return "".join(
         character
@@ -79,7 +79,7 @@ def _normalize_for_security_inspection(text: str) -> str:
 
 def inspect_prompt(text: str) -> GuardrailDecision:
     sanitized, pii_findings = redact_sensitive_text(text)
-    inspected = _normalize_for_security_inspection(sanitized)
+    inspected = normalize_for_security_inspection(sanitized)
     injection_findings = [
         f"prompt_injection:{idx}"
         for idx, pattern in enumerate(PROMPT_INJECTION_PATTERNS)
@@ -96,7 +96,7 @@ def inspect_prompt(text: str) -> GuardrailDecision:
 def sanitize_rag_document(text: str) -> GuardrailDecision:
     sanitized, pii_findings = redact_sensitive_text(text)
     findings = list(pii_findings)
-    inspected = _normalize_for_security_inspection(sanitized)
+    inspected = normalize_for_security_inspection(sanitized)
     for idx, pattern in enumerate(PROMPT_INJECTION_PATTERNS):
         if pattern.search(inspected):
             findings.append(f"indirect_prompt_injection:{idx}")

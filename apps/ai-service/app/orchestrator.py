@@ -13,7 +13,11 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agents.base import BaseAgent
 from app.agents.budget import BudgetAgent
-from app.agents.education_access import build_minimal_education_query, education_gap_message
+from app.agents.education_access import (
+    apply_education_scope,
+    build_minimal_education_query,
+    education_gap_message,
+)
 from app.agents.goal_strategy import GoalStrategyAgent
 from app.agents.investment_education import InvestmentEducationAgent
 from app.agents.risk_compliance import RiskComplianceAgent, withhold_agent_result
@@ -142,6 +146,7 @@ def _write_workflow_log(
             {
                 "event_type": event_type,
                 "trace_id": trace_id,
+                "correlation_id": get_correlation_id(),
                 "actor": actor,
                 "task_id": task_id,
                 "parent_task_id": parent_task_id,
@@ -831,7 +836,7 @@ class AgentOrchestrator:
                             "not product advice."
                         ),
                     )
-                    data["query_topics"] = list(query_topics)
+                    apply_education_scope(data, state["sanitized_message"], query_topics)
                     capability_result = CapabilityResult(
                         capability=request.capability,
                         provider=definition.provider,
@@ -1142,6 +1147,7 @@ class AgentOrchestrator:
             state["request"],
             state["agent_results"],
             state["draft_answer"],
+            routing_rationale=state["routing_rationale"],
         )
         events.append(
             self._event(
@@ -1214,14 +1220,22 @@ class AgentOrchestrator:
             sources = []
         else:
             answer = render_citations(answer, sources)
+            for text in state["routing_rationale"]:
+                validate_citations(text, [])
             for result in public_results:
-                result_sources = self._collect_source_citations([result]) + [
+                result_sources = (
+                    sources if result.agent == AgentName.RISK_COMPLIANCE
+                    else self._collect_source_citations([result])
+                ) + [
                     SourceCitation.model_validate(source)
                     for source in result.data.get("policy_sources", [])
                 ]
                 result.summary = render_citations(result.summary, result_sources)
                 result.rationale = [
                     render_citations(text, result_sources) for text in result.rationale
+                ]
+                result.policy_notes = [
+                    render_citations(text, result_sources) for text in result.policy_notes
                 ]
                 if "uncertainties" in result.data:
                     result.data["uncertainties"] = [
@@ -1507,7 +1521,7 @@ class AgentOrchestrator:
         return evidence
 
     def handle(self, request: CoachRequest) -> CoachResponse:
-        trace_id = get_correlation_id() or str(uuid4())
+        trace_id = str(uuid4())
         executed_at = datetime.now(UTC).isoformat()
         workflow_started = perf_counter()
         started_event = AuditEvent(

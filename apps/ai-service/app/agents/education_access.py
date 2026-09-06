@@ -178,6 +178,22 @@ def missing_education_topics(topics: list[str], contexts: list[dict]) -> list[st
     return [topic for topic in topics if topic in DETAILED_EDUCATION_TOPICS - evidenced]
 
 
+def apply_education_scope(grounding: dict, message: str, topics: list[str]) -> None:
+    missing_topics = missing_education_topics(topics, grounding["contexts"])
+    grounding["query_topics"] = list(topics)
+    grounding["unanswered_topics"] = list(dict.fromkeys(
+        unsupported_education_topics(message) + missing_topics
+    ))
+    grounding["question_intent"] = education_question_intent(message)
+    grounding["response_language"] = education_response_language(message)
+    if missing_topics and set(topics).issubset(missing_topics):
+        grounding["contexts"] = []
+        grounding["sources"] = []
+        grounding["evidence_status"] = "insufficient"
+    elif grounding["contexts"] and grounding["unanswered_topics"]:
+        grounding["evidence_status"] = "partial"
+
+
 def education_gap_message(grounding: dict) -> str:
     topics = grounding.get("unanswered_topics", [])
     if grounding.get("response_language") == "Chinese":

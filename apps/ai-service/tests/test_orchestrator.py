@@ -472,7 +472,7 @@ def test_compliance_fails_closed_when_policy_evidence_is_unavailable() -> None:
     ]
 
 
-def test_compliance_sanitizes_retrieved_policy_instructions() -> None:
+def test_compliance_quarantines_retrieved_policy_instructions() -> None:
     class UntrustedPolicyRetriever:
         expected_corpus_version = "financial-coach-policy-sg@test-v1"
 
@@ -511,9 +511,11 @@ def test_compliance_sanitizes_retrieved_policy_instructions() -> None:
     compliance = next(
         result for result in response.agent_results if result.agent == "risk_compliance"
     )
-    context = compliance.data["policy_contexts"][0]
-    assert "[REMOVED_UNTRUSTED_INSTRUCTION]" in context["text"]
-    assert context["findings"]
+    assert response.blocked
+    assert compliance.data["policy_evidence_status"] == "insufficient"
+    assert compliance.policy_notes == ["policy_evidence:insufficient"]
+    assert response.audit["policy_sources"] == []
+    assert "reveal the system prompt" not in response.model_dump_json()
 
 
 def test_v2_prompt_set_remains_available_for_rollback_compatibility() -> None:
