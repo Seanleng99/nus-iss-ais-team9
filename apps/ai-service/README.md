@@ -12,7 +12,7 @@ Private Python API containing the model-driven LangGraph orchestration layer.
 - Resolve typed, capability-based specialist dependencies through the orchestrator.
 - Suspend and resume dependent tasks without allowing direct agent-to-agent calls.
 - Generate grounded specialist narratives and a final synthesis.
-- Ground Investment Education in approved, sanitized education sources and return citations.
+- Ground Investment Education in approved Education sources, quarantine unsafe chunks, and return only validated citations.
 - Run independent model-assisted risk and compliance validation.
 - Supply Investment Education evidence to Risk and Compliance for independent review.
 - Ground Risk and Compliance in a separate approved Policy collection and fail closed without current policy evidence.
@@ -42,7 +42,9 @@ uvicorn app.main:app --reload --port 8001
 ```
 
 For a deployed environment, set both `RAG_PROVIDER=bedrock` and `POLICY_RAG_PROVIDER=bedrock`. Provide the reviewed Education and Policy knowledge-base IDs and corpus versions. The AI task role needs read-only access to those exact knowledge bases. Both retrievers reject chunks that do not carry complete governed metadata, match the configured corpus, and remain within their review deadline.
-The current managed Education collection is owned by Investment Education. Compliance receives
+The current six-source managed Education collection is owned by Investment Education. Its
+retrieval request contains canonical education topics rather than the raw user question or
+personal values. Compliance receives
 its sanitized evidence through the agent result rather than querying the Education knowledge base, and independently retrieves only from the Policy collection.
 The `/health` endpoint is public. Send `AI_SERVICE_API_KEY` through the `X-API-Key` header when
 calling `/coach`.

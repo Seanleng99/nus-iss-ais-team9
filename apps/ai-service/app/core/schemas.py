@@ -286,6 +286,11 @@ class AgentNarrative(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class GroundedEducationNarrative(AgentNarrative):
+    source_ids: list[str] = Field(min_length=1, max_length=3)
+    uncertainties: list[str] = Field(default_factory=list, max_length=4)
+
+
 class SynthesisDecision(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)
 

@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import asdict
 
 from app.core.guardrails import (
@@ -24,6 +25,49 @@ BLOCKED_FINANCIAL_ADVICE_PATTERNS = [
     "tell me exactly what to invest in",
     "buy or sell",
 ]
+
+BLOCKED_FINANCIAL_ADVICE_REGEXES = (
+    (
+        "personalized_allocation",
+        re.compile(
+            r"\b(?:you should|i recommend(?: that)? you)\b.{0,80}"
+            r"\b(?:allocate|invest|put)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "personalized_transaction",
+        re.compile(
+            r"\b(?:you should|i recommend(?: that)? you)\b.{0,80}"
+            r"\b(?:buy|sell|hold)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "personalized_product",
+        re.compile(
+            r"\b(?:best|right|suitable)\b.{0,30}\bfor you\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "personalized_product_selection",
+        re.compile(
+            r"\b(?:which|what)\s+"
+            r"(?:stock|share|bond|etf|fund|reit|investment|product)\b"
+            r".{0,40}\b(?:buy|choose|pick|invest in)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "personalized_transaction_request",
+        re.compile(
+            r"\bshould\s+i\b.{0,20}\b(?:buy|sell|hold|choose|invest in)\b"
+            r".{0,40}\b(?:stock|share|bond|etf|fund|reit|investment|product)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
 
 
 class RiskComplianceAgent:
@@ -52,16 +96,36 @@ class RiskComplianceAgent:
         decision = inspect_prompt(request.message)
         policy_notes = list(decision.findings)
         hard_policy_findings: list[str] = []
-        inspected_text = " ".join(
-            [request.message, draft_answer, *(result.summary for result in results)]
-        ).lower()
+        generated_text = " ".join(
+            [
+                draft_answer,
+                *(
+                    text
+                    for result in results
+                    for text in (result.summary, *result.rationale)
+                ),
+            ]
+        )
+        generated_decision = inspect_prompt(generated_text)
+        policy_notes.extend(generated_decision.findings)
+        inspected_text = f"{request.message} {generated_text}".lower()
         for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS:
             if pattern in inspected_text:
                 finding = f"regulated_advice:{pattern}"
                 policy_notes.append(finding)
                 hard_policy_findings.append(finding)
+        for label, pattern in BLOCKED_FINANCIAL_ADVICE_REGEXES:
+            if pattern.search(inspected_text):
+                finding = f"regulated_advice:{label}"
+                policy_notes.append(finding)
+                hard_policy_findings.append(finding)
 
-        if not decision.allowed or hard_policy_findings or any(result.blocked for result in results):
+        if (
+            not decision.allowed
+            or generated_decision.findings
+            or hard_policy_findings
+            or any(result.blocked for result in results)
+        ):
             return AgentResult(
                 agent=self.name,
                 summary="The response was blocked by deterministic safety controls.",
@@ -137,7 +201,13 @@ class RiskComplianceAgent:
                             "rationale": result.rationale,
                             "data": {
                                 key: result.data[key]
-                                for key in ("evidence_status", "sources", "contexts")
+                                for key in (
+                                    "evidence_status",
+                                    "sources",
+                                    "contexts",
+                                    "cited_source_ids",
+                                    "uncertainties",
+                                )
                                 if key in result.data
                             },
                         }
@@ -152,19 +222,35 @@ class RiskComplianceAgent:
         output_decision = inspect_prompt(
             " ".join([review.summary, *review.rationale, *review.policy_notes])
         )
-        blocked = review.blocked or not output_decision.allowed
+        compliance_data = {
+            "disclaimer": ADVISORY_DISCLAIMER,
+            "policy_evidence_status": "grounded",
+            "policy_corpus_version": policy_corpus_version,
+            "policy_sources": policy_sources,
+            "policy_contexts": contexts,
+        }
+        if output_decision.findings:
+            return AgentResult(
+                agent=self.name,
+                summary="Compliance output was blocked by safety controls.",
+                rationale=[
+                    "Generated compliance content matched output safety checks."
+                ],
+                confidence=1.0,
+                blocked=True,
+                policy_notes=list(
+                    dict.fromkeys(
+                        [*review.policy_notes, *output_decision.findings]
+                    )
+                ),
+                data=compliance_data,
+            )
         return AgentResult(
             agent=self.name,
             summary=review.summary,
             rationale=review.rationale,
             confidence=review.confidence,
-            blocked=blocked,
-            policy_notes=review.policy_notes + output_decision.findings,
-            data={
-                "disclaimer": ADVISORY_DISCLAIMER,
-                "policy_evidence_status": "grounded",
-                "policy_corpus_version": policy_corpus_version,
-                "policy_sources": policy_sources,
-                "policy_contexts": contexts,
-            },
+            blocked=review.blocked,
+            policy_notes=review.policy_notes,
+            data=compliance_data,
         )

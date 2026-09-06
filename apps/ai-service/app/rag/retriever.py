@@ -2,6 +2,7 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
@@ -10,6 +11,10 @@ from app.core.guardrails import sanitize_rag_document
 from app.rag.ingestion import ApprovedDocumentMetadata
 
 LOCAL_EDUCATION_CORPUS_VERSION = "investment-education-sg@local-fixture-v1"
+MAX_EDUCATION_CHUNK_CHARACTERS = 6_000
+TRUSTED_EDUCATION_SOURCE_DOMAINS = frozenset(
+    {"cpf.gov.sg", "moneysense.gov.sg", "mas.gov.sg", "gov.sg"}
+)
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,14 @@ SOURCE_METADATA_FIELDS = (
 )
 
 
+def _is_trusted_education_url(url: str) -> bool:
+    hostname = (urlparse(url).hostname or "").casefold()
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in TRUSTED_EDUCATION_SOURCE_DOMAINS
+    )
+
+
 def build_education_context(
     retriever: EducationRetriever,
     query: str,
@@ -62,13 +75,39 @@ def build_education_context(
     scope: str,
 ) -> dict[str, Any]:
     contexts = []
-    for item in retriever.retrieve(query):
+    rejected_chunk_count = 0
+    security_findings: list[str] = []
+    retrieved = retriever.retrieve(query)
+    for item in retrieved:
         context = asdict(item)
+        metadata_decision = sanitize_rag_document(
+            " ".join(
+                str(context[key]) for key in ("title", "issuing_organization")
+            )
+        )
+        if metadata_decision.findings:
+            rejected_chunk_count += 1
+            security_findings.extend(
+                f"retrieval_metadata:{finding}"
+                for finding in metadata_decision.findings
+            )
+            continue
+        if len(context["text"]) > MAX_EDUCATION_CHUNK_CHARACTERS:
+            rejected_chunk_count += 1
+            security_findings.append("retrieval_content:chunk_too_large")
+            continue
         decision = sanitize_rag_document(context["text"])
         context["text"] = decision.sanitized_text
         context["findings"] = list(
             dict.fromkeys([*context["findings"], *decision.findings])
         )
+        security_findings.extend(context["findings"])
+        if any(
+            finding.startswith("indirect_prompt_injection:")
+            for finding in context["findings"]
+        ):
+            rejected_chunk_count += 1
+            continue
         contexts.append(context)
     sources = [
         {key: context[key] for key in SOURCE_METADATA_FIELDS}
@@ -84,6 +123,10 @@ def build_education_context(
         ),
         "contexts": contexts,
         "sources": sources,
+        "retrieved_chunk_count": len(retrieved),
+        "accepted_chunk_count": len(contexts),
+        "rejected_chunk_count": rejected_chunk_count,
+        "security_findings": list(dict.fromkeys(security_findings)),
     }
 
 
@@ -128,6 +171,104 @@ EDUCATION_DOCUMENTS = [
         ),
         "keywords": {"cpf", "cpfis", "scheme", "savings", "charges"},
     },
+    {
+        "source_id": "moneysense-what-is-investing",
+        "title": "What is investing?",
+        "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+        "canonical_url": "https://www.moneysense.gov.sg/investments/what-is-investing/",
+        "published_at": "2026-07-02",
+        "document_version": "2026-07-02",
+        "checksum": "sha256:0ceb1106fd69afa428cd9b242f9a372e4040f8aadc582ca7eb56634aa5480f61",
+        "corpus_version": LOCAL_EDUCATION_CORPUS_VERSION,
+        "review_due_at": "2099-12-31",
+        "text": (
+            "This approved guide introduces investment readiness, basic risk-and-return "
+            "concepts, and the importance of an investment time horizon. Investments "
+            "can lose value and returns are not guaranteed."
+        ),
+        "keywords": {"investment", "investing", "readiness", "risk", "return", "horizon"},
+    },
+    {
+        "source_id": "moneysense-managing-investment-risk",
+        "title": "Managing investment risk",
+        "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+        "canonical_url": "https://www.moneysense.gov.sg/investments/investment-risk/",
+        "published_at": "2026-07-02",
+        "document_version": "2026-07-02",
+        "checksum": "sha256:9c059618166ab8ed0051493b3ab680d6e85564fdf0db45c2dd0a1f5b05f387de",
+        "corpus_version": LOCAL_EDUCATION_CORPUS_VERSION,
+        "review_due_at": "2099-12-31",
+        "text": (
+            "This approved guide covers market, credit, liquidity, and currency risk, "
+            "as well as diversification. Diversification can reduce concentration but "
+            "does not remove the possibility of loss."
+        ),
+        "keywords": {
+            "investment",
+            "risk",
+            "market",
+            "credit",
+            "liquidity",
+            "currency",
+            "diversification",
+        },
+    },
+    {
+        "source_id": "moneysense-types-of-investments",
+        "title": "An introduction to types of investments",
+        "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+        "canonical_url": "https://www.moneysense.gov.sg/investments/types-of-investments/",
+        "published_at": "2026-07-02",
+        "document_version": "2026-07-02",
+        "checksum": "sha256:87c2cc4c330d932f928654756bd26f526f1c0ab1f11529753983f28a453b6592",
+        "corpus_version": LOCAL_EDUCATION_CORPUS_VERSION,
+        "review_due_at": "2099-12-31",
+        "text": (
+            "This approved guide introduces shares, bonds, funds, exchange-traded "
+            "funds, and real estate investment trusts as different investment types. "
+            "Their structures, risks, liquidity, fees, and potential returns differ."
+        ),
+        "keywords": {
+            "shares",
+            "stocks",
+            "bonds",
+            "funds",
+            "etf",
+            "reits",
+            "types",
+        },
+    },
+    {
+        "source_id": "moneysense-guide-to-etfs",
+        "title": "Guide to ETFs: Understanding Exchange-Traded Funds",
+        "issuing_organization": "MoneySense / Monetary Authority of Singapore",
+        "canonical_url": (
+            "https://www.moneysense.gov.sg/"
+            "guide-to-etfs-understanding-exchange-traded-funds/"
+        ),
+        "published_at": "2026-07-02",
+        "document_version": "2026-07-02",
+        "checksum": "sha256:0d38a73ed5c009cb04d7c6c2cda5478f6e1bc4cc806cdf47200dfdb5c243db96",
+        "corpus_version": LOCAL_EDUCATION_CORPUS_VERSION,
+        "review_due_at": "2099-12-31",
+        "text": (
+            "This approved guide explains exchange-traded funds and educational "
+            "considerations including fees, liquidity, tracking error, and counterparty "
+            "risk. ETF values and returns are not guaranteed."
+        ),
+        "keywords": {
+            "etf",
+            "exchange",
+            "traded",
+            "funds",
+            "fees",
+            "liquidity",
+            "tracking",
+            "error",
+            "counterparty",
+            "risk",
+        },
+    },
 ]
 
 
@@ -136,7 +277,13 @@ class LocalEducationRetriever:
     expected_corpus_version = LOCAL_EDUCATION_CORPUS_VERSION
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
-        query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
+        topic_query = re.sub(
+            r"^general investment education about\s+",
+            "",
+            query,
+            flags=re.IGNORECASE,
+        )
+        query_terms = set(re.findall(r"[a-z0-9]+", topic_query.lower()))
         scored = [
             (len(query_terms.intersection(document["keywords"])), document)
             for document in EDUCATION_DOCUMENTS
@@ -213,10 +360,21 @@ class BedrockEducationRetriever:
         )
         results = []
         for item in response.get("retrievalResults", []):
-            score = float(item.get("score", 0.0))
+            if not isinstance(item, dict):
+                continue
+            try:
+                score = float(item.get("score", 0.0))
+            except (TypeError, ValueError):
+                continue
             if score < self.minimum_score:
                 continue
-            metadata = item["metadata"]
+            metadata = item.get("metadata")
+            content = item.get("content")
+            if not isinstance(metadata, dict) or not isinstance(content, dict):
+                continue
+            text = content.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
             if metadata.get("review_status") != "approved":
                 continue
             governance_metadata = {
@@ -227,6 +385,8 @@ class BedrockEducationRetriever:
             try:
                 governed = ApprovedDocumentMetadata.model_validate(governance_metadata)
             except ValidationError:
+                continue
+            if not _is_trusted_education_url(governed.canonical_url):
                 continue
             if governed.corpus_version != self.expected_corpus_version:
                 continue
@@ -243,7 +403,7 @@ class BedrockEducationRetriever:
                     checksum=governed.checksum,
                     corpus_version=governed.corpus_version,
                     review_due_at=governed.review_due_at.isoformat(),
-                    text=str(item["content"]["text"]),
+                    text=text,
                     score=score,
                 )
             )

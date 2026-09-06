@@ -147,7 +147,7 @@ def check_model_backed_coaching(
     assert trace_status == 200, f"trace retrieval returned HTTP {trace_status}"
     trace = json.loads(trace_body)
     assert trace.get("trace_id") == trace_id, "persisted trace ID did not match"
-    assert trace.get("prompt_set_version") == "v4", "unexpected persisted prompt version"
+    assert trace.get("prompt_set_version") == "v5", "unexpected persisted prompt version"
     assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
 
 

@@ -149,7 +149,17 @@ class LocalFixtureModelGateway:
             return json.dumps(self._specialist(prompt_id, payload))
         if prompt_id == "PROMPT_ID: synthesizer":
             summaries = [item["summary"] for item in payload["agent_results"]]
-            return json.dumps({"answer": " ".join(summaries)})
+            uncertainties = list(
+                dict.fromkeys(
+                    uncertainty
+                    for item in payload["agent_results"]
+                    for uncertainty in item.get("uncertainties", [])
+                )
+            )
+            answer = " ".join(summaries)
+            if uncertainties:
+                answer = f"{answer} Uncertainty: {' '.join(uncertainties)}"
+            return json.dumps({"answer": answer})
         if prompt_id == "PROMPT_ID: risk_compliance":
             return json.dumps(
                 {
@@ -210,7 +220,19 @@ class LocalFixtureModelGateway:
                 "spending": ["spend", "transaction", "expense", "anomaly", "dining"],
                 "budget": ["budget", "allocate", "afford", "monthly"],
                 "goal_strategy": ["goal", "save", "emergency fund", "vacation", "home"],
-                "investment_education": ["invest", "etf", "diversification", "risk", "cpf"],
+                "investment_education": [
+                    "invest",
+                    "etf",
+                    "diversification",
+                    "risk",
+                    "cpf",
+                    "bond",
+                    "shares",
+                    "stock",
+                    "reit",
+                    "unit trust",
+                    "mutual fund",
+                ],
             }
             selected = [name for name, terms in rules.items() if any(term in message for term in terms)]
         return {
@@ -256,15 +278,30 @@ class LocalFixtureModelGateway:
                     else:
                         summary += " The estimated monthly savings capacity covers this amount."
         else:
+            contexts = grounding.get("contexts", [])
             summary = (
-                "Investment education should focus on diversification, risk tolerance, time "
-                "horizon, and fees without naming a product to buy."
+                str(contexts[0]["text"])
+                if contexts
+                else "Approved investment-education evidence was unavailable."
             )
-        return {
+        response = {
             "summary": summary,
             "rationale": ["The response is grounded in the supplied, allowlisted tool output."],
             "confidence": 0.8,
         }
+        if prompt_id.endswith("investment_education"):
+            response.update(
+                {
+                    "source_ids": [
+                        source["source_id"]
+                        for source in grounding.get("sources", [])
+                    ],
+                    "uncertainties": [
+                        "Investment outcomes vary and losses are possible."
+                    ],
+                }
+            )
+        return response
 
 
 def create_model_gateway(settings: Settings) -> ModelGateway:

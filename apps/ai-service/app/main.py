@@ -12,6 +12,10 @@ from app.models.gateway import ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 from app.rag.retriever import RetrievalError
 
+logging.getLogger("service").setLevel(
+    getattr(logging, settings.log_level.upper(), logging.INFO)
+)
+
 app = FastAPI(title="AI Financial Wellness Coach AI Service", version="0.1.0")
 app.add_middleware(RequestTelemetryMiddleware, service_name="ai-service")
 orchestrator = AgentOrchestrator()

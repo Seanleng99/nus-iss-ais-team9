@@ -360,7 +360,7 @@ jobs:
           environment-variables: |
             APP_ENV=demo
             MODEL_PROVIDER=bedrock
-            PROMPT_SET_VERSION=v4
+            PROMPT_SET_VERSION=v5
             RAG_PROVIDER=bedrock
             POLICY_RAG_PROVIDER=bedrock
       - name: Verify AI runtime configuration has not drifted
@@ -373,7 +373,7 @@ jobs:
           --container "$AI_CONTAINER_NAME"
           --expect APP_ENV=demo
           --expect MODEL_PROVIDER=bedrock
-          --expect PROMPT_SET_VERSION=v4
+          --expect PROMPT_SET_VERSION=v5
           --expect RAG_PROVIDER=bedrock
           --expect POLICY_RAG_PROVIDER=bedrock
           --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID

@@ -529,7 +529,7 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=float, default=60)
     parser.add_argument("--expected-model-provider", default="bedrock")
     parser.add_argument("--expected-model-id", required=True)
-    parser.add_argument("--expected-prompt-version", default="v4")
+    parser.add_argument("--expected-prompt-version", default="v5")
     parser.add_argument("--input-cost-per-million", type=float, default=0.06)
     parser.add_argument("--output-cost-per-million", type=float, default=0.24)
     parser.add_argument("--minimum-pass-rate", type=float, default=1.0)

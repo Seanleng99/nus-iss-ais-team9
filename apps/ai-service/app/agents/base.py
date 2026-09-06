@@ -24,6 +24,7 @@ from app.models.structured import generate_structured_response
 class BaseAgent(ABC):
     name: AgentName
     prompt_id: str
+    narrative_type: type[AgentNarrative] = AgentNarrative
 
     def __init__(
         self,
@@ -66,17 +67,46 @@ class BaseAgent(ABC):
                 result=result,
                 capabilities=self._capabilities(task, grounding, result),
             )
+        model_message = self._model_message(
+            task,
+            decision.sanitized_text,
+            grounding,
+        )
         narrative = generate_structured_response(
             self.gateway,
-            response_type=AgentNarrative,
+            response_type=self.narrative_type,
             system_prompt=self.prompts.get(self.prompt_id),
             user_prompt=json.dumps(
-                {"message": decision.sanitized_text, "grounding": grounding},
+                {"message": model_message, "grounding": grounding},
                 ensure_ascii=True,
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
+        output_decision = inspect_prompt(
+            " ".join(
+                [
+                    narrative.summary,
+                    *narrative.rationale,
+                    *getattr(narrative, "uncertainties", []),
+                ]
+            )
+        )
+        if output_decision.findings:
+            return CompletedInvocation(
+                result=AgentResult(
+                    agent=self.name,
+                    summary="Agent output was blocked by safety controls.",
+                    rationale=[
+                        "Generated content matched output safety checks."
+                    ],
+                    confidence=1.0,
+                    data=grounding,
+                    blocked=True,
+                    policy_notes=output_decision.findings,
+                )
+            )
+        narrative = self._validate_narrative(narrative, grounding)
         result = AgentResult(
             agent=self.name,
             summary=narrative.summary,
@@ -201,6 +231,23 @@ class BaseAgent(ABC):
     ) -> list[CapabilityResult]:
         del task, grounding, result
         return []
+
+    def _validate_narrative(
+        self,
+        narrative: AgentNarrative,
+        grounding: dict,
+    ) -> AgentNarrative:
+        del grounding
+        return narrative
+
+    def _model_message(
+        self,
+        task: AgentTask,
+        sanitized_message: str,
+        grounding: dict,
+    ) -> str:
+        del task, grounding
+        return sanitized_message
 
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
         return AgentResult(

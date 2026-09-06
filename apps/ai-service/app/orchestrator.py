@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextvars import copy_context
@@ -60,6 +61,94 @@ from app.rag.retriever import (
     build_education_context,
     create_education_retriever,
 )
+
+logger = logging.getLogger("service.ai.workflow")
+
+SAFE_WORKFLOW_DETAIL_KEYS = {
+    "accepted_chunk_count",
+    "agent",
+    "agent_result_count",
+    "allowed",
+    "attempt",
+    "attempts",
+    "blocked",
+    "capabilities",
+    "capability",
+    "corpus_version",
+    "duration_ms",
+    "error_code",
+    "evidence_status",
+    "finding_count",
+    "input_fingerprint",
+    "model_call_count",
+    "model_input_tokens",
+    "model_output_tokens",
+    "policy_corpus_version",
+    "policy_corpus_versions",
+    "policy_note_count",
+    "policy_source_count",
+    "query_topics",
+    "reason_code",
+    "rejected_chunk_count",
+    "request_id",
+    "requested_by",
+    "required",
+    "resolution",
+    "retrieval_consumer",
+    "retrieval_consumers",
+    "retrieval_corpus_versions",
+    "retrieval_source_count",
+    "retrieved_chunk_count",
+    "retryable",
+    "routing_mode",
+    "selected_agents",
+    "source_count",
+    "timeout_seconds",
+}
+
+
+def _write_workflow_log(
+    *,
+    trace_id: str,
+    event_type: str,
+    actor: str,
+    task_id: str | None = None,
+    parent_task_id: str | None = None,
+    details: dict | None = None,
+    level: int = logging.INFO,
+) -> None:
+    safe_details = {
+        key: value
+        for key, value in (details or {}).items()
+        if key in SAFE_WORKFLOW_DETAIL_KEYS
+    }
+    for code_key in ("error_code", "reason_code"):
+        if code_key not in safe_details:
+            continue
+        code_value = str(safe_details[code_key])
+        if not (
+            1 <= len(code_value) <= 128
+            and all(
+                character.isalnum() or character in "._-"
+                for character in code_value
+            )
+        ):
+            safe_details[code_key] = "UNSAFE_VALUE_REDACTED"
+    logger.log(
+        level,
+        json.dumps(
+            {
+                "event_type": event_type,
+                "trace_id": trace_id,
+                "actor": actor,
+                "task_id": task_id,
+                "parent_task_id": parent_task_id,
+                "details": safe_details,
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ),
+    )
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -390,20 +479,36 @@ class AgentOrchestrator:
                     fingerprint = self._capability_input_fingerprint(state, definition)
                     capability.input_fingerprint = fingerprint
                     capabilities[self._capability_key(capability.capability, fingerprint)] = capability
+                completion_details = {
+                    "blocked": outcome.result.blocked,
+                    "duration_ms": duration_ms,
+                    "attempts": final_attempt,
+                    "capabilities": [
+                        item.capability.value for item in outcome.capabilities
+                    ],
+                }
+                completion_details.update(
+                    {
+                        key: outcome.result.data[key]
+                        for key in (
+                            "retrieval_consumer",
+                            "query_topics",
+                            "evidence_status",
+                            "corpus_version",
+                            "retrieved_chunk_count",
+                            "accepted_chunk_count",
+                            "rejected_chunk_count",
+                        )
+                        if key in outcome.result.data
+                    }
+                )
                 events.append(
                     self._event(
                         state,
                         "task.completed",
                         task.agent.value,
                         task_id=task.task_id,
-                        details={
-                            "blocked": outcome.result.blocked,
-                            "duration_ms": duration_ms,
-                            "attempts": final_attempt,
-                            "capabilities": [
-                                item.capability.value for item in outcome.capabilities
-                            ],
-                        },
+                        details=completion_details,
                     )
                 )
             elif isinstance(outcome, NeedsDependencyInvocation):
@@ -991,6 +1096,8 @@ class AgentOrchestrator:
                     "summary": result.summary,
                     "rationale": result.rationale,
                     "confidence": result.confidence,
+                    "source_ids": result.data.get("cited_source_ids", []),
+                    "uncertainties": result.data.get("uncertainties", []),
                 }
                 for result in state["agent_results"]
             ],
@@ -1278,7 +1385,7 @@ class AgentOrchestrator:
         parent_task_id: str | None = None,
         details: dict | None = None,
     ) -> AuditEvent:
-        return AuditEvent(
+        event = AuditEvent(
             trace_id=state["trace_id"],
             event_type=event_type,
             actor=actor,
@@ -1286,16 +1393,31 @@ class AgentOrchestrator:
             parent_task_id=parent_task_id,
             details=details or {},
         )
+        _write_workflow_log(
+            trace_id=event.trace_id,
+            event_type=event.event_type,
+            actor=event.actor,
+            task_id=event.task_id,
+            parent_task_id=event.parent_task_id,
+            details=event.details,
+        )
+        return event
 
     @staticmethod
     def _collect_source_citations(results: list[AgentResult]) -> list[SourceCitation]:
         sources: list[SourceCitation] = []
         seen: set[str] = set()
         for result in results:
+            cited_source_ids = {
+                str(source_id)
+                for source_id in result.data.get("cited_source_ids", [])
+            }
             for item in result.data.get("sources", []):
                 if not isinstance(item, dict):
                     continue
                 source = SourceCitation.model_validate(item)
+                if cited_source_ids and source.source_id not in cited_source_ids:
+                    continue
                 if source.source_id in seen:
                     continue
                 seen.add(source.source_id)
@@ -1359,6 +1481,11 @@ class AgentOrchestrator:
             actor="orchestrator",
             occurred_at=executed_at,
         )
+        _write_workflow_log(
+            trace_id=trace_id,
+            event_type=started_event.event_type,
+            actor=started_event.actor,
+        )
         trace_token = self.gateway.bind_trace(trace_id)
         try:
             result = self.graph.invoke(
@@ -1371,12 +1498,13 @@ class AgentOrchestrator:
             )
             response = result["response"]
             model_calls = self.gateway.snapshot(trace_id)
+            workflow_duration_ms = round(
+                (perf_counter() - workflow_started) * 1000,
+                2,
+            )
             response.audit.update(
                 {
-                    "workflow_duration_ms": round(
-                        (perf_counter() - workflow_started) * 1000,
-                        2,
-                    ),
+                    "workflow_duration_ms": workflow_duration_ms,
                     "model_call_count": len(model_calls),
                     "model_input_tokens": sum(
                         int(call.get("input_tokens") or 0) for call in model_calls
@@ -1387,7 +1515,37 @@ class AgentOrchestrator:
                     "model_calls": model_calls,
                 }
             )
+            _write_workflow_log(
+                trace_id=trace_id,
+                event_type="workflow.metrics",
+                actor="orchestrator",
+                details={
+                    "duration_ms": workflow_duration_ms,
+                    "model_call_count": len(model_calls),
+                    "model_input_tokens": sum(
+                        int(call.get("input_tokens") or 0) for call in model_calls
+                    ),
+                    "model_output_tokens": sum(
+                        int(call.get("output_tokens") or 0) for call in model_calls
+                    ),
+                },
+            )
             return response
+        except Exception as exc:
+            _write_workflow_log(
+                trace_id=trace_id,
+                event_type="workflow.failed",
+                actor="orchestrator",
+                details={
+                    "duration_ms": round(
+                        (perf_counter() - workflow_started) * 1000,
+                        2,
+                    ),
+                    "error_code": getattr(exc, "code", "UNHANDLED_ERROR"),
+                },
+                level=logging.ERROR,
+            )
+            raise
         finally:
             self.gateway.reset_trace(trace_token)
             self.gateway.clear(trace_id)

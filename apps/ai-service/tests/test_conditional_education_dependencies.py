@@ -63,8 +63,7 @@ def test_budget_resolves_education_tool_without_scheduling_investment_agent() ->
     assert response.selected_agents == ["budget"]
     assert len(retriever.queries) == 1
     assert retriever.queries[0] == (
-        "General investment education about diversification, investment risk, "
-        "investment basics"
+        "General investment education about diversification, investment risk"
     )
     assert "5,000" not in retriever.queries[0]
     budget = next(result for result in response.agent_results if result.agent == "budget")
@@ -185,8 +184,14 @@ def test_budget_sanitizes_untrusted_retrieved_instructions() -> None:
     )
     budget = next(result for result in response.agent_results if result.agent == "budget")
 
-    assert "[REMOVED_UNTRUSTED_INSTRUCTION]" in budget.data["contexts"][0]["text"]
-    assert budget.data["contexts"][0]["findings"]
+    assert budget.data["contexts"] == []
+    assert budget.data["sources"] == []
+    assert budget.data["evidence_status"] == "insufficient"
+    assert budget.data["rejected_chunk_count"] == 1
+    assert any(
+        finding.startswith("indirect_prompt_injection:")
+        for finding in budget.data["security_findings"]
+    )
 
 
 def test_empty_education_result_preserves_deterministic_budget() -> None:

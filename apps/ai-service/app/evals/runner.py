@@ -81,6 +81,9 @@ def _matches_expected(response, expected: dict) -> bool:
             data.get("evidence_status") == "insufficient"
             and "approved knowledge base does not contain enough information" in response.answer
         )
+    if "response_language" in expected:
+        data = _agent_data(response, "investment_education")
+        checks.append(data.get("response_language") == expected["response_language"])
     if "policy_finding_prefixes" in expected:
         findings = _policy_findings(response)
         checks.extend(

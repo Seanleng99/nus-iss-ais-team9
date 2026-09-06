@@ -85,13 +85,13 @@ Document updates should create a traceable new version. Superseded or withdrawn 
 
 1. The user submits a question through the application.
 2. The Agent Orchestrator either selects Investment Education or authorizes an `education_context` request from Budget or Goal Strategy after allowlisted topic detection.
-3. Investment Education sends its sanitized question; for Budget or Goal Strategy the orchestrator constructs a topic-only query that excludes personal financial values.
+3. Investment Education, Budget, and Goal Strategy use a canonical topic-only retrieval query. The raw question, personal financial values, identifiers, and redaction placeholders are never sent to the Education knowledge base.
 4. The retriever returns the most relevant approved chunks together with their source metadata and retrieval scores.
-5. Retrieved content is sanitized and treated as untrusted data, not as system instructions.
+5. Retrieved text and display metadata are inspected as untrusted data. A chunk containing direct or obfuscated instruction patterns, unsafe metadata, or excessive content is quarantined as a whole and never reaches the model; safe chunks from the same retrieval can still be used.
 6. The system constructs a grounded prompt containing the user question, retrieved context, source metadata, and response constraints.
-7. The Bedrock LLM generates an educational draft based only on the supplied context.
-8. The Risk & Compliance Agent checks the draft for unsupported claims, prohibited advice, unsafe language, and missing disclosures.
-9. The application returns the validated answer, supporting sources, and an educational-use disclaimer.
+7. The Bedrock LLM generates a schema-validated educational draft based only on the supplied context and must return the approved source IDs that support it. Fabricated source IDs fail closed.
+8. Agent output is checked for prompt injection and sensitive data before synthesis. The independent Risk & Compliance Agent then checks the draft for unsupported claims, prohibited advice, unsafe language, and missing disclosures; its own generated output passes the same output-safety boundary.
+9. The application returns the validated answer, only the sources cited by the Investment Education Agent, and an educational-use disclaimer.
 
 If the retrieval results are missing, weak, conflicting, or insufficient, the system must not fill the gap with unsupported model knowledge. It should explain that the approved knowledge base does not contain enough information.
 
@@ -140,7 +140,7 @@ The Risk & Compliance Agent must review every RAG-generated draft before it is r
 - sensitive user data that is unnecessary for education; or
 - missing source attribution or required disclaimers.
 
-Deterministic guardrails should complement the model-based review for high-confidence policy violations. The system should log the selected agents, retrieval metadata, prompt version, model version, compliance result, and final disposition without storing unnecessary sensitive data.
+Deterministic guardrails complement the model-based review for high-confidence policy violations. Privacy-safe workflow logs record the selected agents, canonical retrieval topics, retrieved/accepted/rejected chunk counts, corpus version, prompt/model telemetry, compliance result, duration, and final disposition. They exclude raw questions, user/profile identifiers, financial values, retrieved text, model output, and provider error messages.
 
 ## 7. AWS Component Mapping
 

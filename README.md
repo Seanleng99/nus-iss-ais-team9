@@ -106,7 +106,7 @@ python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --outpu
 
 Use only synthetic financial profiles in the current demo. The production-readiness exclusions and AWS go/no-go sequence are documented in `infra/aws/README.md`.
 
-Evaluation policy v6 enforces all 52 cases/pairs conjunctively across routing, dynamic agent/tool
+Evaluation policy v6 enforces all 66 cases/pairs conjunctively across routing, dynamic agent/tool
 dependencies, direct and conditional Education RAG, Policy RAG, deterministic guardrails,
 regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,
