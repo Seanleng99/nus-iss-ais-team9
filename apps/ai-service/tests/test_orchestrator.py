@@ -157,17 +157,15 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
                 [
                     json.dumps(
                         {
-                            "selected_agents": ["investment_education"],
-                            "rationale": ["The model inferred an educational investment intent."],
+                            "selected_agents": ["spending"],
+                            "rationale": ["The model inferred a spending review intent."],
                         }
                     ),
                     json.dumps(
                         {
-                            "summary": "A model-generated educational response.",
-                            "rationale": ["Grounded in trusted context."],
+                            "summary": "A model-generated spending response.",
+                            "rationale": ["Grounded in transaction totals."],
                             "confidence": 0.76,
-                            "source_ids": ["cpf-beginners-guide-to-investing"],
-                            "uncertainties": [],
                         }
                     ),
                     json.dumps({"answer": "A synthesized model-generated answer."}),
@@ -175,7 +173,7 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
                         {
                             "blocked": False,
                             "summary": "Allowed after model review.",
-                            "rationale": ["The answer is educational."],
+                            "rationale": ["The answer reviews spending."],
                             "policy_notes": [],
                             "confidence": 0.88,
                         }
@@ -191,15 +189,21 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s3",
-        message="Help me understand ETF diversification options",
+        message="Help me budget for the next month.",
         snapshot={},
     )
     response = AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway
     ).handle(request)
-    assert response.selected_agents == ["investment_education"]
+    assert response.selected_agents == ["spending"]
     assert response.answer == "A synthesized model-generated answer."
     assert len(gateway.calls) == 4
+    assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
+        "agent_spending",
+        "synthesizer",
+        "risk_compliance",
+    ]
     assert all(call["temperature"] > 0 for call in gateway.calls)
 
 
@@ -406,7 +410,12 @@ def test_investment_rag_reports_v6_prompt_set_and_model_telemetry() -> None:
 
     assert response.audit["prompt_set_version"] == "v6"
     assert response.audit["model_call_count"] == len(response.audit["model_calls"])
-    assert response.audit["model_call_count"] >= 4
+    assert response.audit["model_call_count"] == 3
+    assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
+        "agent_investment_education",
+        "risk_compliance",
+    ]
     assert response.audit["workflow_duration_ms"] >= 0
     assert response.audit["retrieval_corpus_versions"] == [
         "investment-education-sg@local-fixture-v1"

@@ -2,6 +2,7 @@ import json
 import re
 from dataclasses import asdict
 
+from app.agents.education_access import education_response_language
 from app.core.citations import citation_contract, validate_citations
 from app.core.guardrails import (
     ADVISORY_DISCLAIMER,
@@ -141,7 +142,8 @@ def contains_buy_sell_instruction(text: str) -> bool:
             before, after = sentence[:match.start()], sentence[match.end():]
             # The approved ETF guide describes a manager's execution constraints.
             manager_constraint = re.search(
-                r"\bmanager(?:(?:'s|’s)? inability to| may be unable to| cannot)\s*$", before
+                r"\b(?:manager(?:(?:'s|’s)? inability to| may be unable to| cannot)|"
+                r"inability(?: of (?:the )?(?:(?:etf|fund) )?manager)? to)\s*$", before
             )
             component_stocks = re.match(r"\s+(?:the\s+)?component stocks\b", after)
             policy_negation = re.search(
@@ -332,6 +334,9 @@ class RiskComplianceAgent:
                 + "\nReturn a short policy verdict only. Do not rewrite the answer "
                 "or introduce any financial facts. Keep rationale and policy_notes "
                 "to at most two short assessment sentences each."
+                + "\nWrite summary, rationale and policy_notes in "
+                + education_response_language(decision.sanitized_text)
+                + "."
                 + citation_contract(review_sources)
             ),
             user_prompt=json.dumps(
