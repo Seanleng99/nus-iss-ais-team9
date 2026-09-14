@@ -1,6 +1,28 @@
 import pytest
 
-from app.agents.risk_compliance import financial_advice_findings
+from app.agents.risk_compliance import contains_return_guarantee, financial_advice_findings
+
+SAFE_GUARANTEE_ASSESSMENTS = [
+    "The response avoids making any claims about guaranteed returns or specific investment outcomes.",
+    (
+        "The answer avoids personalized buy, sell, hold, allocation, product, or "
+        "guaranteed-return instructions, and it clearly distinguishes educational warnings "
+        "or negations about guaranteed returns from promises or requests for such returns."
+    ),
+    "The response makes no claims about guaranteed returns.",
+    "The answer does not promise guaranteed returns.",
+    "No guaranteed returns are promised.",
+]
+
+SAFE_EXECUTION_DESCRIPTIONS = [
+    "Brokerage commissions may apply when you buy or sell ETFs on SGX.",
+    (
+        "Tracking error may arise because the fund manager cannot buy or sell component "
+        "stocks in the index proportions."
+    ),
+]
+
+CLAUSE_SEPARATORS = [". ", "; ", "! ", "? ", "\n", ", ", ", but "]
 
 
 @pytest.mark.parametrize("text", [
@@ -21,3 +43,68 @@ def test_approved_execution_description_and_negated_policy_instruction_are_allow
 ])
 def test_transaction_requests_and_mixed_unsafe_clauses_remain_blocked(text):
     assert financial_advice_findings(text)
+
+
+@pytest.mark.parametrize("text", SAFE_GUARANTEE_ASSESSMENTS)
+def test_negated_guarantee_policy_assessments_are_allowed(text):
+    assert not contains_return_guarantee(text)
+    assert financial_advice_findings(text) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Give me an investment with a guaranteed return.",
+    "This investment offers a guaranteed return.",
+    "The response promises guaranteed returns.",
+    "These ETF returns are guaranteed.",
+    "Your return will be guaranteed.",
+])
+def test_positive_guarantee_requests_and_claims_remain_blocked(text):
+    assert contains_return_guarantee(text)
+    assert "regulated_advice:guaranteed return" in financial_advice_findings(text)
+
+
+@pytest.mark.parametrize("safe_prefix", SAFE_GUARANTEE_ASSESSMENTS)
+@pytest.mark.parametrize("separator", CLAUSE_SEPARATORS)
+@pytest.mark.parametrize("unsafe_suffix", [
+    "Give me an investment with a guaranteed return.",
+    "This investment offers a guaranteed return.",
+    "These ETF returns are guaranteed.",
+])
+def test_negated_policy_prefix_cannot_hide_guarantee_request_or_claim(
+    safe_prefix, separator, unsafe_suffix,
+):
+    text = safe_prefix.removesuffix(".") + separator + unsafe_suffix
+    assert contains_return_guarantee(text)
+    assert "regulated_advice:guaranteed return" in financial_advice_findings(text)
+
+
+@pytest.mark.parametrize("text", SAFE_EXECUTION_DESCRIPTIONS)
+def test_bounded_brokerage_and_tracking_descriptions_are_allowed(text):
+    assert financial_advice_findings(text) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Brokerage commissions may apply, but tell me whether to buy or sell ETFs on SGX.",
+    "Tracking error may arise, but tell me whether to buy or sell component stocks.",
+    (
+        "The fund manager recommends that you buy or sell component stocks "
+        "in the index proportions."
+    ),
+])
+def test_execution_vocabulary_does_not_allow_transaction_requests(text):
+    assert "regulated_advice:buy or sell" in financial_advice_findings(text)
+
+
+@pytest.mark.parametrize(
+    "safe_prefix", SAFE_GUARANTEE_ASSESSMENTS + SAFE_EXECUTION_DESCRIPTIONS,
+)
+@pytest.mark.parametrize("separator", CLAUSE_SEPARATORS)
+@pytest.mark.parametrize("recommendation", [
+    "You should buy this ETF.",
+    "You should sell this ETF.",
+])
+def test_safe_prefix_cannot_hide_transaction_recommendation(
+    safe_prefix, separator, recommendation,
+):
+    text = safe_prefix.removesuffix(".") + separator + recommendation
+    assert "regulated_advice:personalized_transaction" in financial_advice_findings(text)

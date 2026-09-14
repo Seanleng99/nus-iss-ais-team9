@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from app.agents.education_access import education_gap_message
+from app.core.citations import citation_contract, validate_citations
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -17,6 +18,7 @@ from app.core.schemas import (
     DependencyRequestDraft,
     NeedsDependencyInvocation,
     NeedsInputInvocation,
+    SourceCitation,
 )
 from app.models.gateway import ModelGateway, ModelGatewayError
 from app.models.structured import generate_structured_response
@@ -74,6 +76,27 @@ class BaseAgent(ABC):
             grounding,
         )
         system_prompt = self.prompts.get(self.prompt_id)
+        narrative_sources = [
+            SourceCitation.model_validate(source) for source in grounding.get("sources", [])
+        ]
+        system_prompt += citation_contract(narrative_sources)
+        if self.name == AgentName.BUDGET:
+            system_prompt += (
+                "\nDescribe the supplied budget as an illustrative calculation: "
+                "say 'the baseline allocates', not 'you should allocate'. "
+                "The savings field is estimated monthly savings capacity, not "
+                "the user's current savings balance or observed saving behavior. "
+                "Do not infer actual expenses from category limits or claim that "
+                "a single transaction establishes a spending pattern."
+            )
+
+        def validate_narrative(narrative: AgentNarrative) -> AgentNarrative:
+            for text in (narrative.summary, *narrative.rationale):
+                validate_citations(text, narrative_sources)
+            # Contract correction precedes output safety review. Do not attach
+            # generated uncertainties or citation selections to public data yet.
+            return self._validate_narrative(narrative, dict(grounding))
+
         if self.prompts.version == "v7" and grounding.get("response_language") in {"English", "Chinese"}:
             system_prompt += (
                 "\nRequired output language for THIS request: "
@@ -90,9 +113,7 @@ class BaseAgent(ABC):
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
-            validate_response=(
-                lambda narrative: self._validate_narrative(narrative, grounding)
-            ) if self.prompts.version == "v7" else None,
+            validate_response=validate_narrative,
         )
         output_decision = inspect_prompt(
             " ".join(
