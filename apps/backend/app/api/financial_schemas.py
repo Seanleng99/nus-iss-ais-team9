@@ -2,15 +2,16 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain.schemas import (
-    BLOCKED_AGENT_RATIONALE,
-    BLOCKED_RESPONSE_ANSWER,
     AgentName,
     MoneyAmount,
     SourceCitation,
     UserFinancialSnapshot,
+    blocked_agent_rationale,
+    blocked_response_answer,
+    normalize_response_language,
     sanitize_blocked_agent_results,
 )
 
@@ -327,16 +328,24 @@ class AgentExplanationResponse(BaseModel):
 
 class ChatExplanationResponse(BaseModel):
     trace_id: str
+    response_language: Literal["English", "Chinese"] = "English"
     selected_agents: list[AgentName] = Field(default_factory=list)
     routing_rationale: list[str] = Field(default_factory=list)
     agent_results: list[AgentExplanationResponse] = Field(default_factory=list)
     blocked: bool = False
     prompt_set_version: str | None = None
 
+    @field_validator("response_language", mode="before")
+    @classmethod
+    def normalize_language(cls, value: Any) -> str:
+        return normalize_response_language(value)
+
     @model_validator(mode="after")
     def sanitize_blocked_explanation(self) -> "ChatExplanationResponse":
         if self.blocked:
-            self.routing_rationale = [BLOCKED_AGENT_RATIONALE]
+            self.routing_rationale = [
+                blocked_agent_rationale(response_language=self.response_language)
+            ]
             self.agent_results = [
                 AgentExplanationResponse(
                     agent=item["agent"],
@@ -344,7 +353,9 @@ class ChatExplanationResponse(BaseModel):
                     confidence=item["confidence"],
                     blocked=True,
                 )
-                for item in sanitize_blocked_agent_results(self.agent_results)
+                for item in sanitize_blocked_agent_results(
+                    self.agent_results, response_language=self.response_language
+                )
             ]
         return self
 
@@ -360,7 +371,9 @@ class ChatMessageResponse(BaseModel):
     @model_validator(mode="after")
     def sanitize_blocked_assistant_message(self) -> "ChatMessageResponse":
         if self.role == "assistant" and self.explanation and self.explanation.blocked:
-            self.content = BLOCKED_RESPONSE_ANSWER
+            self.content = blocked_response_answer(
+                response_language=self.explanation.response_language
+            )
             self.sources = []
         return self
 

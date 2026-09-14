@@ -17,6 +17,7 @@ from app.agents.education_access import (
     apply_education_scope,
     build_minimal_education_query,
     education_gap_message,
+    education_response_language,
     should_request_education_context,
 )
 from app.agents.goal_strategy import GoalStrategyAgent
@@ -279,10 +280,19 @@ class AgentOrchestrator:
         if decision.allowed:
             return update
 
+        response_language = education_response_language(decision.sanitized_text)
         blocked_result = AgentResult(
             agent=AgentName.RISK_COMPLIANCE,
-            summary="Request blocked at the orchestration boundary.",
-            rationale=["Prompt-injection controls matched the request."],
+            summary=(
+                "请求已在协调流程入口被拦截。"
+                if response_language == "Chinese"
+                else "Request blocked at the orchestration boundary."
+            ),
+            rationale=[
+                "请求触发了提示注入安全检查。"
+                if response_language == "Chinese"
+                else "Prompt-injection controls matched the request."
+            ],
             confidence=1.0,
             blocked=True,
             policy_notes=decision.findings,
@@ -299,7 +309,11 @@ class AgentOrchestrator:
         update["response"] = CoachResponse(
             session_id=request.session_id,
             selected_agents=[],
-            answer="I cannot process that request because it conflicts with safety controls.",
+            answer=(
+                "此请求不符合安全要求，我无法处理。"
+                if response_language == "Chinese"
+                else "I cannot process that request because it conflicts with safety controls."
+            ),
             agent_results=[blocked_result],
             disclaimers=[ADVISORY_DISCLAIMER],
             audit={
@@ -315,6 +329,7 @@ class AgentOrchestrator:
 
     def _route(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
+        response_language = education_response_language(state["sanitized_message"])
         requested_agents = list(
             dict.fromkeys(
                 agent
@@ -326,7 +341,9 @@ class AgentOrchestrator:
             decision = RouterDecision(
                 selected_agents=requested_agents,
                 rationale=[
-                    "The caller supplied an explicit allowlisted specialist selection."
+                    "调用方已明确选择允许列表中的专业代理。"
+                    if response_language == "Chinese"
+                    else "The caller supplied an explicit allowlisted specialist selection."
                 ],
             )
             routing_mode = "explicit"
@@ -346,7 +363,12 @@ class AgentOrchestrator:
             decision = generate_structured_response(
                 self.gateway,
                 response_type=RouterDecision,
-                system_prompt=self.prompts.get("router"),
+                system_prompt=(
+                    self.prompts.get("router")
+                    + "\nWrite every rationale sentence in "
+                    + response_language
+                    + ". Keep machine agent names in selected_agents unchanged."
+                ),
                 user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.router_temperature,
                 max_tokens=self.config.model_max_tokens,
@@ -359,7 +381,9 @@ class AgentOrchestrator:
             ):
                 decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
                 decision.rationale.append(
-                    "The recognized education topic requires a specialist with approved source access."
+                    "已识别的教育主题需要由可访问经批准资料的专业代理处理。"
+                    if response_language == "Chinese"
+                    else "The recognized education topic requires a specialist with approved source access."
                 )
         event = self._event(
             state,
@@ -861,7 +885,11 @@ class AgentOrchestrator:
                         warnings=(
                             []
                             if data["evidence_status"] == "grounded"
-                            else ["No relevant approved Education source was retrieved."]
+                            else [
+                                "未检索到相关的经批准教育资料。"
+                                if data["response_language"] == "Chinese"
+                                else "No relevant approved Education source was retrieved."
+                            ]
                         ),
                         input_fingerprint=fingerprint,
                     )
@@ -1108,10 +1136,7 @@ class AgentOrchestrator:
         ]
         payload = {
             "message": state["sanitized_message"],
-            "response_language": (
-                "Chinese" if any("\u4e00" <= char <= "\u9fff" for char in state["sanitized_message"])
-                else "English"
-            ),
+            "response_language": education_response_language(state["sanitized_message"]),
             "agent_results": [
                 {
                     "agent": result.agent.value,
@@ -1218,10 +1243,13 @@ class AgentOrchestrator:
 
     def _finalize(self, state: OrchestratorState) -> OrchestratorState:
         compliance = state["compliance_result"]
+        response_language = education_response_language(state["sanitized_message"])
         answer = state["draft_answer"]
         if compliance.blocked:
             answer = (
-                "I cannot provide that recommendation. I can still offer general financial education."
+                "我无法提供该建议，但仍可提供一般金融教育信息。"
+                if response_language == "Chinese"
+                else "I cannot provide that recommendation. I can still offer general financial education."
             )
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
@@ -1268,7 +1296,10 @@ class AgentOrchestrator:
         ]
         public_results = state["agent_results"] + [compliance]
         if compliance.blocked:
-            public_results = [withhold_agent_result(result) for result in public_results]
+            public_results = [
+                withhold_agent_result(result, response_language=response_language)
+                for result in public_results
+            ]
             sources = []
         else:
             answer = render_citations(answer, sources)
@@ -1307,7 +1338,11 @@ class AgentOrchestrator:
                 "guardrail_findings": state["guardrail_findings"],
                 "agent_count": len(state["agent_results"]),
                 "routing_rationale": (
-                    ["The final safety review blocked this response."]
+                    [
+                        "最终安全审查已拦截此回复。"
+                        if response_language == "Chinese"
+                        else "The final safety review blocked this response."
+                    ]
                     if compliance.blocked else state["routing_rationale"]
                 ),
                 "model_provider": self.config.model_provider,

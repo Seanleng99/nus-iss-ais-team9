@@ -17,11 +17,11 @@ from app.core.data_lifecycle import (
     DURABLE_MEMORY_PURPOSE,
 )
 from app.domain.schemas import (
-    BLOCKED_RESPONSE_ANSWER,
     FinancialGoal,
     MoneyAmount,
     Transaction,
     UserFinancialSnapshot,
+    blocked_response_answer,
     sanitize_blocked_agent_results,
     sanitize_blocked_audit,
 )
@@ -317,7 +317,11 @@ class SQLAlchemyUserRepository:
                             "id": str(message.id),
                             "role": message.role,
                             "content": (
-                                BLOCKED_RESPONSE_ANSWER
+                                blocked_response_answer(
+                                    response_language=message.orchestration_trace.audit.get(
+                                        "response_language", "English"
+                                    )
+                                )
                                 if message.role == "assistant"
                                 and message.orchestration_trace is not None
                                 and message.orchestration_trace.blocked
@@ -337,7 +341,10 @@ class SQLAlchemyUserRepository:
                                     "selected_agents": message.orchestration_trace.selected_agents,
                                     "agent_results": (
                                         sanitize_blocked_agent_results(
-                                            message.orchestration_trace.agent_results
+                                            message.orchestration_trace.agent_results,
+                                            response_language=message.orchestration_trace.audit.get(
+                                                "response_language", "English"
+                                            ),
                                         )
                                         if message.orchestration_trace.blocked
                                         else message.orchestration_trace.agent_results
@@ -964,18 +971,26 @@ class SQLAlchemyOrchestrationTraceRepository:
 
     def delete_expired(self, cutoff: datetime) -> int:
         expired = OrchestrationTraceRecord.created_at < cutoff
-        blocked_message_ids = select(OrchestrationTraceRecord.assistant_message_id).where(
-            expired, OrchestrationTraceRecord.blocked.is_(True)
-        )
-        self.session.execute(
-            update(ChatMessageRecord)
-            .where(
-                ChatMessageRecord.id.in_(blocked_message_ids),
-                ChatMessageRecord.role == "assistant",
+        language = OrchestrationTraceRecord.audit["response_language"].as_string()
+        for response_language, language_filter in (
+            ("Chinese", language == "Chinese"),
+            ("English", or_(language.is_(None), language != "Chinese")),
+        ):
+            blocked_message_ids = select(
+                OrchestrationTraceRecord.assistant_message_id
+            ).where(expired, OrchestrationTraceRecord.blocked.is_(True), language_filter)
+            self.session.execute(
+                update(ChatMessageRecord)
+                .where(
+                    ChatMessageRecord.id.in_(blocked_message_ids),
+                    ChatMessageRecord.role == "assistant",
+                )
+                .values(
+                    content=blocked_response_answer(response_language=response_language),
+                    sources=[],
+                )
+                .execution_options(synchronize_session="fetch")
             )
-            .values(content=BLOCKED_RESPONSE_ANSWER, sources=[])
-            .execution_options(synchronize_session="fetch")
-        )
         result = self.session.execute(delete(OrchestrationTraceRecord).where(expired))
         return int(getattr(result, "rowcount", 0) or 0)
 
@@ -984,7 +999,9 @@ class SQLAlchemyOrchestrationTraceRepository:
     ) -> None:
         message = record.assistant_message
         if record.blocked and message is not None and message.role == "assistant":
-            message.content = BLOCKED_RESPONSE_ANSWER
+            message.content = blocked_response_answer(
+                response_language=record.audit.get("response_language", "English")
+            )
             message.sources = []
 
 

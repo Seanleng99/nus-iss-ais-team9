@@ -47,6 +47,12 @@ async def coach(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The coaching service is temporarily unavailable.",
         ) from error
+    response.audit["response_language"] = (
+        "Chinese"
+        if any("\u4e00" <= character <= "\u9fff" for character in request.message)
+        else "English"
+    )
+    response = CoachResponse.model_validate(response.model_dump())
     chat_repository = SQLAlchemyChatRepository(session)
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
     if chat_session is None:
