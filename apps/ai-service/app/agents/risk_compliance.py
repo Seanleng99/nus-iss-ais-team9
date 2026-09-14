@@ -21,6 +21,7 @@ from app.core.schemas import (
     ComplianceDecision,
     SourceCitation,
 )
+from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGateway
 from app.models.structured import generate_structured_response
 from app.rag.policy import PolicyRetriever
@@ -164,6 +165,7 @@ def contains_buy_sell_instruction(text: str) -> bool:
     return False
 
 
+@trace_method
 def withhold_agent_result(
     result: AgentResult, *, response_language: str = "English"
 ) -> AgentResult:
@@ -207,6 +209,7 @@ class RiskComplianceAgent:
         self.max_tokens = max_tokens
         self.policy_retriever = policy_retriever
 
+    @trace_method
     def validate(
         self,
         request: CoachRequest,
@@ -299,6 +302,11 @@ class RiskComplianceAgent:
             self.policy_retriever,
             "expected_corpus_version",
             getattr(self.policy_retriever, "corpus_version", None),
+        )
+        log_event(
+            "rag.policy.context.ready", accepted_chunk_count=len(contexts),
+            source_count=len(policy_sources), corpus_version=policy_corpus_version,
+            evidence_status="grounded" if contexts else "insufficient",
         )
         if not contexts:
             return AgentResult(

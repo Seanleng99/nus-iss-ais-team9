@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from app.core.schemas import AgentName
+from app.core.telemetry import trace_method
 
 PII_PATTERNS = {
     "email": re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
@@ -77,6 +78,7 @@ def normalize_for_security_inspection(text: str) -> str:
     )
 
 
+@trace_method
 def inspect_prompt(text: str) -> GuardrailDecision:
     sanitized, pii_findings = redact_sensitive_text(text)
     inspected = normalize_for_security_inspection(sanitized)
@@ -93,6 +95,7 @@ def inspect_prompt(text: str) -> GuardrailDecision:
     )
 
 
+@trace_method
 def sanitize_rag_document(text: str) -> GuardrailDecision:
     sanitized, pii_findings = redact_sensitive_text(text)
     findings = list(pii_findings)
@@ -114,6 +117,7 @@ TOOL_ALLOWLIST: dict[AgentName, set[str]] = {
 }
 
 
+@trace_method
 def validate_tool_permission(agent: AgentName, tool_name: str) -> None:
     allowed = TOOL_ALLOWLIST.get(agent, set())
     if tool_name not in allowed:

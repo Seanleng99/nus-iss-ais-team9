@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.core.telemetry import trace_method
 from app.domain.schemas import (
     AgentName,
     MoneyAmount,
@@ -341,6 +342,7 @@ class ChatExplanationResponse(BaseModel):
         return normalize_response_language(value)
 
     @model_validator(mode="after")
+    @trace_method
     def sanitize_blocked_explanation(self) -> "ChatExplanationResponse":
         if self.blocked:
             self.routing_rationale = [
@@ -369,6 +371,7 @@ class ChatMessageResponse(BaseModel):
     created_at: datetime
 
     @model_validator(mode="after")
+    @trace_method
     def sanitize_blocked_assistant_message(self) -> "ChatMessageResponse":
         if self.role == "assistant" and self.explanation and self.explanation.blocked:
             self.content = blocked_response_answer(

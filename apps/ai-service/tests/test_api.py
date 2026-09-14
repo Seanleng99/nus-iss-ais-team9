@@ -106,13 +106,18 @@ def test_coach_returns_and_logs_sanitized_model_failure(caplog) -> None:
         for record in caplog.records
         if '"event":"coach_generation_failed"' in record.message
     )
-    assert failure == {
+    assert {key: failure[key] for key in (
+        "event", "correlation_id", "error_code", "component", "exception_type"
+    )} == {
         "event": "coach_generation_failed",
         "correlation_id": "failure-trace",
         "error_code": "MODEL_GATEWAY_ERROR",
         "component": "orchestrator",
         "exception_type": "ModelGatewayError",
     }
+    assert failure["service"] == "ai-service"
+    assert failure["method"] == "app.main.coach"
+    assert failure["span_id"]
     assert "provider detail" not in caplog.text
 
 

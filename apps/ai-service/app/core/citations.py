@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from urllib.parse import quote
 
 from app.core.schemas import SourceCitation
+from app.core.telemetry import trace_method
 from app.models.gateway import ModelGatewayError
 
 SOURCE_MARKER = re.compile(r"\[(?:source:)?([a-z0-9][a-z0-9-]{2,127})\]")
@@ -25,6 +26,7 @@ def citation_contract(sources: Sequence[SourceCitation]) -> str:
     )
 
 
+@trace_method
 def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
     approved = {source.source_id for source in sources}
     markers = SOURCE_MARKER.findall(text)
@@ -39,6 +41,7 @@ def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
         )
 
 
+@trace_method
 def render_citations(text: str, sources: Sequence[SourceCitation]) -> str:
     validate_citations(text, sources)
     approved = {source.source_id: source for source in sources}

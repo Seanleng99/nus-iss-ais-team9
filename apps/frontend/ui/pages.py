@@ -1,5 +1,6 @@
 import json
 import re
+from contextlib import nullcontext
 from datetime import date
 
 import httpx
@@ -8,7 +9,9 @@ import streamlit as st
 
 from client import build_request
 from ui.components import backend_call, clamp_progress, money, page_header, percent
+from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
+from ui.telemetry import call_span, context_fields, log_event, trace_context
 
 CATEGORIES = [
     "housing",
@@ -135,21 +138,55 @@ def _confidence_band(value: float) -> str:
 
 
 def _render_coach_explanation(explanation: dict | None) -> None:
-    if not explanation:
-        return
-    with st.expander("Why this answer and how certain it is"):
-        st.caption(
-            "Confidence is each AI component's self-assessment. It is not a "
-            "probability, an accuracy guarantee, or a substitute for checking "
-            "your inputs and the cited sources."
-        )
-        if explanation.get("blocked"):
-            st.warning(
-                "此回复未通过安全审查，因此已隐藏助手生成的指导内容。"
-                if explanation.get("response_language") == "Chinese"
-                else "The safety review blocked this response, so the assistant-generated "
-                "guidance was withheld."
+    with (
+        call_span(f"{__name__}._render_coach_explanation")
+        if context_fields().get("correlation_id") else nullcontext()
+    ):
+        if not explanation:
+            return
+        with st.expander("Why this answer and how certain it is"):
+            st.caption(
+                "Confidence is each AI component's self-assessment. It is not a "
+                "probability, an accuracy guarantee, or a substitute for checking "
+                "your inputs and the cited sources."
             )
+            if explanation.get("blocked"):
+                st.warning(
+                    "此回复未通过安全审查，因此已隐藏助手生成的指导内容。"
+                    if explanation.get("response_language") == "Chinese"
+                    else "The safety review blocked this response, so the assistant-generated "
+                    "guidance was withheld."
+                )
+                trace_id = explanation.get("trace_id")
+                prompt_version = explanation.get("prompt_set_version")
+                reference = f"Reference ID: {trace_id}" if trace_id else ""
+                if prompt_version:
+                    reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+                if reference:
+                    st.caption(reference)
+                return
+            selected_agents = explanation.get("selected_agents", [])
+            if selected_agents:
+                labels = [
+                    AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                    for agent in selected_agents
+                ]
+                st.markdown(f"**Areas used:** {', '.join(labels)}")
+            routing_rationale = explanation.get("routing_rationale", [])
+            if routing_rationale:
+                st.markdown("**Why these areas were used**")
+                for rationale in routing_rationale:
+                    st.markdown(f"- {rationale}")
+            for result in explanation.get("agent_results", []):
+                agent = result.get("agent", "unknown")
+                label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                confidence = min(max(float(result.get("confidence", 0.0)), 0.0), 1.0)
+                st.markdown(
+                    f"**{label} — {_confidence_band(confidence)} confidence "
+                    f"(self-assessed score {confidence:.2f})**"
+                )
+                for rationale in result.get("rationale", []):
+                    st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
             trace_id = explanation.get("trace_id")
             prompt_version = explanation.get("prompt_set_version")
             reference = f"Reference ID: {trace_id}" if trace_id else ""
@@ -157,36 +194,6 @@ def _render_coach_explanation(explanation: dict | None) -> None:
                 reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
             if reference:
                 st.caption(reference)
-            return
-        selected_agents = explanation.get("selected_agents", [])
-        if selected_agents:
-            labels = [
-                AGENT_LABELS.get(agent, agent.replace("_", " ").title())
-                for agent in selected_agents
-            ]
-            st.markdown(f"**Areas used:** {', '.join(labels)}")
-        routing_rationale = explanation.get("routing_rationale", [])
-        if routing_rationale:
-            st.markdown("**Why these areas were used**")
-            for rationale in routing_rationale:
-                st.markdown(f"- {rationale}")
-        for result in explanation.get("agent_results", []):
-            agent = result.get("agent", "unknown")
-            label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
-            confidence = min(max(float(result.get("confidence", 0.0)), 0.0), 1.0)
-            st.markdown(
-                f"**{label} — {_confidence_band(confidence)} confidence "
-                f"(self-assessed score {confidence:.2f})**"
-            )
-            for rationale in result.get("rationale", []):
-                st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
-        trace_id = explanation.get("trace_id")
-        prompt_version = explanation.get("prompt_set_version")
-        reference = f"Reference ID: {trace_id}" if trace_id else ""
-        if prompt_version:
-            reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
-        if reference:
-            st.caption(reference)
 
 
 def _transaction_payload(
@@ -621,6 +628,32 @@ def goals_page() -> None:
                 st.rerun()
 
 
+def _render_coach_message(message: dict) -> None:
+    with (
+        call_span(f"{__name__}._render_coach_message")
+        if context_fields().get("correlation_id") else nullcontext()
+    ):
+        avatar = (
+            ":material/person:"
+            if message["role"] == "user"
+            else ":material/account_balance_wallet:"
+        )
+        with st.chat_message(message["role"], avatar=avatar):
+            st.markdown(message["content"])
+            sources = message.get("sources", [])
+            if sources:
+                st.caption("Sources")
+                for source in sources:
+                    st.markdown(
+                        f"- [{source['title']}]({source['canonical_url']}) — "
+                        f"{source['issuing_organization']}, {source['published_at']} · "
+                        f"Source ID: `{source['source_id']}`"
+                    )
+            _render_coach_explanation(message.get("explanation"))
+        if context_fields().get("correlation_id"):
+            log_event("coach.response_rendered", **response_metadata(message))
+
+
 def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
@@ -650,6 +683,7 @@ def coach_page() -> None:
         ):
             st.session_state.coach_active_session_id = None
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.pop("coach_rename_open", None)
             st.session_state.pop("coach_delete_open", None)
             st.rerun()
@@ -679,6 +713,7 @@ def coach_page() -> None:
                     ):
                         st.session_state.coach_active_session_id = session_id
                         st.session_state.pop("coach_pending_question", None)
+                        st.session_state.pop("coach_pending_render", None)
                         st.session_state.pop("coach_rename_open", None)
                         st.session_state.pop("coach_delete_open", None)
                         st.rerun()
@@ -743,6 +778,7 @@ def coach_page() -> None:
                     )
                     if session_id == active_session_id:
                         st.session_state.coach_active_session_id = None
+                        st.session_state.pop("coach_pending_render", None)
                     st.session_state.pop("coach_delete_open", None)
                     st.rerun()
                 if st.button(
@@ -763,45 +799,65 @@ def coach_page() -> None:
             active_session_id = created_session["id"]
             st.session_state.coach_active_session_id = active_session_id
 
-    active_session = (
-        backend_call(lambda: client.get_chat_session(user_id, active_session_id))
-        if active_session_id
-        else None
-    )
+    pending_render = st.session_state.get("coach_pending_render")
+    if pending_render and pending_render["journey_id"] != st.session_state.get("journey_id"):
+        st.session_state.pop("coach_pending_render", None)
+        pending_render = None
+    with (
+        trace_context(**{key: value for key, value in pending_render.items() if key != "trace_id"})
+        if pending_render else nullcontext()
+    ):
+        active_session = (
+            backend_call(lambda: client.get_chat_session(user_id, active_session_id))
+            if active_session_id
+            else None
+        )
     history = active_session.get("messages", []) if active_session else []
 
     for message in history:
-        avatar = (
-            ":material/person:"
-            if message["role"] == "user"
-            else ":material/account_balance_wallet:"
+        matches_pending = (
+            pending_render
+            and message["role"] == "assistant"
+            and response_metadata(message).get("trace_id") == pending_render["trace_id"]
         )
-        with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
-            sources = message.get("sources", [])
-            if sources:
-                st.caption("Sources")
-                for source in sources:
-                    st.markdown(
-                        f"- [{source['title']}]({source['canonical_url']}) — "
-                        f"{source['issuing_organization']}, {source['published_at']} · "
-                        f"Source ID: `{source['source_id']}`"
-                    )
-            _render_coach_explanation(message.get("explanation"))
+        if matches_pending:
+            with trace_context(**{key: value for key, value in pending_render.items() if key != "trace_id"}):
+                _render_coach_message(message)
+            st.session_state.pop("coach_pending_render", None)
+            pending_render = None
+        else:
+            _render_coach_message(message)
 
     if pending_question and active_session_id:
         with st.chat_message("user", avatar=":material/person:"):
             st.markdown(pending_question)
-        with st.chat_message(
-            "assistant", avatar=":material/account_balance_wallet:"
-        ), st.spinner("Thinking"):
-            response = backend_call(
-                lambda: client.ask_coach(
-                    build_request(user_id, pending_question, active_session_id)
+        with trace_context(journey_id=st.session_state.get("journey_id")), call_span(
+            f"{__name__}.coach_page"
+        ):
+            log_event("coach.request.submitted", input_characters=len(pending_question))
+            with st.chat_message(
+                "assistant", avatar=":material/account_balance_wallet:"
+            ), st.spinner("Thinking"):
+                response = backend_call(
+                    lambda: client.ask_coach(
+                        build_request(user_id, pending_question, active_session_id)
+                    )
                 )
-            )
-        if response:
-            st.rerun()
+            if response:
+                metadata = response_metadata(response)
+                log_event("coach.response_accepted", **metadata)
+                current = context_fields()
+                # Only trace metadata crosses the rerun. Match the persisted
+                # explanation's trace ID before attributing a rendered answer.
+                if metadata.get("trace_id"):
+                    st.session_state.coach_pending_render = {
+                        "correlation_id": current["correlation_id"],
+                        "journey_id": current["journey_id"],
+                        "parent_span_id": current["span_id"],
+                        "caller_method": current["method"],
+                        "trace_id": metadata["trace_id"],
+                    }
+                st.rerun()
 
     starter_question = None
     if not history:
@@ -834,6 +890,7 @@ def coach_page() -> None:
     if submitted_question:
         normalized_question = submitted_question.strip()
         if normalized_question:
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.coach_pending_question = normalized_question
             st.rerun()
 
@@ -1163,6 +1220,7 @@ def profile_page() -> None:
             st.session_state.pop("coach_active_session_id", None)
             st.session_state.pop("coach_history", None)
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.pop("coach_rename_open", None)
             st.session_state.pop("coach_delete_open", None)
             st.session_state.pop(export_key, None)
@@ -1240,6 +1298,7 @@ def create_profile_page() -> None:
     st.session_state.pop("coach_active_session_id", None)
     st.session_state.pop("coach_history", None)
     st.session_state.pop("coach_pending_question", None)
+    st.session_state.pop("coach_pending_render", None)
     st.session_state.pop("coach_rename_open", None)
     st.session_state.pop("coach_delete_open", None)
     st.session_state.profile_created_notice = (

@@ -55,6 +55,7 @@ from app.core.security import (
     require_owned_path_user,
     require_principal,
 )
+from app.core.telemetry import trace_method
 from app.domain.schemas import MoneyAmount
 from app.infrastructure.database import get_db_session
 from app.infrastructure.models import (
@@ -176,6 +177,7 @@ def _budget_response(
     )
 
 
+@trace_method
 def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse | None:
     trace = message.orchestration_trace
     if trace is None:
@@ -199,6 +201,7 @@ def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse 
     )
 
 
+@trace_method
 def _chat_session_response(
     record: ChatSessionRecord, *, include_messages: bool
 ) -> ChatSessionSummary | ChatSessionResponse:
@@ -319,6 +322,7 @@ def delete_profile(
     "/users/{user_id}/chat-sessions",
     response_model=list[ChatSessionSummary],
 )
+@trace_method
 def list_chat_sessions(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
@@ -334,6 +338,7 @@ def list_chat_sessions(
     response_model=ChatSessionResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@trace_method
 def create_chat_session(
     user_id: UserId,
     chat: ChatSessionCreate,
@@ -357,6 +362,7 @@ def create_chat_session(
     "/users/{user_id}/chat-sessions/{chat_session_id}",
     response_model=ChatSessionResponse,
 )
+@trace_method
 def get_chat_session(
     user_id: UserId,
     chat_session_id: str,

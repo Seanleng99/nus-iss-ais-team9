@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from app.core.telemetry import trace_method
+
 
 class PromptCatalog:
     def __init__(self, version: str = "v6", root: Path | None = None) -> None:
@@ -10,6 +12,7 @@ class PromptCatalog:
             self._prompts: dict[str, str] = json.load(handle)
         self.version = version
 
+    @trace_method
     def get(self, prompt_id: str) -> str:
         try:
             return self._prompts[prompt_id]

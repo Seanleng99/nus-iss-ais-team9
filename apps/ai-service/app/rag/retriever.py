@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.guardrails import sanitize_rag_document
+from app.core.telemetry import log_event, trace_method
 from app.rag.ingestion import ApprovedDocumentMetadata
 
 LOCAL_EDUCATION_CORPUS_VERSION = "investment-education-sg@local-fixture-v1"
@@ -69,6 +70,7 @@ def _is_trusted_education_url(url: str) -> bool:
     )
 
 
+@trace_method
 def build_education_context(
     retriever: EducationRetriever,
     query: str,
@@ -114,6 +116,13 @@ def build_education_context(
         {key: context[key] for key in SOURCE_METADATA_FIELDS}
         for context in contexts
     ]
+    log_event(
+        "rag.education.context.ready",
+        retrieved_chunk_count=len(retrieved), accepted_chunk_count=len(contexts),
+        rejected_chunk_count=rejected_chunk_count,
+        evidence_status="grounded" if contexts else "insufficient",
+        corpus_version=getattr(retriever, "expected_corpus_version", None),
+    )
     return {
         "scope": scope,
         "evidence_status": "grounded" if contexts else "insufficient",
@@ -285,6 +294,7 @@ class LocalEducationRetriever:
     corpus_version = LOCAL_EDUCATION_CORPUS_VERSION
     expected_corpus_version = LOCAL_EDUCATION_CORPUS_VERSION
 
+    @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         topic_query = re.sub(
             r"^general investment education about\s+",
@@ -356,6 +366,7 @@ class BedrockEducationRetriever:
             )
         return self._client
 
+    @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         if not 1 <= top_k <= 20:
             raise ValueError("top_k must be between 1 and 20")
@@ -366,7 +377,13 @@ class BedrockEducationRetriever:
                 "The approved education knowledge base could not be queried."
             ) from exc
 
+    @trace_method
     def _retrieve(self, query: str, top_k: int) -> list[RetrievedChunk]:
+        log_event(
+            "bedrock.retrieve.request", component="education_retriever",
+            knowledge_base_id=self.knowledge_base_id, corpus_version=self.expected_corpus_version,
+            top_k=top_k,
+        )
         response = self.client.retrieve(
             knowledgeBaseId=self.knowledge_base_id,
             retrievalQuery={"text": query},
@@ -381,6 +398,11 @@ class BedrockEducationRetriever:
                     },
                 }
             },
+        )
+        log_event(
+            "bedrock.retrieve.response", component="education_retriever",
+            retrieved_chunk_count=len(response.get("retrievalResults", [])),
+            status_code=response.get("ResponseMetadata", {}).get("HTTPStatusCode"),
         )
         results = []
         seen = set()

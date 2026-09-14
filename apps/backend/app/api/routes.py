@@ -1,15 +1,18 @@
+import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
 from app.core.config import settings
 from app.core.security import (
     AuthenticatedPrincipal,
+    automation_user_id_reserved,
     enforce_user_access,
     require_principal,
 )
+from app.core.telemetry import call_span, log_event, log_synthetic_exchange, trace_method
 from app.domain.schemas import CoachRequest, CoachResponse, OrchestrationTraceResponse
 from app.infrastructure.database import get_db_session
 from app.infrastructure.repositories import (
@@ -29,15 +32,18 @@ def get_ai_service_client() -> AIServiceClient:
     "/coach",
     response_model=CoachResponse,
 )
+@trace_method
 async def coach(
     request: CoachRequest,
     ai_service: Annotated[AIServiceClient, Depends(get_ai_service_client)],
     session: Annotated[Session, Depends(get_db_session)],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
+    x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
     enforce_user_access(principal, session, request.user_id)
     user_repository = SQLAlchemyUserRepository(session)
     persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
+    log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
     try:
@@ -52,7 +58,8 @@ async def coach(
         if any("\u4e00" <= character <= "\u9fff" for character in request.message)
         else "English"
     )
-    response = CoachResponse.model_validate(response.model_dump())
+    with call_span("pydantic.main.BaseModel.model_validate", response_type="CoachResponse"):
+        response = CoachResponse.model_validate(response.model_dump())
     chat_repository = SQLAlchemyChatRepository(session)
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
     if chat_session is None:
@@ -82,7 +89,35 @@ async def coach(
             audit=response.audit,
             blocked=response.blocked,
         )
-    session.commit()
+    with call_span("sqlalchemy.orm.session.Session.commit"):
+        session.commit()
+    log_event("coach.persistence.completed", persisted=True, message_count=2)
+    if (
+        x_synthetic_log == "true"
+        and principal.is_automation
+        and automation_user_id_reserved(request.user_id)
+        and settings.app_env.lower() in {"local", "test", "demo"}
+    ):
+        log_synthetic_exchange(request.message, response.answer)
+    return _finalize_coach_response(response)
+
+
+@trace_method
+def _finalize_coach_response(response: CoachResponse) -> CoachResponse:
+    trace_id = response.audit.get("trace_id")
+    log_event(
+        "coach.response.ready",
+        selected_agents=[agent.value for agent in response.selected_agents],
+        blocked=response.blocked,
+        source_count=len(response.sources),
+        response_fields=list(CoachResponse.model_fields),
+        output_characters=len(response.answer),
+        trace_id=(
+            trace_id
+            if isinstance(trace_id, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", trace_id)
+            else None
+        ),
+    )
     return response
 
 

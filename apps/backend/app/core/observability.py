@@ -1,15 +1,15 @@
-import json
-import logging
-import re
-from contextvars import ContextVar
+from contextlib import nullcontext
 from time import perf_counter
-from uuid import uuid4
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
-_correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
-logger = logging.getLogger("service.access")
+from app.core.telemetry import (
+    _correlation_id,
+    call_span,
+    log_event,
+    trace_context,
+)
 
 
 def get_correlation_id() -> str | None:
@@ -26,44 +26,53 @@ class RequestTelemetryMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        supplied_id = request.headers.get("X-Correlation-ID", "")
-        correlation_id = (
-            supplied_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", supplied_id)
-            else str(uuid4())
-        )
-        token = _correlation_id.set(correlation_id)
-        started = perf_counter()
-        try:
-            response = await call_next(request)
-        except Exception:
-            self._log_event(request, 500, started, correlation_id, "request_failed")
-            raise
-        else:
-            response.headers["X-Correlation-ID"] = correlation_id
-            self._log_event(request, response.status_code, started, correlation_id, "request")
-            return response
-        finally:
-            _correlation_id.reset(token)
+        health_check = request.scope["path"] == "/health"
+        with trace_context(
+            correlation_id=request.headers.get("X-Correlation-ID"),
+            journey_id=request.headers.get("X-Journey-ID"),
+            parent_span_id=request.headers.get("X-Parent-Span-ID"),
+            caller_method=request.headers.get("X-Caller-Method"),
+        ):
+            boundary = (
+                nullcontext() if health_check else call_span(
+                    "app.core.observability.RequestTelemetryMiddleware.dispatch"
+                )
+            )
+            with boundary:
+                started = perf_counter()
+                try:
+                    request_boundary = (
+                        nullcontext() if health_check else call_span(
+                            f"{call_next.__module__}.{call_next.__qualname__}"
+                        )
+                    )
+                    with request_boundary:
+                        response = await call_next(request)
+                except Exception as error:
+                    self._log_event(
+                        request, 500, started, "request_failed",
+                        exception_type=type(error).__name__,
+                    )
+                    raise
+                else:
+                    response.headers["X-Correlation-ID"] = get_correlation_id()
+                    if not health_check or response.status_code >= 400:
+                        self._log_event(request, response.status_code, started, "request")
+                    return response
 
     def _log_event(
         self,
         request: Request,
         status_code: int,
         started: float,
-        correlation_id: str,
         event: str,
+        **fields,
     ) -> None:
-        logger.info(
-            json.dumps(
-                {
-                    "event": event,
-                    "service": self._service_name,
-                    "correlation_id": correlation_id,
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": status_code,
-                    "duration_ms": round((perf_counter() - started) * 1000, 2),
-                },
-                separators=(",", ":"),
-            )
+        log_event(
+            event,
+            http_method=request.method,
+            route=getattr(request.scope.get("route"), "path", "<unmatched>"),
+            status_code=status_code,
+            duration_ms=round((perf_counter() - started) * 1000, 2),
+            **fields,
         )

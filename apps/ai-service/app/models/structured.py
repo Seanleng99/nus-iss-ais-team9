@@ -5,11 +5,13 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGateway, ModelGatewayError
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
 
+@trace_method
 def parse_structured_response(raw: str, response_type: type[StructuredModel]) -> StructuredModel:
     candidate = raw.strip()
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", candidate, flags=re.DOTALL)
@@ -22,7 +24,14 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
             candidate = candidate[start : end + 1]
 
     try:
-        return response_type.model_validate(json.loads(candidate))
+        response = response_type.model_validate(json.loads(candidate))
+        log_event(
+            "model.response.parsed",
+            response_type=response_type.__name__,
+            response_fields=list(response_type.model_fields),
+            output_characters=len(raw),
+        )
+        return response
     except (json.JSONDecodeError, ValidationError) as exc:
         raise ModelGatewayError(
             "The model returned an invalid structured response.",
@@ -31,6 +40,7 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
         ) from exc
 
 
+@trace_method
 def generate_structured_response(
     gateway: ModelGateway,
     *,
@@ -56,6 +66,12 @@ def generate_structured_response(
             "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_CITATION", "MISSING_CITATION",
         }:
             raise
+        log_event(
+            "model.correction.requested",
+            response_type=response_type.__name__,
+            error_code=exc.code,
+            attempt=2,
+        )
         cause = exc.__cause__
         if exc.code in {"UNAPPROVED_CITATION", "MISSING_CITATION"}:
             validation_issues = (

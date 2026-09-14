@@ -1,6 +1,6 @@
 import streamlit as st
 
-from ui.auth import require_authenticated_user, signed_in_label
+from ui.auth import logout, require_authenticated_user, signed_in_label
 from ui.components import apply_styles, backend_call
 from ui.pages import (
     budget_page,
@@ -12,7 +12,9 @@ from ui.pages import (
     transactions_page,
 )
 from ui.state import get_client, period_options, today_singapore
+from ui.telemetry import configure_logging
 
+configure_logging()
 st.set_page_config(
     page_title="Financial Wellness Coach",
     page_icon=":material/account_balance_wallet:",
@@ -112,7 +114,7 @@ with st.sidebar:
     if identity_label := signed_in_label():
         st.caption(f"Signed in as {identity_label}")
         if st.button("Sign out", use_container_width=True):
-            st.logout()
+            logout()
 
     st.markdown('<div class="sidebar-section">ACCOUNT</div>', unsafe_allow_html=True)
     if has_active_profile:
@@ -129,6 +131,7 @@ with st.sidebar:
             st.session_state.pop("coach_active_session_id", None)
             st.session_state.pop("coach_history", None)
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.pop("coach_rename_open", None)
             st.session_state.pop("coach_delete_open", None)
         active_user_id = selected_user_id
