@@ -20,6 +20,7 @@ from app.core.schemas import (
     NeedsInputInvocation,
     SourceCitation,
 )
+from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGateway, ModelGatewayError
 from app.models.structured import generate_structured_response
 
@@ -43,10 +44,15 @@ class BaseAgent(ABC):
 
     dependency_planning_enabled = False
 
+    @trace_method
     def run_task(
         self, task: AgentTask
     ) -> CompletedInvocation | NeedsDependencyInvocation | NeedsInputInvocation:
         decision = inspect_prompt(task.sanitized_message)
+        log_event(
+            "agent.guardrail.evaluated", agent=self.name.value,
+            allowed=decision.allowed, finding_count=len(decision.findings),
+        )
         if not decision.allowed:
             return CompletedInvocation(
                 result=AgentResult(
@@ -64,7 +70,14 @@ class BaseAgent(ABC):
             return preflight
 
         grounding = self._ground(task, decision.sanitized_text)
+        log_event(
+            "agent.grounding.ready", agent=self.name.value,
+            evidence_status=grounding.get("evidence_status"),
+            source_count=len(grounding.get("sources", [])),
+            response_language=grounding.get("response_language"),
+        )
         if grounding.get("evidence_status") == "insufficient":
+            log_event("agent.evidence_gap", agent=self.name.value, reason_code="INSUFFICIENT_EVIDENCE")
             result = self._evidence_gap_result(grounding)
             return CompletedInvocation(
                 result=result,
@@ -136,6 +149,12 @@ class BaseAgent(ABC):
                 ]
             )
         )
+        log_event(
+            "agent.output.evaluated", agent=self.name.value,
+            allowed=not bool(output_decision.findings),
+            finding_count=len(output_decision.findings),
+            output_characters=len(narrative.summary),
+        )
         if output_decision.findings:
             return CompletedInvocation(
                 result=AgentResult(
@@ -177,6 +196,7 @@ class BaseAgent(ABC):
         del task
         return ()
 
+    @trace_method
     def _preflight(
         self,
         task: AgentTask,
@@ -293,6 +313,7 @@ class BaseAgent(ABC):
         del task, grounding
         return sanitized_message
 
+    @trace_method
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
         return AgentResult(
             agent=self.name,

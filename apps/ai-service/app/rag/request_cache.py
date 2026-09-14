@@ -3,6 +3,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from threading import Lock
 
+from app.core.telemetry import log_event, trace_method
 from app.rag.retriever import EducationRetriever, RetrievedChunk
 
 
@@ -33,9 +34,11 @@ class RequestScopedEducationRetriever:
             getattr(self.delegate, "corpus_version", None),
         )
 
+    @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         state = self._state.get()
         if state is None:
+            log_event("rag.cache.lookup", cache_hit=False, reason_code="NO_REQUEST_SCOPE")
             return list(self.delegate.retrieve(query, top_k))
 
         key = (query, top_k)
@@ -45,6 +48,8 @@ class RequestScopedEducationRetriever:
             if owner:
                 future = Future()
                 state.futures[key] = future
+
+        log_event("rag.cache.lookup", cache_hit=not owner, component="education_retriever")
 
         if owner:
             try:

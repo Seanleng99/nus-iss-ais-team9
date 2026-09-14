@@ -8,6 +8,7 @@ from math import log
 from pathlib import Path
 
 from app.core.guardrails import sanitize_rag_document
+from app.core.telemetry import trace_method
 from app.rag.ingestion import active_sources, governance_issues, load_source_manifest
 from app.rag.ranking import terms
 from app.rag.retriever import RetrievalError, RetrievedChunk, _is_trusted_education_url
@@ -85,6 +86,7 @@ class LocalDocumentEducationRetriever:
         self._frequency = Counter(term for _, _, counts in self._chunks for term in counts)
         self._average_length = sum(sum(c.values()) for _, _, c in self._chunks) / len(self._chunks)
 
+    @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         if not 1 <= top_k <= 20:
             raise ValueError("top_k must be between 1 and 20")

@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from app.core.config import Settings
+from app.core.telemetry import log_event, trace_method
 
 
 class ModelGatewayError(RuntimeError):
@@ -95,6 +96,7 @@ class BedrockModelGateway:
             )
         return self._client
 
+    @trace_method
     def generate(
         self,
         *,
@@ -104,11 +106,18 @@ class BedrockModelGateway:
         max_tokens: int,
     ) -> str:
         try:
+            log_event("bedrock.converse.request", model_id=self.model_id, provider="bedrock")
             response = self.client.converse(
                 modelId=self.model_id,
                 system=[{"text": system_prompt}],
                 messages=[{"role": "user", "content": [{"text": user_prompt}]}],
                 inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
+            )
+            log_event(
+                "bedrock.converse.response",
+                status_code=response.get("ResponseMetadata", {}).get("HTTPStatusCode"),
+                input_tokens=response.get("usage", {}).get("inputTokens"),
+                output_tokens=response.get("usage", {}).get("outputTokens"),
             )
             content = response["output"]["message"]["content"]
             text_blocks = [block["text"] for block in content if "text" in block]
@@ -130,6 +139,7 @@ class BedrockModelGateway:
 class LocalFixtureModelGateway:
     """Offline-only fixture for tests, evaluations, and local service wiring."""
 
+    @trace_method
     def generate(
         self,
         *,
@@ -369,6 +379,7 @@ class TracingModelGateway:
         with self._lock:
             self._calls.pop(trace_id, None)
 
+    @trace_method
     def generate(
         self,
         *,
@@ -379,6 +390,15 @@ class TracingModelGateway:
     ) -> str:
         trace_id = _model_trace_id.get()
         started = perf_counter()
+        component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
+        log_event(
+            "model.generation.started",
+            trace_id=trace_id,
+            component=component,
+            provider=self.settings.model_provider,
+            model_id=self.settings.model_id,
+            input_characters=len(user_prompt),
+        )
         if trace_id:
             with self._lock:
                 calls = self._calls.get(trace_id)
@@ -423,6 +443,18 @@ class TracingModelGateway:
             error_code = type(exc).__name__
             raise
         finally:
+            usage = getattr(generation, "usage", {})
+            log_event(
+                "model.generation.finished",
+                trace_id=trace_id,
+                component=component,
+                status=status,
+                output_characters=len(generation),
+                input_tokens=usage.get("inputTokens"),
+                output_tokens=usage.get("outputTokens"),
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+                error_code=error_code,
+            )
             if trace_id:
                 usage = getattr(generation, "usage", {})
                 completed = {

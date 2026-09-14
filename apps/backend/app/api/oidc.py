@@ -6,10 +6,12 @@ import httpx
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import settings
+from app.core.telemetry import trace_method
 
 router = APIRouter()
 
 
+@trace_method
 def add_cognito_logout_uri(
     provider_metadata: dict[str, Any], logout_uri: str
 ) -> dict[str, Any]:
@@ -35,6 +37,7 @@ def add_cognito_logout_uri(
 
 
 @lru_cache(maxsize=1)
+@trace_method
 def load_compatible_oidc_metadata() -> dict[str, Any]:
     if not settings.oidc_metadata_proxy_enabled:
         raise ValueError("OIDC metadata compatibility endpoint is disabled")
@@ -60,6 +63,7 @@ def load_compatible_oidc_metadata() -> dict[str, Any]:
 
 
 @router.get("/oidc/metadata")
+@trace_method
 def oidc_metadata() -> dict[str, Any]:
     try:
         return load_compatible_oidc_metadata()

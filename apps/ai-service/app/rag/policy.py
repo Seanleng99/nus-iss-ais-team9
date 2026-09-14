@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.guardrails import sanitize_rag_document
+from app.core.telemetry import log_event, trace_method
 from app.rag.ingestion import ApprovedDocumentMetadata
 from app.rag.retriever import RetrievalError, RetrievedChunk
 
@@ -119,6 +120,7 @@ class LocalPolicyRetriever:
     corpus_version = LOCAL_POLICY_CORPUS_VERSION
     expected_corpus_version = LOCAL_POLICY_CORPUS_VERSION
 
+    @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
         scored = [
@@ -184,6 +186,7 @@ class BedrockPolicyRetriever:
             )
         return self._client
 
+    @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         try:
             return self._retrieve(query, top_k)
@@ -193,7 +196,13 @@ class BedrockPolicyRetriever:
                 component="policy_retriever",
             ) from exc
 
+    @trace_method
     def _retrieve(self, query: str, top_k: int) -> list[RetrievedChunk]:
+        log_event(
+            "bedrock.retrieve.request", component="policy_retriever",
+            knowledge_base_id=self.knowledge_base_id, corpus_version=self.expected_corpus_version,
+            top_k=top_k,
+        )
         response = self.client.retrieve(
             knowledgeBaseId=self.knowledge_base_id,
             retrievalQuery={"text": query},
@@ -206,6 +215,11 @@ class BedrockPolicyRetriever:
                     ]},
                 }
             },
+        )
+        log_event(
+            "bedrock.retrieve.response", component="policy_retriever",
+            retrieved_chunk_count=len(response.get("retrievalResults", [])),
+            status_code=response.get("ResponseMetadata", {}).get("HTTPStatusCode"),
         )
         results = []
         seen = set()

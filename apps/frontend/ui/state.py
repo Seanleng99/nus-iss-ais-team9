@@ -27,9 +27,18 @@ def period_options() -> list[date]:
 def get_client() -> BackendClient:
     identity_token = current_identity_token()
     existing_token = st.session_state.get("backend_client_identity_token")
-    if "backend_client" not in st.session_state or existing_token != identity_token:
-        st.session_state.backend_client = BackendClient(id_token=identity_token)
+    journey_id = st.session_state.get("journey_id")
+    existing_journey = st.session_state.get("backend_client_journey_id")
+    if (
+        "backend_client" not in st.session_state
+        or existing_token != identity_token
+        or existing_journey != journey_id
+    ):
+        st.session_state.backend_client = BackendClient(
+            id_token=identity_token, journey_id=journey_id
+        )
         st.session_state.backend_client_identity_token = identity_token
+        st.session_state.backend_client_journey_id = journey_id
     return st.session_state.backend_client
 
 

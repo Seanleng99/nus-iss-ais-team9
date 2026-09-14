@@ -54,6 +54,7 @@ from app.core.schemas import (
     SourceCitation,
     SynthesisDecision,
 )
+from app.core.telemetry import context_fields, log_event, trace_method
 from app.models.gateway import (
     ModelGateway,
     ModelGatewayError,
@@ -146,6 +147,9 @@ def _write_workflow_log(
         level,
         json.dumps(
             {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "service": "ai-service",
+                **context_fields(),
                 "event_type": event_type,
                 "trace_id": trace_id,
                 "correlation_id": get_correlation_id(),
@@ -262,6 +266,7 @@ class AgentOrchestrator:
         workflow.add_edge("finalize", END)
         return workflow.compile()
 
+    @trace_method
     def _guard_input(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
         decision = inspect_prompt(request.message)
@@ -327,6 +332,7 @@ class AgentOrchestrator:
         )
         return update
 
+    @trace_method
     def _route(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
         response_language = education_response_language(state["sanitized_message"])
@@ -400,6 +406,7 @@ class AgentOrchestrator:
             "audit_events": [*state.get("audit_events", []), event],
         }
 
+    @trace_method
     def _initialize_tasks(self, state: OrchestratorState) -> OrchestratorState:
         tasks: dict[str, AgentTask] = {}
         events = list(state.get("audit_events", []))
@@ -428,6 +435,7 @@ class AgentOrchestrator:
             "audit_events": events,
         }
 
+    @trace_method
     def _run_ready_tasks(self, state: OrchestratorState) -> OrchestratorState:
         tasks = {task_id: task.model_copy(deep=True) for task_id, task in state["tasks"].items()}
         task_results = dict(state.get("task_results", {}))
@@ -631,7 +639,9 @@ class AgentOrchestrator:
             "audit_events": events,
         }
 
+    @trace_method
     def _execute_task(self, task: AgentTask, agent: BaseAgent):
+        log_event("agent.invocation", agent=task.agent.value, task_id=task.task_id)
         started = perf_counter()
         retry_errors: list[tuple[int, str]] = []
         final_attempt = task.attempt
@@ -706,6 +716,7 @@ class AgentOrchestrator:
             return "complete"
         raise ModelGatewayError("The specialist scheduler reached an unresolved state.")
 
+    @trace_method
     def _resolve_dependencies(self, state: OrchestratorState) -> OrchestratorState:
         dependency_round = state.get("dependency_round", 0) + 1
         if dependency_round > self.config.max_dependency_rounds:
@@ -1123,6 +1134,7 @@ class AgentOrchestrator:
             "audit_events": events,
         }
 
+    @trace_method
     def _synthesize(self, state: OrchestratorState) -> OrchestratorState:
         sources = self._collect_source_citations(state["agent_results"])
         events = [
@@ -1178,6 +1190,7 @@ class AgentOrchestrator:
             synthesis = SynthesisDecision(answer="\n\n".join([
                 state["agent_results"][0].summary, *questions,
             ]))
+            log_event("synthesis.strategy", component="needs_input_questions")
         elif (
             len(state["agent_results"]) == 1
             and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
@@ -1189,7 +1202,9 @@ class AgentOrchestrator:
             # Preserve the single specialist answer without a second model rewrite.
             # Citation validation and independent policy review still run below.
             synthesis = SynthesisDecision(answer=state["agent_results"][0].summary)
+            log_event("synthesis.strategy", component="reuse_investment_specialist")
         else:
+            log_event("synthesis.strategy", component="model_synthesizer")
             synthesis = generate_structured_response(
                 self.gateway,
                 response_type=SynthesisDecision,
@@ -1215,6 +1230,7 @@ class AgentOrchestrator:
         )
         return {"draft_answer": synthesis.answer, "audit_events": events}
 
+    @trace_method
     def _review_compliance(self, state: OrchestratorState) -> OrchestratorState:
         events = [
             *state.get("audit_events", []),
@@ -1241,6 +1257,7 @@ class AgentOrchestrator:
         )
         return {"compliance_result": result, "audit_events": events}
 
+    @trace_method
     def _finalize(self, state: OrchestratorState) -> OrchestratorState:
         compliance = state["compliance_result"]
         response_language = education_response_language(state["sanitized_message"])
@@ -1368,6 +1385,7 @@ class AgentOrchestrator:
         )
         return {"response": response, "audit_events": events}
 
+    @trace_method
     def _create_task(
         self,
         state: OrchestratorState,
@@ -1540,6 +1558,7 @@ class AgentOrchestrator:
         return event
 
     @staticmethod
+    @trace_method
     def _collect_source_citations(results: list[AgentResult]) -> list[SourceCitation]:
         sources: list[SourceCitation] = []
         seen: set[str] = set()
@@ -1607,8 +1626,16 @@ class AgentOrchestrator:
             )
         return evidence
 
+    @trace_method
     def handle(self, request: CoachRequest) -> CoachResponse:
         trace_id = str(uuid4())
+        log_event(
+            "workflow.context",
+            trace_id=trace_id,
+            provider=self.config.model_provider,
+            model_id=self.config.model_id,
+            prompt_set_version=self.prompts.version,
+        )
         executed_at = datetime.now(UTC).isoformat()
         workflow_started = perf_counter()
         started_event = AuditEvent(

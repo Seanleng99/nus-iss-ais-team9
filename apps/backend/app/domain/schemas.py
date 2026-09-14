@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.core.telemetry import trace_method
+
 
 class AgentName(StrEnum):
     SPENDING = "spending"
@@ -218,6 +220,7 @@ class CoachResponse(BaseModel):
     blocked: bool = False
 
     @model_validator(mode="after")
+    @trace_method
     def sanitize_blocked_response(self) -> "CoachResponse":
         if self.blocked:
             self.audit = sanitize_blocked_audit(self.audit)

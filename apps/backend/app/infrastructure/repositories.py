@@ -16,6 +16,7 @@ from app.core.data_lifecycle import (
     DURABLE_MEMORY_CONSENT_VERSION,
     DURABLE_MEMORY_PURPOSE,
 )
+from app.core.telemetry import trace_method
 from app.domain.schemas import (
     FinancialGoal,
     MoneyAmount,
@@ -43,6 +44,7 @@ FAIRNESS_EVALUATION_PURPOSE = "fairness_evaluation"
 FAIRNESS_CONSENT_VERSION = "1.0"
 
 
+@trace_method
 def _lock_user_lifecycle(session: Session, user_id: str) -> None:
     if session.get_bind().dialect.name != "postgresql":
         return
@@ -53,6 +55,7 @@ def _lock_user_lifecycle(session: Session, user_id: str) -> None:
     )
 
 
+@trace_method
 def _ensure_user(session: Session, user_id: str) -> UserRecord:
     _lock_user_lifecycle(session, user_id)
     user = session.get(UserRecord, user_id)
@@ -64,6 +67,7 @@ def _ensure_user(session: Session, user_id: str) -> UserRecord:
     return user
 
 
+@trace_method
 def _touch_user(session: Session, user_id: str) -> None:
     user = session.get(UserRecord, user_id)
     if user is not None:
@@ -80,6 +84,7 @@ class SQLAlchemyUserRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def get_profile(self, user_id: str) -> FinancialProfileRecord | None:
         return self.session.get(FinancialProfileRecord, user_id)
 
@@ -453,6 +458,7 @@ class SQLAlchemyUserRepository:
         self.session.flush()
         return True
 
+    @trace_method
     def get_financial_snapshot(self, user_id: str) -> UserFinancialSnapshot | None:
         if self.session.get(UserRecord, user_id) is None:
             return None
@@ -583,6 +589,7 @@ class SQLAlchemyTransactionRepository:
         self.session = session
 
     @staticmethod
+    @trace_method
     def _query(
         user_id: str, period_start: date | None = None
     ) -> Select[tuple[TransactionRecord]]:
@@ -598,11 +605,13 @@ class SQLAlchemyTransactionRepository:
             )
         return query
 
+    @trace_method
     def list_records(
         self, user_id: str, *, period_start: date | None = None, limit: int = 500
     ) -> list[TransactionRecord]:
         return list(self.session.scalars(self._query(user_id, period_start).limit(limit)))
 
+    @trace_method
     def list_for_user(self, user_id: str) -> list[Transaction]:
         return [
             Transaction(
@@ -670,6 +679,7 @@ class SQLAlchemyGoalRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def list_records(self, user_id: str) -> list[FinancialGoalRecord]:
         query = (
             select(FinancialGoalRecord)
@@ -678,6 +688,7 @@ class SQLAlchemyGoalRepository:
         )
         return list(self.session.scalars(query))
 
+    @trace_method
     def list_for_user(self, user_id: str) -> list[FinancialGoal]:
         return [
             FinancialGoal(
@@ -821,6 +832,7 @@ class SQLAlchemyChatRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def list_for_user(self, user_id: str) -> list[ChatSessionRecord]:
         query = (
             select(ChatSessionRecord)
@@ -830,6 +842,7 @@ class SQLAlchemyChatRepository:
         )
         return list(self.session.scalars(query))
 
+    @trace_method
     def get(self, user_id: str, session_id: str) -> ChatSessionRecord | None:
         query = (
             select(ChatSessionRecord)
@@ -845,6 +858,7 @@ class SQLAlchemyChatRepository:
         )
         return self.session.scalar(query)
 
+    @trace_method
     def get_for_update(
         self, user_id: str, session_id: str
     ) -> ChatSessionRecord | None:
@@ -859,9 +873,11 @@ class SQLAlchemyChatRepository:
         )
         return self.session.scalar(query)
 
+    @trace_method
     def id_exists(self, session_id: str) -> bool:
         return self.session.get(ChatSessionRecord, session_id) is not None
 
+    @trace_method
     def create(self, user_id: str, session_id: str, title: str) -> ChatSessionRecord:
         _ensure_user(self.session, user_id)
         record = ChatSessionRecord(id=session_id, user_id=user_id, title=title)
@@ -890,6 +906,7 @@ class SQLAlchemyChatRepository:
         SQLAlchemyUserRepository(self.session).delete_if_empty(user_id)
         return True
 
+    @trace_method
     def append_message(
         self,
         chat_session: ChatSessionRecord,
@@ -915,6 +932,7 @@ class SQLAlchemyOrchestrationTraceRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def create(
         self,
         *,

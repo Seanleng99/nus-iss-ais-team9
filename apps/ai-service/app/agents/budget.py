@@ -10,6 +10,7 @@ from app.core.schemas import (
     DependencyRequestDraft,
     UserFinancialSnapshot,
 )
+from app.core.telemetry import trace_method
 from app.tools.registry import call_tool
 
 
@@ -100,6 +101,7 @@ class BudgetAgent(BaseAgent):
             return ["What is your monthly income before creating this budget?"]
         return []
 
+    @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)

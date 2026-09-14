@@ -29,6 +29,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
 - `docs/policy-rag-governance.md`: separate policy-corpus lifecycle, runtime enforcement, and deployment gates.
 - `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
+- [Investment Agent 调用链日志](docs/investment-call-logging.md): login, method calls, RAG/model execution, response packaging, CloudWatch queries, and explicitly marked synthetic Q&A logs.
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
 - `docs/container-security.md`: exact-version image-scan exceptions, current risk review, and expiry controls.

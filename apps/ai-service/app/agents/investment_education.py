@@ -15,6 +15,7 @@ from app.core.schemas import (
     GroundedEducationNarrative,
     SourceCitation,
 )
+from app.core.telemetry import trace_method
 from app.models.gateway import ModelGateway, ModelGatewayError
 from app.rag.retriever import EducationRetriever, build_education_context
 
@@ -36,6 +37,7 @@ class InvestmentEducationAgent(BaseAgent):
         if prompts.version in {"v5", "v6", "v7"}:
             self.narrative_type = GroundedEducationNarrative
 
+    @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del task
         validate_tool_permission(self.name, "education_retriever")
@@ -71,6 +73,7 @@ class InvestmentEducationAgent(BaseAgent):
         grounding["retrieval_consumer"] = self.name.value
         return grounding
 
+    @trace_method
     def _validate_narrative(
         self,
         narrative: AgentNarrative,
@@ -105,6 +108,7 @@ class InvestmentEducationAgent(BaseAgent):
         grounding["uncertainties"] = narrative.uncertainties
         return narrative
 
+    @trace_method
     def _model_message(
         self,
         task: AgentTask,

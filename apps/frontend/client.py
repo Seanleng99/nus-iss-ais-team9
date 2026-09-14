@@ -1,9 +1,60 @@
 import os
+import re
+from contextlib import nullcontext
 from datetime import date
+from functools import wraps
 from typing import Any
 from uuid import uuid4
 
 import httpx
+
+from ui.response_metadata import response_metadata
+from ui.telemetry import (
+    call_span,
+    context_fields,
+    log_event,
+    outbound_headers,
+    trace_context,
+    trace_method,
+)
+
+
+def _trace_operation(function):
+    traced = trace_method(function)
+
+    @wraps(function)
+    def wrapped(self, *args, **kwargs):
+        current = context_fields()
+        context = (
+            nullcontext()
+            if current.get("correlation_id")
+            else trace_context(
+                journey_id=self.journey_id,
+                parent_span_id=current.get("span_id"),
+                caller_method=current.get("method"),
+            )
+        )
+        with context:
+            return traced(self, *args, **kwargs)
+
+    return wrapped
+
+
+def _route_template(path: str) -> str:
+    if path in {"/api/profiles", "/api/coach"}:
+        return path
+    match = re.fullmatch(
+        r"/api/users/[^/?#]+/(profile|data-lifecycle|memory-consent|data-export|data|"
+        r"fairness-profile|fairness-consent|demographics|transactions|goals|budget|"
+        r"dashboard|chat-sessions)", path,
+    )
+    if match:
+        return f"/api/users/{{user_id}}/{match[1]}"
+    match = re.fullmatch(r"/api/users/[^/?#]+/(transactions|goals|chat-sessions)/[^/?#]+", path)
+    if match:
+        identifier = {"transactions": "transaction_id", "goals": "goal_id", "chat-sessions": "session_id"}
+        return f"/api/users/{{user_id}}/{match[1]}/{{{identifier[match[1]]}}}"
+    return "<unmatched>"
 
 
 class BackendClient:
@@ -13,6 +64,8 @@ class BackendClient:
         id_token: str | None = None,
         automation_api_key: str | None = None,
         transport: httpx.BaseTransport | None = None,
+        journey_id: str | None = None,
+        synthetic_log: bool = False,
     ) -> None:
         self.base_url = (
             base_url or os.getenv("BACKEND_BASE_URL", "http://localhost:8080")
@@ -26,6 +79,11 @@ class BackendClient:
             elif os.getenv("APP_ENV", "local").casefold() == "local":
                 self.automation_api_key = "change-me-locally"
         self.transport = transport
+        self.journey_id = journey_id
+        self.synthetic_log = bool(
+            synthetic_log and not id_token
+            and (automation_api_key or os.getenv("BACKEND_API_KEY"))
+        )
 
     def _authentication_headers(self) -> dict[str, str]:
         if self.id_token:
@@ -34,6 +92,7 @@ class BackendClient:
             return {"X-API-Key": self.automation_api_key}
         raise RuntimeError("An authenticated user session is required")
 
+    @_trace_operation
     def _request(
         self,
         method: str,
@@ -44,39 +103,64 @@ class BackendClient:
         allow_not_found: bool = False,
         timeout: float = 20.0,
     ) -> Any:
+        metadata = {"http_method": method, "route": _route_template(path)}
+        log_event("http.request_started", **metadata)
+        headers = {**self._authentication_headers(), **outbound_headers()}
+        if self.synthetic_log and not self.id_token and self.automation_api_key and path == "/api/coach":
+            headers["X-Synthetic-Log"] = "true"
         with httpx.Client(
             base_url=self.base_url,
-            headers=self._authentication_headers(),
+            headers=headers,
             transport=self.transport,
             timeout=timeout,
         ) as client:
             response = client.request(method, path, json=json, params=params)
+        log_event(
+            "http.response_received", status_code=response.status_code,
+            response_bytes=len(response.content), **metadata,
+        )
         if allow_not_found and response.status_code == 404:
+            log_event("http.response_accepted", status_code=404, status="not_found", **metadata)
             return None
-        response.raise_for_status()
+        with call_span("httpx._models.Response.raise_for_status"):
+            response.raise_for_status()
         if response.status_code == 204:
+            log_event("http.response_accepted", status_code=204, status="empty", **metadata)
             return None
-        return response.json()
+        with call_span("httpx._models.Response.json"):
+            result = response.json()
+        log_event(
+            "http.response_accepted", status_code=response.status_code,
+            **metadata, **response_metadata(result),
+        )
+        return result
 
+    @_trace_operation
     def get_profile(self, user_id: str) -> dict[str, Any] | None:
         return self._request("GET", f"/api/users/{user_id}/profile", allow_not_found=True)
 
+    @_trace_operation
     def list_profiles(self) -> list[dict[str, Any]]:
         return self._request("GET", "/api/profiles")
 
+    @_trace_operation
     def create_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/api/profiles", json=payload)
 
+    @_trace_operation
     def save_profile(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/profile", json=payload)
 
+    @_trace_operation
     def delete_profile(self, user_id: str) -> bool:
         self._request("DELETE", f"/api/users/{user_id}/profile")
         return True
 
+    @_trace_operation
     def get_data_lifecycle(self, user_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/users/{user_id}/data-lifecycle")
 
+    @_trace_operation
     def save_memory_consent(self, user_id: str, granted: bool) -> dict[str, Any]:
         return self._request(
             "PUT",
@@ -84,9 +168,11 @@ class BackendClient:
             json={"granted": granted},
         )
 
+    @_trace_operation
     def export_user_data(self, user_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/users/{user_id}/data-export")
 
+    @_trace_operation
     def delete_user_data(self, user_id: str, policy_version: str) -> dict[str, Any]:
         return self._request(
             "DELETE",
@@ -97,9 +183,11 @@ class BackendClient:
             },
         )
 
+    @_trace_operation
     def get_fairness_profile(self, user_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/users/{user_id}/fairness-profile")
 
+    @_trace_operation
     def save_fairness_consent(self, user_id: str, granted: bool) -> dict[str, Any]:
         return self._request(
             "PUT",
@@ -107,9 +195,11 @@ class BackendClient:
             json={"granted": granted},
         )
 
+    @_trace_operation
     def save_demographics(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/demographics", json=payload)
 
+    @_trace_operation
     def list_transactions(self, user_id: str, period_start: date) -> list[dict[str, Any]]:
         return self._request(
             "GET",
@@ -117,9 +207,11 @@ class BackendClient:
             params={"period_start": period_start.isoformat()},
         )
 
+    @_trace_operation
     def create_transaction(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/api/users/{user_id}/transactions", json=payload)
 
+    @_trace_operation
     def update_transaction(
         self, user_id: str, transaction_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -127,23 +219,29 @@ class BackendClient:
             "PUT", f"/api/users/{user_id}/transactions/{transaction_id}", json=payload
         )
 
+    @_trace_operation
     def delete_transaction(self, user_id: str, transaction_id: str) -> None:
         self._request("DELETE", f"/api/users/{user_id}/transactions/{transaction_id}")
 
+    @_trace_operation
     def list_goals(self, user_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/api/users/{user_id}/goals")
 
+    @_trace_operation
     def create_goal(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/api/users/{user_id}/goals", json=payload)
 
+    @_trace_operation
     def update_goal(
         self, user_id: str, goal_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/goals/{goal_id}", json=payload)
 
+    @_trace_operation
     def delete_goal(self, user_id: str, goal_id: str) -> None:
         self._request("DELETE", f"/api/users/{user_id}/goals/{goal_id}")
 
+    @_trace_operation
     def get_budget(self, user_id: str, period_start: date) -> dict[str, Any] | None:
         return self._request(
             "GET",
@@ -152,9 +250,11 @@ class BackendClient:
             allow_not_found=True,
         )
 
+    @_trace_operation
     def save_budget(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/budget", json=payload)
 
+    @_trace_operation
     def get_dashboard(self, user_id: str, period_start: date) -> dict[str, Any] | None:
         return self._request(
             "GET",
@@ -163,12 +263,15 @@ class BackendClient:
             allow_not_found=True,
         )
 
+    @_trace_operation
     def ask_coach(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/api/coach", json=payload, timeout=60.0)
 
+    @_trace_operation
     def list_chat_sessions(self, user_id: str) -> list[dict[str, Any]]:
         return self._request("GET", f"/api/users/{user_id}/chat-sessions")
 
+    @_trace_operation
     def create_chat_session(
         self, user_id: str, title: str, session_id: str | None = None
     ) -> dict[str, Any]:
@@ -178,11 +281,13 @@ class BackendClient:
             json={"id": session_id or str(uuid4()), "title": title},
         )
 
+    @_trace_operation
     def get_chat_session(self, user_id: str, session_id: str) -> dict[str, Any]:
         return self._request(
             "GET", f"/api/users/{user_id}/chat-sessions/{session_id}"
         )
 
+    @_trace_operation
     def rename_chat_session(
         self, user_id: str, session_id: str, title: str
     ) -> dict[str, Any]:
@@ -192,10 +297,12 @@ class BackendClient:
             json={"title": title},
         )
 
+    @_trace_operation
     def delete_chat_session(self, user_id: str, session_id: str) -> None:
         self._request("DELETE", f"/api/users/{user_id}/chat-sessions/{session_id}")
 
 
+@trace_method
 def build_request(
     user_id: str, message: str, session_id: str | None = None
 ) -> dict[str, Any]:
@@ -206,5 +313,6 @@ def build_request(
     }
 
 
+@trace_method
 def ask_coach(payload: dict[str, Any]) -> dict[str, Any]:
     return BackendClient().ask_coach(payload)
