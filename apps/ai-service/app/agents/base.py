@@ -97,7 +97,16 @@ class BaseAgent(ABC):
             # generated uncertainties or citation selections to public data yet.
             return self._validate_narrative(narrative, dict(grounding))
 
-        if self.prompts.version == "v7" and grounding.get("response_language") in {"English", "Chinese"}:
+        if self.name == AgentName.INVESTMENT_EDUCATION:
+            system_prompt += (
+                "\nAnswer the requested concept and question_intent directly and briefly. "
+                "Do not expand into adjacent topics. Preserve each source's qualifications, "
+                "account/product scope and conditions; do not generalize a statement about "
+                "one type of fund to all funds. Do not add definitions or examples absent "
+                "from the supplied passages. Keep rationale to one brief assessment sentence "
+                "without additional financial facts."
+            )
+        if grounding.get("response_language") in {"English", "Chinese"}:
             system_prompt += (
                 "\nRequired output language for THIS request: "
                 + grounding["response_language"]

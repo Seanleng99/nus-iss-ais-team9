@@ -112,7 +112,7 @@ class InvestmentEducationAgent(BaseAgent):
         grounding: dict,
     ) -> str:
         del task, sanitized_message
-        if self.prompts.version == "v7":
+        if self.prompts.version in {"v6", "v7"}:
             return (
                 "Answer the requested " + grounding.get("question_intent", "explanation")
                 + " about " + ", ".join(

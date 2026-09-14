@@ -17,6 +17,7 @@ from app.agents.education_access import (
     apply_education_scope,
     build_minimal_education_query,
     education_gap_message,
+    should_request_education_context,
 )
 from app.agents.goal_strategy import GoalStrategyAgent
 from app.agents.investment_education import InvestmentEducationAgent
@@ -346,12 +347,20 @@ class AgentOrchestrator:
                 self.gateway,
                 response_type=RouterDecision,
                 system_prompt=self.prompts.get("router"),
-                user_prompt=json.dumps(payload, ensure_ascii=True),
+                user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.router_temperature,
                 max_tokens=self.config.model_max_tokens,
             )
             routing_mode = "model"
             routing_actor = "router"
+            if should_request_education_context(state["sanitized_message"]) and not any(
+                agent in decision.selected_agents
+                for agent in (AgentName.INVESTMENT_EDUCATION, AgentName.BUDGET, AgentName.GOAL_STRATEGY)
+            ):
+                decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
+                decision.rationale.append(
+                    "The recognized education topic requires a specialist with approved source access."
+                )
         event = self._event(
             state,
             "routing.completed",
@@ -1128,12 +1137,12 @@ class AgentOrchestrator:
             validate_citations(synthesis.answer, sources)
             return synthesis
 
-        if self.prompts.version == "v7":
-            synthesis_prompt += (
-                "\nRequired output language for THIS request: "
-                + payload["response_language"]
-                + ". Write the entire answer in this language."
-            )
+        synthesis_prompt += (
+            "\nRequired output language for THIS request: "
+            + payload["response_language"]
+            + ". Write the entire answer in this language. Reuse only the specialists' "
+            "supported facts; do not add explanations, definitions or examples from memory."
+        )
         if state["agent_results"] and all(
             result.data.get("needs_input") is True for result in state["agent_results"]
         ):
@@ -1148,7 +1157,7 @@ class AgentOrchestrator:
             len(state["agent_results"]) == 1
             and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
             and (
-                self.prompts.version == "v7"
+                self.prompts.version in {"v6", "v7"}
                 or state["agent_results"][0].data.get("evidence_status") == "insufficient"
             )
         ):

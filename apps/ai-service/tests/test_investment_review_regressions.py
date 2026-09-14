@@ -8,13 +8,16 @@ from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 
 
-def ask(message, gateway=None):
+def ask(message, gateway=None, *, requested_agents=None):
     return AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"),
         gateway=gateway or LocalFixtureModelGateway(),
     ).handle(CoachRequest(
         user_id="synthetic-review", session_id="synthetic-review",
-        message=message, requested_agents=["investment_education"],
+        message=message,
+        requested_agents=(
+            requested_agents if requested_agents is not None else ["investment_education"]
+        ),
     ))
 
 
@@ -80,25 +83,44 @@ def test_guarantee_promises_and_requests_remain_blocked(message):
 ])
 def test_synthesis_cannot_invent_citations_even_if_compliance_would_allow(answer):
     class CitingGateway(LocalFixtureModelGateway):
+        def __init__(self):
+            self.synthesis_calls = 0
+
         def generate(self, **kwargs):
             if kwargs["system_prompt"].startswith("PROMPT_ID: synthesizer"):
+                self.synthesis_calls += 1
                 return json.dumps({"answer": answer})
             return super().generate(**kwargs)
 
+    gateway = CitingGateway()
     with pytest.raises(ModelGatewayError) as error:
-        ask("Explain diversification.", CitingGateway())
+        ask(
+            "Review my spending and explain diversification.", gateway,
+            requested_agents=["spending", "investment_education"],
+        )
+    assert gateway.synthesis_calls == 2
     assert error.value.code == "UNAPPROVED_CITATION"
+    assert error.value.component == "citation_validation"
 
 
 def test_valid_citation_marker_is_rendered_from_approved_metadata():
     class CitingGateway(LocalFixtureModelGateway):
+        def __init__(self):
+            self.synthesis_calls = 0
+
         def generate(self, **kwargs):
             if kwargs["system_prompt"].startswith("PROMPT_ID: synthesizer"):
+                self.synthesis_calls += 1
                 source = json.loads(kwargs["user_prompt"])["sources"][0]
                 return json.dumps({"answer": f"Diversification spreads exposure. [source:{source['source_id']}]"})
             return super().generate(**kwargs)
 
-    response = ask("Explain diversification.", CitingGateway())
+    gateway = CitingGateway()
+    response = ask(
+        "Review my spending and explain diversification.", gateway,
+        requested_agents=["spending", "investment_education"],
+    )
+    assert gateway.synthesis_calls == 1
     assert not response.blocked
     assert "[source:" not in response.answer
     assert response.sources[0].canonical_url in response.answer
@@ -167,15 +189,28 @@ def test_general_investment_basics_remains_supported():
 
 def test_mixed_question_preserves_gap_even_when_synthesizer_omits_it():
     class OmittingGateway(LocalFixtureModelGateway):
+        def __init__(self):
+            self.synthesis_calls = 0
+
         def generate(self, **kwargs):
             if kwargs["system_prompt"].startswith("PROMPT_ID: synthesizer"):
+                self.synthesis_calls += 1
                 return json.dumps({"answer": "Bonds are an investment type."})
             return super().generate(**kwargs)
 
-    response = ask("Explain bonds and the tax treatment of a tokenized asset.", OmittingGateway())
+    gateway = OmittingGateway()
+    response = ask(
+        "Review my spending and explain bonds and the tax treatment of a tokenized asset.",
+        gateway, requested_agents=["spending", "investment_education"],
+    )
+    investment = next(
+        result for result in response.agent_results if result.agent == "investment_education"
+    )
+    assert gateway.synthesis_calls == 1
     assert not response.blocked
-    assert response.agent_results[0].data["evidence_status"] == "partial"
+    assert investment.data["evidence_status"] == "partial"
     assert response.sources
+    assert response.answer.startswith("Bonds are an investment type.")
     assert "tax treatment" in response.answer
     assert "approved knowledge base does not contain enough information" in response.answer
 

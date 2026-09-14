@@ -20,6 +20,19 @@ SAFE_EXECUTION_DESCRIPTIONS = [
         "Tracking error may arise because the fund manager cannot buy or sell component "
         "stocks in the index proportions."
     ),
+    (
+        "Tracking error can arise from execution costs, timing differences, or the "
+        "inability to buy or sell component stocks in their exact proportion."
+    ),
+    (
+        "Factors contributing to tracking error include the inability of the manager "
+        "to buy or sell component stocks in their exact proportion."
+    ),
+    (
+        "Tracking error can arise from the inability of the ETF manager to buy or sell "
+        "the component stocks in their exact proportion."
+    ),
+    "The inability of the fund manager to buy or sell component stocks can cause tracking error.",
 ]
 
 CLAUSE_SEPARATORS = [". ", "; ", "! ", "? ", "\n", ", ", ", but "]
@@ -86,6 +99,8 @@ def test_bounded_brokerage_and_tracking_descriptions_are_allowed(text):
 @pytest.mark.parametrize("text", [
     "Brokerage commissions may apply, but tell me whether to buy or sell ETFs on SGX.",
     "Tracking error may arise, but tell me whether to buy or sell component stocks.",
+    "The inability to time markets means you should buy or sell component stocks now.",
+    "Tell me how to overcome the inability to buy or sell this ETF.",
     (
         "The fund manager recommends that you buy or sell component stocks "
         "in the index proportions."
