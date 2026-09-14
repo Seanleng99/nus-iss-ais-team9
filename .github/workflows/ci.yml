@@ -104,6 +104,19 @@ jobs:
           python -m app.evals.gate
           --policy infra/llmsecops/evaluation-policy.json
           --output artifacts/llm-evaluation-results.json
+      - name: Enforce full-document RAG evidence quality
+        run: >-
+          python -m app.evals.rag_evidence
+          --dataset apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl
+          --output artifacts/rag-evidence-results.json
+      - name: Upload full-document RAG evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rag-evidence-results
+          path: artifacts/rag-evidence-results.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload evaluation evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -329,17 +342,44 @@ jobs:
   dependency-review:
     name: Dependency review
     needs: changes
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: actions/dependency-review-action@v5
+      - uses: actions/setup-python@v6
         with:
-          fail-on-severity: high
+          python-version: "3.12"
+      - name: Install pinned dependency auditor
+        run: python -m pip install pip-audit==2.10.1
+      - name: Audit each service's resolved dependencies
+        run: |
+          mkdir -p artifacts
+          dependency_audit_failed=0
+          for service in ai-service backend frontend; do
+            python -m venv --upgrade-deps ".audit-venvs/$service"
+            ".audit-venvs/$service/bin/python" -m pip install -e "apps/$service[dev]"
+            ".audit-venvs/$service/bin/python" -m pip freeze --all --exclude-editable \
+              > "artifacts/dependency-versions-$service.txt"
+            python -m pip_audit -r "artifacts/dependency-versions-$service.txt" \
+              --no-deps --disable-pip --strict --progress-spinner off \
+              --format json --output "artifacts/dependency-audit-$service.json" \
+              || dependency_audit_failed=1
+          done
+          exit "$dependency_audit_failed"
+      - name: Upload dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-audit-results
+          path: |
+            artifacts/dependency-audit-*.json
+            artifacts/dependency-versions-*.txt
+          if-no-files-found: error
+          retention-days: 30
 
   python-sast:
     name: Python SAST (Bandit)

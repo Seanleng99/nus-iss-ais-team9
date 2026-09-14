@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
     prompt_set_version: str = Field(
-        default="v5",
-        pattern=r"^v(?:2|3|4|5)$",
+        default="v6",
+        pattern=r"^v(?:2|3|4|5|6|7)$",
         alias="PROMPT_SET_VERSION",
     )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")
@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     )
     vector_store_url: str = Field(default="http://localhost:6333", alias="VECTOR_STORE_URL")
     rag_provider: str = Field(default="local_fixture", alias="RAG_PROVIDER")
+    rag_manifest_path: str | None = Field(default=None, alias="RAG_MANIFEST_PATH")
+    rag_documents_path: str | None = Field(default=None, alias="RAG_DOCUMENTS_PATH")
     education_knowledge_base_id: str | None = Field(
         default=None,
         alias="EDUCATION_KNOWLEDGE_BASE_ID",

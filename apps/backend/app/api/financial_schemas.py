@@ -4,7 +4,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.domain.schemas import AgentName, MoneyAmount, SourceCitation, UserFinancialSnapshot
+from app.domain.schemas import (
+    BLOCKED_AGENT_RATIONALE,
+    BLOCKED_RESPONSE_ANSWER,
+    AgentName,
+    MoneyAmount,
+    SourceCitation,
+    UserFinancialSnapshot,
+    sanitize_blocked_agent_results,
+)
 
 EmploymentStatus = Literal[
     "employed", "self-employed", "student", "unemployed", "retired", "prefer not to say"
@@ -325,6 +333,21 @@ class ChatExplanationResponse(BaseModel):
     blocked: bool = False
     prompt_set_version: str | None = None
 
+    @model_validator(mode="after")
+    def sanitize_blocked_explanation(self) -> "ChatExplanationResponse":
+        if self.blocked:
+            self.routing_rationale = [BLOCKED_AGENT_RATIONALE]
+            self.agent_results = [
+                AgentExplanationResponse(
+                    agent=item["agent"],
+                    rationale=item["rationale"],
+                    confidence=item["confidence"],
+                    blocked=True,
+                )
+                for item in sanitize_blocked_agent_results(self.agent_results)
+            ]
+        return self
+
 
 class ChatMessageResponse(BaseModel):
     id: UUID
@@ -333,6 +356,13 @@ class ChatMessageResponse(BaseModel):
     sources: list[SourceCitation] = Field(default_factory=list)
     explanation: ChatExplanationResponse | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def sanitize_blocked_assistant_message(self) -> "ChatMessageResponse":
+        if self.role == "assistant" and self.explanation and self.explanation.blocked:
+            self.content = BLOCKED_RESPONSE_ANSWER
+            self.sources = []
+        return self
 
 
 class ChatSessionSummary(BaseModel):

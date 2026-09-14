@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     postgres_user: str = Field(default="coach", alias="POSTGRES_USER")
     postgres_password: str = Field(default="coach", alias="POSTGRES_PASSWORD")
     postgres_sslmode: str = Field(default="prefer", alias="POSTGRES_SSLMODE")
+    postgres_secret_arn: str | None = Field(default=None, alias="POSTGRES_SECRET_ARN")
+    aws_region: str | None = Field(default=None, alias="AWS_REGION")
+
+    @model_validator(mode="after")
+    def require_host_for_postgres_secret(self) -> Self:
+        if self.postgres_secret_arn is not None:
+            if not self.postgres_secret_arn.strip():
+                raise ValueError("POSTGRES_SECRET_ARN must not be blank")
+            if not self.postgres_host or not self.postgres_host.strip():
+                raise ValueError("POSTGRES_HOST is required with POSTGRES_SECRET_ARN")
+        return self
 
     @property
     def database_url(self) -> URL | str:

@@ -1,5 +1,6 @@
 import json
 import logging
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,14 +46,22 @@ def test_coach_accepts_valid_api_key() -> None:
     assert response.json()["audit"]["executed_at"]
 
 
-def test_correlation_id_is_preserved_in_response_and_audit() -> None:
+def test_correlation_id_is_preserved_but_does_not_control_trace_identity() -> None:
     response = client.post(
         "/coach",
         headers={"X-API-Key": settings.api_key, "X-Correlation-ID": "test-trace"},
         json={"user_id": "u1", "session_id": "s1", "message": "Create a budget"},
     )
     assert response.headers["X-Correlation-ID"] == "test-trace"
-    assert response.json()["audit"]["trace_id"] == "test-trace"
+    assert UUID(response.json()["audit"]["trace_id"])
+    assert response.json()["audit"]["trace_id"] != "test-trace"
+
+
+@pytest.mark.parametrize("supplied", ["x" * 129, "bad correlation id"])
+def test_invalid_correlation_ids_are_replaced(supplied) -> None:
+    response = client.get("/health", headers={"X-Correlation-ID": supplied})
+    assert response.status_code == 200
+    assert UUID(response.headers["X-Correlation-ID"])
 
 
 def test_deployment_rejects_weak_api_key() -> None:

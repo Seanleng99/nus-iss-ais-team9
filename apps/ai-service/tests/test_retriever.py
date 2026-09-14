@@ -118,7 +118,13 @@ def test_bedrock_retriever_maps_approved_metadata() -> None:
         "knowledgeBaseId": "EDUCATION123",
         "retrievalQuery": {"text": "Explain diversification"},
         "retrievalConfiguration": {
-            "vectorSearchConfiguration": {"numberOfResults": 2}
+            "vectorSearchConfiguration": {
+                "numberOfResults": 20,
+                "filter": {"andAll": [
+                    {"equals": {"key": "corpus_version", "value": "investment-education-sg@2026-08-28.1"}},
+                    {"equals": {"key": "review_status", "value": "approved"}},
+                ]},
+            }
         },
     }
 

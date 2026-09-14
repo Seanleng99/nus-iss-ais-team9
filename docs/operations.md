@@ -15,9 +15,11 @@ These are initial targets to validate with AWS load evidence, not production gua
 
 ## Telemetry
 
-Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, bearer tokens, OIDC claims, or model prompts. The AI service additionally emits `service.ai.workflow` JSON lifecycle events for workflow start/completion/failure, guardrails, routing, task start/completion, synthesis, Compliance, canonical retrieval topics and chunk counts, total duration, and model-call/token counts. Detail fields are allowlisted and error/reason codes are restricted to bounded token values. These logs never contain the raw question, user/profile/session identifiers, retrieved text, model output, provider message, or financial snapshot. AI response audit metadata includes trace and correlation IDs, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the owner-bound profile session without raw prompts, retrieved text, identity claims, or financial grounding.
+Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, bearer tokens, OIDC claims, or model prompts. The AI service additionally emits `service.ai.workflow` JSON lifecycle events for workflow start/completion/failure, guardrails, routing, task start/completion, synthesis, Compliance, canonical retrieval topics and chunk counts, total duration, and model-call/token counts. Detail fields are allowlisted and error/reason codes are restricted to bounded token values. These logs never contain the raw question, user/profile/session identifiers, retrieved text, model output, provider message, or financial snapshot. AI response audit metadata includes the server trace ID, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the owner-bound profile session without raw prompts, retrieved text, identity claims, or financial grounding.
 
-Each orchestration run has a 20,000-token ceiling. An overrun fails closed with the privacy-safe `MODEL_TOKEN_BUDGET_EXCEEDED` error code and `model_budget` component so operations can distinguish capacity enforcement from Bedrock, retrieval, and structured-output failures.
+Each workflow receives a server-generated UUID trace ID, independent of the caller's correlation ID, so repeated client headers cannot collide with persisted traces. `X-Correlation-ID` remains a diagnostic link across service headers and logs; accepted values contain 1–128 ASCII letters, digits, underscores, dots, or hyphens and start with a letter or digit. Invalid values are replaced with a UUID. AI workflow logs carry both IDs; response audit metadata carries the trace ID.
+
+Each orchestration run enforces a 20,000-token response budget. Model calls reserve a call slot before provider invocation, so concurrent calls count against the same call limit. A recorded token overrun fails closed with the privacy-safe `MODEL_TOKEN_BUDGET_EXCEEDED` error code and `model_budget` component; once recorded usage reaches the token budget, no further call starts. Usage from calls already in flight is only known after completion, so this is not a strict billed-cost cap. Telemetry retains active traces only; closed workflows reject late calls and ignore late completions without recreating state.
 
 In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention. Restrict log access separately from application access. The foundation enables ECS Container Insights. The application stack creates the `ai-financial-wellness-coach-demo-operational` dashboard for ECS CPU/memory, ALB backend errors/health/latency, Bedrock invocations/errors/throttles/latency/tokens, and privacy-safe AI generation-failure counts.
 
@@ -36,6 +38,47 @@ In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention
 The first five controls are provisioned by `infra/aws/demo-application.yaml`; the remaining controls require an approved metric definition or existing security service integration. Pass `-AlertEmail address@example.com` to the bootstrap script to create an email subscription, then confirm the SNS subscription. The weekly operational workflow verifies that at least one confirmed email subscription remains, without retaining the address in its artifact. Without a confirmed endpoint, alarms still change state and publish to the topic but do not notify a person.
 
 ## Database Changes
+
+The 2026-09-14 availability incident was caused by the RDS-managed password rotating
+after the backend task started. ECS-injected environment secrets stay fixed for the
+task's lifetime; new database connections then failed authentication. A rolling
+restart of the same backend image restored database access. The bounded recovery
+run returned 13/13 normal HTTP responses with complete synthetic-session cleanup;
+12/13 answer checks passed on the existing v5 deployment. Recovery is not a quality
+acceptance or deployment of the changes below.
+
+The backend supports opt-in runtime credential refresh with `POSTGRES_SECRET_ARN`,
+an explicit `POSTGRES_HOST`, and `AWS_REGION`. Each new physical PostgreSQL connection,
+including online Alembic migrations, fetches the secret's `AWSCURRENT` username and
+password. Already pooled connections do not fetch on every query. Secret lookup
+failures fail closed with a generic error; no secret is logged. Static local
+credentials continue to work when the ARN is absent. Offline migrations do not
+contact AWS. See [ECS secret refresh behavior](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html)
+and [SQLAlchemy connection hooks](https://docs.sqlalchemy.org/en/21/core/engines.html#controlling-how-parameters-are-passed-to-the-dbapi-connect-function).
+
+Activation requires a reviewed release containing this backend implementation:
+
+1. Apply the foundation template and retain its new `BackendTaskRoleArn` output.
+   The dedicated role can read only the RDS-managed database secret; the shared
+   frontend application role receives no database-secret permission.
+2. Update the GitHub OIDC stack with `EcsBackendTaskRoleArn` set to that output.
+   `update_github_oidc.ps1` passes it when present. `iam:PassRole` stays limited to
+   the named task roles and the ECS task service.
+3. Apply the application template with `BackendTaskRoleArn` and a compatible
+   backend image. This enables runtime lookup and removes the startup username and
+   password injection. For a fresh bootstrap, use `-EnableDatabaseCredentialRefresh`.
+   Existing stack updates preserve the optional parameter when it is omitted.
+4. Run migrations and the authenticated persistence smoke test, then the live
+   evaluation and cleanup checks. Check database access again after the next
+   scheduled secret rotation. Unit tests simulate rotation; they do not replace
+   this live verification.
+
+The 2026-09-14 repair did **not** apply these IAM or application changes. Until
+activation, another rotation can cause the same failure. If activation must be
+rolled back, explicitly clear `BackendTaskRoleArn` while restoring the prior image,
+so ECS resumes injecting current static credentials. Do not remove runtime lookup
+while leaving an image without injected credentials. Do not rotate the database
+password merely to test the repair on the live demo.
 
 CI applies every Alembic migration to PostgreSQL and runs `alembic check` for model drift. Every backend release runs `alembic upgrade head` as one ECS task before updating the backend service, even when the change manifest did not identify a migration-file edit. This makes the database revision a deployment invariant instead of relying solely on path classification. Treat migration failure as a failed release. Use expand-and-contract changes because rolling back an ECS task definition does not reverse a successful schema migration.
 

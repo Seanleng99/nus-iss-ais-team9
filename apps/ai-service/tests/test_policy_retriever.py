@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 
 from app.core.config import Settings
+from app.core.guardrails import sanitize_rag_document
 from app.rag.policy import (
     BedrockPolicyRetriever,
     LocalPolicyRetriever,
@@ -67,6 +70,18 @@ def test_local_policy_retriever_returns_governed_provenance() -> None:
     assert results[0].checksum.startswith("sha256:")
 
 
+def test_reviewed_policy_documents_and_fixture_keep_usable_instruction_evidence():
+    documents = Path(__file__).resolve().parents[3] / "knowledge/policy_controls/documents"
+    paths = list(documents.glob("*.md"))
+    assert len(paths) == 3
+    for path in paths:
+        assert not sanitize_rag_document(path.read_text()).findings, path.name
+    policy = LocalPolicyRetriever().retrieve("instruction security")[0]
+    assert policy.source_id == "coach-instruction-security-policy"
+    assert not policy.findings
+    assert "untrusted data" in policy.text
+
+
 def test_bedrock_policy_retriever_maps_strict_approved_metadata() -> None:
     client = StubClient(
         _metadata(**{"x-amz-bedrock-kb-data-source-id": "DATASOURCE123"})
@@ -80,7 +95,13 @@ def test_bedrock_policy_retriever_maps_strict_approved_metadata() -> None:
         "knowledgeBaseId": "POLICYKB12",
         "retrievalQuery": {"text": "Review this budget"},
         "retrievalConfiguration": {
-            "vectorSearchConfiguration": {"numberOfResults": 2}
+            "vectorSearchConfiguration": {
+                "numberOfResults": 2,
+                "filter": {"andAll": [
+                    {"equals": {"key": "corpus_version", "value": "financial-coach-policy-sg@2026-08-29.1"}},
+                    {"equals": {"key": "review_status", "value": "approved"}},
+                ]},
+            }
         },
     }
 
@@ -113,6 +134,37 @@ def test_bedrock_policy_retriever_hides_provider_failure_details() -> None:
 
     assert error.value.component == "policy_retriever"
     assert "sensitive provider detail" not in str(error.value)
+
+
+@pytest.mark.parametrize("bad_item", [
+    None,
+    {"score": "not-a-number"},
+    {"score": 0.9, "metadata": None, "content": {"text": "bad"}},
+    {"score": float("nan"), "metadata": _metadata(), "content": {"text": "bad"}},
+    {"score": float("inf"), "metadata": _metadata(), "content": {"text": "bad"}},
+    {"score": 0.9, "metadata": _metadata(), "content": {"text": ""}},
+    {"score": 0.9, "metadata": _metadata(), "content": {"text": None}},
+])
+def test_bad_policy_chunks_do_not_replace_or_hide_valid_evidence(bad_item):
+    class MixedClient(StubClient):
+        def retrieve(self, **kwargs):
+            response = super().retrieve(**kwargs)
+            response["retrievalResults"].insert(0, bad_item)
+            return response
+
+    results = _retriever(MixedClient()).retrieve("Review")
+    assert len(results) == 1
+    assert results[0].text == "Block personalized product recommendations."
+
+
+def test_duplicate_policy_chunks_are_only_returned_once():
+    class DuplicateClient(StubClient):
+        def retrieve(self, **kwargs):
+            response = super().retrieve(**kwargs)
+            response["retrievalResults"] *= 2
+            return response
+
+    assert len(_retriever(DuplicateClient()).retrieve("Review")) == 1
 
 
 def test_deployed_config_creates_bedrock_policy_retriever() -> None:

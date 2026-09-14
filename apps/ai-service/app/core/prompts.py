@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class PromptCatalog:
-    def __init__(self, version: str = "v5", root: Path | None = None) -> None:
+    def __init__(self, version: str = "v6", root: Path | None = None) -> None:
         prompt_root = root or Path(__file__).resolve().parents[2] / "prompts"
         path = prompt_root / version / "prompts.json"
         with path.open(encoding="utf-8") as handle:

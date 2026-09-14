@@ -1,5 +1,6 @@
 import json
 import re
+from collections.abc import Callable
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -38,6 +39,7 @@ def generate_structured_response(
     user_prompt: str,
     temperature: float,
     max_tokens: int,
+    validate_response: Callable[[StructuredModel], StructuredModel] | None = None,
 ) -> StructuredModel:
     """Generate a typed response with one explicit, bounded correction attempt."""
     raw = gateway.generate(
@@ -47,12 +49,20 @@ def generate_structured_response(
         max_tokens=max_tokens,
     )
     try:
-        return parse_structured_response(raw, response_type)
+        parsed = parse_structured_response(raw, response_type)
+        return validate_response(parsed) if validate_response else parsed
     except ModelGatewayError as exc:
-        if exc.code != "INVALID_STRUCTURED_RESPONSE":
+        if exc.code not in {
+            "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_CITATION", "MISSING_CITATION",
+        }:
             raise
         cause = exc.__cause__
-        if isinstance(cause, ValidationError):
+        if exc.code in {"UNAPPROVED_CITATION", "MISSING_CITATION"}:
+            validation_issues = (
+                "Use only source IDs supplied in grounding, declare the sources used, "
+                "and add [source:source-id] markers to the summary. Do not generate URLs."
+            )
+        elif isinstance(cause, ValidationError):
             validation_issues = json.dumps(
                 [
                     {
@@ -80,4 +90,5 @@ def generate_structured_response(
         temperature=min(temperature, 0.1),
         max_tokens=max_tokens,
     )
-    return parse_structured_response(corrected, response_type)
+    parsed = parse_structured_response(corrected, response_type)
+    return validate_response(parsed) if validate_response else parsed

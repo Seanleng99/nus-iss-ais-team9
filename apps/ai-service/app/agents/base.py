@@ -2,6 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from app.agents.education_access import education_gap_message
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -72,16 +73,26 @@ class BaseAgent(ABC):
             decision.sanitized_text,
             grounding,
         )
+        system_prompt = self.prompts.get(self.prompt_id)
+        if self.prompts.version == "v7" and grounding.get("response_language") in {"English", "Chinese"}:
+            system_prompt += (
+                "\nRequired output language for THIS request: "
+                + grounding["response_language"]
+                + ". Use this language for every summary, rationale and uncertainty sentence."
+            )
         narrative = generate_structured_response(
             self.gateway,
             response_type=self.narrative_type,
-            system_prompt=self.prompts.get(self.prompt_id),
+            system_prompt=system_prompt,
             user_prompt=json.dumps(
                 {"message": model_message, "grounding": grounding},
-                ensure_ascii=True,
+                ensure_ascii=False,
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            validate_response=(
+                lambda narrative: self._validate_narrative(narrative, grounding)
+            ) if self.prompts.version == "v7" else None,
         )
         output_decision = inspect_prompt(
             " ".join(
@@ -252,10 +263,7 @@ class BaseAgent(ABC):
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
         return AgentResult(
             agent=self.name,
-            summary=(
-                "The approved knowledge base does not contain enough information "
-                "to answer this question."
-            ),
+            summary=education_gap_message(grounding),
             rationale=["No relevant approved source was retrieved."],
             confidence=1.0,
             data=grounding,

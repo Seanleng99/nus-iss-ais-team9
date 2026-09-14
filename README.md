@@ -106,8 +106,10 @@ python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --outpu
 
 Use only synthetic financial profiles in the current demo. The production-readiness exclusions and AWS go/no-go sequence are documented in `infra/aws/README.md`.
 
-Evaluation policy v6 enforces all 66 cases/pairs conjunctively across routing, dynamic agent/tool
+Evaluation policy v7 enforces all 80 cases/pairs conjunctively across routing, dynamic agent/tool
 dependencies, direct and conditional Education RAG, Policy RAG, deterministic guardrails,
 regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,
 latency, cost, or synthetic-cleanup failure.
+
+Full-document local retrieval and its separate 99% evidence-quality gate are documented in [RAG quality acceptance](docs/rag-quality.md). This score does not establish real-model answer quality.

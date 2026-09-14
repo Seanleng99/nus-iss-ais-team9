@@ -4,7 +4,7 @@
   "conducted_at": "YYYY-MM-DD",
   "application_commit_sha": "REPLACE_WITH_DEPLOYED_COMMIT_SHA",
   "model_id": "apac.amazon.nova-lite-v1:0",
-  "prompt_set_version": "v5",
+  "prompt_set_version": "v6",
   "recruitment": {
     "participants_consented": 0,
     "participants_intended_users": 0,

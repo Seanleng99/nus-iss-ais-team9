@@ -1,8 +1,9 @@
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class AgentName(StrEnum):
@@ -65,6 +66,95 @@ class AgentResult(BaseModel):
     policy_notes: list[str] = Field(default_factory=list)
 
 
+BLOCKED_RESPONSE_ANSWER = (
+    "For your safety, this response has been withheld because it could not be safely verified."
+)
+BLOCKED_AGENT_SUMMARY = "Response withheld by safety controls."
+BLOCKED_AGENT_RATIONALE = "The safety review blocked this response."
+BLOCKED_ROUTING_RATIONALE = "Response withheld by safety controls."
+BLOCKED_POLICY_NOTE = "response_withheld"
+BLOCKED_EDUCATIONAL_DISCLAIMER = (
+    "This is general financial education, not regulated financial advice. "
+    "Consider consulting a licensed financial adviser for personal investment decisions."
+)
+SAFE_REGULATED_ADVICE_CODES = frozenset(
+    {
+        "regulated_advice:guaranteed return",
+        "regulated_advice:which stock should i buy",
+        "regulated_advice:tell me exactly what to invest in",
+        "regulated_advice:buy or sell",
+    }
+)
+SAFE_PERSONALIZED_ADVICE_CODES = frozenset(
+    {
+        "regulated_advice:personalized_allocation",
+        "regulated_advice:personalized_transaction",
+        "regulated_advice:personalized_product",
+        "regulated_advice:personalized_product_selection",
+        "regulated_advice:personalized_transaction_request",
+        "regulated_advice:personalized_investment_instruction",
+    }
+)
+SAFE_PII_CODES = frozenset({"email", "phone", "nric_like"})
+SAFE_PROMPT_INJECTION_CODE = re.compile(r"^prompt_injection:(?:[0-9]|1[01])$")
+SAFE_POLICY_EVIDENCE_CODE = "policy_evidence:insufficient"
+
+
+def _safe_policy_notes(notes: list[str]) -> list[str]:
+    safe_notes = [
+        note
+        for note in notes
+        if note in SAFE_REGULATED_ADVICE_CODES
+        or note in SAFE_PERSONALIZED_ADVICE_CODES
+        or note in SAFE_PII_CODES
+        or note == SAFE_POLICY_EVIDENCE_CODE
+        or SAFE_PROMPT_INJECTION_CODE.fullmatch(note)
+    ]
+    if BLOCKED_POLICY_NOTE not in safe_notes:
+        safe_notes.append(BLOCKED_POLICY_NOTE)
+    return safe_notes
+
+
+def blocked_agent_result(
+    agent: AgentName | str,
+    policy_notes: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "agent": agent.value if isinstance(agent, AgentName) else agent,
+        "summary": BLOCKED_AGENT_SUMMARY,
+        "rationale": [BLOCKED_AGENT_RATIONALE],
+        "confidence": 1.0,
+        "data": {},
+        "blocked": True,
+        "policy_notes": _safe_policy_notes(policy_notes or []),
+    }
+
+
+def sanitize_blocked_agent_results(agent_results: list[Any]) -> list[dict[str, Any]]:
+    sanitized: list[dict[str, Any]] = []
+    for item in agent_results:
+        agent = (
+            getattr(item, "agent", None)
+            if isinstance(item, BaseModel)
+            else item.get("agent", "unknown")
+        )
+        if agent is None:
+            agent = "unknown"
+        notes = (
+            getattr(item, "policy_notes", [])
+            if isinstance(item, BaseModel)
+            else item.get("policy_notes", [])
+        )
+        sanitized.append(blocked_agent_result(agent, notes))
+    return sanitized
+
+
+def sanitize_blocked_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    sanitized = dict(audit)
+    sanitized["routing_rationale"] = [BLOCKED_ROUTING_RATIONALE]
+    return sanitized
+
+
 class SourceCitation(BaseModel):
     source_id: str
     title: str
@@ -87,6 +177,22 @@ class CoachResponse(BaseModel):
     audit: dict[str, Any]
     blocked: bool = False
 
+    @model_validator(mode="after")
+    def sanitize_blocked_response(self) -> "CoachResponse":
+        if self.blocked:
+            self.answer = BLOCKED_RESPONSE_ANSWER
+            self.sources = []
+            self.agent_results = [
+                AgentResult.model_validate(item)
+                for item in sanitize_blocked_agent_results(self.agent_results)
+            ]
+            self.disclaimers = [
+                BLOCKED_EDUCATIONAL_DISCLAIMER,
+                BLOCKED_AGENT_RATIONALE,
+            ]
+            self.audit = sanitize_blocked_audit(self.audit)
+        return self
+
 
 class OrchestrationTraceResponse(BaseModel):
     trace_id: str
@@ -100,3 +206,13 @@ class OrchestrationTraceResponse(BaseModel):
     model_id: str | None = None
     prompt_set_version: str | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def sanitize_blocked_trace(self) -> "OrchestrationTraceResponse":
+        if self.blocked:
+            self.agent_results = [
+                AgentResult.model_validate(item)
+                for item in sanitize_blocked_agent_results(self.agent_results)
+            ]
+            self.audit = sanitize_blocked_audit(self.audit)
+        return self

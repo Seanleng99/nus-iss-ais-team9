@@ -1,6 +1,7 @@
 import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -147,9 +148,14 @@ EDUCATION_DOCUMENTS = [
         "text": (
             "Investment education should consider time horizon, risk tolerance, fees, and "
             "diversification. Exchange-traded funds are one investment type, and all "
-            "investments can lose value."
+            "investments can lose value. Treasury bills are issued at a discount and "
+            "redeemed at face value at maturity. Singapore Savings Bonds are "
+            "government-issued savings bonds."
         ),
-        "keywords": {"beginner", "diversification", "etf", "investment", "risk"},
+        "keywords": {
+            "beginner", "diversification", "etf", "investment", "risk",
+            "treasury", "bills", "singapore", "savings",
+        },
     },
     {
         "source_id": "cpf-investment-scheme-guide",
@@ -201,7 +207,8 @@ EDUCATION_DOCUMENTS = [
         "text": (
             "This approved guide covers market, credit, liquidity, and currency risk, "
             "as well as diversification. Diversification can reduce concentration but "
-            "does not remove the possibility of loss."
+            "does not remove the possibility of loss. Dollar-cost averaging means "
+            "investing a fixed sum at regular intervals regardless of market movements."
         ),
         "keywords": {
             "investment",
@@ -211,6 +218,7 @@ EDUCATION_DOCUMENTS = [
             "liquidity",
             "currency",
             "diversification",
+            "dollar", "cost", "averaging",
         },
     },
     {
@@ -235,6 +243,7 @@ EDUCATION_DOCUMENTS = [
             "funds",
             "etf",
             "reits",
+            "real", "estate", "trusts",
             "types",
         },
     },
@@ -335,14 +344,21 @@ class BedrockEducationRetriever:
     def client(self) -> Any:
         if self._client is None:
             import boto3
+            from botocore.config import Config
 
             self._client = boto3.client(
                 "bedrock-agent-runtime",
                 region_name=self.aws_region,
+                config=Config(
+                    connect_timeout=3, read_timeout=5,
+                    retries={"mode": "standard", "total_max_attempts": 2},
+                ),
             )
         return self._client
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        if not 1 <= top_k <= 20:
+            raise ValueError("top_k must be between 1 and 20")
         try:
             return self._retrieve(query, top_k)
         except Exception as exc:
@@ -355,10 +371,19 @@ class BedrockEducationRetriever:
             knowledgeBaseId=self.knowledge_base_id,
             retrievalQuery={"text": query},
             retrievalConfiguration={
-                "vectorSearchConfiguration": {"numberOfResults": top_k}
+                "vectorSearchConfiguration": {
+                    "numberOfResults": 20,
+                    "filter": {
+                        "andAll": [
+                            {"equals": {"key": "corpus_version", "value": self.expected_corpus_version}},
+                            {"equals": {"key": "review_status", "value": "approved"}},
+                        ]
+                    },
+                }
             },
         )
         results = []
+        seen = set()
         for item in response.get("retrievalResults", []):
             if not isinstance(item, dict):
                 continue
@@ -366,7 +391,7 @@ class BedrockEducationRetriever:
                 score = float(item.get("score", 0.0))
             except (TypeError, ValueError):
                 continue
-            if score < self.minimum_score:
+            if not isfinite(score) or score < self.minimum_score:
                 continue
             metadata = item.get("metadata")
             content = item.get("content")
@@ -392,6 +417,10 @@ class BedrockEducationRetriever:
                 continue
             if governed.review_due_at < datetime.now(UTC).date():
                 continue
+            identity = (governed.source_id, governed.document_version, text.strip())
+            if identity in seen:
+                continue
+            seen.add(identity)
             results.append(
                 RetrievedChunk(
                     source_id=governed.source_id,
@@ -407,13 +436,31 @@ class BedrockEducationRetriever:
                     score=score,
                 )
             )
-        return results
+        # Semantic retrieval finds candidate documents; lexical scoring selects
+        # the passages addressing the requested concepts within the same budget.
+        from app.rag.ranking import passage_scores
+
+        scores = passage_scores(query, [item.text for item in results])
+        ranked = sorted(range(len(results)), key=lambda index: scores[index], reverse=True)
+        return [results[index] for index in ranked[:top_k]]
 
 
 def create_education_retriever(settings: Settings) -> EducationRetriever:
     provider = settings.rag_provider.lower()
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalEducationRetriever()
+    if provider == "local_documents" and settings.app_env.lower() in {"local", "test"}:
+        from pathlib import Path
+
+        from app.rag.local_documents import DEFAULT_CORPUS_ROOT, LocalDocumentEducationRetriever
+
+        retriever = LocalDocumentEducationRetriever(
+            Path(settings.rag_manifest_path) if settings.rag_manifest_path else DEFAULT_CORPUS_ROOT / "source_manifest.json",
+            Path(settings.rag_documents_path) if settings.rag_documents_path else DEFAULT_CORPUS_ROOT / "documents",
+        )
+        if retriever.expected_corpus_version != settings.education_corpus_version:
+            raise ValueError("EDUCATION_CORPUS_VERSION must match the approved local manifest")
+        return retriever
     if provider == "bedrock" and settings.education_knowledge_base_id:
         return BedrockEducationRetriever(
             knowledge_base_id=settings.education_knowledge_base_id,

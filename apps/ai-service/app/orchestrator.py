@@ -13,12 +13,17 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agents.base import BaseAgent
 from app.agents.budget import BudgetAgent
-from app.agents.education_access import build_minimal_education_query
+from app.agents.education_access import (
+    apply_education_scope,
+    build_minimal_education_query,
+    education_gap_message,
+)
 from app.agents.goal_strategy import GoalStrategyAgent
 from app.agents.investment_education import InvestmentEducationAgent
-from app.agents.risk_compliance import RiskComplianceAgent
+from app.agents.risk_compliance import RiskComplianceAgent, withhold_agent_result
 from app.agents.spending import SpendingAgent
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
+from app.core.citations import render_citations, validate_citations
 from app.core.config import Settings
 from app.core.config import settings as runtime_settings
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
@@ -55,6 +60,7 @@ from app.models.gateway import (
 )
 from app.models.structured import generate_structured_response
 from app.rag.policy import PolicyRetriever, create_policy_retriever
+from app.rag.request_cache import RequestScopedEducationRetriever
 from app.rag.retriever import (
     EducationRetriever,
     RetrievalError,
@@ -140,6 +146,7 @@ def _write_workflow_log(
             {
                 "event_type": event_type,
                 "trace_id": trace_id,
+                "correlation_id": get_correlation_id(),
                 "actor": actor,
                 "task_id": task_id,
                 "parent_task_id": parent_task_id,
@@ -194,7 +201,9 @@ class AgentOrchestrator:
             else TracingModelGateway(raw_gateway, self.config)
         )
         self.prompts = prompts or PromptCatalog(self.config.prompt_set_version)
-        self.education_retriever = education_retriever or create_education_retriever(self.config)
+        self.education_retriever = RequestScopedEducationRetriever(
+            education_retriever or create_education_retriever(self.config)
+        )
         self.policy_retriever = policy_retriever or create_policy_retriever(self.config)
         self.capability_registry = capability_registry or CapabilityRegistry()
         agent_args = (
@@ -827,7 +836,7 @@ class AgentOrchestrator:
                             "not product advice."
                         ),
                     )
-                    data["query_topics"] = list(query_topics)
+                    apply_education_scope(data, state["sanitized_message"], query_topics)
                     capability_result = CapabilityResult(
                         capability=request.capability,
                         provider=definition.provider,
@@ -1090,6 +1099,10 @@ class AgentOrchestrator:
         ]
         payload = {
             "message": state["sanitized_message"],
+            "response_language": (
+                "Chinese" if any("\u4e00" <= char <= "\u9fff" for char in state["sanitized_message"])
+                else "English"
+            ),
             "agent_results": [
                 {
                     "agent": result.agent.value,
@@ -1098,19 +1111,44 @@ class AgentOrchestrator:
                     "confidence": result.confidence,
                     "source_ids": result.data.get("cited_source_ids", []),
                     "uncertainties": result.data.get("uncertainties", []),
+                    "evidence_status": result.data.get("evidence_status"),
+                    "unanswered_topics": result.data.get("unanswered_topics", []),
+                    "question_intent": result.data.get("question_intent"),
                 }
                 for result in state["agent_results"]
             ],
             "sources": [source.model_dump() for source in sources],
         }
-        synthesis = generate_structured_response(
-            self.gateway,
-            response_type=SynthesisDecision,
-            system_prompt=self.prompts.get("synthesizer"),
-            user_prompt=json.dumps(payload, ensure_ascii=True),
-            temperature=self.config.agent_temperature,
-            max_tokens=self.config.model_max_tokens,
-        )
+        synthesis_prompt = self.prompts.get("synthesizer")
+        if self.prompts.version == "v7":
+            synthesis_prompt += (
+                "\nRequired output language for THIS request: "
+                + payload["response_language"]
+                + ". Write the entire answer in this language."
+            )
+        if (
+            self.prompts.version == "v7"
+            and len(state["agent_results"]) == 1
+            and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
+        ):
+            # Preserve the single specialist answer without a second model rewrite.
+            # Citation validation and independent policy review still run below.
+            synthesis = SynthesisDecision(answer=state["agent_results"][0].summary)
+        else:
+            synthesis = generate_structured_response(
+                self.gateway,
+                response_type=SynthesisDecision,
+                system_prompt=synthesis_prompt,
+                user_prompt=json.dumps(payload, ensure_ascii=False),
+                temperature=self.config.agent_temperature,
+                max_tokens=self.config.model_max_tokens,
+            )
+        for result in state["agent_results"]:
+            if result.data.get("evidence_status") in {"partial", "insufficient"}:
+                gap = education_gap_message(result.data)
+                if gap not in synthesis.answer:
+                    synthesis.answer += f"\n\n{gap}"
+        validate_citations(synthesis.answer, sources)
         events.append(
             self._event(
                 state,
@@ -1130,6 +1168,7 @@ class AgentOrchestrator:
             state["request"],
             state["agent_results"],
             state["draft_answer"],
+            routing_rationale=state["routing_rationale"],
         )
         events.append(
             self._event(
@@ -1196,11 +1235,39 @@ class AgentOrchestrator:
                 },
             ),
         ]
+        public_results = state["agent_results"] + [compliance]
+        if compliance.blocked:
+            public_results = [withhold_agent_result(result) for result in public_results]
+            sources = []
+        else:
+            answer = render_citations(answer, sources)
+            for text in state["routing_rationale"]:
+                validate_citations(text, [])
+            for result in public_results:
+                result_sources = (
+                    sources if result.agent == AgentName.RISK_COMPLIANCE
+                    else self._collect_source_citations([result])
+                ) + [
+                    SourceCitation.model_validate(source)
+                    for source in result.data.get("policy_sources", [])
+                ]
+                result.summary = render_citations(result.summary, result_sources)
+                result.rationale = [
+                    render_citations(text, result_sources) for text in result.rationale
+                ]
+                result.policy_notes = [
+                    render_citations(text, result_sources) for text in result.policy_notes
+                ]
+                if "uncertainties" in result.data:
+                    result.data["uncertainties"] = [
+                        render_citations(text, result_sources)
+                        for text in result.data["uncertainties"]
+                    ]
         response = CoachResponse(
             session_id=state["request"].session_id,
             selected_agents=state["selected_agents"],
             answer=answer,
-            agent_results=state["agent_results"] + [compliance],
+            agent_results=public_results,
             disclaimers=[ADVISORY_DISCLAIMER],
             sources=sources,
             audit={
@@ -1208,7 +1275,10 @@ class AgentOrchestrator:
                 "executed_at": state["executed_at"],
                 "guardrail_findings": state["guardrail_findings"],
                 "agent_count": len(state["agent_results"]),
-                "routing_rationale": state["routing_rationale"],
+                "routing_rationale": (
+                    ["The final safety review blocked this response."]
+                    if compliance.blocked else state["routing_rationale"]
+                ),
                 "model_provider": self.config.model_provider,
                 "model_id": self.config.model_id,
                 "prompt_set_version": self.prompts.version,
@@ -1472,7 +1542,7 @@ class AgentOrchestrator:
         return evidence
 
     def handle(self, request: CoachRequest) -> CoachResponse:
-        trace_id = get_correlation_id() or str(uuid4())
+        trace_id = str(uuid4())
         executed_at = datetime.now(UTC).isoformat()
         workflow_started = perf_counter()
         started_event = AuditEvent(
@@ -1487,6 +1557,7 @@ class AgentOrchestrator:
             actor=started_event.actor,
         )
         trace_token = self.gateway.bind_trace(trace_id)
+        retrieval_token = self.education_retriever.begin_request()
         try:
             result = self.graph.invoke(
                 {
@@ -1547,5 +1618,6 @@ class AgentOrchestrator:
             )
             raise
         finally:
+            self.education_retriever.end_request(retrieval_token)
             self.gateway.reset_trace(trace_token)
             self.gateway.clear(trace_id)

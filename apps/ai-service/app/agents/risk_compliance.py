@@ -4,7 +4,10 @@ from dataclasses import asdict
 
 from app.core.guardrails import (
     ADVISORY_DISCLAIMER,
+    PII_PATTERNS,
+    PROMPT_INJECTION_PATTERNS,
     inspect_prompt,
+    normalize_for_security_inspection,
     sanitize_rag_document,
     validate_tool_permission,
 )
@@ -18,6 +21,7 @@ from app.core.schemas import (
 from app.models.gateway import ModelGateway
 from app.models.structured import generate_structured_response
 from app.rag.policy import PolicyRetriever
+from app.rag.retriever import MAX_EDUCATION_CHUNK_CHARACTERS
 
 BLOCKED_FINANCIAL_ADVICE_PATTERNS = [
     "guaranteed return",
@@ -67,7 +71,94 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
             re.IGNORECASE,
         ),
     ),
+    (
+        "personalized_investment_instruction",
+        re.compile(r"(?:建议你|你应该|你应当).{0,40}(?:买入|卖出|持有|投资于|投入|配置)"),
+    ),
 )
+
+SAFE_POLICY_NOTES = (
+    set(PII_PATTERNS)
+    | {f"prompt_injection:{index}" for index in range(len(PROMPT_INJECTION_PATTERNS))}
+    | {f"regulated_advice:{pattern}" for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS}
+    | {f"regulated_advice:{label}" for label, _ in BLOCKED_FINANCIAL_ADVICE_REGEXES}
+    | {"policy_evidence:insufficient", "response_withheld"}
+)
+
+
+def contains_return_guarantee(text: str) -> bool:
+    for sentence in re.split(r"[.!?;\n]", text.lower()):
+        for match in re.finditer(r"\bguaranteed returns?\b", sentence):
+            before, after = sentence[:match.start()], sentence[match.end():]
+            negated = re.search(
+                r"\b(?:no|not|never|without)\s+(?:(?:offer|provide|promise|any|a)\s+){0,3}$",
+                before,
+            )
+            risk_explanation = re.match(
+                r"\s+(?:(?:is|are|can be)\s+)?(?:a\s+)?"
+                r"(?:red flag|warning sign|misleading|unrealistic|impossible|scam)\b",
+                after,
+            )
+            if not negated and not risk_explanation:
+                return True
+        if re.search(r"\breturns?\s+(?:is|are|will be)\s+guaranteed\b", sentence):
+            return True
+    return False
+
+
+def financial_advice_findings(text: str) -> list[str]:
+    normalized = " ".join(normalize_for_security_inspection(text).casefold().split())
+    findings = [
+        f"regulated_advice:{pattern}"
+        for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS
+        if (
+            contains_return_guarantee(normalized)
+            if pattern == "guaranteed return" else
+            contains_buy_sell_instruction(normalized) if pattern == "buy or sell"
+            else pattern in normalized
+        )
+    ]
+    findings.extend(
+        f"regulated_advice:{label}"
+        for label, pattern in BLOCKED_FINANCIAL_ADVICE_REGEXES
+        if pattern.search(normalized)
+    )
+    return findings
+
+
+def contains_buy_sell_instruction(text: str) -> bool:
+    for sentence in re.split(r"[.!?;\n]", text):
+        for match in re.finditer(r"\bbuy or sell\b", sentence):
+            before, after = sentence[:match.start()], sentence[match.end():]
+            # The approved ETF guide describes a manager's execution constraints.
+            manager_constraint = re.search(
+                r"\bmanager(?:(?:'s|’s)? inability to| may be unable to)\s*$", before
+            )
+            component_stocks = re.match(r"\s+(?:the\s+)?component stocks\b", after)
+            policy_negation = re.search(
+                r"\b(?:no|not|never|without|avoids?)\s+"
+                r"(?:(?:provide|providing|give|giving|personalized|any|a)\s+){0,4}$",
+                before,
+            ) and re.match(r"\s+(?:or allocation\s+)?instructions?\b", after)
+            if not ((manager_constraint and component_stocks) or policy_negation):
+                return True
+    return False
+
+
+def withhold_agent_result(result: AgentResult) -> AgentResult:
+    return AgentResult(
+        agent=result.agent,
+        summary="Generated content was withheld by the final safety review.",
+        rationale=["The final safety review blocked this response."],
+        confidence=1.0,
+        blocked=True,
+        policy_notes=[note for note in result.policy_notes if note in SAFE_POLICY_NOTES],
+        data={
+            key: result.data[key]
+            for key in ("evidence_status", "policy_evidence_status")
+            if result.data.get(key) in ("grounded", "partial", "insufficient")
+        },
+    )
 
 
 class RiskComplianceAgent:
@@ -92,33 +183,31 @@ class RiskComplianceAgent:
         request: CoachRequest,
         results: list[AgentResult],
         draft_answer: str,
+        routing_rationale: list[str] | None = None,
     ) -> AgentResult:
         decision = inspect_prompt(request.message)
         policy_notes = list(decision.findings)
-        hard_policy_findings: list[str] = []
-        generated_text = " ".join(
-            [
-                draft_answer,
-                *(
-                    text
-                    for result in results
-                    for text in (result.summary, *result.rationale)
-                ),
-            ]
-        )
+        generated_fields = [
+            draft_answer,
+            *(routing_rationale or []),
+            *(
+                text
+                for result in results
+                for text in (
+                    result.summary, *result.rationale,
+                    *result.data.get("uncertainties", []),
+                )
+            ),
+        ]
+        generated_text = "\n".join(generated_fields)
         generated_decision = inspect_prompt(generated_text)
         policy_notes.extend(generated_decision.findings)
-        inspected_text = f"{request.message} {generated_text}".lower()
-        for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS:
-            if pattern in inspected_text:
-                finding = f"regulated_advice:{pattern}"
-                policy_notes.append(finding)
-                hard_policy_findings.append(finding)
-        for label, pattern in BLOCKED_FINANCIAL_ADVICE_REGEXES:
-            if pattern.search(inspected_text):
-                finding = f"regulated_advice:{label}"
-                policy_notes.append(finding)
-                hard_policy_findings.append(finding)
+        hard_policy_findings = list(dict.fromkeys(
+            finding
+            for text in [request.message, *generated_fields]
+            for finding in financial_advice_findings(text)
+        ))
+        policy_notes.extend(hard_policy_findings)
 
         if (
             not decision.allowed
@@ -140,11 +229,25 @@ class RiskComplianceAgent:
         contexts = []
         for item in self.policy_retriever.retrieve(decision.sanitized_text):
             context = asdict(item)
+            metadata_inspection = sanitize_rag_document(
+                f"{context['title']} {context['issuing_organization']}"
+            )
+            if (
+                metadata_inspection.findings
+                or not context["text"].strip()
+                or len(context["text"]) > MAX_EDUCATION_CHUNK_CHARACTERS
+            ):
+                continue
             inspection = sanitize_rag_document(context["text"])
             context["text"] = inspection.sanitized_text
             context["findings"] = list(
                 dict.fromkeys([*context["findings"], *inspection.findings])
             )
+            if any(
+                finding.startswith("indirect_prompt_injection:")
+                for finding in context["findings"]
+            ):
+                continue
             contexts.append(context)
         policy_sources = [
             {
@@ -193,6 +296,7 @@ class RiskComplianceAgent:
                 {
                     "message": decision.sanitized_text,
                     "draft_answer": draft_answer,
+                    "routing_rationale": routing_rationale or [],
                     "policy_context": contexts,
                     "agent_results": [
                         {
@@ -207,6 +311,8 @@ class RiskComplianceAgent:
                                     "contexts",
                                     "cited_source_ids",
                                     "uncertainties",
+                                    "query_topics",
+                                    "unanswered_topics",
                                 )
                                 if key in result.data
                             },
@@ -214,7 +320,7 @@ class RiskComplianceAgent:
                         for result in results
                     ],
                 },
-                ensure_ascii=True,
+                ensure_ascii=False,
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
@@ -222,6 +328,14 @@ class RiskComplianceAgent:
         output_decision = inspect_prompt(
             " ".join([review.summary, *review.rationale, *review.policy_notes])
         )
+        output_findings = list(dict.fromkeys([
+            *output_decision.findings,
+            *(
+                finding
+                for text in [review.summary, *review.rationale, *review.policy_notes]
+                for finding in financial_advice_findings(text)
+            ),
+        ]))
         compliance_data = {
             "disclaimer": ADVISORY_DISCLAIMER,
             "policy_evidence_status": "grounded",
@@ -229,7 +343,7 @@ class RiskComplianceAgent:
             "policy_sources": policy_sources,
             "policy_contexts": contexts,
         }
-        if output_decision.findings:
+        if output_findings:
             return AgentResult(
                 agent=self.name,
                 summary="Compliance output was blocked by safety controls.",
@@ -240,7 +354,7 @@ class RiskComplianceAgent:
                 blocked=True,
                 policy_notes=list(
                     dict.fromkeys(
-                        [*review.policy_notes, *output_decision.findings]
+                        [*review.policy_notes, *output_findings]
                     )
                 ),
                 data=compliance_data,

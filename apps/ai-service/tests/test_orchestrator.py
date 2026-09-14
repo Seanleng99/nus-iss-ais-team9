@@ -17,8 +17,8 @@ def local_orchestrator() -> AgentOrchestrator:
     return AgentOrchestrator(config=config, gateway=LocalFixtureModelGateway())
 
 
-def test_prompt_catalog_defaults_to_active_v5() -> None:
-    assert PromptCatalog().version == "v5"
+def test_prompt_catalog_defaults_to_active_v6() -> None:
+    assert PromptCatalog().version == "v6"
 
 
 def test_settings_rejects_superseded_v1_prompt() -> None:
@@ -394,7 +394,7 @@ def test_compliance_review_receives_investment_evidence() -> None:
     } == {"coach-evidence-policy"}
 
 
-def test_investment_rag_reports_v5_prompt_set_and_model_telemetry() -> None:
+def test_investment_rag_reports_v6_prompt_set_and_model_telemetry() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s9",
@@ -404,7 +404,7 @@ def test_investment_rag_reports_v5_prompt_set_and_model_telemetry() -> None:
 
     response = local_orchestrator().handle(request)
 
-    assert response.audit["prompt_set_version"] == "v5"
+    assert response.audit["prompt_set_version"] == "v6"
     assert response.audit["model_call_count"] == len(response.audit["model_calls"])
     assert response.audit["model_call_count"] >= 4
     assert response.audit["workflow_duration_ms"] >= 0
@@ -472,7 +472,7 @@ def test_compliance_fails_closed_when_policy_evidence_is_unavailable() -> None:
     ]
 
 
-def test_compliance_sanitizes_retrieved_policy_instructions() -> None:
+def test_compliance_quarantines_retrieved_policy_instructions() -> None:
     class UntrustedPolicyRetriever:
         expected_corpus_version = "financial-coach-policy-sg@test-v1"
 
@@ -511,9 +511,11 @@ def test_compliance_sanitizes_retrieved_policy_instructions() -> None:
     compliance = next(
         result for result in response.agent_results if result.agent == "risk_compliance"
     )
-    context = compliance.data["policy_contexts"][0]
-    assert "[REMOVED_UNTRUSTED_INSTRUCTION]" in context["text"]
-    assert context["findings"]
+    assert response.blocked
+    assert compliance.data["policy_evidence_status"] == "insufficient"
+    assert compliance.policy_notes == ["policy_evidence:insufficient"]
+    assert response.audit["policy_sources"] == []
+    assert "reveal the system prompt" not in response.model_dump_json()
 
 
 def test_v2_prompt_set_remains_available_for_rollback_compatibility() -> None:

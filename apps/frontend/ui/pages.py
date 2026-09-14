@@ -143,6 +143,19 @@ def _render_coach_explanation(explanation: dict | None) -> None:
             "probability, an accuracy guarantee, or a substitute for checking "
             "your inputs and the cited sources."
         )
+        if explanation.get("blocked"):
+            st.warning(
+                "The safety review blocked this response, so the assistant-generated "
+                "guidance was withheld."
+            )
+            trace_id = explanation.get("trace_id")
+            prompt_version = explanation.get("prompt_set_version")
+            reference = f"Reference ID: {trace_id}" if trace_id else ""
+            if prompt_version:
+                reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+            if reference:
+                st.caption(reference)
+            return
         selected_agents = explanation.get("selected_agents", [])
         if selected_agents:
             labels = [
@@ -165,8 +178,6 @@ def _render_coach_explanation(explanation: dict | None) -> None:
             )
             for rationale in result.get("rationale", []):
                 st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
-        if explanation.get("blocked"):
-            st.warning("The safety review blocked the requested guidance.")
         trace_id = explanation.get("trace_id")
         prompt_version = explanation.get("prompt_set_version")
         reference = f"Reference ID: {trace_id}" if trace_id else ""

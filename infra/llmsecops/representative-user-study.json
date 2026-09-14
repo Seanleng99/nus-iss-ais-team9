@@ -3,7 +3,7 @@
   "study_id": "representative-user-explainability",
   "study_version": "v1",
   "required_model_id": "apac.amazon.nova-lite-v1:0",
-  "required_prompt_set_version": "v5",
+  "required_prompt_set_version": "v6",
   "scope": "Synthetic-data usability validation of explanations, confidence, uncertainty, sources, limitations, and safe next actions in the deployed coach UI.",
   "minimum_completed_participants": 5,
   "recruitment": {

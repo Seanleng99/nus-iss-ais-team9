@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from contextvars import ContextVar
 from time import perf_counter
 from uuid import uuid4
@@ -25,7 +26,11 @@ class RequestTelemetryMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        correlation_id = request.headers.get("X-Correlation-ID") or str(uuid4())
+        supplied_id = request.headers.get("X-Correlation-ID", "")
+        correlation_id = (
+            supplied_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", supplied_id)
+            else str(uuid4())
+        )
         token = _correlation_id.set(correlation_id)
         started = perf_counter()
         try:

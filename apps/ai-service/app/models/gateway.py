@@ -284,6 +284,33 @@ class LocalFixtureModelGateway:
                 if contexts
                 else "Approved investment-education evidence was unavailable."
             )
+            if contexts and grounding.get("response_language") == "Chinese":
+                translations = {
+                    "cpf-beginners-guide-to-investing": (
+                        "投资需考虑期限、风险承受能力、费用和分散投资，投资可能亏损。"
+                        "国库券以低于面值的价格发行，到期按面值偿还；新加坡储蓄债券由政府发行。"
+                    ),
+                    "cpf-investment-scheme-guide": (
+                        "公积金投资计划提供不同风险与回报的投资选择。需了解目标、期限、"
+                        "风险承受能力、分散投资和费用；公积金局不为特定投资产品背书。"
+                    ),
+                    "moneysense-what-is-investing": (
+                        "开始投资前应了解准备条件、风险与回报和投资期限。投资可能亏损，回报并不确定。"
+                    ),
+                    "moneysense-managing-investment-risk": (
+                        "投资风险包括市场、信用、流动性和汇率风险。分散投资可减少集中风险，"
+                        "但无法消除亏损。定投是在固定时间间隔投入固定金额，不随市场涨跌改变。"
+                    ),
+                    "moneysense-types-of-investments": (
+                        "股票、债券、基金、交易所交易基金和房地产投资信托是不同投资类别，"
+                        "其结构、风险、流动性、费用和潜在回报不同。"
+                    ),
+                    "moneysense-guide-to-etfs": (
+                        "了解交易所交易基金时，应关注费用、流动性、跟踪误差和交易对手风险。"
+                        "基金价值可能下降，回报并不确定。"
+                    ),
+                }
+                summary = translations.get(contexts[0]["source_id"], summary)
         response = {
             "summary": summary,
             "rationale": ["The response is grounded in the supplied, allowlisted tool output."],
@@ -324,12 +351,10 @@ class TracingModelGateway:
         self.settings = settings
         self._lock = threading.Lock()
         self._calls: dict[str, list[dict[str, Any]]] = {}
-        self._closed: set[str] = set()
 
     def bind_trace(self, trace_id: str) -> Token:
         with self._lock:
             self._calls[trace_id] = []
-            self._closed.discard(trace_id)
         return _model_trace_id.set(trace_id)
 
     @staticmethod
@@ -343,7 +368,6 @@ class TracingModelGateway:
     def clear(self, trace_id: str) -> None:
         with self._lock:
             self._calls.pop(trace_id, None)
-            self._closed.add(trace_id)
 
     def generate(
         self,
@@ -354,12 +378,35 @@ class TracingModelGateway:
         max_tokens: int,
     ) -> str:
         trace_id = _model_trace_id.get()
+        started = perf_counter()
         if trace_id:
             with self._lock:
-                if len(self._calls.get(trace_id, [])) >= self.settings.max_model_calls_per_run:
+                calls = self._calls.get(trace_id)
+                if calls is None:
+                    raise ModelGatewayError(
+                        "The workflow has already closed.",
+                        code="WORKFLOW_CLOSED", component="model_budget",
+                    )
+                if len(calls) >= self.settings.max_model_calls_per_run:
                     raise ModelGatewayError("The workflow exceeded its model-call budget.")
+                if sum(int(item.get("total_tokens") or 0) for item in calls) >= self.settings.max_model_tokens_per_run:
+                    raise ModelGatewayError(
+                        "The workflow exceeded its model-token budget.",
+                        code="MODEL_TOKEN_BUDGET_EXCEEDED", component="model_budget",
+                    )
+                call = {
+                    "component": system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip() or "unknown",
+                    "status": "running",
+                    "duration_ms": 0.0,
+                    "input_characters": len(user_prompt),
+                    "output_characters": 0,
+                    "input_tokens": None,
+                    "output_tokens": None,
+                    "total_tokens": None,
+                    "error_code": None,
+                }
+                calls.append(call)
 
-        started = perf_counter()
         status = "completed"
         generation: str = ""
         error_code: str | None = None
@@ -378,12 +425,9 @@ class TracingModelGateway:
         finally:
             if trace_id:
                 usage = getattr(generation, "usage", {})
-                prompt_id = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
-                call = {
-                    "component": prompt_id or "unknown",
+                completed = {
                     "status": status,
                     "duration_ms": round((perf_counter() - started) * 1000, 2),
-                    "input_characters": len(user_prompt),
                     "output_characters": len(generation),
                     "input_tokens": usage.get("inputTokens"),
                     "output_tokens": usage.get("outputTokens"),
@@ -391,11 +435,10 @@ class TracingModelGateway:
                     "error_code": error_code,
                 }
                 with self._lock:
-                    if trace_id in self._closed:
+                    if self._calls.get(trace_id) is not calls:
                         total_tokens = 0
                     else:
-                        calls = self._calls.setdefault(trace_id, [])
-                        calls.append(call)
+                        call.update(completed)
                         total_tokens = sum(
                             int(item.get("total_tokens") or 0) for item in calls
                         )
