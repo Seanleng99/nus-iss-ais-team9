@@ -1,3 +1,4 @@
+import copy
 import io
 import json
 import urllib.error
@@ -5,6 +6,93 @@ import urllib.error
 import pytest
 
 from infra.scripts import post_deploy_smoke
+
+
+@pytest.fixture
+def education_response():
+    def source(source_id, corpus):
+        return {
+            "source_id": source_id, "title": "Approved education",
+            "issuing_organization": "Synthetic authority",
+            "canonical_url": "https://example.test/" + source_id,
+            "published_at": "2026-01-01", "document_version": "2026-01-01",
+            "checksum": "sha256:" + "a" * 64, "corpus_version": corpus,
+            "review_due_at": "2026-12-01",
+        }
+
+    first = source("cited", "education-v1")
+    second = source("retrieved-but-not-cited", "education-v1")
+    fields = ("source_id", "document_version", "checksum", "corpus_version", "review_due_at")
+    audit = {
+        "trace_id": "synthetic-trace",
+        "retrieval_corpus_versions": ["education-v1"],
+        "retrieval_sources": [{key: item[key] for key in fields} for item in (first, second)],
+        "policy_corpus_versions": ["policy-v1"],
+        "policy_sources": [source("policy", "policy-v1")],
+    }
+    return {
+        "blocked": False, "sources": [first], "audit": audit,
+        "agent_results": [
+            {"agent": "investment_education", "data": {
+                "evidence_status": "grounded", "sources": [first, second],
+            }},
+            {"agent": "risk_compliance", "data": {"policy_evidence_status": "grounded"}},
+        ],
+    }
+
+
+def run_education_smoke(monkeypatch, response, persisted_audit=None):
+    replies = iter([
+        (200, json.dumps(response)),
+        (200, json.dumps({"audit": persisted_audit or response["audit"]})),
+    ])
+    monkeypatch.setattr(post_deploy_smoke, "request", lambda *args, **kwargs: next(replies))
+    post_deploy_smoke.check_investment_education_rag(
+        "https://example.test/api/coach", "synthetic-key", "education-v1", "policy-v1",
+    )
+
+
+def test_education_trace_retains_retrieved_sources_beyond_final_citations(
+    monkeypatch, education_response,
+):
+    run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize("damage", ["missing_uncited", "wrong_id", "wrong_checksum", "duplicate", "missing_version"])
+def test_education_smoke_rejects_incomplete_or_changed_retrieval_provenance(
+    monkeypatch, education_response, damage,
+):
+    sources = education_response["audit"]["retrieval_sources"]
+    if damage == "missing_uncited":
+        sources.pop()
+    elif damage == "wrong_id":
+        sources[1]["source_id"] = "invented-source"
+    elif damage == "wrong_checksum":
+        sources[1]["checksum"] = "sha256:" + "b" * 64
+    elif damage == "duplicate":
+        sources.append(copy.deepcopy(sources[0]))
+    else:
+        del sources[1]["document_version"]
+    with pytest.raises(AssertionError, match="provenance|retrieved|duplicate"):
+        run_education_smoke(monkeypatch, education_response)
+
+
+def test_education_smoke_rejects_citation_absent_from_retrieval(
+    monkeypatch, education_response,
+):
+    education_response["sources"][0] = {**education_response["sources"][0], "source_id": "invented"}
+    with pytest.raises(AssertionError, match="citation|retrieved"):
+        run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize("field", ["source_id", "document_version", "checksum", "corpus_version", "review_due_at"])
+def test_education_smoke_verifies_persisted_retrieval_provenance(
+    monkeypatch, education_response, field,
+):
+    persisted = copy.deepcopy(education_response["audit"])
+    persisted["retrieval_sources"][1][field] = "changed"
+    with pytest.raises(AssertionError, match="persisted.*provenance"):
+        run_education_smoke(monkeypatch, education_response, persisted)
 
 
 def test_request_reports_bounded_http_diagnostics(monkeypatch) -> None:
