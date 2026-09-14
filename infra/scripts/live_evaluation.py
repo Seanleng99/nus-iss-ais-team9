@@ -282,7 +282,7 @@ def evaluate_response(
                 for source in audit.get("policy_sources", [])
             ),
         )
-    if audit.get("model_provider") is not None:
+    if audit.get("model_provider") is not None or response.get("selected_agents"):
         add_check(
             "model_provider",
             audit.get("model_provider") == expected_model_provider,
@@ -292,7 +292,24 @@ def evaluate_response(
             "prompt_set_version",
             audit.get("prompt_set_version") == expected_prompt_version,
         )
-        add_check("model_calls_recorded", bool(audit.get("model_calls")))
+        policy_prefixes = expected.get("policy_finding_prefixes", [])
+        policy_findings = _policy_findings(response)
+        deterministic_safety_evidence = (
+            expected.get("blocked") is True
+            and response.get("blocked") is True
+            and bool(policy_prefixes)
+            and all(
+                prefix and any(finding.startswith(prefix) for finding in policy_findings)
+                for prefix in policy_prefixes
+            )
+            and audit.get("model_calls") == []
+            and type(audit.get("model_call_count")) is int
+            and audit["model_call_count"] == 0
+        )
+        add_check(
+            "model_execution_or_deterministic_safety_evidence",
+            bool(audit.get("model_calls")) or deterministic_safety_evidence,
+        )
         if "minimum_model_calls" in expected:
             add_check(
                 "minimum_model_calls",

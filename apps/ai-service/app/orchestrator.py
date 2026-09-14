@@ -23,7 +23,7 @@ from app.agents.investment_education import InvestmentEducationAgent
 from app.agents.risk_compliance import RiskComplianceAgent, withhold_agent_result
 from app.agents.spending import SpendingAgent
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
-from app.core.citations import render_citations, validate_citations
+from app.core.citations import citation_contract, render_citations, validate_citations
 from app.core.config import Settings
 from app.core.config import settings as runtime_settings
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
@@ -1114,22 +1114,43 @@ class AgentOrchestrator:
                     "evidence_status": result.data.get("evidence_status"),
                     "unanswered_topics": result.data.get("unanswered_topics", []),
                     "question_intent": result.data.get("question_intent"),
+                    "needs_input": result.data.get("needs_input", False),
+                    "questions": result.data.get("questions", []),
                 }
                 for result in state["agent_results"]
             ],
             "sources": [source.model_dump() for source in sources],
         }
         synthesis_prompt = self.prompts.get("synthesizer")
+        synthesis_prompt += citation_contract(sources)
+
+        def validate_synthesis(synthesis: SynthesisDecision) -> SynthesisDecision:
+            validate_citations(synthesis.answer, sources)
+            return synthesis
+
         if self.prompts.version == "v7":
             synthesis_prompt += (
                 "\nRequired output language for THIS request: "
                 + payload["response_language"]
                 + ". Write the entire answer in this language."
             )
-        if (
-            self.prompts.version == "v7"
-            and len(state["agent_results"]) == 1
+        if state["agent_results"] and all(
+            result.data.get("needs_input") is True for result in state["agent_results"]
+        ):
+            questions = list(dict.fromkeys(
+                question for result in state["agent_results"]
+                for question in result.data.get("questions", [])
+            ))
+            synthesis = SynthesisDecision(answer="\n\n".join([
+                state["agent_results"][0].summary, *questions,
+            ]))
+        elif (
+            len(state["agent_results"]) == 1
             and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
+            and (
+                self.prompts.version == "v7"
+                or state["agent_results"][0].data.get("evidence_status") == "insufficient"
+            )
         ):
             # Preserve the single specialist answer without a second model rewrite.
             # Citation validation and independent policy review still run below.
@@ -1142,6 +1163,7 @@ class AgentOrchestrator:
                 user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.agent_temperature,
                 max_tokens=self.config.model_max_tokens,
+                validate_response=validate_synthesis,
             )
         for result in state["agent_results"]:
             if result.data.get("evidence_status") in {"partial", "insufficient"}:

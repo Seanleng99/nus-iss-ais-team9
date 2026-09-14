@@ -9,6 +9,22 @@ SOURCE_MARKER = re.compile(r"\[(?:source:)?([a-z0-9][a-z0-9-]{2,127})\]")
 MODEL_LINK = re.compile(r"://|\bwww\.|\]\s*\(|<\s*a\b|\b(?:href|src)\s*=", re.IGNORECASE)
 
 
+def citation_contract(sources: Sequence[SourceCitation]) -> str:
+    if sources:
+        return (
+            "\nCitation contract for THIS request: the only approved source IDs are "
+            + ", ".join(source.source_id for source in sources)
+            + ". Cite only actual supporting IDs from this list. "
+            "Never copy placeholder IDs from examples. Do not generate URLs or links."
+        )
+    return (
+        "\nCitation contract for THIS request: there are NO approved sources. "
+        "Preserve the supplied calculations and explanations without citation "
+        "markers, source labels, URLs, links, or square brackets. "
+        "Never copy placeholder IDs from examples."
+    )
+
+
 def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
     approved = {source.source_id for source in sources}
     markers = SOURCE_MARKER.findall(text)

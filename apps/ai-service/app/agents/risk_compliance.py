@@ -2,6 +2,7 @@ import json
 import re
 from dataclasses import asdict
 
+from app.core.citations import citation_contract, validate_citations
 from app.core.guardrails import (
     ADVISORY_DISCLAIMER,
     PII_PATTERNS,
@@ -17,6 +18,7 @@ from app.core.schemas import (
     AgentResult,
     CoachRequest,
     ComplianceDecision,
+    SourceCitation,
 )
 from app.models.gateway import ModelGateway
 from app.models.structured import generate_structured_response
@@ -99,7 +101,14 @@ def contains_return_guarantee(text: str) -> bool:
                 r"(?:red flag|warning sign|misleading|unrealistic|impossible|scam)\b",
                 after,
             )
-            if not negated and not risk_explanation:
+            policy_assessment = re.search(
+                r"\b(?:avoids? (?:making )?(?:any )?claims about|"
+                r"(?:does|do) not make (?:any )?claims about|"
+                r"makes? no claims about|"
+                r"educational warnings or negations about)\s*$",
+                before,
+            )
+            if not negated and not risk_explanation and not policy_assessment:
                 return True
         if re.search(r"\breturns?\s+(?:is|are|will be)\s+guaranteed\b", sentence):
             return True
@@ -132,7 +141,7 @@ def contains_buy_sell_instruction(text: str) -> bool:
             before, after = sentence[:match.start()], sentence[match.end():]
             # The approved ETF guide describes a manager's execution constraints.
             manager_constraint = re.search(
-                r"\bmanager(?:(?:'s|’s)? inability to| may be unable to)\s*$", before
+                r"\bmanager(?:(?:'s|’s)? inability to| may be unable to| cannot)\s*$", before
             )
             component_stocks = re.match(r"\s+(?:the\s+)?component stocks\b", after)
             policy_negation = re.search(
@@ -140,7 +149,15 @@ def contains_buy_sell_instruction(text: str) -> bool:
                 r"(?:(?:provide|providing|give|giving|personalized|any|a)\s+){0,4}$",
                 before,
             ) and re.match(r"\s+(?:or allocation\s+)?instructions?\b", after)
-            if not ((manager_constraint and component_stocks) or policy_negation):
+            brokerage_description = re.search(
+                r"\b(?:brokerage commissions?|trading fees?) "
+                r"(?:may apply|apply|are charged) when (?:you|investors)\s*$",
+                before,
+            ) and re.match(r"\s+(?:etfs?|shares|stocks)\b", after)
+            if not (
+                (manager_constraint and component_stocks)
+                or policy_negation or brokerage_description
+            ):
                 return True
     return False
 
@@ -288,10 +305,35 @@ class RiskComplianceAgent:
                     "policy_sources": [],
                 },
             )
+        review_sources = [
+            SourceCitation.model_validate(source)
+            for source in [
+                *policy_sources,
+                *(
+                    source for result in results for source in result.data.get("sources", [])
+                    if source["source_id"] in result.data.get(
+                        "cited_source_ids",
+                        [item["source_id"] for item in result.data.get("sources", [])],
+                    )
+                ),
+            ]
+        ]
+
+        def validate_review(review: ComplianceDecision) -> ComplianceDecision:
+            for text in (review.summary, *review.rationale, *review.policy_notes):
+                validate_citations(text, review_sources)
+            return review
+
         review = generate_structured_response(
             self.gateway,
             response_type=ComplianceDecision,
-            system_prompt=self.prompts.get("risk_compliance"),
+            system_prompt=(
+                self.prompts.get("risk_compliance")
+                + "\nReturn a short policy verdict only. Do not rewrite the answer "
+                "or introduce any financial facts. Keep rationale and policy_notes "
+                "to at most two short assessment sentences each."
+                + citation_contract(review_sources)
+            ),
             user_prompt=json.dumps(
                 {
                     "message": decision.sanitized_text,
@@ -324,6 +366,7 @@ class RiskComplianceAgent:
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            validate_response=validate_review,
         )
         output_decision = inspect_prompt(
             " ".join([review.summary, *review.rationale, *review.policy_notes])

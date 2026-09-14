@@ -59,8 +59,11 @@ def generate_structured_response(
         cause = exc.__cause__
         if exc.code in {"UNAPPROVED_CITATION", "MISSING_CITATION"}:
             validation_issues = (
-                "Use only source IDs supplied in grounding, declare the sources used, "
-                "and add [source:source-id] markers to the summary. Do not generate URLs."
+                "Follow the citation contract and use only actual source IDs supplied "
+                "in the request. Never copy example or placeholder IDs. If there are "
+                "no approved sources, use no citation markers, links or square brackets. "
+                "When sources are required, declare only the sources used and cite "
+                "the supporting IDs in the summary. Do not generate URLs."
             )
         elif isinstance(cause, ValidationError):
             validation_issues = json.dumps(
