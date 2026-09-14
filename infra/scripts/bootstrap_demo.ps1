@@ -6,6 +6,7 @@ param(
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
     [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
     [string]$AlertEmail = "",
+    [switch]$EnableDatabaseCredentialRefresh,
     [string]$BedrockInferenceProfileId = "apac.amazon.nova-lite-v1:0",
     [string]$BedrockFoundationModelId = "amazon.nova-lite-v1:0",
     [string]$BedrockComparisonInferenceProfileId = "apac.amazon.nova-micro-v1:0",
@@ -193,6 +194,12 @@ $applicationParameters = @(
     "BackendImageUri=$($images.Backend)",
     "FrontendImageUri=$($images.Frontend)"
 )
+if ($EnableDatabaseCredentialRefresh) {
+    if (-not $foundation.BackendTaskRoleArn) {
+        throw "The foundation must provide the dedicated BackendTaskRoleArn."
+    }
+    $applicationParameters += "BackendTaskRoleArn=$($foundation.BackendTaskRoleArn)"
+}
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\demo-application.yaml") `
     --stack-name $ApplicationStack `
@@ -329,6 +336,9 @@ $oidcParameters = @(
     "PolicySourcePrefix=$PolicySourcePrefix",
     "OperationalAlertsTopicArn=$($application.OperationalAlertsTopicArn)"
 )
+if ($foundation.BackendTaskRoleArn) {
+    $oidcParameters += "EcsBackendTaskRoleArn=$($foundation.BackendTaskRoleArn)"
+}
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\github-actions-oidc.yaml") `
     --stack-name $OidcStack `

@@ -39,6 +39,47 @@ The first five controls are provisioned by `infra/aws/demo-application.yaml`; th
 
 ## Database Changes
 
+The 2026-09-14 availability incident was caused by the RDS-managed password rotating
+after the backend task started. ECS-injected environment secrets stay fixed for the
+task's lifetime; new database connections then failed authentication. A rolling
+restart of the same backend image restored database access. The bounded recovery
+run returned 13/13 normal HTTP responses with complete synthetic-session cleanup;
+12/13 answer checks passed on the existing v5 deployment. Recovery is not a quality
+acceptance or deployment of the changes below.
+
+The backend supports opt-in runtime credential refresh with `POSTGRES_SECRET_ARN`,
+an explicit `POSTGRES_HOST`, and `AWS_REGION`. Each new physical PostgreSQL connection,
+including online Alembic migrations, fetches the secret's `AWSCURRENT` username and
+password. Already pooled connections do not fetch on every query. Secret lookup
+failures fail closed with a generic error; no secret is logged. Static local
+credentials continue to work when the ARN is absent. Offline migrations do not
+contact AWS. See [ECS secret refresh behavior](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html)
+and [SQLAlchemy connection hooks](https://docs.sqlalchemy.org/en/21/core/engines.html#controlling-how-parameters-are-passed-to-the-dbapi-connect-function).
+
+Activation requires a reviewed release containing this backend implementation:
+
+1. Apply the foundation template and retain its new `BackendTaskRoleArn` output.
+   The dedicated role can read only the RDS-managed database secret; the shared
+   frontend application role receives no database-secret permission.
+2. Update the GitHub OIDC stack with `EcsBackendTaskRoleArn` set to that output.
+   `update_github_oidc.ps1` passes it when present. `iam:PassRole` stays limited to
+   the named task roles and the ECS task service.
+3. Apply the application template with `BackendTaskRoleArn` and a compatible
+   backend image. This enables runtime lookup and removes the startup username and
+   password injection. For a fresh bootstrap, use `-EnableDatabaseCredentialRefresh`.
+   Existing stack updates preserve the optional parameter when it is omitted.
+4. Run migrations and the authenticated persistence smoke test, then the live
+   evaluation and cleanup checks. Check database access again after the next
+   scheduled secret rotation. Unit tests simulate rotation; they do not replace
+   this live verification.
+
+The 2026-09-14 repair did **not** apply these IAM or application changes. Until
+activation, another rotation can cause the same failure. If activation must be
+rolled back, explicitly clear `BackendTaskRoleArn` while restoring the prior image,
+so ECS resumes injecting current static credentials. Do not remove runtime lookup
+while leaving an image without injected credentials. Do not rotate the database
+password merely to test the repair on the live demo.
+
 CI applies every Alembic migration to PostgreSQL and runs `alembic check` for model drift. Every backend release runs `alembic upgrade head` as one ECS task before updating the backend service, even when the change manifest did not identify a migration-file edit. This makes the database revision a deployment invariant instead of relying solely on path classification. Treat migration failure as a failed release. Use expand-and-contract changes because rolling back an ECS task definition does not reverse a successful schema migration.
 
 Policy `data-lifecycle-v1` keeps orchestration traces for 30 days, chat history for 90 days, and inactive allowlisted synthetic automation users for 30 days. The weekly AWS operational workflow runs `python -m app.jobs.purge_data_lifecycle` as a one-shot task against the current backend task definition. OIDC-bound users and unowned identifiers outside the automation namespace are excluded from automatic user expiry. Owner-scoped export and complete workspace deletion are available through the backend and `Privacy & data` UI; individual trace and chat removal also remain available. Monitor aggregate purge counts and rejected cross-profile operations without logging IDs or request content. See `docs/data-lifecycle.md`.

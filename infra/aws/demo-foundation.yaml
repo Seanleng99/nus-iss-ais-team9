@@ -634,6 +634,26 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
 
+  BackendTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-backend-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadCurrentDatabaseCredentials
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !GetAtt Database.MasterUserSecret.SecretArn
+
   AiTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -794,6 +814,8 @@ Outputs:
     Value: !GetAtt TaskExecutionRole.Arn
   AppTaskRoleArn:
     Value: !GetAtt AppTaskRole.Arn
+  BackendTaskRoleArn:
+    Value: !GetAtt BackendTaskRole.Arn
   AiTaskRoleArn:
     Value: !GetAtt AiTaskRole.Arn
   BackendApiKeySecretArn:
