@@ -91,6 +91,44 @@ EDUCATION_TOPIC_PHRASES: tuple[tuple[str, str], ...] = (
     ("公积金投资计划", "CPF Investment Scheme"),
 )
 
+# Canonical concepts preserve educational detail without embedding the user's
+# amounts, identifiers, or unrestricted text in retrieval queries.
+EDUCATION_DETAIL_PHRASES = (
+    ("investment pooling", ("pool", "pooled", "汇集")),
+    ("passive index tracking", ("passive", "index-tracking", "outperform", "被动", "跑赢指数", "指数追踪")),
+    ("investment principal loss", ("lose all", "principal-guaranteed", "invested capital", "损失全部", "本金保证", "最坏")),
+    ("capital gain or loss", ("capital gain", "capital gains", "capital loss", "资本收益", "资本损失")),
+    ("dividends", ("dividend", "dividends", "股息")),
+    ("brokerage commissions", ("brokerage", "commissions", "commission", "经纪佣金")),
+    ("net asset value", ("net asset value", "nav", "净值")),
+    ("tracking error", ("execution costs", "执行成本", "交易时点")),
+    ("currency risk", ("foreign exchange", "base currency", "基础货币")),
+    ("market makers liquidity", ("market maker", "market makers", "做市商")),
+    ("traded price demand supply", ("trading price", "traded price", "交易价格")),
+    ("securities lending", ("securities lending", "证券借贷")),
+    ("cash-based physical ETFs", ("physical", "cash-based", "实物ETF", "现金型ETF")),
+    ("synthetic ETFs derivatives swaps", ("synthetic etf", "synthetic etfs", "swap", "swaps", "合成ETF", "掉期")),
+    ("correlation", ("correlation", "correlated", "相关性")),
+    ("risk tolerance", ("risk appetite", "affordable losses", "想赚多少")),
+    ("investment readiness emergency cash", ("emergency cash", "应急现金")),
+    ("liquidity", ("liquidity", "流动性")),
+    ("net returns fees", ("net returns", "net investment returns", "净回报")),
+    ("investment income", ("investment income", "投资收入")),
+    ("primary market", ("primary market", "一级市场")),
+    ("secondary market", ("secondary market", "二级市场")),
+    ("over-the-counter OTC", ("over-the-counter", "otc", "场外交易")),
+    ("CPFIS-OA CPFIS-SA components", ("account components", "账户组成")),
+    ("CPFIS-OA account", ("cpfis-oa",)),
+    ("CPFIS-SA account", ("cpfis-sa",)),
+    ("CPFIS eligibility Self-Awareness Questionnaire", ("eligibility", "self-awareness", "saq", "资格条件", "自我认知问卷")),
+    ("CPF Investment Account", ("investment account", "投资账户")),
+    ("CPFIS Ordinary Account reserve", ("oa reserve", "保留多少")),
+    ("CPFIS stocks gold investment limits", ("stock and gold", "股票和黄金", "投资比例限制")),
+    ("total expense ratio", ("total expense ratio", "总费用率")),
+    ("Singapore Savings Bonds redemption", ("redemption", "redeem", "赎回")),
+    ("Singapore Government Securities SGS coupons", ("sgs", "government securities", "新加坡政府证券")),
+)
+
 GENERIC_EDUCATION_TOPIC_PHRASES = (
     "investing",
     "investment",
@@ -146,6 +184,7 @@ def _contains_cjk(text: str) -> bool:
 
 
 def _contains_phrase(normalized: str, phrase: str) -> bool:
+    phrase = phrase.casefold()
     if _contains_cjk(phrase):
         return phrase in normalized
     return bool(
@@ -155,6 +194,7 @@ def _contains_phrase(normalized: str, phrase: str) -> bool:
 
 def education_topics(message: str) -> list[str]:
     normalized = message.casefold()
+    normalized = re.sub(r"\bcapital gains? tax(?:ation)?\b|资本(?:利得|收益)税", "", normalized)
     broad_text = normalized
     for phrase, topic in EDUCATION_TOPIC_PHRASES:
         if topic in {"bond duration", "zero-coupon bonds", "Singapore Savings Bonds"}:
@@ -163,6 +203,16 @@ def education_topics(message: str) -> list[str]:
     for phrase, topic in EDUCATION_TOPIC_PHRASES:
         text = broad_text if topic == "bonds" else normalized
         if _contains_phrase(text, phrase) and topic not in topics:
+            topics.append(topic)
+    for topic, phrases in EDUCATION_DETAIL_PHRASES:
+        if any(_contains_phrase(normalized, phrase) for phrase in phrases) and topic not in topics:
+            if topic == "investment readiness emergency cash" and not any(
+                _contains_phrase(normalized, phrase) for phrase in GENERIC_EDUCATION_TOPIC_PHRASES
+            ):
+                continue
+            # Avoid adding a broader liquidity topic when liquidity risk was explicit.
+            if topic == "liquidity" and "liquidity risk" in topics:
+                continue
             topics.append(topic)
     if not topics and any(
         _contains_phrase(normalized, phrase)

@@ -191,7 +191,7 @@ apps/ai-service/app/evals/datasets/rag_retrieval.jsonl
 
 ## 9. Current State and Remaining Scope
 
-Investment Education has a dedicated `education_retriever`. Budget and Goal Strategy can receive the same result through the orchestrator-resolved `education_context` tool capability only for investment topics such as risk, diversification, fees, ETFs, CPFIS, and investment time horizon. Local and CI runs use a small approved-document fixture. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
+Investment Education has a dedicated `education_retriever`. Budget and Goal Strategy can receive the same result through the orchestrator-resolved `education_context` tool capability only for investment topics such as risk, diversification, fees, ETFs, CPFIS, and investment time horizon. Local and CI smoke tests use a small approved-document fixture. An opt-in `local_documents` provider and a separate 100-case passage benchmark use the complete, checksum-verified originals; see `docs/rag-quality.md`. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
 
 The implemented runtime boundary:
 

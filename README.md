@@ -111,3 +111,5 @@ dependencies, direct and conditional Education RAG, Policy RAG, deterministic gu
 regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,
 latency, cost, or synthetic-cleanup failure.
+
+Full-document local retrieval and its separate 99% evidence-quality gate are documented in [RAG quality acceptance](docs/rag-quality.md). This score does not establish real-model answer quality.

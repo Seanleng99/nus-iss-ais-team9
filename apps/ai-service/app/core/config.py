@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     )
     vector_store_url: str = Field(default="http://localhost:6333", alias="VECTOR_STORE_URL")
     rag_provider: str = Field(default="local_fixture", alias="RAG_PROVIDER")
+    rag_manifest_path: str | None = Field(default=None, alias="RAG_MANIFEST_PATH")
+    rag_documents_path: str | None = Field(default=None, alias="RAG_DOCUMENTS_PATH")
     education_knowledge_base_id: str | None = Field(
         default=None,
         alias="EDUCATION_KNOWLEDGE_BASE_ID",

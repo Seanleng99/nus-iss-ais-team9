@@ -441,6 +441,18 @@ def create_education_retriever(settings: Settings) -> EducationRetriever:
     provider = settings.rag_provider.lower()
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalEducationRetriever()
+    if provider == "local_documents" and settings.app_env.lower() in {"local", "test"}:
+        from pathlib import Path
+
+        from app.rag.local_documents import DEFAULT_CORPUS_ROOT, LocalDocumentEducationRetriever
+
+        retriever = LocalDocumentEducationRetriever(
+            Path(settings.rag_manifest_path) if settings.rag_manifest_path else DEFAULT_CORPUS_ROOT / "source_manifest.json",
+            Path(settings.rag_documents_path) if settings.rag_documents_path else DEFAULT_CORPUS_ROOT / "documents",
+        )
+        if retriever.expected_corpus_version != settings.education_corpus_version:
+            raise ValueError("EDUCATION_CORPUS_VERSION must match the approved local manifest")
+        return retriever
     if provider == "bedrock" and settings.education_knowledge_base_id:
         return BedrockEducationRetriever(
             knowledge_base_id=settings.education_knowledge_base_id,

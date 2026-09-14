@@ -104,6 +104,19 @@ jobs:
           python -m app.evals.gate
           --policy infra/llmsecops/evaluation-policy.json
           --output artifacts/llm-evaluation-results.json
+      - name: Enforce full-document RAG evidence quality
+        run: >-
+          python -m app.evals.rag_evidence
+          --dataset apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl
+          --output artifacts/rag-evidence-results.json
+      - name: Upload full-document RAG evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rag-evidence-results
+          path: artifacts/rag-evidence-results.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload evaluation evidence
         if: always()
         uses: actions/upload-artifact@v7
