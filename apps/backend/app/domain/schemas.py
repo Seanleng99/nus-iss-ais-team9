@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -72,6 +72,10 @@ BLOCKED_RESPONSE_ANSWER = (
 BLOCKED_AGENT_SUMMARY = "Response withheld by safety controls."
 BLOCKED_AGENT_RATIONALE = "The safety review blocked this response."
 BLOCKED_ROUTING_RATIONALE = "Response withheld by safety controls."
+BLOCKED_RESPONSE_ANSWER_ZH = "为保障您的安全，此回复因无法通过安全验证而被隐藏。"
+BLOCKED_AGENT_SUMMARY_ZH = "此回复已被安全措施拦截。"
+BLOCKED_AGENT_RATIONALE_ZH = "安全审查已拦截此回复。"
+BLOCKED_ROUTING_RATIONALE_ZH = "此回复已被安全措施拦截。"
 BLOCKED_POLICY_NOTE = "response_withheld"
 BLOCKED_EDUCATIONAL_DISCLAIMER = (
     "This is general financial education, not regulated financial advice. "
@@ -100,6 +104,26 @@ SAFE_PROMPT_INJECTION_CODE = re.compile(r"^prompt_injection:(?:[0-9]|1[01])$")
 SAFE_POLICY_EVIDENCE_CODE = "policy_evidence:insufficient"
 
 
+def normalize_response_language(value: Any) -> Literal["English", "Chinese"]:
+    return "Chinese" if value == "Chinese" else "English"
+
+
+def blocked_response_answer(*, response_language: str = "English") -> str:
+    return (
+        BLOCKED_RESPONSE_ANSWER_ZH
+        if response_language == "Chinese"
+        else BLOCKED_RESPONSE_ANSWER
+    )
+
+
+def blocked_agent_rationale(*, response_language: str = "English") -> str:
+    return (
+        BLOCKED_AGENT_RATIONALE_ZH
+        if response_language == "Chinese"
+        else BLOCKED_AGENT_RATIONALE
+    )
+
+
 def _safe_policy_notes(notes: list[str]) -> list[str]:
     safe_notes = [
         note
@@ -118,11 +142,17 @@ def _safe_policy_notes(notes: list[str]) -> list[str]:
 def blocked_agent_result(
     agent: AgentName | str,
     policy_notes: list[str] | None = None,
+    *,
+    response_language: str = "English",
 ) -> dict[str, Any]:
     return {
         "agent": agent.value if isinstance(agent, AgentName) else agent,
-        "summary": BLOCKED_AGENT_SUMMARY,
-        "rationale": [BLOCKED_AGENT_RATIONALE],
+        "summary": (
+            BLOCKED_AGENT_SUMMARY_ZH
+            if response_language == "Chinese"
+            else BLOCKED_AGENT_SUMMARY
+        ),
+        "rationale": [blocked_agent_rationale(response_language=response_language)],
         "confidence": 1.0,
         "data": {},
         "blocked": True,
@@ -130,7 +160,9 @@ def blocked_agent_result(
     }
 
 
-def sanitize_blocked_agent_results(agent_results: list[Any]) -> list[dict[str, Any]]:
+def sanitize_blocked_agent_results(
+    agent_results: list[Any], *, response_language: str = "English"
+) -> list[dict[str, Any]]:
     sanitized: list[dict[str, Any]] = []
     for item in agent_results:
         agent = (
@@ -145,13 +177,21 @@ def sanitize_blocked_agent_results(agent_results: list[Any]) -> list[dict[str, A
             if isinstance(item, BaseModel)
             else item.get("policy_notes", [])
         )
-        sanitized.append(blocked_agent_result(agent, notes))
+        sanitized.append(
+            blocked_agent_result(agent, notes, response_language=response_language)
+        )
     return sanitized
 
 
 def sanitize_blocked_audit(audit: dict[str, Any]) -> dict[str, Any]:
     sanitized = dict(audit)
-    sanitized["routing_rationale"] = [BLOCKED_ROUTING_RATIONALE]
+    response_language = normalize_response_language(audit.get("response_language"))
+    sanitized["response_language"] = response_language
+    sanitized["routing_rationale"] = [
+        BLOCKED_ROUTING_RATIONALE_ZH
+        if response_language == "Chinese"
+        else BLOCKED_ROUTING_RATIONALE
+    ]
     return sanitized
 
 
@@ -180,17 +220,20 @@ class CoachResponse(BaseModel):
     @model_validator(mode="after")
     def sanitize_blocked_response(self) -> "CoachResponse":
         if self.blocked:
-            self.answer = BLOCKED_RESPONSE_ANSWER
+            self.audit = sanitize_blocked_audit(self.audit)
+            response_language = self.audit["response_language"]
+            self.answer = blocked_response_answer(response_language=response_language)
             self.sources = []
             self.agent_results = [
                 AgentResult.model_validate(item)
-                for item in sanitize_blocked_agent_results(self.agent_results)
+                for item in sanitize_blocked_agent_results(
+                    self.agent_results, response_language=response_language
+                )
             ]
             self.disclaimers = [
                 BLOCKED_EDUCATIONAL_DISCLAIMER,
-                BLOCKED_AGENT_RATIONALE,
+                blocked_agent_rationale(response_language=response_language),
             ]
-            self.audit = sanitize_blocked_audit(self.audit)
         return self
 
 
@@ -210,9 +253,11 @@ class OrchestrationTraceResponse(BaseModel):
     @model_validator(mode="after")
     def sanitize_blocked_trace(self) -> "OrchestrationTraceResponse":
         if self.blocked:
+            self.audit = sanitize_blocked_audit(self.audit)
             self.agent_results = [
                 AgentResult.model_validate(item)
-                for item in sanitize_blocked_agent_results(self.agent_results)
+                for item in sanitize_blocked_agent_results(
+                    self.agent_results, response_language=self.audit["response_language"]
+                )
             ]
-            self.audit = sanitize_blocked_audit(self.audit)
         return self

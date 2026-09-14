@@ -124,7 +124,8 @@ but generated-answer acceptance is **not passed**. Preserved bilingual pilots ex
 unsupported fee generalization between CPFIS and general ETFs, reserves translated
 as deposits, limits transferred between accounts, missing citations, and false
 safety blocks. A stronger APAC Nova Pro pilot also produced unsupported claims and
-citation errors. Neither model is approved by these pilots for a new deployment.
+citation errors. Neither pilot establishes generated-answer acceptance or approval
+for production financial use.
 
 Prompt set v7 remains opt-in; the application default is v6 and the existing demo
 was still running v5 at the time of the recovery check. The v7 candidate sets the
@@ -148,6 +149,22 @@ a pilot. Have a bilingual domain reviewer approve ambiguous account and product
 qualifications. Add a new unseen family-level holdout because the original holdout
 has already informed fixes. Keep corpus approval limited to the current synthetic
 demo until a separately reviewed use-scope and source update permits more.
+
+The subsequent 2026-09-15 Singapore-time demo release of main `c36423f` completed
+successfully (GitHub Actions release `34863374765`). All three running service image
+digests were checked against that commit's ECR images. The deployed prompt is v6
+with Nova Lite; v6 now also preserves a single education specialist's grounded
+summary, applies the requested explanation language, and repairs education routing
+that could otherwise omit retrieval. This demo deployment is separate from the
+unpassed production quality gate. Authenticated synthetic UI and ownership checks
+passed, including retrieval evidence for the Chinese education question. A fresh
+100-question online capture returned HTTP 200 for all requests, with 97/100 structural
+passes. Independent machine review rated 65 answers pass, 29 fail, and 6 uncertain;
+English passed 38/50 and Chinese 27/50. Failures include claim translation,
+completeness, and contradictory public explanations. These are separate measures,
+not a 97% semantic accuracy result. Their raw
+questions, answers, response hashes, failures, and reviewer judgments are retained
+in the local audit artifacts. Machine review is not bilingual domain approval.
 
 Do not claim 99% end-to-end quality or production readiness from retrieval scores,
 fixture safety tests, or a small selected pilot. All failed attempts remain evidence.

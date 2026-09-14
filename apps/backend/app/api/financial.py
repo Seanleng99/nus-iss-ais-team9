@@ -182,6 +182,7 @@ def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse 
         return None
     return ChatExplanationResponse(
         trace_id=trace.trace_id,
+        response_language=trace.audit.get("response_language", "English"),
         selected_agents=trace.selected_agents,
         routing_rationale=trace.audit.get("routing_rationale", []),
         agent_results=[

@@ -133,12 +133,18 @@ class BudgetAgent(BaseAgent):
         return AgentResult(
             agent=self.name,
             summary=(
-                "The deterministic budget calculation is available, but the approved "
-                "Education knowledge base does not contain enough information for the "
-                "requested investment explanation."
+                "已完成预算计算，但经批准的教育知识库没有足够资料提供所请求的投资解释。"
+                if grounding.get("response_language") == "Chinese"
+                else (
+                    "The deterministic budget calculation is available, but the approved "
+                    "Education knowledge base does not contain enough information for the "
+                    "requested investment explanation."
+                )
             ),
             rationale=[
-                (
+                "已保留计算结果，未提供缺乏资料支持的教育性内容。"
+                if grounding.get("response_language") == "Chinese"
+                else (
                     "Calculated values were preserved while unsupported educational "
                     "claims were withheld."
                 )

@@ -1,6 +1,7 @@
 from datetime import date
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 
@@ -443,13 +444,21 @@ def test_coach_answer_explains_rationale_confidence_and_reference() -> None:
     assert "Reference ID: trace-coach-session-1 · Prompt set: v4" in rendered_captions
 
 
-def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference() -> None:
+@pytest.mark.parametrize("language, warning", [
+    (None, "safety review blocked this response"),
+    ("English", "safety review blocked this response"),
+    ("Chinese", "此回复未通过安全审查"),
+])
+def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
+    language, warning,
+) -> None:
     app = AppTest.from_string(
         "from ui.pages import _render_coach_explanation\n"
         "_render_coach_explanation({"
         "'trace_id': 'trace-blocked', "
         "'prompt_set_version': 'v9', "
         "'blocked': True, "
+        f"'response_language': {language!r}, "
         "'routing_rationale': ['POISONED_MODEL_RATIONALE'], "
         "'agent_results': [{'agent': 'budget', 'rationale': ['POISONED_MODEL_RATIONALE']}]"
         "})"
@@ -461,5 +470,5 @@ def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference() -> 
     rendered_captions = "\n".join(item.value for item in app.caption)
     assert "POISONED_MODEL_RATIONALE" not in rendered_markdown
     assert "POISONED_MODEL_RATIONALE" not in rendered_warnings
-    assert "safety review blocked this response" in rendered_warnings
+    assert warning in rendered_warnings
     assert "Reference ID: trace-blocked · Prompt set: v9" in rendered_captions

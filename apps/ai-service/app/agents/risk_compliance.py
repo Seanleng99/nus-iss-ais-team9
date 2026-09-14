@@ -164,11 +164,21 @@ def contains_buy_sell_instruction(text: str) -> bool:
     return False
 
 
-def withhold_agent_result(result: AgentResult) -> AgentResult:
+def withhold_agent_result(
+    result: AgentResult, *, response_language: str = "English"
+) -> AgentResult:
     return AgentResult(
         agent=result.agent,
-        summary="Generated content was withheld by the final safety review.",
-        rationale=["The final safety review blocked this response."],
+        summary=(
+            "生成内容未通过最终安全审查，已被隐藏。"
+            if response_language == "Chinese"
+            else "Generated content was withheld by the final safety review."
+        ),
+        rationale=[
+            "最终安全审查已拦截此回复。"
+            if response_language == "Chinese"
+            else "The final safety review blocked this response."
+        ],
         confidence=1.0,
         blocked=True,
         policy_notes=[note for note in result.policy_notes if note in SAFE_POLICY_NOTES],

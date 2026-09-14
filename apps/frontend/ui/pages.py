@@ -145,7 +145,9 @@ def _render_coach_explanation(explanation: dict | None) -> None:
         )
         if explanation.get("blocked"):
             st.warning(
-                "The safety review blocked this response, so the assistant-generated "
+                "此回复未通过安全审查，因此已隐藏助手生成的指导内容。"
+                if explanation.get("response_language") == "Chinese"
+                else "The safety review blocked this response, so the assistant-generated "
                 "guidance was withheld."
             )
             trace_id = explanation.get("trace_id")

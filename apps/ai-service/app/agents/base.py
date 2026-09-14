@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from app.agents.education_access import education_gap_message
+from app.agents.education_access import education_gap_message, education_response_language
 from app.core.citations import citation_contract, validate_citations
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
@@ -106,10 +106,13 @@ class BaseAgent(ABC):
                 "from the supplied passages. Keep rationale to one brief assessment sentence "
                 "without additional financial facts."
             )
-        if grounding.get("response_language") in {"English", "Chinese"}:
+        response_language = grounding.get("response_language") or education_response_language(
+            decision.sanitized_text
+        )
+        if response_language in {"English", "Chinese"}:
             system_prompt += (
                 "\nRequired output language for THIS request: "
-                + grounding["response_language"]
+                + response_language
                 + ". Use this language for every summary, rationale and uncertainty sentence."
             )
         narrative = generate_structured_response(
@@ -294,7 +297,11 @@ class BaseAgent(ABC):
         return AgentResult(
             agent=self.name,
             summary=education_gap_message(grounding),
-            rationale=["No relevant approved source was retrieved."],
+            rationale=[
+                "未检索到相关的经批准资料。"
+                if grounding.get("response_language") == "Chinese"
+                else "No relevant approved source was retrieved."
+            ],
             confidence=1.0,
             data=grounding,
         )
