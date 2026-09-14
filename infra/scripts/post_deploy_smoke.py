@@ -151,6 +151,20 @@ def check_model_backed_coaching(
     assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
 
 
+def retrieval_provenance(sources: list[dict], label: str) -> dict[str, tuple[str, ...]]:
+    fields = ("document_version", "checksum", "corpus_version", "review_due_at")
+    indexed = {}
+    for source in sources:
+        assert isinstance(source, dict) and all(
+            isinstance(source.get(field), str) and source[field]
+            for field in ("source_id", *fields)
+        ), f"{label} contained incomplete source provenance"
+        source_id = source["source_id"]
+        assert source_id not in indexed, f"{label} contained duplicate source provenance"
+        indexed[source_id] = tuple(source[field] for field in fields)
+    return indexed
+
+
 def check_investment_education_rag(
     url: str,
     api_key: str,
@@ -198,9 +212,6 @@ def check_investment_education_rag(
     assert audit.get("retrieval_corpus_versions") == [expected_corpus_version], (
         "response trace did not identify the pinned retrieval corpus"
     )
-    assert len(audit.get("retrieval_sources", [])) == len(sources), (
-        "response trace did not retain every retrieved source"
-    )
     policy_sources = audit.get("policy_sources", [])
     assert policy_sources, "Risk and Compliance returned no approved policy sources"
     assert audit.get("policy_corpus_versions") == [expected_policy_corpus_version], (
@@ -228,6 +239,19 @@ def check_investment_education_rag(
     assert investment.get("data", {}).get("evidence_status") == "grounded", (
         "investment education response was not grounded"
     )
+    # The public bibliography can cite a subset. Audit evidence must retain ALL
+    # retrieved sources, including sources that did not appear in the answer.
+    retrieved = retrieval_provenance(
+        investment.get("data", {}).get("sources", []), "retrieved education evidence"
+    )
+    assert retrieved, "investment education result omitted retrieved sources"
+    cited = retrieval_provenance(sources, "education citations")
+    assert all(retrieved.get(key) == value for key, value in cited.items()), (
+        "education citation did not match retrieved source provenance"
+    )
+    assert retrieval_provenance(audit.get("retrieval_sources", []), "response trace") == retrieved, (
+        "response trace did not retain every retrieved source with matching provenance"
+    )
     compliance = next(
         (
             item
@@ -252,6 +276,9 @@ def check_investment_education_rag(
     assert trace.get("audit", {}).get("retrieval_corpus_versions") == [
         expected_corpus_version
     ], "persisted education trace did not retain the corpus version"
+    assert retrieval_provenance(
+        trace.get("audit", {}).get("retrieval_sources", []), "persisted trace"
+    ) == retrieved, "persisted education trace did not retain retrieved source provenance"
     assert trace.get("audit", {}).get("policy_corpus_versions") == [
         expected_policy_corpus_version
     ], "persisted trace did not retain the policy corpus version"
