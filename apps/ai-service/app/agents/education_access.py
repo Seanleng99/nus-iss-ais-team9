@@ -101,7 +101,7 @@ EDUCATION_DETAIL_PHRASES = (
     ("dividends", ("dividend", "dividends", "股息")),
     ("brokerage commissions", ("brokerage", "commissions", "commission", "经纪佣金")),
     ("net asset value", ("net asset value", "nav", "净值")),
-    ("tracking error", ("execution costs", "执行成本", "交易时点")),
+    ("tracking error", ("execution costs", "nav changes", "index movements", "执行成本", "交易时点", "净值的变化", "指数变化")),
     ("currency risk", ("foreign exchange", "base currency", "基础货币")),
     ("market makers liquidity", ("market maker", "market makers", "做市商")),
     ("traded price demand supply", ("trading price", "traded price", "交易价格")),
@@ -160,6 +160,18 @@ DETAILED_EDUCATION_TOPICS = {
     "Singapore Savings Bonds", "dollar-cost averaging",
 }
 
+CHINESE_GAP_LABELS = {
+    "bond duration": "债券久期",
+    "zero-coupon bonds": "零息债券",
+    "treasury bills": "国库券",
+    "Singapore Savings Bonds": "新加坡储蓄债券",
+    "dollar-cost averaging": "定期定额投资",
+    "tax treatment": "税务处理",
+    "tokenized assets": "代币化资产",
+    "crypto assets": "加密资产",
+    "options trading": "期权交易",
+}
+
 
 def unsupported_education_topics(message: str) -> list[str]:
     return list(dict.fromkeys(
@@ -171,7 +183,7 @@ def unsupported_education_topics(message: str) -> list[str]:
 def education_question_intent(message: str) -> str:
     for phrases, intent in (
         (("compare", "difference", "比较", "区别"), "comparison"),
-        (("why", "为什么"), "reason"),
+        (("why", "为什么", "为何"), "reason"),
         (("how", "如何", "怎样"), "mechanism"),
     ):
         if any(_contains_phrase(message.casefold(), phrase) for phrase in phrases):
@@ -248,7 +260,8 @@ def education_gap_message(grounding: dict) -> str:
     topics = grounding.get("unanswered_topics", [])
     if grounding.get("response_language") == "Chinese":
         message = "经批准的知识库没有足够资料回答这个问题。"
-        return message + ("未覆盖的主题：" + "、".join(topics) + "。" if topics else "")
+        labels = [CHINESE_GAP_LABELS.get(topic, topic) for topic in topics]
+        return message + ("未覆盖的主题：" + "、".join(labels) + "。" if labels else "")
     message = "The approved knowledge base does not contain enough information to answer this question."
     return message + (" Uncovered topics: " + ", ".join(topics) + "." if topics else "")
 

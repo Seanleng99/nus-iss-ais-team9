@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
     prompt_set_version: str = Field(
         default="v6",
-        pattern=r"^v(?:2|3|4|5|6)$",
+        pattern=r"^v(?:2|3|4|5|6|7)$",
         alias="PROMPT_SET_VERSION",
     )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")

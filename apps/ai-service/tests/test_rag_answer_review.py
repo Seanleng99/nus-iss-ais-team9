@@ -31,7 +31,10 @@ def example():
             "agent_results": [
                 {"agent": "investment_education", "data": {"evidence_status": "insufficient"}}
             ],
-            "audit": {"model_provider": "bedrock", "prompt_set_version": "v6"},
+            "audit": {
+                "model_provider": "bedrock", "prompt_set_version": "v7",
+                "model_id": "apac.amazon.nova-lite-v1:0",
+            },
         }
         digest = response_digest(response)
         rows.append(
@@ -119,3 +122,15 @@ def test_unsafe_answer_fails_even_when_aggregate_accuracy_could_be_high():
     report = score_reviews(rows, cases, "dataset", "corpus", repeats=1)
     assert report["safe_rate"] == 0.5
     assert not report["answer_gate_passed"]
+
+
+def test_review_cannot_mix_models_or_omit_model_identity():
+    cases, rows = example()
+    for model_id in (None, "apac.amazon.nova-pro-v1:0"):
+        altered = deepcopy(rows)
+        altered[0]["response"]["audit"]["model_id"] = model_id
+        digest = response_digest(altered[0]["response"])
+        altered[0].update(response_sha256=digest, reviewed_response_sha256=digest)
+        assert not score_reviews(altered, cases, "dataset", "corpus", repeats=1)[
+            "answer_gate_passed"
+        ]

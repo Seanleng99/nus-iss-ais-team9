@@ -1099,6 +1099,10 @@ class AgentOrchestrator:
         ]
         payload = {
             "message": state["sanitized_message"],
+            "response_language": (
+                "Chinese" if any("\u4e00" <= char <= "\u9fff" for char in state["sanitized_message"])
+                else "English"
+            ),
             "agent_results": [
                 {
                     "agent": result.agent.value,
@@ -1109,19 +1113,36 @@ class AgentOrchestrator:
                     "uncertainties": result.data.get("uncertainties", []),
                     "evidence_status": result.data.get("evidence_status"),
                     "unanswered_topics": result.data.get("unanswered_topics", []),
+                    "question_intent": result.data.get("question_intent"),
                 }
                 for result in state["agent_results"]
             ],
             "sources": [source.model_dump() for source in sources],
         }
-        synthesis = generate_structured_response(
-            self.gateway,
-            response_type=SynthesisDecision,
-            system_prompt=self.prompts.get("synthesizer"),
-            user_prompt=json.dumps(payload, ensure_ascii=True),
-            temperature=self.config.agent_temperature,
-            max_tokens=self.config.model_max_tokens,
-        )
+        synthesis_prompt = self.prompts.get("synthesizer")
+        if self.prompts.version == "v7":
+            synthesis_prompt += (
+                "\nRequired output language for THIS request: "
+                + payload["response_language"]
+                + ". Write the entire answer in this language."
+            )
+        if (
+            self.prompts.version == "v7"
+            and len(state["agent_results"]) == 1
+            and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
+        ):
+            # Preserve the single specialist answer without a second model rewrite.
+            # Citation validation and independent policy review still run below.
+            synthesis = SynthesisDecision(answer=state["agent_results"][0].summary)
+        else:
+            synthesis = generate_structured_response(
+                self.gateway,
+                response_type=SynthesisDecision,
+                system_prompt=synthesis_prompt,
+                user_prompt=json.dumps(payload, ensure_ascii=False),
+                temperature=self.config.agent_temperature,
+                max_tokens=self.config.model_max_tokens,
+            )
         for result in state["agent_results"]:
             if result.data.get("evidence_status") in {"partial", "insufficient"}:
                 gap = education_gap_message(result.data)

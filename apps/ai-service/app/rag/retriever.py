@@ -357,6 +357,8 @@ class BedrockEducationRetriever:
         return self._client
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        if not 1 <= top_k <= 20:
+            raise ValueError("top_k must be between 1 and 20")
         try:
             return self._retrieve(query, top_k)
         except Exception as exc:
@@ -370,7 +372,7 @@ class BedrockEducationRetriever:
             retrievalQuery={"text": query},
             retrievalConfiguration={
                 "vectorSearchConfiguration": {
-                    "numberOfResults": top_k,
+                    "numberOfResults": 20,
                     "filter": {
                         "andAll": [
                             {"equals": {"key": "corpus_version", "value": self.expected_corpus_version}},
@@ -434,7 +436,13 @@ class BedrockEducationRetriever:
                     score=score,
                 )
             )
-        return results
+        # Semantic retrieval finds candidate documents; lexical scoring selects
+        # the passages addressing the requested concepts within the same budget.
+        from app.rag.ranking import passage_scores
+
+        scores = passage_scores(query, [item.text for item in results])
+        ranked = sorted(range(len(results)), key=lambda index: scores[index], reverse=True)
+        return [results[index] for index in ranked[:top_k]]
 
 
 def create_education_retriever(settings: Settings) -> EducationRetriever:

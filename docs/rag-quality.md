@@ -72,8 +72,16 @@ Add `--provider bedrock` to the passage command after configuring the actual Edu
 Knowledge Base ID and corpus pin. This is read-only retrieval and does not publish
 documents. A local score cannot substitute for this run.
 
+The 2026-09-14 authenticated run measured 70/100 complete cases with the original
+managed retrieval, despite both knowledge bases being active. Fetching 20 candidates,
+retaining the existing semantic score and governance gates, then applying lexical
+passage ranking before returning the top three raised the fresh real-Bedrock run to
+100/100, with 100% passage recall and scope accuracy. Candidate text is not added to
+model context unless selected. The candidate pool and final context stay bounded.
+These are regression results on the same frozen benchmark, not an independent holdout.
+
 For answer capture, configure `MODEL_PROVIDER=bedrock`, `RAG_PROVIDER=bedrock`,
-`POLICY_RAG_PROVIDER=bedrock`, both approved KB IDs/pins, and `PROMPT_SET_VERSION=v6`:
+`POLICY_RAG_PROVIDER=bedrock`, both approved KB IDs/pins, and `PROMPT_SET_VERSION=v7`:
 
 ```sh
 python -m app.evals.rag_answer_review capture \
@@ -109,6 +117,37 @@ independent scrutiny; boolean scores are not semantic proof. These artifacts con
 only synthetic benchmark questions, public passages, and generated test responses;
 never use this capture flow with personal customer data.
 
-Real Bedrock passage and reviewed-answer results remain **not measured** while AWS
-authentication is unavailable. Do not claim 99% end-to-end quality or production
-readiness from the local benchmark.
+## Current release decision
+
+AWS authentication was restored on 2026-09-14. Real passage retrieval now passes,
+but generated-answer acceptance is **not passed**. Preserved bilingual pilots exposed
+unsupported fee generalization between CPFIS and general ETFs, reserves translated
+as deposits, limits transferred between accounts, missing citations, and false
+safety blocks. A stronger APAC Nova Pro pilot also produced unsupported claims and
+citation errors. Neither model is approved by these pilots for a new deployment.
+
+Prompt set v7 remains opt-in; the application default is v6 and the existing demo
+was still running v5 at the time of the recovery check. The v7 candidate sets the
+requested language explicitly, uses literal Unicode through policy review, retains
+a single education specialist's answer without a second generation, and requires
+a summary citation with at most one bounded contract correction. Policy review,
+source validation and output safety checks still apply. Valid citations establish
+provenance, not the truth of every claim. Rejected quote/translation experiments
+were removed from the application after measured regressions.
+
+The score command pins the expected model ID (Nova Lite by default). An explicitly
+selected comparison uses `--model-id` for both capture and scoring, matching the
+`MODEL_ID` environment setting. Results from different models cannot be mixed into
+one passing report. Changing the production model still requires the process in
+`docs/model-selection.md`; local comparison does not change deployed IAM or models.
+
+Before promotion, resolve the observed claim/translation defects, run the complete
+300-request capture, and independently review every result against the supplied
+passages. Do not launch a larger acceptance run merely to average away failures in
+a pilot. Have a bilingual domain reviewer approve ambiguous account and product
+qualifications. Add a new unseen family-level holdout because the original holdout
+has already informed fixes. Keep corpus approval limited to the current synthetic
+demo until a separately reviewed use-scope and source update permits more.
+
+Do not claim 99% end-to-end quality or production readiness from retrieval scores,
+fixture safety tests, or a small selected pilot. All failed attempts remain evidence.

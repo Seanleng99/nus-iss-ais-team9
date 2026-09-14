@@ -113,7 +113,9 @@ def financial_advice_findings(text: str) -> list[str]:
         for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS
         if (
             contains_return_guarantee(normalized)
-            if pattern == "guaranteed return" else pattern in normalized
+            if pattern == "guaranteed return" else
+            contains_buy_sell_instruction(normalized) if pattern == "buy or sell"
+            else pattern in normalized
         )
     ]
     findings.extend(
@@ -122,6 +124,25 @@ def financial_advice_findings(text: str) -> list[str]:
         if pattern.search(normalized)
     )
     return findings
+
+
+def contains_buy_sell_instruction(text: str) -> bool:
+    for sentence in re.split(r"[.!?;\n]", text):
+        for match in re.finditer(r"\bbuy or sell\b", sentence):
+            before, after = sentence[:match.start()], sentence[match.end():]
+            # The approved ETF guide describes a manager's execution constraints.
+            manager_constraint = re.search(
+                r"\bmanager(?:(?:'s|’s)? inability to| may be unable to)\s*$", before
+            )
+            component_stocks = re.match(r"\s+(?:the\s+)?component stocks\b", after)
+            policy_negation = re.search(
+                r"\b(?:no|not|never|without|avoids?)\s+"
+                r"(?:(?:provide|providing|give|giving|personalized|any|a)\s+){0,4}$",
+                before,
+            ) and re.match(r"\s+(?:or allocation\s+)?instructions?\b", after)
+            if not ((manager_constraint and component_stocks) or policy_negation):
+                return True
+    return False
 
 
 def withhold_agent_result(result: AgentResult) -> AgentResult:
@@ -299,7 +320,7 @@ class RiskComplianceAgent:
                         for result in results
                     ],
                 },
-                ensure_ascii=True,
+                ensure_ascii=False,
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,

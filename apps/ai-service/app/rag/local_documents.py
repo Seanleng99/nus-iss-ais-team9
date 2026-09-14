@@ -7,8 +7,9 @@ from hashlib import sha256
 from math import log
 from pathlib import Path
 
-from app.core.guardrails import normalize_for_security_inspection, sanitize_rag_document
+from app.core.guardrails import sanitize_rag_document
 from app.rag.ingestion import active_sources, governance_issues, load_source_manifest
+from app.rag.ranking import terms
 from app.rag.retriever import RetrievalError, RetrievedChunk, _is_trusted_education_url
 
 DEFAULT_CORPUS_ROOT = Path(__file__).resolve().parents[4] / "knowledge/investment_education"
@@ -66,64 +67,6 @@ def document_chunks(text: str) -> list[str]:
             raise RetrievalError("A local corpus paragraph exceeds the context limit.")
         chunks.append(chunk)
     return chunks
-
-
-STOP_WORDS = frozenset(
-    [
-        "a",
-        "an",
-        "the",
-        "and",
-        "or",
-        "of",
-        "to",
-        "for",
-        "in",
-        "on",
-        "at",
-        "by",
-        "is",
-        "are",
-        "be",
-        "as",
-        "with",
-        "from",
-        "about",
-        "investment",
-        "investments",
-        "general",
-        "education",
-    ]
-)
-
-
-def terms(text: str) -> list[str]:
-    text = normalize_for_security_inspection(text).casefold()
-    text = text.replace("%", " percent ")
-    for phrase, abbreviation in (
-        (r"exchange[ -]traded funds?", "etf"),
-        (r"cpf investment scheme", "cpfis"),
-        (r"ordinary account", "oa"),
-        (r"special account", "sa"),
-    ):
-        text = re.sub(phrase, abbreviation, text)
-    result = []
-    for word in re.findall(r"[a-z0-9]+", text):
-        if word in STOP_WORDS:
-            continue
-        if word.endswith("ies"):
-            word = word[:-3] + "y"
-        elif word.endswith("s") and not word.endswith("ss"):
-            word = word[:-1]
-        word = {
-            "lose": "loss",
-            "losing": "loss",
-            "tolerance": "appetite",
-            "reserve": "aside",
-            "stock": "share",
-        }.get(word, word)
-        result.append(word)
-    return result
 
 
 class LocalDocumentEducationRetriever:

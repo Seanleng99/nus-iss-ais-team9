@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 from hashlib import sha256
 from pathlib import Path
 
@@ -80,12 +81,15 @@ def capture(cases, config: Settings, dataset_digest: str, output: Path, repeats:
                 except (ModelGatewayError, RetrievalError, ValueError, TimeoutError) as exc:
                     # Provider messages can contain request details; retain only a bounded code.
                     row.update(response=None, response_sha256=None, error=type(exc).__name__)
+                    code = getattr(exc, "code", "")
+                    row["error_code"] = code if re.fullmatch(r"[A-Z0-9_]{1,80}", code) else None
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
                 handle.flush()
 
 
 def score_reviews(
-    rows: list[dict], cases, dataset_digest: str, corpus_version: str, repeats: int = 3
+    rows: list[dict], cases, dataset_digest: str, corpus_version: str, repeats: int = 3,
+    expected_model_id: str = "apac.amazon.nova-lite-v1:0",
 ) -> dict:
     if not cases or not 1 <= repeats <= 5:
         raise ValueError("A nonempty benchmark and 1–5 repeats are required")
@@ -132,7 +136,11 @@ def score_reviews(
             "model": "bedrock",
             "education": "bedrock",
             "policy": "bedrock",
-        } and (audit.get("model_provider") == "bedrock" and audit.get("prompt_set_version") == "v6")
+        } and (
+            audit.get("model_provider") == "bedrock"
+            and audit.get("prompt_set_version") == "v7"
+            and audit.get("model_id") == expected_model_id
+        )
         education = next(
             (
                 item.get("data", {})
@@ -166,6 +174,7 @@ def score_reviews(
     return {
         "measurement": "explicitly reviewed real-model answers; reviewer judgements are not automatic truth",
         "runs": len(rows),
+        "expected_model_id": expected_model_id,
         "reviewed_runs": complete_reviews,
         "passed_runs": passed,
         "accuracy": accuracy,
@@ -185,6 +194,7 @@ def main():
     parser.add_argument("--dataset", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--reviews", type=Path)
+    parser.add_argument("--model-id", default="apac.amazon.nova-lite-v1:0")
     args = parser.parse_args()
     manifest, docs = load_documents(
         DEFAULT_CORPUS_ROOT / "source_manifest.json", DEFAULT_CORPUS_ROOT / "documents"
@@ -195,9 +205,10 @@ def main():
         config = Settings()
         if (
             config.education_corpus_version != manifest.corpus_version
-            or config.prompt_set_version != "v6"
+            or config.prompt_set_version != "v7"
+            or config.model_id != args.model_id
         ):
-            parser.error("The configured corpus and prompt set must match the benchmark")
+            parser.error("The configured corpus, prompt set and model must match the benchmark")
         capture(cases, config, digest, args.output, repeats=3)
     else:
         if not args.reviews:
@@ -207,7 +218,9 @@ def main():
             for line in args.reviews.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
-        report = score_reviews(rows, cases, digest, manifest.corpus_version)
+        report = score_reviews(
+            rows, cases, digest, manifest.corpus_version, expected_model_id=args.model_id
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2))
