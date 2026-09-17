@@ -284,6 +284,19 @@ class GoalProgressResponse(BaseModel):
     monthly_required: float
 
 
+class SpendingInsight(BaseModel):
+    """Spending insight returned to frontend."""
+    insight_id: str
+    insight_type: Literal["trend", "pattern", "anomaly", "opportunity"]
+    title: str
+    description: str
+    category: str | None
+    confidence: float = Field(ge=0.0, le=1.0)
+    data_refs: list[str]
+    suggested_action: str | None
+    severity: str | None
+
+
 class DashboardResponse(BaseModel):
     period_start: date
     currency: str
@@ -295,6 +308,9 @@ class DashboardResponse(BaseModel):
     category_spending: dict[str, float]
     goals: list[GoalProgressResponse]
     transaction_count: int
+    spending_insights: list[SpendingInsight] = Field(default_factory=list)
+    spending_data_quality: str = "insufficient"
+    spending_months_analyzed: int = 0
 
 
 class ChatSessionCreate(BaseModel):
