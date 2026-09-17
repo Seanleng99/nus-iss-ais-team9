@@ -5,12 +5,13 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
+from datetime import timedelta
+
 from app.api.financial_schemas import (
-    AgentExplanationResponse,
+    BudgetCategoryInput,
     BudgetCategoryResponse,
     BudgetResponse,
     BudgetUpsert,
-    ChatExplanationResponse,
     ChatMessageResponse,
     ChatSessionCreate,
     ChatSessionResponse,
@@ -22,23 +23,19 @@ from app.api.financial_schemas import (
     DataLifecycleResponse,
     DemographicResponse,
     DemographicUpsert,
-    FairnessConsentResponse,
-    FairnessConsentUpdate,
-    FairnessProfileResponse,
+    FinancialLiteracy,
     GoalCreate,
     GoalProgressResponse,
     GoalResponse,
+    GoalUpdate,
     ProfileCreate,
     ProfileResponse,
-    ProfileSummary,
     ProfileUpsert,
-    SnapshotResponse,
+    SpendingInsight,
     TransactionCreate,
     TransactionResponse,
-    UserDataDeletionReceipt,
-    UserDataDeletionRequest,
-    UserDataExportResponse,
 )
+from app.services.spending_analyzer import analyze_spending_patterns, _generate_insights
 from app.core.config import settings
 from app.core.data_lifecycle import (
     DATA_EXPORT_SCHEMA_VERSION,
@@ -838,6 +835,41 @@ def get_dashboard(
     ]
     available_balance = monthly_income - total_spent
     savings_rate = available_balance / monthly_income * 100 if monthly_income else 0.0
+    
+    # NEW: Generate spending insights from 6 months of transaction history
+    spending_insights = []
+    spending_data_quality = "insufficient"
+    spending_months_analyzed = 0
+    
+    try:
+        # Fetch 6 months of transactions
+        six_months_ago = period_start - timedelta(days=180)
+        historical_transactions = budget_repository.get_transactions_in_range(
+            user_id, six_months_ago, period_start
+        )
+        
+        if len(historical_transactions) >= 10:
+            # Convert to analyzer format
+            txn_list = [
+                {
+                    "category": txn.category,
+                    "amount": {"currency": "SGD", "amount": float(txn.amount)},
+                    "occurred_on": txn.occurred_on.isoformat(),
+                }
+                for txn in historical_transactions
+            ]
+            
+            # Run analysis
+            analysis_result = analyze_spending_patterns(txn_list, period_start)
+            
+            # Generate insights
+            spending_insights = _generate_insights(analysis_result)
+            spending_data_quality = analysis_result["data_quality"]
+            spending_months_analyzed = analysis_result["months_analyzed"]
+    except Exception:
+        # Gracefully degrade - insights are optional
+        pass
+    
     return DashboardResponse(
         period_start=period_start,
         currency=currency,
@@ -851,4 +883,7 @@ def get_dashboard(
         category_spending=spending,
         goals=goals,
         transaction_count=budget_repository.transaction_count(user_id, period_start),
+        spending_insights=spending_insights,
+        spending_data_quality=spending_data_quality,
+        spending_months_analyzed=spending_months_analyzed,
     )

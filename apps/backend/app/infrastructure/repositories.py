@@ -826,6 +826,17 @@ class SQLAlchemyBudgetRepository:
             TransactionRecord.occurred_on < next_month(period_start),
         )
         return int(self.session.scalar(query) or 0)
+    
+    def get_transactions_in_range(
+        self, user_id: str, start_date: date, end_date: date
+    ) -> list[TransactionRecord]:
+        """Get all transactions for a user in a date range."""
+        query = select(TransactionRecord).where(
+            TransactionRecord.user_id == user_id,
+            TransactionRecord.occurred_on >= start_date,
+            TransactionRecord.occurred_on <= end_date,
+        ).order_by(TransactionRecord.occurred_on)
+        return list(self.session.scalars(query))
 
 
 class SQLAlchemyChatRepository:
