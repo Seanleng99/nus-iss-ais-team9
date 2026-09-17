@@ -231,8 +231,26 @@ def dashboard_page() -> None:
     rate.metric("Savings rate", percent(dashboard["savings_rate_percent"]))
 
     st.subheader("Spending")
+    
+    # NEW: Render spending insights if available
+    spending_insights = dashboard.get("spending_insights", [])
+    spending_data_quality = dashboard.get("spending_data_quality", "insufficient")
+    
+    if spending_insights:
+        from ui.components.spending_insights import render_spending_insights_section
+        render_spending_insights_section(spending_insights)
+        
+        # Show data quality indicator
+        if spending_data_quality in ["limited", "insufficient"]:
+            st.caption(
+                f"💡 Data quality: {spending_data_quality.title()}. "
+                f"Add more transactions for better insights."
+            )
+    
+    # Always show category breakdown chart
     category_spending = dashboard.get("category_spending", {})
     if category_spending:
+        st.markdown("### Category Breakdown")
         spending_frame = pd.DataFrame(
             {
                 "Category": [_category_label(name) for name in category_spending],

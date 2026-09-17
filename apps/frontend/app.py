@@ -12,6 +12,7 @@ from ui.pages import (
     transactions_page,
 )
 from ui.state import get_client, period_options, today_singapore
+from ui.styles import SPENDING_INSIGHTS_CSS
 from ui.telemetry import configure_logging
 
 configure_logging()
@@ -22,6 +23,7 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 apply_styles()
+st.markdown(SPENDING_INSIGHTS_CSS, unsafe_allow_html=True)
 require_authenticated_user()
 
 client = get_client()
