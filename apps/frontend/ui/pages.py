@@ -212,6 +212,65 @@ def _transaction_payload(
     }
 
 
+def _create_pie_chart(categories: list[str], amounts: list[float], currency: str) -> "go.Figure":
+    """
+    Create a pie chart for spending category distribution.
+    
+    Args:
+        categories: List of category names
+        amounts: List of amounts for each category
+        currency: Currency code (e.g., "SGD")
+    
+    Returns:
+        Plotly figure object
+    """
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        # Fallback if plotly not installed
+        return None
+    
+    # Color palette for categories
+    colors = [
+        "#18794e",  # Green
+        "#2563eb",  # Blue
+        "#dc2626",  # Red
+        "#d97706",  # Amber
+        "#7c3aed",  # Purple
+        "#db2777",  # Pink
+        "#0891b2",  # Cyan
+        "#65a30d",  # Lime
+        "#ea580c",  # Orange
+        "#4f46e5",  # Indigo
+    ]
+    
+    # Create labels with amounts
+    labels = [
+        f"{cat}<br>${amt:,.2f} {currency}"
+        for cat, amt in zip(categories, amounts)
+    ]
+    
+    fig = go.Figure(data=[
+        go.Pie(
+            labels=categories,
+            values=amounts,
+            hole=0.4,  # Donut chart
+            marker=dict(colors=colors[:len(categories)]),
+            textinfo="percent",
+            hoverinfo="label+value+percent",
+            textposition="outside",
+        )
+    ])
+    
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(t=30, b=30, l=30, r=30),
+        height=300,
+    )
+    
+    return fig
+
+
 def dashboard_page() -> None:
     client = get_client()
     user_id = get_user_id()
@@ -247,17 +306,38 @@ def dashboard_page() -> None:
                 f"Add more transactions for better insights."
             )
     
-    # Always show category breakdown chart
+    # Always show category breakdown with charts
     category_spending = dashboard.get("category_spending", {})
     if category_spending:
-        st.markdown("### Category Breakdown")
-        spending_frame = pd.DataFrame(
-            {
-                "Category": [_category_label(name) for name in category_spending],
-                "Amount": list(category_spending.values()),
-            }
-        ).set_index("Category")
-        st.bar_chart(spending_frame, horizontal=True, color="#18794e")
+        # Create columns for charts
+        chart_col1, chart_col2 = st.columns(2)
+        
+        # Prepare data for charts
+        categories = [_category_label(name) for name in category_spending]
+        amounts = list(category_spending.values())
+        spending_frame = pd.DataFrame({
+            "Category": categories,
+            "Amount": amounts
+        }).set_index("Category")
+        
+        with chart_col1:
+            st.markdown("#### Category Distribution")
+            # Pie chart for category distribution
+            st.plotly_chart(
+                _create_pie_chart(categories, amounts, currency),
+                use_container_width=True,
+                key="spending_pie_chart"
+            )
+        
+        with chart_col2:
+            st.markdown("#### Category Breakdown")
+            # Bar chart for comparison
+            st.bar_chart(
+                spending_frame,
+                horizontal=True,
+                color="#18794e",
+                use_container_width=True
+            )
     else:
         st.caption("No transactions recorded for this month.")
 
