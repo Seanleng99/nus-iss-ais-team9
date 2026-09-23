@@ -285,7 +285,7 @@ class GoalProgressResponse(BaseModel):
 
 
 class SpendingInsight(BaseModel):
-    """Spending insight returned to frontend."""
+    """Spending insight returned to frontend with explanations and suggestions."""
     insight_id: str
     insight_type: Literal["trend", "pattern", "anomaly", "opportunity"]
     title: str
@@ -293,8 +293,10 @@ class SpendingInsight(BaseModel):
     category: str | None
     confidence: float = Field(ge=0.0, le=1.0)
     data_refs: list[str]
-    suggested_action: str | None
-    severity: str | None
+    suggested_action: str | None = None
+    severity: str | None = None
+    explanation: str | None = None  # Why this matters
+    educational_context: str | None = None  # Learning information
 
 
 class DashboardResponse(BaseModel):

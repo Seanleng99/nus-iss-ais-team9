@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from app.api.financial_schemas import (
+    AgentExplanationResponse,
     BudgetCategoryInput,
     BudgetCategoryResponse,
     BudgetResponse,
     BudgetUpsert,
+    ChatExplanationResponse,
     ChatMessageResponse,
     ChatSessionCreate,
     ChatSessionResponse,
@@ -23,17 +25,25 @@ from app.api.financial_schemas import (
     DataLifecycleResponse,
     DemographicResponse,
     DemographicUpsert,
+    FairnessConsentResponse,
+    FairnessConsentUpdate,
+    FairnessProfileResponse,
     FinancialLiteracy,
     GoalCreate,
     GoalProgressResponse,
     GoalResponse,
-    GoalUpdate,
+    # GoalUpdate,
     ProfileCreate,
     ProfileResponse,
+    ProfileSummary,
     ProfileUpsert,
     SpendingInsight,
+    SnapshotResponse,
     TransactionCreate,
     TransactionResponse,
+    UserDataDeletionReceipt,
+    UserDataDeletionRequest,
+    UserDataExportResponse,
 )
 from app.services.spending_analyzer import analyze_spending_patterns, _generate_insights
 from app.core.config import settings

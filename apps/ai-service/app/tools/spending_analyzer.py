@@ -294,12 +294,32 @@ def calculate_months_available(transactions: list[dict]) -> int:
 
 def analyze_spending_patterns(
     transactions: list[dict],
-    current_month_start: date,
+    current_month_start: date | None = None,
 ) -> dict:
     """
     Main entry point for spending analysis.
     Returns structured data for LLM interpretation.
+    
+    Args:
+        transactions: List of transaction dicts
+        current_month_start: Start date of current month (optional, will use first day of current month if not provided)
     """
+    # Handle None or empty transactions
+    if not transactions:
+        return {
+            "category_trends": [],
+            "temporal_patterns": [],
+            "anomalies": [],
+            "data_quality": "insufficient",
+            "months_analyzed": 0,
+        }
+    
+    # Default to first day of current month if not provided
+    if current_month_start is None:
+        from datetime import date
+        today = date.today()
+        current_month_start = date(today.year, today.month, 1)
+    
     # Split into current vs previous month
     previous_month_start = current_month_start - timedelta(days=current_month_start.day)
     previous_month_end = current_month_start - timedelta(days=1)

@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass
 from statistics import mean, stdev
 from collections import defaultdict
 from typing import Literal
-from app.schemas.dashboard import SpendingInsight
+from app.api.financial_schemas import SpendingInsight
 
 
 @dataclass
@@ -129,9 +129,13 @@ def detect_temporal_patterns(transactions: list[dict]) -> list[TemporalPatternRe
         # Detect significant deviation (>60/40 split)
         if weekend_pct > 45 or weekday_pct > 75:
             variance = abs(weekend_pct - 29)  # baseline: 29% weekend
+            if weekend_pct > 45:
+                description = f"You spend {weekend_pct:.0f}% of your money on weekends"
+            else:
+                description = f"You spend {weekday_pct:.0f}% of your money on weekdays"
             patterns.append(TemporalPatternResult(
                 pattern_type="weekday_weekend",
-                description="Weekend spending concentration" if weekend_pct > 45 else "Weekday spending concentration",
+                description=description,
                 variance_percent=round(variance, 1),
                 confidence=0.85,
             ))
@@ -158,9 +162,10 @@ def detect_temporal_patterns(transactions: list[dict]) -> list[TemporalPatternRe
             if len(non_zero) >= 3 and stdev(non_zero) > overall_avg * 0.3:
                 max_day = max(range(7), key=lambda d: daily_averages[d])
                 variance = ((daily_averages[max_day] - overall_avg) / overall_avg) * 100 if overall_avg > 0 else 0
+                description = f"You tend to spend more on {day_name(max_day)}s ({daily_averages[max_day]:.1f} avg vs {overall_avg:.1f} daily avg)"
                 patterns.append(TemporalPatternResult(
                     pattern_type="day_of_week",
-                    description=f"High spending on {day_name(max_day)}",
+                    description=description,
                     variance_percent=round(abs(variance), 1),
                     confidence=0.75,
                 ))
@@ -334,6 +339,23 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
     # Generate insights from trends
     for trend in analysis_result.get("category_trends", [])[:3]:
         if trend["significance"] in ["high", "moderate"]:
+            explanation = (
+                f"This trend indicates a consistent change in your {trend['category']} spending. "
+                f"A {trend['direction']} of {abs(trend['change_percent']):.0f}% over one month "
+                f"could significantly impact your budget if it continues."
+            )
+            
+            if trend["direction"] == "increased":
+                suggested_action = (
+                    f"Consider reviewing your {trend['category']} expenses to identify areas where you can cut back. "
+                    f"Set a monthly budget limit for this category and track your progress."
+                )
+            else:
+                suggested_action = (
+                    f"Great job reducing your {trend['category']} spending! "
+                    f"Consider redirecting these savings to your emergency fund or investment goals."
+                )
+            
             insights.append(SpendingInsight(
                 insight_id=f"trend_{trend['category']}_{trend['direction']}",
                 insight_type="trend",
@@ -349,12 +371,35 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
                     f"category:{trend['category']}",
                     f"change:{trend['change_percent']}%",
                 ],
-                suggested_action=None,
+                suggested_action=suggested_action,
                 severity=None,
+                explanation=explanation,
+                educational_context=(
+                    f"**Understanding spending trends:** Tracking month-over-month changes helps you "
+                    f"identify habits early. A 10-20% change is normal, but anything above 30% may warrant attention."
+                ),
             ))
     
     # Generate insights from anomalies
     for anomaly in analysis_result.get("anomalies", [])[:2]:
+        explanation = (
+            f"This expense stands out significantly from your typical {anomaly['category']} spending pattern. "
+            f"Statistical analysis shows it's {anomaly['deviation_percent']:.0f}% above your normal range, "
+            f"which occurs in less than 5% of typical spending behavior."
+        )
+        
+        if anomaly["severity"] == "high":
+            suggested_action = (
+                f"⚠️ **High priority:** Review this ${anomaly['amount']:.2f} expense immediately. "
+                f"Consider if this was a one-time purchase or if it indicates a change in spending habits. "
+                f"If unplanned, look for ways to offset this in other categories this month."
+            )
+        else:
+            suggested_action = (
+                f"💡 **Consider:** While this ${anomaly['amount']:.2f} expense is higher than usual, "
+                f"it may be a planned or necessary purchase. Review to ensure it fits your overall budget goals."
+            )
+        
         insights.append(SpendingInsight(
             insight_id=f"anomaly_{anomaly['category']}_{anomaly['occurred_on']}",
             insight_type="anomaly",
@@ -370,14 +415,56 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
                 f"amount:{anomaly['amount']}",
                 f"expected:{anomaly['expected_amount']}",
             ],
-            suggested_action="Review this expense to confirm it aligns with your budget.",
+            suggested_action=suggested_action,
             severity=anomaly["severity"],
+            explanation=explanation,
+            educational_context=(
+                f"**What is a spending anomaly?** Anomalies are expenses that deviate significantly "
+                f"from your normal patterns. They're not necessarily bad—could be emergencies, celebrations, "
+                f"or investments. The key is to be aware and intentional about them."
+            ),
         ))
     
     # Generate insights from temporal patterns
     for pattern in analysis_result.get("temporal_patterns", [])[:2]:
+        # Use friendly pattern name instead of technical term
+        pattern_type = pattern["pattern_type"]
+        if "weekend" in pattern_type.lower():
+            friendly_pattern = "weekend vs weekday habits"
+        elif "day_of_week" in pattern_type.lower():
+            friendly_pattern = "specific days of the week"
+        else:
+            friendly_pattern = "timing patterns"
+        
+        explanation = (
+            f"Your spending shows a consistent pattern based on {friendly_pattern}. "
+            f"This {pattern['variance_percent']:.0f}% variance suggests your spending behavior changes "
+            f"predictably during certain times, which can be leveraged for better budget planning."
+        )
+        
+        if "weekend" in pattern_type.lower() or "weekday" in pattern_type.lower():
+            suggested_action = (
+                f"📅 **Weekend planning:** Since you tend to spend more during weekends, "
+                f"try setting a weekend-specific budget or planning activities in advance "
+                f"to avoid impulse spending. Consider meal prepping to reduce dining out."
+            )
+            educational_context = (
+                f"**Weekend spending patterns:** Many people spend 20-40% more on weekends due to "
+                f"social activities, dining out, and leisure. Being aware of this pattern helps you "
+                f"plan ahead and make conscious spending decisions."
+            )
+        else:
+            suggested_action = (
+                f"📊 **Pattern awareness:** Now that you know your spending varies by timing, "
+                f"try to plan larger purchases during your lower-spending periods to stay within budget."
+            )
+            educational_context = (
+                f"**Temporal spending patterns:** Understanding when you spend more helps you "
+                f"anticipate and plan for high-spending periods, making it easier to stay on track with your financial goals."
+            )
+        
         insights.append(SpendingInsight(
-            insight_id=f"pattern_{pattern['pattern_type']}",
+            insight_id=f"pattern_{pattern_type}",
             insight_type="pattern",
             title=pattern["description"],
             description=(
@@ -387,11 +474,13 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
             category=None,
             confidence=pattern["confidence"],
             data_refs=[
-                f"pattern_type:{pattern['pattern_type']}",
+                f"pattern_type:{friendly_pattern}",
                 f"variance:{pattern['variance_percent']}%",
             ],
-            suggested_action=None,
+            suggested_action=suggested_action,
             severity=None,
+            explanation=explanation,
+            educational_context=educational_context,
         ))
     
     # Sort by confidence and return top 5

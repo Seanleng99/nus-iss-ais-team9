@@ -201,4 +201,9 @@ with st.sidebar:
         disabled=not has_active_profile,
     )
 
-navigation.run()
+# Handle navigation from query params
+if st.query_params.get("page") == "coach":
+    st.query_params["page"] = ""
+    st.switch_page(coach)
+else:
+    navigation.run()

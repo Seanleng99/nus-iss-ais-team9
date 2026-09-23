@@ -1,7 +1,7 @@
 import json
 import re
 from contextlib import nullcontext
-from datetime import date
+from datetime import date, datetime
 
 import httpx
 import pandas as pd
@@ -277,51 +277,115 @@ def dashboard_page() -> None:
 
     st.subheader("Spending")
     
+    # Add context description
+    st.markdown(
+        """
+        <div style="margin-bottom: 20px; color: #6b7280; font-size: 14px;">
+            Track your spending patterns and get personalized insights to understand 
+            where your money goes each month. Add transactions regularly to unlock 
+            smarter analysis and recommendations.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
     # NEW: Render spending insights if available
     spending_insights = dashboard.get("spending_insights", [])
     spending_data_quality = dashboard.get("spending_data_quality", "insufficient")
+    spending_months_analyzed = dashboard.get("spending_months_analyzed", 0)
     
     if spending_insights:
-        from ui.components.spending_insights import render_spending_insights_section
+        from ui.spending_insights_component.spending_insights import render_spending_insights_section
         render_spending_insights_section(spending_insights)
         
         # Show data quality indicator
         if spending_data_quality in ["limited", "insufficient"]:
-            st.caption(
-                f"💡 Data quality: {spending_data_quality.title()}. "
-                f"Add more transactions for better insights."
+            st.info(
+                f"💡 **Data Quality: {spending_data_quality.title()}**  "
+                f"You have {spending_months_analyzed} month(s) of transaction data. "
+                f"For more accurate insights and pattern detection, aim for at least 3 months of consistent transaction tracking."
+            )
+        elif spending_data_quality == "good":
+            st.success(
+                f"✅ **Data Quality: Good**  "
+                f"You have {spending_months_analyzed} months of transaction data. Keep tracking to unlock even deeper insights!"
+            )
+        else:  # excellent
+            st.success(
+                f"✅ **Data Quality: Excellent**  "
+                f"You have {spending_months_analyzed}+ months of transaction data. You're getting the most accurate insights possible!"
             )
     
-    # Always show category breakdown chart (prefer pie chart, fallback to bar chart)
+    # Show category charts: Pie chart (distribution) + Bar chart (breakdown)
     category_spending = dashboard.get("category_spending", {})
     if category_spending:
         categories = [_category_label(name) for name in category_spending]
         amounts = list(category_spending.values())
         
-        # Try to show pie chart first
-        pie_chart = _create_pie_chart(categories, amounts, currency)
+        # Show summary metrics
+        metric_cols = st.columns(2)
+        metric_cols[0].metric(
+            "Categories",
+            str(len(categories)),
+            delta=None
+        )
+        metric_cols[1].metric(
+            "Average per Category",
+            money(sum(amounts) / len(categories), currency) if categories else money(0, currency),
+            delta=None
+        )
         
-        if pie_chart is not None:
-            # Pie chart available - show it
-            st.markdown("#### Category Distribution")
+        # Chart 1: Pie Chart - Category Distribution
+        st.markdown("#### Category Distribution")
+        st.markdown(
+            "<div style='color: #6b7280; font-size: 13px; margin-bottom: 10px;'>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "This chart shows how your spending is distributed across different categories as percentages. "
+            "Each slice represents the proportion of your total spending for that category. "
+            "Larger slices indicate categories where you spend a higher percentage of your budget. "
+            "Hover over any slice to see the exact amount and percentage."
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        pie_chart = _create_pie_chart(categories, amounts, currency)
+        if pie_chart:
             st.plotly_chart(pie_chart, use_container_width=True, key="spending_pie_chart")
         else:
-            # Fallback to bar chart if plotly not available
-            st.markdown("#### Category Breakdown")
-            spending_frame = pd.DataFrame(
-                {
-                    "Category": categories,
-                    "Amount": amounts,
-                }
-            ).set_index("Category")
-            st.bar_chart(
-                spending_frame,
-                horizontal=True,
-                color="#18794e",
-                use_container_width=True
-            )
+            st.info("📊 Install plotly for pie chart: `pip install plotly`")
+        
+        # Chart 2: Bar Chart - Category Breakdown
+        st.markdown("#### Category Breakdown")
+        st.markdown(
+            "<div style='color: #6b7280; font-size: 13px; margin-bottom: 10px;'>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "This chart displays the actual spending amounts for each category, making it easy to compare "
+            "where your money is going. Categories are arranged to help you quickly identify your top "
+            "spending areas. Use this view to spot categories that might need attention or budget adjustments."
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        spending_frame = pd.DataFrame(
+            {
+                "Category": categories,
+                "Amount": amounts,
+            }
+        ).set_index("Category")
+        st.bar_chart(
+            spending_frame,
+            horizontal=True,
+            color="#18794e",
+            use_container_width=True
+        )
     else:
-        st.caption("No transactions recorded for this month.")
+        st.info(
+            "📝 **No transactions recorded yet**  "
+            "Start by adding your transactions in the Transactions tab. As you add more data, "
+            "you'll see your spending patterns visualized here with helpful insights."
+        )
 
     budget = dashboard.get("budget")
     st.subheader("Budget")
@@ -440,19 +504,58 @@ def transactions_page() -> None:
         )
 
         st.subheader("Manage transaction")
+        
+        # Month filter for viewing historical transactions
+        st.caption("View transactions from different months")
+        
+        # Get ALL transactions (no period filter) to extract available months
+        all_transactions = backend_call(lambda: client.list_transactions(user_id, None)) or []
+        
+        # Extract unique months from all transactions
+        if all_transactions:
+            transaction_months = sorted(set(
+                datetime.strptime(item["occurred_on"], "%Y-%m-%d").strftime("%Y-%m")
+                for item in all_transactions
+            ), reverse=True)
+            
+            # Add current month if not present
+            current_month = period_start.strftime("%Y-%m")
+            if current_month not in transaction_months:
+                transaction_months.insert(0, current_month)
+        else:
+            transaction_months = [period_start.strftime("%Y-%m")]
+        
+        selected_month = st.selectbox(
+            "Filter by month",
+            options=transaction_months,
+            format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%B %Y"),
+            index=0,
+            key=f"transactions-{user_id}-month-filter"
+        )
+        
+        # Convert selected month to period_start date
+        selected_year, selected_month_num = map(int, selected_month.split("-"))
+        filter_period_start = date(selected_year, selected_month_num, 1)
+        
+        # Fetch transactions for selected month
+        filtered_transactions = backend_call(lambda: client.list_transactions(user_id, filter_period_start)) or []
+        
+        # Use filtered transactions for the rest of the page
+        display_transactions = filtered_transactions if filtered_transactions else transactions
+        
         selected_id = st.selectbox(
             "Transaction",
-            [item["id"] for item in transactions],
+            [item["id"] for item in display_transactions],
             index=None,
             format_func=lambda value: next(
                 f"{item['occurred_on']} · {item['description']}"
-                for item in transactions
+                for item in display_transactions
                 if item["id"] == value
             ),
             key=f"manage-transaction-{user_id}-selection-v2",
         )
         if selected_id is not None:
-            selected = next(item for item in transactions if item["id"] == selected_id)
+            selected = next(item for item in display_transactions if item["id"] == selected_id)
             selected_category = (
                 selected["category"] if selected["category"] in CATEGORIES else "other"
             )
@@ -737,8 +840,22 @@ def _render_coach_message(message: dict) -> None:
 def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
+    
+    # Check if there's a pending question from insight cards with navigation flag
+    pending_question = st.session_state.pop("pending_coach_question", None)
+    should_navigate = st.session_state.pop("navigate_to_coach", False)
+    
     with st.container(key="coach-page-header"):
         page_header("Coach", "Financial education", marker_class="coach-shell")
+    
+    # If we have a pending question and navigation was triggered, auto-submit it
+    if pending_question and should_navigate:
+        st.info(f"💬 **Asking Coach:** \"{pending_question}\"")
+        # Set the question to be sent
+        st.session_state.coach_pending_question = pending_question
+        # Trigger the send
+        st.session_state.coach_auto_submit = True
+        st.rerun()
 
     sessions = backend_call(lambda: client.list_chat_sessions(user_id)) or []
     session_by_id = {item["id"]: item for item in sessions}
@@ -869,7 +986,10 @@ def coach_page() -> None:
                     st.session_state.pop("coach_delete_open", None)
                     st.rerun()
 
+    # Check for pending question (from insight cards or chat input)
     pending_question = st.session_state.pop("coach_pending_question", None)
+    auto_submit = st.session_state.pop("coach_auto_submit", False)
+    
     if pending_question and active_session_id is None:
         title = pending_question[:117] + "..." if len(pending_question) > 120 else pending_question
         created_session = backend_call(
@@ -878,6 +998,11 @@ def coach_page() -> None:
         if created_session:
             active_session_id = created_session["id"]
             st.session_state.coach_active_session_id = active_session_id
+    
+    # Auto-submit if flag is set
+    if pending_question and auto_submit:
+        st.session_state.coach_pending_question = pending_question
+        st.rerun()
 
     pending_render = st.session_state.get("coach_pending_render")
     if pending_render and pending_render["journey_id"] != st.session_state.get("journey_id"):

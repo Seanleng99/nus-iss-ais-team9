@@ -200,11 +200,14 @@ class BackendClient:
         return self._request("PUT", f"/api/users/{user_id}/demographics", json=payload)
 
     @_trace_operation
-    def list_transactions(self, user_id: str, period_start: date) -> list[dict[str, Any]]:
+    def list_transactions(
+        self, user_id: str, period_start: date | None = None
+    ) -> list[dict[str, Any]]:
+        params = {"period_start": period_start.isoformat()} if period_start else None
         return self._request(
             "GET",
             f"/api/users/{user_id}/transactions",
-            params={"period_start": period_start.isoformat()},
+            params=params,
         )
 
     @_trace_operation
