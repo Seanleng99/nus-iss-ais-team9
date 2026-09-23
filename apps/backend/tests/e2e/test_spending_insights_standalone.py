@@ -1,6 +1,6 @@
 """
 Spending Insights E2E Test (Standalone)
-========================================
+=======================================
 Tests the complete spending insights flow without requiring full backend infrastructure.
 
 This test validates:
@@ -9,18 +9,12 @@ This test validates:
 3. Dashboard response format is valid
 
 Run:
-    python tests/e2e/test_spending_insights_standalone.py -v
+    pytest tests/e2e/test_spending_insights_standalone.py -v
 """
 
-import sys
-from datetime import date, timedelta
-from pathlib import Path
+from datetime import date
 
-# Add AI service to path
-ai_service_path = Path(__file__).parent.parent.parent.parent / "ai-service" / "app"
-sys.path.insert(0, str(ai_service_path))
-
-from tools.spending_analyzer import analyze_spending_patterns
+from app.services.spending_analyzer import analyze_spending_patterns
 
 
 def test_dashboard_insights_structure():
@@ -151,5 +145,7 @@ def test_empty_data_handling():
 
 
 if __name__ == "__main__":
+    import sys
+
     import pytest
     sys.exit(pytest.main([__file__, "-v"]))

@@ -1,15 +1,12 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
-from datetime import timedelta
-
 from app.api.financial_schemas import (
     AgentExplanationResponse,
-    BudgetCategoryInput,
     BudgetCategoryResponse,
     BudgetResponse,
     BudgetUpsert,
@@ -28,7 +25,6 @@ from app.api.financial_schemas import (
     FairnessConsentResponse,
     FairnessConsentUpdate,
     FairnessProfileResponse,
-    FinancialLiteracy,
     GoalCreate,
     GoalProgressResponse,
     GoalResponse,
@@ -37,7 +33,6 @@ from app.api.financial_schemas import (
     ProfileResponse,
     ProfileSummary,
     ProfileUpsert,
-    SpendingInsight,
     SnapshotResponse,
     TransactionCreate,
     TransactionResponse,
@@ -45,7 +40,6 @@ from app.api.financial_schemas import (
     UserDataDeletionRequest,
     UserDataExportResponse,
 )
-from app.services.spending_analyzer import analyze_spending_patterns, _generate_insights
 from app.core.config import settings
 from app.core.data_lifecycle import (
     DATA_EXPORT_SCHEMA_VERSION,
@@ -62,7 +56,7 @@ from app.core.security import (
     require_owned_path_user,
     require_principal,
 )
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 from app.domain.schemas import MoneyAmount
 from app.infrastructure.database import get_db_session
 from app.infrastructure.models import (
@@ -85,6 +79,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyTransactionRepository,
     SQLAlchemyUserRepository,
 )
+from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
 router = APIRouter(dependencies=[Depends(require_owned_path_user)])
 UserId = Annotated[str, Path(min_length=1, max_length=128)]
@@ -876,9 +871,9 @@ def get_dashboard(
             spending_insights = _generate_insights(analysis_result)
             spending_data_quality = analysis_result["data_quality"]
             spending_months_analyzed = analysis_result["months_analyzed"]
-    except Exception:
+    except (KeyError, TypeError, ValueError) as insight_error:
         # Gracefully degrade - insights are optional
-        pass
+        log_event("dashboard.spending_insights_failed", error=str(insight_error))
     
     return DashboardResponse(
         period_start=period_start,

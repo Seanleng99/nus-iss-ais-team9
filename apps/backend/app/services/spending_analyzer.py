@@ -1,8 +1,9 @@
-from datetime import date, timedelta
-from dataclasses import asdict, dataclass
-from statistics import mean, stdev
 from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import date, timedelta
+from statistics import mean, stdev
 from typing import Literal
+
 from app.api.financial_schemas import SpendingInsight
 
 
@@ -375,8 +376,8 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
                 severity=None,
                 explanation=explanation,
                 educational_context=(
-                    f"**Understanding spending trends:** Tracking month-over-month changes helps you "
-                    f"identify habits early. A 10-20% change is normal, but anything above 30% may warrant attention."
+                    "**Understanding spending trends:** Tracking month-over-month changes helps you "
+                    "identify habits early. A 10-20% change is normal, but anything above 30% may warrant attention."
                 ),
             ))
     
@@ -419,9 +420,9 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
             severity=anomaly["severity"],
             explanation=explanation,
             educational_context=(
-                f"**What is a spending anomaly?** Anomalies are expenses that deviate significantly "
-                f"from your normal patterns. They're not necessarily bad—could be emergencies, celebrations, "
-                f"or investments. The key is to be aware and intentional about them."
+                "**What is a spending anomaly?** Anomalies are expenses that deviate significantly "
+                "from your normal patterns. They're not necessarily bad—could be emergencies, celebrations, "
+                "or investments. The key is to be aware and intentional about them."
             ),
         ))
     
@@ -444,23 +445,23 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
         
         if "weekend" in pattern_type.lower() or "weekday" in pattern_type.lower():
             suggested_action = (
-                f"📅 **Weekend planning:** Since you tend to spend more during weekends, "
-                f"try setting a weekend-specific budget or planning activities in advance "
-                f"to avoid impulse spending. Consider meal prepping to reduce dining out."
+                "📅 **Weekend planning:** Since you tend to spend more during weekends, "
+                "try setting a weekend-specific budget or planning activities in advance "
+                "to avoid impulse spending. Consider meal prepping to reduce dining out."
             )
             educational_context = (
-                f"**Weekend spending patterns:** Many people spend 20-40% more on weekends due to "
-                f"social activities, dining out, and leisure. Being aware of this pattern helps you "
-                f"plan ahead and make conscious spending decisions."
+                "**Weekend spending patterns:** Many people spend 20-40% more on weekends due to "
+                "social activities, dining out, and leisure. Being aware of this pattern helps you "
+                "plan ahead and make conscious spending decisions."
             )
         else:
             suggested_action = (
-                f"📊 **Pattern awareness:** Now that you know your spending varies by timing, "
-                f"try to plan larger purchases during your lower-spending periods to stay within budget."
+                "📊 **Pattern awareness:** Now that you know your spending varies by timing, "
+                "try to plan larger purchases during your lower-spending periods to stay within budget."
             )
             educational_context = (
-                f"**Temporal spending patterns:** Understanding when you spend more helps you "
-                f"anticipate and plan for high-spending periods, making it easier to stay on track with your financial goals."
+                "**Temporal spending patterns:** Understanding when you spend more helps you "
+                "anticipate and plan for high-spending periods, making it easier to stay on track with your financial goals."
             )
         
         insights.append(SpendingInsight(
