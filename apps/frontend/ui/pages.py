@@ -1,7 +1,7 @@
 import json
 import re
 from contextlib import nullcontext
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 import pandas as pd
@@ -241,16 +241,16 @@ def _create_pie_chart(categories: list[str], amounts: list[float], currency: str
             labels=categories,
             values=amounts,
             hole=0.4,  # Donut chart
-            marker=dict(colors=colors[:len(categories)]),
+            marker={"colors": colors[:len(categories)]},
             textinfo="percent",
             hoverinfo="label+value+percent",
             textposition="outside",
         )
     ])
-    
+
     fig.update_layout(
         showlegend=False,
-        margin=dict(t=30, b=30, l=30, r=30),
+        margin={"t": 30, "b": 30, "l": 30, "r": 30},
         height=300,
     )
     
@@ -295,7 +295,9 @@ def dashboard_page() -> None:
     spending_months_analyzed = dashboard.get("spending_months_analyzed", 0)
     
     if spending_insights:
-        from ui.spending_insights_component.spending_insights import render_spending_insights_section
+        from ui.spending_insights_component.spending_insights import (
+            render_spending_insights_section,
+        )
         render_spending_insights_section(spending_insights)
         
         # Show data quality indicator
@@ -513,22 +515,22 @@ def transactions_page() -> None:
         
         # Extract unique months from all transactions
         if all_transactions:
-            transaction_months = sorted(set(
-                datetime.strptime(item["occurred_on"], "%Y-%m-%d").strftime("%Y-%m")
+            transaction_months = sorted({
+                datetime.strptime(item["occurred_on"], "%Y-%m-%d").replace(tzinfo=UTC).strftime("%Y-%m")
                 for item in all_transactions
-            ), reverse=True)
-            
+            }, reverse=True)
+
             # Add current month if not present
             current_month = period_start.strftime("%Y-%m")
             if current_month not in transaction_months:
                 transaction_months.insert(0, current_month)
         else:
             transaction_months = [period_start.strftime("%Y-%m")]
-        
+
         selected_month = st.selectbox(
             "Filter by month",
             options=transaction_months,
-            format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%B %Y"),
+            format_func=lambda x: datetime.strptime(x + "-01", "%Y-%m-%d").replace(tzinfo=UTC).strftime("%B %Y"),
             index=0,
             key=f"transactions-{user_id}-month-filter"
         )

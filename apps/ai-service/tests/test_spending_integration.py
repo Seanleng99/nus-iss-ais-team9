@@ -10,8 +10,10 @@ Run:
     pytest tests/test_spending_integration.py -v
 """
 
-import pytest
 from datetime import date
+
+import pytest
+
 from app.tools.spending_analyzer import analyze_spending_patterns
 
 

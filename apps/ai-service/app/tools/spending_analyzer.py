@@ -1,7 +1,7 @@
-from dataclasses import asdict, dataclass
-from datetime import date, timedelta
-from statistics import mean, stdev
 from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import UTC, date, timedelta
+from statistics import mean, stdev
 from typing import Literal
 
 
@@ -316,8 +316,8 @@ def analyze_spending_patterns(
     
     # Default to first day of current month if not provided
     if current_month_start is None:
-        from datetime import date
-        today = date.today()
+        from datetime import datetime as _datetime
+        today = _datetime.now(tz=UTC).date()
         current_month_start = date(today.year, today.month, 1)
     
     # Split into current vs previous month

@@ -1,10 +1,10 @@
-import pytest
 from datetime import date
+
 from app.tools.spending_analyzer import (
-    compute_category_trends,
-    detect_temporal_patterns,
-    detect_anomalies,
     analyze_spending_patterns,
+    compute_category_trends,
+    detect_anomalies,
+    detect_temporal_patterns,
 )
 
 

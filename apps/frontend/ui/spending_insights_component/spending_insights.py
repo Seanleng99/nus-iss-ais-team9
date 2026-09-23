@@ -1,5 +1,6 @@
-import streamlit as st
 from typing import Literal
+
+import streamlit as st
 
 InsightType = Literal["trend", "pattern", "anomaly", "opportunity"]
 
