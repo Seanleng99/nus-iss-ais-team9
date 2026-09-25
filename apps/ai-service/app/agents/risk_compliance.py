@@ -81,11 +81,76 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     ),
 )
 
+CROSS_USER_DATA_ACCESS_REGEXES = (
+    (
+        "cross_user_reference",
+        re.compile(
+            r"\b(?:another|other|different)\s+"
+            r"(?:user|users|person|people|member|members|"
+            r"customer|customers|client|clients)\b"
+            r"|\b(?:someone|somebody)\s+else'?s?\b"
+            r"|\bother\s+people'?s?\b"
+            r"|\bthird[-\s]party\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "third_party_request",
+        re.compile(
+            r"\b(?:show|tell|give|reveal|display|share|see|view|access|get|"
+            r"find|look\s*up|pull\s*up|what(?:'s| is| are)|how\s+much)\b"
+            r"[^.?!]{0,40}\b(?:her|his|their|hers|him)\b"
+            r"[^.?!]{0,25}\b(?:income|salary|salaries|wage|wages|account|"
+            r"balance|savings|transactions?|earnings|pay|payslip)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "cross_user_reference",
+        re.compile(
+            r"(?:其他|另一|别的|別的|别人|別人|他人)"
+            r"(?:用户|用戶|人|会员|會員|客户|客戶)?"
+            r"[^。？！]{0,20}"
+            r"(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|"
+            r"财务|財務|资料|資料|数据|數據)"
+        ),
+    ),
+    (
+        "third_party_request",
+        re.compile(
+            r"(?:显示|顯示|告诉|告訴|查看|查询|查詢|给我|給我|透露|看看)"
+            r"[^。？！]{0,20}(?:她|他|他们|他們)"
+            r"[^。？！]{0,15}(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款)"
+        ),
+    ),
+)
+
+
+def cross_user_data_findings(text: str) -> list[str]:
+    """Flag attempts to read another user's account or financial data.
+
+    Only the user's own request is inspected. Approved specialist and policy
+    evidence legitimately discusses "their goals" or "their risk" in general
+    education, so scanning that generated text would false-positive; the
+    boundary enforced here is that the coach never *attempts* to surface a
+    third party's data in the first place.
+    """
+    normalized = " ".join(normalize_for_security_inspection(text).casefold().split())
+    return list(
+        dict.fromkeys(
+            f"data_access:{label}"
+            for label, pattern in CROSS_USER_DATA_ACCESS_REGEXES
+            if pattern.search(normalized)
+        )
+    )
+
+
 SAFE_POLICY_NOTES = (
     set(PII_PATTERNS)
     | {f"prompt_injection:{index}" for index in range(len(PROMPT_INJECTION_PATTERNS))}
     | {f"regulated_advice:{pattern}" for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS}
     | {f"regulated_advice:{label}" for label, _ in BLOCKED_FINANCIAL_ADVICE_REGEXES}
+    | {f"data_access:{label}" for label, _ in CROSS_USER_DATA_ACCESS_REGEXES}
     | {"policy_evidence:insufficient", "response_withheld"}
 )
 
@@ -240,11 +305,17 @@ class RiskComplianceAgent:
             for finding in financial_advice_findings(text)
         ))
         policy_notes.extend(hard_policy_findings)
+        # Refuse cross-user data-access attempts deterministically on the
+        # request itself, before any retrieval or model call, so social
+        # engineering cannot coax another user's data into a generated answer.
+        data_access_findings = cross_user_data_findings(request.message)
+        policy_notes.extend(data_access_findings)
 
         if (
             not decision.allowed
             or generated_decision.findings
             or hard_policy_findings
+            or data_access_findings
             or any(result.blocked for result in results)
         ):
             return AgentResult(
