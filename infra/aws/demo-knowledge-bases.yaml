@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Separate governed S3 Vector knowledge bases for the financial coach.
+
+Parameters:
+  CorpusBucketName:
+    Type: String
+    Default: nus-iss-ais-team9-rag-862124275471-ap-southeast-1
+
+Resources:
+  EducationVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketName: !Sub nus-iss-ais-team9-investment-education-vectors-${AWS::AccountId}
+
+  EducationIndex:
+    Type: AWS::S3Vectors::Index
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketArn: !Ref EducationVectorBucket
+      IndexName: investment-education-index
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        NonFilterableMetadataKeys:
+          - AMAZON_BEDROCK_TEXT
+          - AMAZON_BEDROCK_METADATA
+
+  PolicyVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketName: !Sub nus-iss-ais-team9-policy-vectors-${AWS::AccountId}
+
+  PolicyIndex:
+    Type: AWS::S3Vectors::Index
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketArn: !Ref PolicyVectorBucket
+      IndexName: policy-controls-index
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        NonFilterableMetadataKeys:
+          - AMAZON_BEDROCK_TEXT
+          - AMAZON_BEDROCK_METADATA
+
+  EducationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub nus-iss-ais-team9-education-kb-${AWS::AccountId}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+      Policies:
+        - PolicyName: EducationKnowledgeBaseAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/cohere.embed-multilingual-v3
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - investment-education/documents
+                      - investment-education/documents/*
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}/investment-education/documents/*
+              - Effect: Allow
+                Action:
+                  - s3vectors:PutVectors
+                  - s3vectors:GetVectors
+                  - s3vectors:DeleteVectors
+                  - s3vectors:QueryVectors
+                  - s3vectors:GetIndex
+                Resource: !Ref EducationIndex
+
+  PolicyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub nus-iss-ais-team9-policy-kb-${AWS::AccountId}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+      Policies:
+        - PolicyName: PolicyKnowledgeBaseAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/cohere.embed-multilingual-v3
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - policy-controls/documents
+                      - policy-controls/documents/*
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}/policy-controls/documents/*
+              - Effect: Allow
+                Action:
+                  - s3vectors:PutVectors
+                  - s3vectors:GetVectors
+                  - s3vectors:DeleteVectors
+                  - s3vectors:QueryVectors
+                  - s3vectors:GetIndex
+                Resource: !Ref PolicyIndex
+
+  EducationKnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: nus-iss-ais-team9-investment-education-kb
+      RoleArn: !GetAtt EducationRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/cohere.embed-multilingual-v3
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          VectorBucketArn: !Ref EducationVectorBucket
+          IndexArn: !Ref EducationIndex
+
+  PolicyKnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: nus-iss-ais-team9-policy-controls-kb
+      RoleArn: !GetAtt PolicyRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/cohere.embed-multilingual-v3
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          VectorBucketArn: !Ref PolicyVectorBucket
+          IndexArn: !Ref PolicyIndex
+
+  EducationDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      Name: investment-education-s3-source
+      KnowledgeBaseId: !Ref EducationKnowledgeBase
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}
+          BucketOwnerAccountId: !Ref AWS::AccountId
+          InclusionPrefixes:
+            - investment-education/documents/
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: FIXED_SIZE
+          FixedSizeChunkingConfiguration:
+            MaxTokens: 512
+            OverlapPercentage: 20
+
+  PolicyDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      Name: policy-controls-s3-source
+      KnowledgeBaseId: !Ref PolicyKnowledgeBase
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}
+          BucketOwnerAccountId: !Ref AWS::AccountId
+          InclusionPrefixes:
+            - policy-controls/documents/
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: FIXED_SIZE
+          FixedSizeChunkingConfiguration:
+            MaxTokens: 512
+            OverlapPercentage: 20
+
+Outputs:
+  EducationKnowledgeBaseId:
+    Value: !Ref EducationKnowledgeBase
+  EducationDataSourceId:
+    Value: !GetAtt EducationDataSource.DataSourceId
+  PolicyKnowledgeBaseId:
+    Value: !Ref PolicyKnowledgeBase
+  PolicyDataSourceId:
+    Value: !GetAtt PolicyDataSource.DataSourceId

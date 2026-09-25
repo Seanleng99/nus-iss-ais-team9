@@ -1,5 +1,5 @@
 param(
-    [string]$AccountId = "902552928492",
+    [string]$AccountId = "862124275471",
     [string]$Region = "ap-southeast-1",
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
     [string]$AlarmName = "ai-financial-wellness-coach-demo-backend-5xx",

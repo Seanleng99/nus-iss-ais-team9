@@ -34,6 +34,10 @@ Parameters:
     AllowedValues:
       - db.t4g.micro
       - db.t3.micro
+  DatabaseInstanceIdentifier:
+    Type: String
+    Default: ai-financial-wellness-coach-demo
+    Description: Change this together with DatabaseSnapshotIdentifier for a final snapshot restore.
   DatabaseName:
     Type: String
     Default: financial_wellness
@@ -42,6 +46,14 @@ Parameters:
     Type: String
     Default: coachadmin
     AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]{0,62}$"
+  DatabaseSnapshotIdentifier:
+    Type: String
+    Default: ""
+    Description: Optional destination-account RDS snapshot for a data-preserving restore.
+  RestoredDatabaseSecretArn:
+    Type: String
+    Default: ""
+    Description: RDS-managed master secret ARN after a snapshot restore and password rotation.
   CloudFrontOriginPrefixListId:
     Type: String
     Default: ""
@@ -88,6 +100,9 @@ Rules:
 Conditions:
   HasCloudFrontOriginPrefixList: !Not [!Equals [!Ref CloudFrontOriginPrefixListId, ""]]
   HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, ""]]
+  RestoreDatabaseSnapshot: !Not [!Equals [!Ref DatabaseSnapshotIdentifier, ""]]
+  FreshDatabase: !Equals [!Ref DatabaseSnapshotIdentifier, ""]
+  HasRestoredDatabaseSecret: !Not [!Equals [!Ref RestoredDatabaseSecretArn, ""]]
 
 Resources:
   Vpc:
@@ -425,6 +440,13 @@ Resources:
           RequireSymbols: true
           RequireUppercase: true
           TemporaryPasswordValidityDays: 3
+      Schema:
+        - Name: legacy_sub
+          AttributeDataType: String
+          Mutable: false
+          StringAttributeConstraints:
+            MinLength: "1"
+            MaxLength: "255"
       UserPoolName: !Sub ${ProjectName}-demo-users
       UsernameAttributes:
         - email
@@ -478,6 +500,10 @@ Resources:
           - !Sub https://${FrontendDistribution.DomainName}/
           - !Ref AWS::NoValue
       PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - email
+        - email_verified
+        - custom:legacy_sub
       RefreshTokenValidity: 1
       SupportedIdentityProviders:
         - COGNITO
@@ -576,17 +602,18 @@ Resources:
       BackupRetentionPeriod: 1
       CopyTagsToSnapshot: true
       DBInstanceClass: !Ref DatabaseInstanceClass
-      DBInstanceIdentifier: !Sub ${ProjectName}-demo
-      DBName: !Ref DatabaseName
+      DBInstanceIdentifier: !Ref DatabaseInstanceIdentifier
+      DBName: !If [RestoreDatabaseSnapshot, !Ref AWS::NoValue, !Ref DatabaseName]
+      DBSnapshotIdentifier: !If [RestoreDatabaseSnapshot, !Ref DatabaseSnapshotIdentifier, !Ref AWS::NoValue]
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       EnableIAMDatabaseAuthentication: false
       Engine: postgres
-      ManageMasterUserPassword: true
-      MasterUsername: !Ref DatabaseMasterUsername
+      ManageMasterUserPassword: !If [RestoreDatabaseSnapshot, !Ref AWS::NoValue, true]
+      MasterUsername: !If [RestoreDatabaseSnapshot, !Ref AWS::NoValue, !Ref DatabaseMasterUsername]
       MaxAllocatedStorage: 100
       MultiAZ: false
       PubliclyAccessible: false
-      StorageEncrypted: true
+      StorageEncrypted: !If [RestoreDatabaseSnapshot, !Ref AWS::NoValue, true]
       StorageType: gp3
       VPCSecurityGroups:
         - !GetAtt DatabaseSecurityGroup.GroupId
@@ -620,7 +647,10 @@ Resources:
                   - !Ref BackendApiKeySecret
                   - !Ref AiServiceApiKeySecret
                   - !Ref FrontendOidcCookieSecret
-                  - !GetAtt Database.MasterUserSecret.SecretArn
+                  - !If
+                    - RestoreDatabaseSnapshot
+                    - !If [HasRestoredDatabaseSecret, !Ref RestoredDatabaseSecretArn, !Ref AWS::NoValue]
+                    - !GetAtt Database.MasterUserSecret.SecretArn
 
   AppTaskRole:
     Type: AWS::IAM::Role
@@ -802,11 +832,14 @@ Outputs:
     Value: !Ref AiServiceApiKeySecret
   DatabaseEndpoint:
     Value: !GetAtt Database.Endpoint.Address
+  DatabaseInstanceId:
+    Value: !Ref Database
   DatabasePort:
     Value: !GetAtt Database.Endpoint.Port
   DatabaseName:
     Value: !Ref DatabaseName
   DatabaseSecretArn:
+    Condition: FreshDatabase
     Value: !GetAtt Database.MasterUserSecret.SecretArn
   AiLogGroupName:
     Value: !Ref AiLogGroup

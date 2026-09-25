@@ -1,16 +1,29 @@
 # AWS Demo Infrastructure
 
-The repository includes a minimum-size, synthetic-data deployment for AWS account `902552928492` in `ap-southeast-1`:
+The repository includes a minimum-size, synthetic-data deployment for AWS account `862124275471` in `ap-southeast-1`:
 
 - `demo-foundation.yaml` creates two public application subnets, two private database subnets, an internet-facing ALB behind a public HTTPS CloudFront distribution, CloudFront origin verification, an admin-created-user Cognito pool and public PKCE client, security groups, a minimum Single-AZ RDS PostgreSQL instance, three scan-on-push ECR repositories with ten-image retention, a Container-Insights-enabled ECS cluster, Cloud Map, generated service secrets, 30-day log groups, and separate application and AI task roles.
 - `demo-application.yaml` creates three minimum-size Fargate services, backend/AI CPU target tracking from one to two tasks, private DNS, task definitions, target groups, header-gated ALB routing, an optional modern HTTPS origin listener, a CloudWatch dashboard, seven alarms, SNS alerts, and an ECS deployment-failure EventBridge rule.
 - `github-actions-oidc.yaml` creates narrowly scoped image-publishing and ECS-deployment roles using GitHub OIDC. The deployment role can read the operational dashboard, alarms, confirmed subscription count, logs, and scaling configuration for evidence collection, plus audit only the exact Education and Policy Knowledge Bases and governed S3 prefixes.
+- `demo-knowledge-bases.yaml` creates the separate Education and Policy S3 Vector stores, Bedrock Knowledge Bases, and S3 data sources for the copied corpora.
 
 The public-subnet task design avoids NAT Gateway cost. Tasks receive public IPs for outbound ECR, Secrets Manager, Cognito, and Bedrock access, but their security groups permit inbound traffic only from the ALB or the calling service. Bootstrap and edge hardening discover AWS's maintained CloudFront origin-facing prefix list, restrict ALB ingress to it, and require a generated `X-Coach-Origin-Verify` value before either listener forwards. The default CloudFront hostname still cannot select the target modern viewer TLS policy, and its origin remains HTTP until the guarded custom-domain path is activated. Use synthetic data only until the custom domain and both ACM certificates are supplied and validated.
 
 RDS PostgreSQL is encrypted, has no public address, accepts port 5432 only from the backend security group, and uses an RDS-managed master secret. Investment Education and Risk and Compliance retrieve from separately provisioned Amazon Bedrock Knowledge Bases; CloudFormation scopes the AI task role to those exact resources.
 
 ## Automated Bootstrap
+
+For the account migration, follow [the migration runbook](../../docs/aws-account-migration.md)
+before running this script. Pass `-DatabaseSnapshotIdentifier` to restore a
+destination-owned copy of the old database. The script then creates a new RDS
+master secret and grants the ECS execution role access to that exact secret.
+The foundation creates a new Cognito pool. The four old users were imported
+there with password resets and immutable `custom:legacy_sub` attributes, which
+the backend maps to their existing database records. Bootstrap preserves the
+deployed legacy issuer setting on reruns. Keep the old pool available until all
+four users confirm new sign-in and access to their prior records. For a staged
+deployment that still uses an external pool, pass `-ExistingOidcIssuerUrl`,
+`-ExistingOidcClientId`, and `-ExistingOidcRedirectUri` together.
 
 After GitHub and AWS browser authentication, start Docker Desktop and run the bootstrap with the
 approved Education and Policy Knowledge Base IDs:
