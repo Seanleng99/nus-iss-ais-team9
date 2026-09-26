@@ -268,8 +268,6 @@ jobs:
       FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
       BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
       COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
-      EDUCATION_CORPUS_VERSION: ${{ vars.EDUCATION_CORPUS_VERSION }}
-      POLICY_CORPUS_VERSION: ${{ vars.POLICY_CORPUS_VERSION }}
       SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
     steps:
       - uses: actions/checkout@v6
@@ -285,6 +283,32 @@ jobs:
             echo "Release SHA $RELEASE_SHA became stale; current main is $main_sha." >&2
             exit 1
           fi
+      - name: Load packaged corpus versions
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          versions = {}
+          for name, directory in (
+              ("EDUCATION_CORPUS_VERSION", "investment_education"),
+              ("POLICY_CORPUS_VERSION", "policy_controls"),
+          ):
+              manifest = Path("knowledge") / directory / "source_manifest.json"
+              version = json.loads(manifest.read_text())["corpus_version"]
+              if (
+                  not isinstance(version, str)
+                  or not re.fullmatch(r"[a-z0-9][a-z0-9@._-]{2,127}", version)
+                  or version.endswith("@local-fixture-v1")
+              ):
+                  raise SystemExit(f"Invalid deployed corpus version in {manifest}")
+              versions[name] = version
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              for name, version in versions.items():
+                  output.write(f"{name}={version}\n")
+          PY
       - name: Validate deployment configuration
         run: |
           required=(
@@ -378,6 +402,8 @@ jobs:
             PROMPT_SET_VERSION=v6
             RAG_PROVIDER=local_documents
             POLICY_RAG_PROVIDER=local_documents
+            EDUCATION_CORPUS_VERSION=${{ env.EDUCATION_CORPUS_VERSION }}
+            POLICY_CORPUS_VERSION=${{ env.POLICY_CORPUS_VERSION }}
       - name: Verify AI runtime configuration has not drifted
         if: needs.release-gate.outputs.ai == 'true'
         env:
@@ -393,8 +419,8 @@ jobs:
           --expect PROMPT_SET_VERSION=v6
           --expect RAG_PROVIDER=local_documents
           --expect POLICY_RAG_PROVIDER=local_documents
-          --require-nonempty EDUCATION_CORPUS_VERSION
-          --require-nonempty POLICY_CORPUS_VERSION
+          --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION"
+          --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
           --require-secret OPENAI_API_KEY
       - name: Deploy AI service
         if: needs.release-gate.outputs.ai == 'true'

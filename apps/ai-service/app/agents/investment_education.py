@@ -39,12 +39,14 @@ class InvestmentEducationAgent(BaseAgent):
 
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
-        del task
         validate_tool_permission(self.name, "education_retriever")
         response_language = education_response_language(sanitized_message)
         unsupported_topics = unsupported_education_topics(sanitized_message)
         try:
-            query, query_topics = build_minimal_education_query(sanitized_message)
+            query, query_topics = build_minimal_education_query(
+                sanitized_message,
+                additional_topics=task.context_features.get("education_topics", []),
+            )
         except ValueError:
             return {
                 "scope": (
@@ -66,10 +68,15 @@ class InvestmentEducationAgent(BaseAgent):
             }
         grounding = build_education_context(
             self.education_retriever,
-            query,
+            # A provenance question needs actual source records, not a search
+            # for documents containing the words "source verification".
+            "General investment education about investment basics"
+            if query_topics == ["source verification"] else query,
             scope="General investment education from approved sources without product advice.",
         )
         apply_education_scope(grounding, sanitized_message, query_topics)
+        if "source verification" in query_topics:
+            grounding["source_verification"] = True
         grounding["retrieval_consumer"] = self.name.value
         return grounding
 

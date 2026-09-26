@@ -1,6 +1,11 @@
 import pytest
 
-from app.agents.education_access import build_minimal_education_query, education_topics
+from app.agents.education_access import (
+    CANONICAL_EDUCATION_TOPICS,
+    build_minimal_education_query,
+    education_question_intent,
+    education_topics,
+)
 
 
 def test_acronyms_match_when_adjacent_to_chinese_text() -> None:
@@ -71,9 +76,61 @@ def test_beginner_questions_use_canonical_investment_basics_query(message: str) 
     [
         "Explain the investment implications of extraterrestrial mineral rights.",
         "I am new to investment tax, how do I start?",
+        "I am new to investing in alien artifacts, where should I start?",
+        "What should I check before serving this recipe?",
+        "This travel package says there is no risk. Is it legitimate?",
     ],
 )
 def test_unsupported_or_unrecognized_question_does_not_use_generic_fallback(
     message: str,
 ) -> None:
     assert education_topics(message) == []
+
+
+@pytest.mark.parametrize(("message", "topic"), [
+    ("I’m completely new to investing. Where should I start?", "investment basics"),
+    ("Why invest instead of leaving all my money in savings?", "saving vs investing"),
+    ("Could you show how interest earned on interest works?", "compound interest"),
+    ("How might rising prices erode what my cash can buy?", "inflation"),
+    ("What should I check before putting spare cash into investments?", "investment readiness"),
+    ("How should my investment choices change with my goal date?", "investment time horizon"),
+    ("How do I compare an index-tracking fund with a manager-picked fund?", "index funds"),
+    ("My holdings fell sharply; what factors should I review?", "investment drawdowns"),
+    ("Someone promises guaranteed monthly gains. How can I verify the offer?", "investment scams"),
+    ("Where can I independently confirm this financial explanation is current?", "source verification"),
+    ("What do exchange-rate movements mean for overseas holdings?", "currency risk"),
+    ("How do fixed-term bank deposits compare with bonds?", "fixed deposits"),
+    ("收入不稳定时，怎样判断是否有能力投资？", "irregular income investment readiness"),
+    ("信用卡还有欠款，投资前需要考虑什么？", "debt and investment readiness"),
+    ("定期存款和投资有什么不同？", "fixed deposits"),
+    ("指数基金和主动管理基金有什么区别？", "index funds"),
+    ("投资下跌后，我应该先评估哪些因素？", "investment drawdowns"),
+    ("如何核实投资说明的来源和更新时间？", "source verification"),
+    ("What reliable sources can I use to check your explanation, and how up to date are they?", "source verification"),
+])
+def test_beginner_paraphrases_map_to_canonical_topics(message: str, topic: str) -> None:
+    assert topic in education_topics(message)
+
+
+def test_question_intent_keeps_comparison_and_detects_examples() -> None:
+    assert education_question_intent("Compare saving and investing with an example") == "comparison"
+    assert education_question_intent("Explain compound interest with a simple example") == "example"
+
+
+def test_minimal_query_never_carries_personal_values() -> None:
+    query, _ = build_minimal_education_query(
+        "My income is SGD 8,432.50, email me@example.com, account 123456; can I afford to invest?"
+    )
+    assert query == "General investment education about investment readiness"
+    assert all(value not in query for value in ("8,432.50", "me@example.com", "123456"))
+
+
+def test_additional_canonical_topics_are_merged_in_order_and_validated() -> None:
+    query, topics = build_minimal_education_query(
+        "Explain compound interest.", additional_topics=("inflation", "compound interest")
+    )
+    assert topics == ["compound interest", "inflation"]
+    assert query == "General investment education about compound interest, inflation"
+    assert "investment basics" in CANONICAL_EDUCATION_TOPICS
+    with pytest.raises(ValueError, match="canonical allowlisted"):
+        build_minimal_education_query("Explain investing.", additional_topics=("model invented topic",))

@@ -176,7 +176,7 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 
-    def test_governed_corpus_change_validates_without_service_deployment(self):
+    def test_packaged_corpus_change_rebuilds_ai_and_compatible_backend(self):
         for path in (
             "knowledge/investment_education/source_manifest.json",
             "knowledge/policy_controls/documents/advice_boundary.md",
@@ -186,7 +186,11 @@ class ChangeDetectionTests(unittest.TestCase):
                 self.assertTrue(result["ai_ci"])
                 self.assertTrue(result["infrastructure"])
                 self.assertTrue(result["sast"])
-                self.assertFalse(result["deploy"])
+                self.assertTrue(result["ai_deploy"])
+                self.assertTrue(result["backend_ci"])
+                self.assertTrue(result["backend_deploy"])
+                self.assertTrue(result["integration"])
+                self.assertTrue(result["deploy"])
 
     def test_unknown_change_selects_all_services_without_migration(self):
         result = detect_changes.classify_changes(["shared/runtime-config.toml"])

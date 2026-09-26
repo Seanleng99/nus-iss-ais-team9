@@ -34,11 +34,35 @@ BLOCKED_FINANCIAL_ADVICE_PATTERNS = [
     "buy or sell",
 ]
 
+# Decimal points and dotted abbreviations (e.g.) do not end an advice clause.
+ADVICE_CLAUSE = r"(?:[^.!?;]|(?<=\d)\.(?=\d)|(?<=\b[a-z])\.)*"
+
 BLOCKED_FINANCIAL_ADVICE_REGEXES = (
+    (
+        "brokerage_execution",
+        re.compile(
+            r"\b(?:log\s*in(?:to)?|sign\s*in(?:to)?|access)\s+"
+            r"(?:to\s+)?(?:my|our|your|the user's)\s+(?:\w+\s+){0,3}"
+            r"(?:brokerage|trading)\s+account\b|"
+            r"\b(?:buy|purchase|sell|trade)\b[^.!?;]{0,70}\b(?:for me|on my behalf)\b|"
+            r"(?:帮我|替我|代我|为你|帮你).{0,20}(?:登录|登入|下单|买入|卖出|交易)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "product_recommendation",
+        re.compile(
+            r"\b(?:i|we)\s+(?:recommend|suggest|advise)\b" + ADVICE_CLAUSE +
+            r"\b(?:buying|selling|holding|investing|buy|sell|hold|invest)\b|"
+            r"(?:^|[.!?;]\s*|\n\s*|:\s*)(?:buy|sell|hold)\s+(?:this|that|the)\s+"
+            r"(?:stock|share|bond|etf|fund|reit|investment|product)\b",
+            re.IGNORECASE,
+        ),
+    ),
     (
         "personalized_allocation",
         re.compile(
-            r"\b(?:you should|i recommend(?: that)? you)\b.{0,80}"
+            r"\b(?:you should|i recommend(?: that)? you)\b" + ADVICE_CLAUSE +
             r"\b(?:allocate|invest|put)\b",
             re.IGNORECASE,
         ),
@@ -46,7 +70,7 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     (
         "personalized_transaction",
         re.compile(
-            r"\b(?:you should|i recommend(?: that)? you)\b.{0,80}"
+            r"\b(?:you should|i recommend(?: that)? you)\b" + ADVICE_CLAUSE +
             r"\b(?:buy|sell|hold)\b",
             re.IGNORECASE,
         ),
@@ -156,16 +180,20 @@ SAFE_POLICY_NOTES = (
 
 
 def contains_return_guarantee(text: str) -> bool:
-    for sentence in re.split(r"[.!?;\n]", text.lower()):
-        for match in re.finditer(r"\bguaranteed returns?\b", sentence):
+    for sentence in re.split(r"(?<!\d)\.(?!\d)|[!?;\n]", text.lower()):
+        for match in re.finditer(
+            r"\bguarantee(?:d|s)?\s+(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+            r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?\b", sentence,
+        ):
             before, after = sentence[:match.start()], sentence[match.end():]
             negated = re.search(
-                r"\b(?:no|not|never|without)\s+(?:(?:offer|provide|promise|any|a)\s+){0,3}$",
+                r"\b(?:no|not|never|without|cannot|can't)\s+"
+                r"(?:(?:offer|provide|promise|any|a|can)\s+){0,3}$",
                 before,
             )
             risk_explanation = re.match(
                 r"\s+(?:(?:is|are|can be)\s+)?(?:a\s+)?"
-                r"(?:red flag|warning sign|misleading|unrealistic|impossible|scam)\b",
+                r"(?:red flags?|warning signs?|misleading|unrealistic|impossible|scams?)\b",
                 after,
             )
             policy_assessment = re.search(
@@ -182,7 +210,7 @@ def contains_return_guarantee(text: str) -> bool:
     return False
 
 
-def financial_advice_findings(text: str) -> list[str]:
+def financial_advice_findings(text: str, *, is_request: bool = False) -> list[str]:
     normalized = " ".join(normalize_for_security_inspection(text).casefold().split())
     findings = [
         f"regulated_advice:{pattern}"
@@ -197,9 +225,67 @@ def financial_advice_findings(text: str) -> list[str]:
     findings.extend(
         f"regulated_advice:{label}"
         for label, pattern in BLOCKED_FINANCIAL_ADVICE_REGEXES
-        if pattern.search(normalized)
+        if any(
+            not (
+                label == "brokerage_execution" and re.search(
+                    r"(?:\b(?:cannot|can't|won't|never|not|don't)\s+|(?:不能|无法|不可以))$",
+                    normalized[:match.start()],
+                )
+            ) and not (
+                label in {"product_recommendation", "personalized_allocation", "personalized_transaction"}
+                and is_educational_recommendation(match.group())
+            )
+            for match in pattern.finditer(normalized)
+        )
     )
+    if is_request and is_reported_guarantee_verification(normalized):
+        findings = [f for f in findings if f != "regulated_advice:guaranteed return"]
     return findings
+
+
+def is_educational_recommendation(text: str) -> bool:
+    # Matches end at the LAST action in the sentence. An educational prefix
+    # cannot exempt a later action ("learn before investing, then buy this ETF").
+    return bool(re.fullmatch(
+        r"(?:(?:i|we)\s+(?:recommend|suggest|advise)\s+"
+        r"(?:that\s+)?(?:(?:you|investors)\s+)?|you should\s+)"
+        r"(?:"
+        r"(?:learn(?:ing)?(?: about)?|understand(?:ing)?|review(?:ing)?)\s+"
+        r"(?:(?!\b(?:buy\w*|sell\w*|hold\w*|invest(?:ing)?|allocate|put|"
+        r"recommend|suggest|advise|should|could|must|then|instead|but|however)\b)"
+        r"(?:[^.!?;,]|(?<=\d)\.(?=\d)|(?<=\b[a-z])\.))*"
+        r"\bbefore\s+(?:you\s+)?"
+        r"|avoid(?:ing)?\s+)"
+        r"(?:buying|selling|holding|investing|buy|sell|hold|invest|allocate|put)",
+        text,
+    ))
+
+
+def is_reported_guarantee_verification(text: str) -> bool:
+    claim = re.match(
+        r"(?:my (?:friend|broker|adviser|advisor)|"
+        r"(?:the|this) (?:provider|company|advertisement|advert|website))\s+"
+        r"(?:says?|said|claims?)\s+(?:that\s+)?"
+        r"(?:it|this|(?:an?|the|this) (?:investment|fund|offer|product))\s+"
+        r"(?:guarantees?|(?:offers?|promises?|provides?|has)\s+(?:a\s+)?guaranteed)\s+"
+        r"(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+        r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?"
+        r"(?:\s+(?:with no risk|without risk))?[.!?;,]\s*",
+        text,
+    )
+    if not claim:
+        return False
+    questions = [part.strip() for part in re.split(r"[.!?;,]", text[claim.end():]) if part.strip()]
+    # Every remaining clause must ask about verification or warning signs.
+    # In particular, indirect requests such as "show me one" stay blocked.
+    return bool(questions) and all(re.fullmatch(
+        r"(?:is (?:it|this|that|the (?:provider|offer|claim)) (?:legitimate|true|a scam|a fraud)|"
+        r"(?:how can i|can you) (?:check|verify) "
+        r"(?:it|this|that|whether (?:it|this) is legitimate)|"
+        r"what (?:are|would be) (?:the )?(?:warning signs|red flags)|"
+        r"(?:what|which) (?:warning signs|red flags) should i (?:look for|check))",
+        question,
+    ) for question in questions)
 
 
 def contains_buy_sell_instruction(text: str) -> bool:
@@ -299,11 +385,14 @@ class RiskComplianceAgent:
         generated_text = "\n".join(generated_fields)
         generated_decision = inspect_prompt(generated_text)
         policy_notes.extend(generated_decision.findings)
-        hard_policy_findings = list(dict.fromkeys(
-            finding
-            for text in [request.message, *generated_fields]
-            for finding in financial_advice_findings(text)
-        ))
+        hard_policy_findings = list(dict.fromkeys([
+            *financial_advice_findings(request.message, is_request=True),
+            *(
+                finding
+                for text in generated_fields
+                for finding in financial_advice_findings(text)
+            ),
+        ]))
         policy_notes.extend(hard_policy_findings)
         # Refuse cross-user data-access attempts deterministically on the
         # request itself, before any retrieval or model call, so social

@@ -53,7 +53,11 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
             if path.startswith(
                 ("knowledge/investment_education/", "knowledge/policy_controls/")
             ):
-                result.update(ai_ci=True, infrastructure=True, sast=True)
+                result.update(
+                    ai_ci=True, ai_deploy=True,
+                    backend_ci=True, backend_deploy=True,
+                    integration=True, infrastructure=True, sast=True,
+                )
                 continue
 
             if path.startswith("apps/frontend/"):

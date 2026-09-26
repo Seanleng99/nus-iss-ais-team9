@@ -39,6 +39,7 @@ def terms(text: str) -> list[str]:
     text = normalize_for_security_inspection(text).casefold()
     text = text.replace("%", " percent ")
     for phrase, abbreviation in (
+        (r"saving vs investing", "saving investing risk return liquidity horizon"),
         (r"exchange[ -]traded funds?", "etf"),
         (r"cpf investment scheme", "cpfis"),
         (r"ordinary account", "oa"),
@@ -56,6 +57,7 @@ def terms(text: str) -> list[str]:
         word = {
             "lose": "loss",
             "losing": "loss",
+            "drawdown": "loss",
             "tolerance": "appetite",
             "reserve": "aside",
             "stock": "share",

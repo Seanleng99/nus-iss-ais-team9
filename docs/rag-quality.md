@@ -26,7 +26,7 @@ Set these environment variables before starting the local AI service:
 ```text
 APP_ENV=local
 RAG_PROVIDER=local_documents
-EDUCATION_CORPUS_VERSION=investment-education-sg@2026-08-28.1
+EDUCATION_CORPUS_VERSION=investment-education-sg@2026-09-26.1
 ```
 
 `RAG_MANIFEST_PATH` and `RAG_DOCUMENTS_PATH` support governed files outside a checkout.

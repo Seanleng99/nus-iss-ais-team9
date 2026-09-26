@@ -1,6 +1,7 @@
 import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from math import isfinite
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -160,10 +161,14 @@ EDUCATION_DOCUMENTS = [
             "investments can lose value. Treasury bills are issued at a discount and "
             "redeemed at face value at maturity. Singapore Savings Bonds are "
             "government-issued savings bonds."
+            " Inflation means the same cash can purchase less over time; investment "
+            "returns are uncertain and may not offset inflation. Fixed deposits place "
+            "money with a bank for an agreed term; early withdrawal can incur penalties."
         ),
         "keywords": {
             "beginner", "diversification", "etf", "investment", "risk",
             "treasury", "bills", "singapore", "savings",
+            "inflation", "fixed", "deposits",
         },
     },
     {
@@ -200,8 +205,11 @@ EDUCATION_DOCUMENTS = [
             "This approved guide introduces investment readiness, basic risk-and-return "
             "concepts, and the importance of an investment time horizon. Investments "
             "can lose value and returns are not guaranteed."
+            " Saving keeps money available for expenses and emergencies, while investing "
+            "seeks potential growth with possible capital losses. Daily expenses, "
+            "emergency reserves and the investment time horizon are readiness considerations."
         ),
-        "keywords": {"investment", "investing", "readiness", "risk", "return", "horizon"},
+        "keywords": {"investment", "investing", "readiness", "risk", "return", "horizon", "saving", "emergency"},
     },
     {
         "source_id": "moneysense-managing-investment-risk",
@@ -288,6 +296,70 @@ EDUCATION_DOCUMENTS = [
         },
     },
 ]
+
+# Offline fixtures mirror the new governed topics; production retrieves the
+# versioned source documents rather than these shortened test passages.
+EDUCATION_DOCUMENTS.extend([
+    {
+        "source_id": "moneysense-compound-interest",
+        "title": "Effects of compounding interest",
+        "canonical_url": "https://www.moneysense.gov.sg/effects-of-compounding-interest/",
+        "published_at": "2026-07-02", "document_version": "2026-07-02",
+        "text": (
+            "Compound interest earns interest on earlier interest as well as the principal. "
+            "For a hypothetical constant annual 4% rate, $100 becomes $104 after one year "
+            "and $108.16 after two years, ignoring fees and taxes. This is an illustration, "
+            "not a forecast or a promised investment return. Compounding can also increase debt."
+        ),
+        "keywords": {"compound", "compounding", "interest"},
+    },
+    {
+        "source_id": "moneysense-managing-money", "title": "Managing your money",
+        "canonical_url": "https://www.moneysense.gov.sg/managing-your-money/",
+        "published_at": "2026-07-02", "document_version": "2026-07-02",
+        "text": (
+            "Irregular income investment readiness involves dependable income, essential "
+            "expenses, debt repayments and emergency reserves. Uncertain commissions or "
+            "bonuses cannot establish a dependable surplus. A small budget does not by "
+            "itself establish an ability to invest; fees and access to cash also matter."
+        ),
+        "keywords": {"irregular", "income", "cash", "emergency", "investment", "readiness"},
+    },
+    {
+        "source_id": "moneysense-managing-debt", "title": "Managing debt: What can you do?",
+        "canonical_url": "https://www.moneysense.gov.sg/managing-debt-what-can-you-do/",
+        "published_at": "2026-07-01", "document_version": "2026-07-01",
+        "text": (
+            "Debt and investment readiness depend on ongoing repayment commitments. "
+            "Interest and late charges increase debt costs. Higher-interest debt is a "
+            "general repayment priority, subject to fees and repayment terms; this is not "
+            "a personal plan. Financial institutions and Credit Counselling Singapore can "
+            "discuss repayment difficulties."
+        ),
+        "keywords": {"debt", "credit", "borrowing", "repayments", "investment", "readiness"},
+    },
+    {
+        "source_id": "moneysense-investment-scams", "title": "How to spot an investment scam",
+        "canonical_url": "https://www.moneysense.gov.sg/how-to-spot-an-investment-scam/",
+        "published_at": "2026-08-18", "document_version": "2026-08-18",
+        "text": (
+            "Investment scams often promise high returns with little or no risk. "
+            "Verification includes the MAS Financial Institutions Directory and Financial "
+            "Institution Representatives Register, plus independent official contact "
+            "details to detect impersonation. Pressure and testimonials do not prove "
+            "legitimacy. No live provider check or conclusion about a particular offer "
+            "has been made here."
+        ),
+        "keywords": {"scams", "scam", "fraud", "verification", "investment"},
+    },
+])
+for _document in EDUCATION_DOCUMENTS[6:]:
+    _document.update(
+        issuing_organization="MoneySense / Monetary Authority of Singapore",
+        checksum="sha256:" + sha256(str(_document["text"]).encode()).hexdigest(),
+        corpus_version=LOCAL_EDUCATION_CORPUS_VERSION,
+        review_due_at="2099-12-31",
+    )
 
 
 class LocalEducationRetriever:

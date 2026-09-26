@@ -14,6 +14,7 @@ from langgraph.graph import END, START, StateGraph
 from app.agents.base import BaseAgent
 from app.agents.budget import BudgetAgent
 from app.agents.education_access import (
+    CANONICAL_EDUCATION_TOPICS,
     apply_education_scope,
     build_minimal_education_query,
     education_gap_message,
@@ -22,7 +23,11 @@ from app.agents.education_access import (
 )
 from app.agents.goal_strategy import GoalStrategyAgent
 from app.agents.investment_education import InvestmentEducationAgent
-from app.agents.risk_compliance import RiskComplianceAgent, withhold_agent_result
+from app.agents.risk_compliance import (
+    RiskComplianceAgent,
+    financial_advice_findings,
+    withhold_agent_result,
+)
 from app.agents.spending import SpendingAgent
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
 from app.core.citations import citation_contract, render_citations, validate_citations
@@ -172,6 +177,7 @@ class OrchestratorState(TypedDict, total=False):
     guardrail_findings: list[str]
     selected_agents: list[AgentName]
     routing_rationale: list[str]
+    education_topics: list[str]
     tasks: dict[str, AgentTask]
     task_results: dict[str, AgentResult]
     agent_results: list[AgentResult]
@@ -366,6 +372,16 @@ class AgentOrchestrator:
                     "has_risk_tolerance": request.snapshot.risk_tolerance is not None,
                 },
             }
+
+            def validate_router(value: RouterDecision) -> RouterDecision:
+                if any(topic not in CANONICAL_EDUCATION_TOPICS for topic in value.education_topics):
+                    raise ModelGatewayError(
+                        "The router supplied an unapproved education topic.",
+                        code="UNAPPROVED_EDUCATION_TOPIC", component="router",
+                    )
+                value.education_topics = list(dict.fromkeys(value.education_topics))
+                return value
+
             decision = generate_structured_response(
                 self.gateway,
                 response_type=RouterDecision,
@@ -374,16 +390,33 @@ class AgentOrchestrator:
                     + "\nWrite every rationale sentence in "
                     + response_language
                     + ". Keep machine agent names in selected_agents unchanged."
+                    + "\nAlso return education_topics, an array containing only the exact "
+                    "canonical labels below that capture the user's educational meaning. "
+                    "Recognize paraphrases, not just matching words. Use [] for unrelated "
+                    "or unsupported concepts; never substitute investment basics for an "
+                    "unknown subject. Do not include amounts, personal details, product "
+                    "names or user text. General learning, comparisons, scam awareness "
+                    "and investment readiness belong to investment_education; do not "
+                    "request a personal budget just to explain a concept. Canonical labels: "
+                    + json.dumps(CANONICAL_EDUCATION_TOPICS, ensure_ascii=False)
                 ),
                 user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.router_temperature,
                 max_tokens=self.config.model_max_tokens,
+                validate_response=validate_router,
             )
             routing_mode = "model"
             routing_actor = "router"
-            if should_request_education_context(state["sanitized_message"]) and not any(
+            needs_semantic_specialist = (
+                decision.education_topics
+                and AgentName.INVESTMENT_EDUCATION not in decision.selected_agents
+            )
+            has_education_access = any(
                 agent in decision.selected_agents
                 for agent in (AgentName.INVESTMENT_EDUCATION, AgentName.BUDGET, AgentName.GOAL_STRATEGY)
+            )
+            if needs_semantic_specialist or (
+                should_request_education_context(state["sanitized_message"]) and not has_education_access
             ):
                 decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
                 decision.rationale.append(
@@ -403,6 +436,7 @@ class AgentOrchestrator:
         return {
             "selected_agents": decision.selected_agents,
             "routing_rationale": decision.rationale,
+            "education_topics": decision.education_topics,
             "audit_events": [*state.get("audit_events", []), event],
         }
 
@@ -870,7 +904,8 @@ class AgentOrchestrator:
                 try:
                     validate_tool_permission(request.requester, definition.provider)
                     education_query, query_topics = build_minimal_education_query(
-                        state["sanitized_message"]
+                        state["sanitized_message"],
+                        additional_topics=state.get("education_topics", []),
                     )
                     data = build_education_context(
                         self.education_retriever,
@@ -1268,6 +1303,25 @@ class AgentOrchestrator:
                 if response_language == "Chinese"
                 else "I cannot provide that recommendation. I can still offer general financial education."
             )
+            request_findings = financial_advice_findings(state["sanitized_message"], is_request=True)
+            if "regulated_advice:brokerage_execution" in request_findings:
+                answer = (
+                    "我不能登录券商账户、接收登录凭证或代为下单。"
+                    "可以提供 ETF 的结构、交易流程、费用和风险等一般教育信息；账户操作由你自行决定。"
+                    if response_language == "Chinese"
+                    else "I cannot log in to brokerage accounts, accept credentials or place trades. "
+                    "I can explain ETF structures, trading processes, fees and risks in general "
+                    "educational terms. You remain in control of any account action."
+                )
+            elif "regulated_advice:guaranteed return" in request_findings:
+                answer = (
+                    "我不能推荐投资产品或承诺回报。可以解释收益声明、风险、费用，"
+                    "以及通过官方来源核实提供者的方法，供你了解和比较。"
+                    if response_language == "Chinese"
+                    else "I cannot recommend an investment product or promise a return. "
+                    "I can explain return claims, risks, fees and ways to check providers "
+                    "through official sources, so you can understand and compare the information."
+                )
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
         retrieval_consumers = sorted(
@@ -1429,6 +1483,7 @@ class AgentOrchestrator:
                 "recent_transaction_count": len(snapshot.recent_transactions),
                 "goal_count": len(snapshot.goals),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
+                "education_topics": state.get("education_topics", []),
             },
             requested_by=requested_by,
         )

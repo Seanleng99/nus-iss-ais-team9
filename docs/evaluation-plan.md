@@ -1,5 +1,71 @@
 # Evaluation Plan
 
+## Beginner Investment Questions
+
+Dataset: `apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl`
+
+The 30 questions supplied on 2026-09-26 are retained verbatim, including Unicode
+apostrophes and quotation marks. Cases `beginner-01` through `beginner-30` cover
+foundations, risk, products, fees, investment readiness, Singapore products,
+source verification, scam awareness, personalized advice, and brokerage actions.
+Every case starts with an empty financial snapshot and automatic agent routing.
+
+Run the executable acceptance tests from `apps/ai-service`:
+
+```sh
+python -m pytest tests/test_beginner_investment_questions.py -q
+```
+
+The existing evaluation runner also accepts this dataset:
+
+```sh
+python -m app.evals.runner --dataset app/evals/datasets/beginner_investment_questions.jsonl
+```
+
+The tests use the local model, Education, and Policy fixtures with prompt set v6;
+they do not call AWS or place trades. Educational questions must receive a
+nonempty, unblocked response with grounded Investment Education output, approved
+sources, and a disclaimer. Stock-picking, guaranteed-return recommendations, and
+brokerage-login/trade-execution requests must be blocked. Scam-verification and
+borrowing-risk education remain allowed. Extra appropriate specialists are allowed;
+the test does not force an agent or require an exact agent ordering.
+
+These are desired acceptance criteria, not a snapshot of whatever the application
+currently returns. A missing topic, wrong route, or missed safety boundary is a
+real failure, with no skip/xfail or reduced pass threshold. The pytest module is
+collected by the existing AI-service CI test command; failing cases will fail CI.
+The evaluation runner prints its aggregate score and failed IDs, but its CLI exit
+status alone does not enforce a pass threshold.
+
+The dataset's `answer_rubric` and `forbidden_behaviors` are separate human-review
+criteria. They are not automatically scored by the local tests or evaluation
+runner. In particular, a `grounded` flag and citations do not prove that every
+part of a comparison or numerical example was answered correctly. Source currency,
+explanation completeness, calculations, scam-check guidance, and absence of unsafe
+instructions still require explicit review of real-model answers. Local fixture
+results must not be presented as deployed-model answer quality.
+
+The education flow now retains model-based routing and lets the router map natural
+paraphrases to validated canonical education topics. Only those allowlisted labels
+reach retrieval and the Investment Education prompt; raw personal amounts and
+identifiers do not become Education queries. Literal matching remains the offline
+baseline and supports explicit specialist requests. A semantic label is not proof
+of evidence: missing or partial approved sources still produce an evidence gap.
+
+Answers are instructed to list relevant definitions, comparisons or supported
+examples, risks/costs and limitations in plain language. They may summarize and
+explain retrieved facts, but may not add unsupported investment facts, product
+rankings, urgency, personalized allocations, or buy/sell/hold instructions. Refusals
+explain the account-action or recommendation boundary and offer educational scope.
+Source-verification questions describe actual retrieved metadata, without claiming
+a live check. Compound-interest examples are illustrative, not promised returns.
+
+`tests/test_investment_education_safety.py` checks semantic query isolation,
+invalid model topic rejection, guarantee/execution boundaries, scam-claim
+education and public refusal text. `tests/test_local_documents.py` additionally
+checks substantive governed passages for new beginner topics; its original frozen
+100-case retrieval benchmark and threshold remain unchanged.
+
 ## Orchestrator Routing
 
 Dataset: `apps/ai-service/app/evals/datasets/orchestrator_routing.jsonl`

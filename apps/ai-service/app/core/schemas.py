@@ -273,6 +273,7 @@ class SourceCitation(BaseModel):
 class RouterDecision(BaseModel):
     selected_agents: list[AgentName] = Field(min_length=1, max_length=4)
     rationale: list[str] = Field(min_length=1)
+    education_topics: list[str] = Field(default_factory=list, max_length=12)
 
     @field_validator("selected_agents")
     @classmethod

@@ -25,6 +25,9 @@ EDUCATION_TOPIC_PHRASES: tuple[tuple[str, str], ...] = (
     ("time horizon", "investment time horizon"),
     ("investment horizon", "investment time horizon"),
     ("投资期限", "investment time horizon"),
+    ("time I plan to invest", "investment time horizon"),
+    ("how long I plan to invest", "investment time horizon"),
+    ("length of time I plan to invest", "investment time horizon"),
     ("investment readiness", "investment readiness"),
     ("投资准备", "investment readiness"),
     ("risk and return", "risk and return"),
@@ -38,6 +41,13 @@ EDUCATION_TOPIC_PHRASES: tuple[tuple[str, str], ...] = (
     ("fees", "investment fees"),
     ("charges", "investment fees"),
     ("费用", "investment fees"),
+    ("fixed deposits", "fixed deposits"),
+    ("fixed deposit", "fixed deposits"),
+    ("fixed-term deposit", "fixed deposits"),
+    ("fixed-term deposits", "fixed deposits"),
+    ("fixed-term bank deposit", "fixed deposits"),
+    ("fixed-term bank deposits", "fixed deposits"),
+    ("定期存款", "fixed deposits"),
     ("shares", "shares"),
     ("share", "shares"),
     ("stocks", "shares"),
@@ -46,6 +56,10 @@ EDUCATION_TOPIC_PHRASES: tuple[tuple[str, str], ...] = (
     ("bonds", "bonds"),
     ("bond", "bonds"),
     ("债券", "bonds"),
+    ("index funds", "index funds"),
+    ("index fund", "index funds"),
+    ("index-tracking fund", "index funds"),
+    ("指数基金", "index funds"),
     ("zero-coupon bonds", "zero-coupon bonds"),
     ("zero-coupon bond", "zero-coupon bonds"),
     ("zero coupon bond", "zero-coupon bonds"),
@@ -94,8 +108,20 @@ EDUCATION_TOPIC_PHRASES: tuple[tuple[str, str], ...] = (
 # Canonical concepts preserve educational detail without embedding the user's
 # amounts, identifiers, or unrestricted text in retrieval queries.
 EDUCATION_DETAIL_PHRASES = (
+    ("saving vs investing", ("saving and investing", "saving versus investing", "savings and investing", "saving vs investing", "invest instead of", "储蓄和投资的区别", "储蓄与投资")),
+    ("compound interest", ("compound interest", "compounding", "interest earned on interest", "复利")),
+    ("inflation", ("inflation", "purchasing power", "rising prices", "通货膨胀", "购买力")),
+    ("investment readiness", ("before I start investing", "before putting money into investments", "before investing", "before putting spare cash", "afford to invest", "whether I can invest", "investment readiness", "开始投资前", "投资前需要考虑", "是否负担得起投资", "能否投资")),
+    ("investment time horizon", ("time horizon", "investment horizon", "time I plan to invest", "how long I plan to invest", "money in two years", "投资期限", "投资时间")),
+    ("investment basics", ("beginner investing", "stocks, bonds", "stock, bond", "投资入门", "投资新手")),
+    ("investment drawdowns", ("investment has dropped", "investment dropped", "my holdings fell sharply", "market downturn", "drawdown", "投资下跌", "亏损了")),
+    ("investment scams", ("investment scam", "investment fraud", "投资骗局")),
+    ("source verification", ("reliable sources", "check your explanation", "how up to date", "financial explanation", "verify the source", "authoritative sources", "更新时间", "核实投资说明", "可靠来源", "核实来源", "是否最新")),
+    ("irregular income investment readiness", ("irregular income", "income is irregular", "收入不稳定", "收入不固定", "收入不规律")),
+    ("debt and investment readiness", ("credit card debt", "credit card balance", "borrow money", "borrowing money", "debt before investing", "信用卡债务", "信用卡还有欠款", "借钱投资")),
+    ("emergency fund readiness", ("emergency fund", "emergency savings", "emergency reserve", "应急基金", "应急储蓄")),
     ("investment pooling", ("pool", "pooled", "汇集")),
-    ("passive index tracking", ("passive", "index-tracking", "outperform", "被动", "跑赢指数", "指数追踪")),
+    ("passive index tracking", ("passive", "index-tracking", "index-tracking fund", "outperform", "被动", "跑赢指数", "指数追踪")),
     ("investment principal loss", ("lose all", "principal-guaranteed", "invested capital", "损失全部", "本金保证", "最坏")),
     ("capital gain or loss", ("capital gain", "capital gains", "capital loss", "资本收益", "资本损失")),
     ("dividends", ("dividend", "dividends", "股息")),
@@ -103,6 +129,9 @@ EDUCATION_DETAIL_PHRASES = (
     ("net asset value", ("net asset value", "nav", "净值")),
     ("tracking error", ("execution costs", "nav changes", "index movements", "执行成本", "交易时点", "净值的变化", "指数变化")),
     ("currency risk", ("foreign exchange", "base currency", "基础货币")),
+    ("currency risk", ("currency risks", "exchange-rate changes", "exchange-rate movements", "汇率变化", "货币风险")),
+    ("actively managed funds", ("actively managed fund", "actively managed funds", "active fund", "主动管理基金")),
+    ("actively managed funds", ("manager-picked fund", "manager picked fund", "managed by a fund manager", "基金经理主动管理")),
     ("market makers liquidity", ("market maker", "market makers", "做市商")),
     ("traded price demand supply", ("trading price", "traded price", "交易价格")),
     ("securities lending", ("securities lending", "证券借贷")),
@@ -129,6 +158,12 @@ EDUCATION_DETAIL_PHRASES = (
     ("Singapore Government Securities SGS coupons", ("sgs", "government securities", "新加坡政府证券")),
 )
 
+CANONICAL_EDUCATION_TOPICS: tuple[str, ...] = tuple(dict.fromkeys(
+    [topic for _, topic in EDUCATION_TOPIC_PHRASES]
+    + [topic for topic, _ in EDUCATION_DETAIL_PHRASES]
+    + ["investment basics"]
+))
+
 GENERIC_EDUCATION_TOPIC_PHRASES = (
     "investing",
     "investment",
@@ -141,6 +176,7 @@ GENERIC_EDUCATION_QUESTION = re.compile(
     r"understand|what|is|are|how|can|should|do|you|where|get|getting|started|begin|start|"
     r"with|the|a|an|of|in|for|about|"
     r"basic|basics|beginner|beginners|general|simple|terms|introduction|education|"
+    r"completely|"
     r"financial|investment|investments|investing|invest)\b|"
     r"请问|请|用|简单|中文|英文|解释|介绍|一下|什么|是|如何|开始|了解|学习|"
     r"投资|入门|基础|知识|我|想|要|[\s,.?!，。？！、])+"
@@ -159,6 +195,7 @@ UNSUPPORTED_EDUCATION_TOPIC_PHRASES = (
 DETAILED_EDUCATION_TOPICS = {
     "bond duration", "zero-coupon bonds", "treasury bills",
     "Singapore Savings Bonds", "dollar-cost averaging",
+    "compound interest", "inflation", "fixed deposits", "investment scams",
 }
 
 CHINESE_GAP_LABELS = {
@@ -167,6 +204,10 @@ CHINESE_GAP_LABELS = {
     "treasury bills": "国库券",
     "Singapore Savings Bonds": "新加坡储蓄债券",
     "dollar-cost averaging": "定期定额投资",
+    "compound interest": "复利",
+    "inflation": "通货膨胀",
+    "fixed deposits": "定期存款",
+    "investment scams": "投资诈骗",
     "tax treatment": "税务处理",
     "tokenized assets": "代币化资产",
     "crypto assets": "加密资产",
@@ -189,6 +230,8 @@ def education_question_intent(message: str) -> str:
     ):
         if any(_contains_phrase(message.casefold(), phrase) for phrase in phrases):
             return intent
+    if any(_contains_phrase(message.casefold(), phrase) for phrase in ("example", "for example", "举例", "例子", "示例")):
+        return "example"
     return "explanation"
 
 
@@ -218,7 +261,31 @@ def education_topics(message: str) -> list[str]:
         if _contains_phrase(text, phrase) and topic not in topics:
             topics.append(topic)
     for topic, phrases in EDUCATION_DETAIL_PHRASES:
-        if any(_contains_phrase(normalized, phrase) for phrase in phrases) and topic not in topics:
+        if topic == "investment scams":
+            has_scam_claim = any(_contains_phrase(normalized, phrase) for phrase in (
+                "no risk", "without risk", "is it legitimate", "verify the offer",
+                "whether it is legitimate", "guaranteed monthly gains",
+            ))
+            has_financial_context = any(_contains_phrase(normalized, phrase) for phrase in (
+                "investment", "invest", "return", "pays", "money", "financial", "gains", "投资", "回报",
+            ))
+            matched = has_scam_claim and has_financial_context or any(
+                _contains_phrase(normalized, phrase) for phrase in phrases
+            )
+        else:
+            matched = any(_contains_phrase(normalized, phrase) for phrase in phrases)
+        if topic == "investment time horizon" and not matched:
+            matched = _contains_phrase(normalized, "goal date") and _contains_phrase(normalized, "investment choices")
+        if matched and topic not in topics:
+            if topic in {
+                "emergency fund readiness",
+                "debt and investment readiness",
+                "irregular income investment readiness",
+            } and not any(
+                _contains_phrase(normalized, phrase)
+                for phrase in GENERIC_EDUCATION_TOPIC_PHRASES
+            ):
+                continue
             if topic == "investment readiness emergency cash" and not any(
                 _contains_phrase(normalized, phrase) for phrase in GENERIC_EDUCATION_TOPIC_PHRASES
             ):
@@ -227,6 +294,8 @@ def education_topics(message: str) -> list[str]:
             if topic == "liquidity" and "liquidity risk" in topics:
                 continue
             topics.append(topic)
+    if unsupported_education_topics(message) and "investment basics" in topics:
+        topics.remove("investment basics")
     if not topics and any(
         _contains_phrase(normalized, phrase)
         for phrase in GENERIC_EDUCATION_TOPIC_PHRASES
@@ -275,8 +344,13 @@ def should_request_education_context(message: str) -> bool:
     return bool(education_topics(message))
 
 
-def build_minimal_education_query(message: str) -> tuple[str, list[str]]:
-    topics = education_topics(message)
+def build_minimal_education_query(
+    message: str, *, additional_topics: tuple[str, ...] | list[str] = (),
+) -> tuple[str, list[str]]:
+    invalid_topics = [topic for topic in additional_topics if topic not in CANONICAL_EDUCATION_TOPICS]
+    if invalid_topics:
+        raise ValueError("Additional education topics must be canonical allowlisted topics.")
+    topics = list(dict.fromkeys(education_topics(message) + list(additional_topics)))
     if not topics:
         raise ValueError("No allowlisted education topic was identified.")
     return f"General investment education about {', '.join(topics)}", topics
