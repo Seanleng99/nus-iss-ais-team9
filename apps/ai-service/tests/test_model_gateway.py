@@ -117,8 +117,13 @@ def test_openai_gateway_uses_responses_without_storing_financial_prompts() -> No
     assert result == '{"answer":"ok"}'
     assert result.usage == {"inputTokens": 123, "outputTokens": 45, "totalTokens": 168}
     assert responses.request == {
-        "model": "gpt-6-luna", "instructions": "system", "input": "user",
+        "model": "gpt-6-luna", "instructions": "system",
+        "input": [
+            {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
+            {"role": "user", "content": "user"},
+        ],
         "reasoning": {"effort": "low"}, "max_output_tokens": 1600, "store": False,
+        "text": {"format": {"type": "json_object"}},
     }
 
 

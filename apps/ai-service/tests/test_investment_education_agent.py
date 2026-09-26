@@ -96,7 +96,9 @@ def test_investment_model_prompt_contains_topics_not_personal_details() -> None:
     payload = json.loads(investment_call["user_prompt"])
     assert payload["message"] == (
         "Answer the requested explanation about bonds, exchange-traded funds. "
-        "Use only the provided evidence; do not expand to adjacent topics."
+        "Search the supplied evidence first; use the separate general_knowledge "
+        "field only for missing stable concepts permitted by fallback_topics. "
+        "Do not expand to adjacent topics."
     )
     assert payload["grounding"]["response_language"] == "English"
     assert "9,876" not in investment_call["user_prompt"]

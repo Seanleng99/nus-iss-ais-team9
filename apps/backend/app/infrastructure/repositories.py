@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, delete, func, or_, select, update
+from sqlalchemy import Select, case, delete, func, or_, select, update
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.api.financial_schemas import (
@@ -18,6 +18,8 @@ from app.core.data_lifecycle import (
 )
 from app.core.telemetry import trace_method
 from app.domain.schemas import (
+    BROKERAGE_RESPONSE_ANSWER,
+    BROKERAGE_RESPONSE_ANSWER_ZH,
     FinancialGoal,
     MoneyAmount,
     Transaction,
@@ -336,7 +338,8 @@ class SQLAlchemyUserRepository:
                                 blocked_response_answer(
                                     response_language=message.orchestration_trace.audit.get(
                                         "response_language", "English"
-                                    )
+                                    ),
+                                    answer=message.content,
                                 )
                                 if message.role == "assistant"
                                 and message.orchestration_trace is not None
@@ -1064,7 +1067,18 @@ class SQLAlchemyOrchestrationTraceRepository:
                     ChatMessageRecord.role == "assistant",
                 )
                 .values(
-                    content=blocked_response_answer(response_language=response_language),
+                    content=case(
+                        (
+                            ChatMessageRecord.content.in_(
+                                (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH)
+                            ),
+                            blocked_response_answer(
+                                response_language=response_language,
+                                answer=BROKERAGE_RESPONSE_ANSWER,
+                            ),
+                        ),
+                        else_=blocked_response_answer(response_language=response_language),
+                    ),
                     sources=[],
                 )
                 .execution_options(synchronize_session="fetch")
@@ -1078,7 +1092,8 @@ class SQLAlchemyOrchestrationTraceRepository:
         message = record.assistant_message
         if record.blocked and message is not None and message.role == "assistant":
             message.content = blocked_response_answer(
-                response_language=record.audit.get("response_language", "English")
+                response_language=record.audit.get("response_language", "English"),
+                answer=message.content,
             )
             message.sources = []
 

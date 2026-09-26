@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import Any, Protocol
 from uuid import uuid4
 
+from app.agents.education_access import education_topics
 from app.core.config import Settings
 from app.core.run_trace import task_context
 from app.core.telemetry import context_fields, log_event, trace_method
@@ -182,9 +183,13 @@ class OpenAIModelGateway:
             response = self.client.responses.create(
                 model=self.model_id,
                 instructions=system_prompt,
-                input=user_prompt,
+                input=[
+                    {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
+                    {"role": "user", "content": user_prompt},
+                ],
                 reasoning={"effort": self.settings.model_reasoning_effort},
                 max_output_tokens=max_tokens,
+                text={"format": {"type": "json_object"}},
                 store=False,
             )
             if response.status != "completed" or not response.output_text.strip():
@@ -310,20 +315,13 @@ class LocalFixtureModelGateway:
                 "budget": ["budget", "allocate", "afford", "monthly"],
                 "goal_strategy": ["goal", "save", "emergency fund", "vacation", "home"],
                 "investment_education": [
-                    "invest",
-                    "etf",
-                    "diversification",
-                    "risk",
-                    "cpf",
-                    "bond",
-                    "shares",
-                    "stock",
-                    "reit",
-                    "unit trust",
-                    "mutual fund",
+                    "invest", "etf", "diversification", "risk", "cpf", "bond", "shares",
+                    "stock", "reit", "unit trust", "mutual fund",
                 ],
             }
             selected = [name for name, terms in rules.items() if any(term in message for term in terms)]
+            if education_topics(str(payload["message"])) and "investment_education" not in selected:
+                selected.append("investment_education")
         return {
             "selected_agents": selected or ["budget"],
             "rationale": ["Offline fixture selected agents for repeatable integration testing."],
@@ -373,6 +371,9 @@ class LocalFixtureModelGateway:
                 if contexts
                 else "Approved investment-education evidence was unavailable."
             )
+            if not contexts and grounding.get("fallback_topics"):
+                # The offline fixture cannot supply model knowledge; abstain honestly.
+                summary = ""
             if contexts and grounding.get("response_language") == "Chinese":
                 translations = {
                     "cpf-beginners-guide-to-investing": (
@@ -400,6 +401,16 @@ class LocalFixtureModelGateway:
                     ),
                 }
                 summary = translations.get(contexts[0]["source_id"], summary)
+            if grounding.get("source_verification"):
+                summary = "Sources available for this answer:\n" + "\n".join(
+                    f"- {source['issuing_organization']}: {source['title']}; "
+                    f"document date {source['published_at']}, version {source['document_version']}. "
+                    f"[source:{source['source_id']}]"
+                    for source in grounding.get("sources", [])
+                ) + (
+                    "\nThese are captured document dates, not live checks of current rates "
+                    "or provider status. A review deadline does not establish current accuracy."
+                )
         response = {
             "summary": summary,
             "rationale": ["The response is grounded in the supplied, allowlisted tool output."],

@@ -273,6 +273,7 @@ class SourceCitation(BaseModel):
 class RouterDecision(BaseModel):
     selected_agents: list[AgentName] = Field(min_length=1, max_length=4)
     rationale: list[str] = Field(min_length=1)
+    education_topics: list[str] = Field(default_factory=list, max_length=12)
 
     @field_validator("selected_agents")
     @classmethod
@@ -291,6 +292,23 @@ class AgentNarrative(BaseModel):
 class GroundedEducationNarrative(AgentNarrative):
     source_ids: list[str] = Field(min_length=1, max_length=3)
     uncertainties: list[str] = Field(default_factory=list, max_length=4)
+
+
+class GeneralEducationSection(BaseModel):
+    topic: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=1500)
+
+
+class HybridEducationNarrative(GroundedEducationNarrative):
+    summary: str = Field(default="", max_length=3000)
+    source_ids: list[str] = Field(default_factory=list, max_length=3)
+    general_knowledge: list[GeneralEducationSection] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def bound_combined_answer(self) -> "HybridEducationNarrative":
+        if len(self.summary) + sum(len(section.text) for section in self.general_knowledge) > 5000:
+            raise ValueError("Combined education content must fit within 5000 characters.")
+        return self
 
 
 class SynthesisDecision(BaseModel):

@@ -31,8 +31,27 @@ from app.infrastructure.repositories import (
     SQLAlchemyUserRepository,
 )
 from app.infrastructure.run_trace import DurableRun
+from app.services.budget_alert import build_status_reply, parse_budget_status_query
+from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
+from app.services.transaction_capture import handle_transaction_capture
 
 router = APIRouter()
+
+
+def _current_period_start():  # pragma: no cover - trivial
+    return datetime.now(UTC).date().replace(day=1)
+
+
+def _budget_alert_reply(session: Session, request: CoachRequest) -> CoachResponse:
+    answer = build_status_reply(session, request.user_id, _current_period_start())
+    return CoachResponse(
+        session_id=request.session_id,
+        selected_agents=[],
+        answer=answer,
+        agent_results=[],
+        disclaimers=[],
+        audit={"source": "budget_alert"},
+    )
 
 
 def get_ai_service_client() -> AIServiceClient:
@@ -53,6 +72,16 @@ async def coach(
     x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
     enforce_user_access(principal, session, request.user_id)
+    captured = handle_transaction_capture(session, request)
+    if captured is not None:
+        return _finalize_coach_response(_persist_local_coach(session, request, captured))
+    query_date = parse_date_spending_query(request.message)
+    if query_date is not None:
+        queried = handle_date_spending_query(session, request, query_date)
+        return _finalize_coach_response(_persist_local_coach(session, request, queried))
+    if parse_budget_status_query(request.message):
+        alert_reply = _budget_alert_reply(session, request)
+        return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
     user_repository = SQLAlchemyUserRepository(session)
     persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
@@ -119,6 +148,52 @@ async def coach(
         raise
     finally:
         active_run.reset(token)
+
+
+@trace_method
+def _persist_local_coach(
+    session: Session, request: CoachRequest, response: CoachResponse
+) -> CoachResponse:
+    _persist_coach_exchange(session, request, response)
+    log_event("coach.persistence.completed", persisted=True, message_count=2)
+    return response
+
+
+@trace_method
+def _persist_coach_exchange(
+    session: Session, request: CoachRequest, response: CoachResponse
+) -> None:
+    chat_repository = SQLAlchemyChatRepository(session)
+    chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
+    if chat_session is None:
+        if chat_repository.id_exists(request.session_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found",
+            )
+        chat_session = chat_repository.create(
+            request.user_id, request.session_id, request.message[:120]
+        )
+    chat_repository.append_message(chat_session, "user", request.message)
+    assistant_message = chat_repository.append_message(
+        chat_session,
+        "assistant",
+        response.answer,
+        [source.model_dump() for source in response.sources],
+    )
+    trace_id = str(response.audit.get("trace_id", "")).strip()
+    if trace_id:
+        SQLAlchemyOrchestrationTraceRepository(session).create(
+            trace_id=trace_id,
+            session_id=chat_session.id,
+            assistant_message_id=assistant_message.id,
+            selected_agents=[agent.value for agent in response.selected_agents],
+            agent_results=[item.model_dump(mode="json") for item in response.agent_results],
+            audit=response.audit,
+            blocked=response.blocked,
+        )
+    with call_span("sqlalchemy.orm.session.Session.commit"):
+        session.commit()
 
 
 @trace_method

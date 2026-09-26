@@ -72,9 +72,9 @@ def test_repository_manifest_is_current_and_has_stable_digest() -> None:
     manifest = load_source_manifest(MANIFEST_PATH)
 
     assert manifest.schema_version == 2
-    assert manifest.corpus_version == "investment-education-sg@2026-08-28.1"
-    assert len(manifest.sources) == 6
-    assert governance_issues(manifest, as_of=date(2026, 8, 28)) == []
+    assert manifest.corpus_version == "investment-education-sg@2026-09-26.1"
+    assert len(manifest.sources) == 10
+    assert governance_issues(manifest, as_of=date(2026, 9, 26)) == []
     assert manifest_digest(manifest).startswith("sha256:")
     assert len(manifest_digest(manifest)) == 71
 
@@ -98,7 +98,7 @@ def test_manifest_reports_an_expired_source_review() -> None:
     issues = governance_issues(manifest, as_of=date(2026, 11, 15))
 
     assert {item["code"] for item in issues} == {"SOURCE_REVIEW_EXPIRED"}
-    assert len(issues) == 6
+    assert len(issues) == 10
 
 
 def test_withdrawn_source_cannot_remain_approved_for_ingestion() -> None:

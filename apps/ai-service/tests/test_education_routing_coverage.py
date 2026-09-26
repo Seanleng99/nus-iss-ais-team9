@@ -73,3 +73,28 @@ def test_v6_single_education_answer_is_not_rewritten_but_is_reviewed():
     assert not any(c["system_prompt"].startswith("PROMPT_ID: synthesizer\n") for c in gateway.calls)
     assert any(c["system_prompt"].startswith("PROMPT_ID: risk_compliance\n") for c in gateway.calls)
     assert response.sources and not response.blocked
+
+
+@pytest.mark.parametrize("message", [
+    "Which stock should I buy?",
+    "I have a credit card balance; what should I consider before investing?",
+    "What tax rules apply to my investment?",
+    "Can you explain compound interest?",
+    "What is an index fund?",
+    "What is dollar-cost averaging?",
+    "What reliable sources can I use to check your explanation, and how up to date are they?",
+])
+def test_local_fixture_routes_canonical_investment_topics(message):
+    result = LocalFixtureModelGateway._route({"message": message})
+    assert "investment_education" in result["selected_agents"]
+
+
+def test_local_fixture_does_not_route_unrelated_unrecognized_topic_to_education():
+    result = LocalFixtureModelGateway._route({"message": "Explain the history of ancient pottery."})
+    assert "investment_education" not in result["selected_agents"]
+
+
+def test_local_fixture_does_not_emit_semantic_topic_field():
+    result = LocalFixtureModelGateway._route({"message": "Explain compound interest."})
+    assert "education_topics" not in result
+    assert result["selected_agents"] == ["investment_education"]

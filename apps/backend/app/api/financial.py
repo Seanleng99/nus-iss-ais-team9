@@ -79,6 +79,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyTransactionRepository,
     SQLAlchemyUserRepository,
 )
+from app.services.budget_alert import evaluate_budget_alert
 from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
 router = APIRouter(dependencies=[Depends(require_owned_path_user)])
@@ -676,6 +677,11 @@ def create_transaction(
 ) -> TransactionResponse:
     record = SQLAlchemyTransactionRepository(session).create(user_id, transaction)
     session.commit()
+    log_event(
+        "transaction.added",
+        source="api",
+        category=transaction.category,
+    )
     return _transaction_response(record)
 
 
@@ -891,4 +897,13 @@ def get_dashboard(
         spending_insights=spending_insights,
         spending_data_quality=spending_data_quality,
         spending_months_analyzed=spending_months_analyzed,
+        budget_alert=evaluate_budget_alert(
+            monthly_income,
+            (
+                [(item.category, float(item.limit_amount)) for item in budget_record.categories]
+                if budget_record is not None
+                else []
+            ),
+            spending,
+        ),
     )

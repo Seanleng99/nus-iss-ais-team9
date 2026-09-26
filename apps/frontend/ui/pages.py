@@ -271,6 +271,52 @@ def dashboard_page() -> None:
         return
 
     currency = dashboard["currency"]
+    budget_alert = dashboard.get("budget_alert")
+    if budget_alert:
+        alert_categories = [
+            item["category"].capitalize() for item in budget_alert["categories_over"]
+        ]
+        if budget_alert["status"] == "over":
+            if budget_alert["over_income"]:
+                st.error(
+                    f"\U0001F6A8 You have spent "
+                    f"{money(budget_alert['total_spent'], currency)} this month — "
+                    f"{money(budget_alert['amount_over_income'], currency)} more than your "
+                    f"monthly income of {money(budget_alert['monthly_income'], currency)}."
+                )
+            if budget_alert["over_budget"]:
+                detail = (
+                    f" Categories over their limit: {', '.join(alert_categories)}."
+                    if alert_categories
+                    else ""
+                )
+                st.error(
+                    f"\U0001F6A8 You are over your monthly budget of "
+                    f"{money(budget_alert['total_budget_limit'], currency)}.{detail}"
+                )
+        elif budget_alert["status"] == "approaching":
+            usage_parts = []
+            if budget_alert["income_usage_percent"] is not None:
+                usage_parts.append(
+                    f"{budget_alert['income_usage_percent']:.0f}% of your monthly income"
+                )
+            if budget_alert["budget_usage_percent"] is not None:
+                usage_parts.append(
+                    f"{budget_alert['budget_usage_percent']:.0f}% of your monthly budget"
+                )
+            warning_categories = [
+                item["category"].capitalize()
+                for item in budget_alert["categories_at_limit"]
+            ]
+            category_detail = (
+                f" Close to their limit: {', '.join(warning_categories)}."
+                if warning_categories
+                else ""
+            )
+            st.warning(
+                "\u26A0\uFE0F Approaching your limits: you have used "
+                f"{' and '.join(usage_parts)} this month.{category_detail}"
+            )
     income, spent = st.columns(2)
     income.metric("Monthly income", money(dashboard["monthly_income"], currency))
     spent.metric("Spent", money(dashboard["total_spent"], currency))
@@ -306,19 +352,19 @@ def dashboard_page() -> None:
         # Show data quality indicator
         if spending_data_quality in ["limited", "insufficient"]:
             st.info(
-                f"💡 **Data Quality: {spending_data_quality.title()}**  "
-                f"You have {spending_months_analyzed} month(s) of transaction data. "
-                f"For more accurate insights and pattern detection, aim for at least 3 months of consistent transaction tracking."
+                f"\U0001F4A1 Keep adding transactions! You have {spending_months_analyzed} "
+                f"month(s) of data so far — aim for at least 3 months to unlock more "
+                f"accurate insights and pattern detection."
             )
         elif spending_data_quality == "good":
             st.success(
-                f"✅ **Data Quality: Good**  "
-                f"You have {spending_months_analyzed} months of transaction data. Keep tracking to unlock even deeper insights!"
+                f"\u2705 You have {spending_months_analyzed} months of transaction data. "
+                f"Keep tracking to unlock even deeper insights!"
             )
         else:  # excellent
             st.success(
-                f"✅ **Data Quality: Excellent**  "
-                f"You have {spending_months_analyzed}+ months of transaction data. You're getting the most accurate insights possible!"
+                f"\u2705 You have {spending_months_analyzed}+ months of transaction data — "
+                f"you're getting the most accurate insights possible!"
             )
     
     # Show category charts: Pie chart (distribution) + Bar chart (breakdown)
@@ -564,6 +610,44 @@ def transactions_page() -> None:
             selected_category = (
                 selected["category"] if selected["category"] in CATEGORIES else "other"
             )
+            selected_occurred = date.fromisoformat(selected["occurred_on"])
+            actual_month_start = datetime.now(UTC).date().replace(day=1)
+            editable = (
+                selected_occurred.year == actual_month_start.year
+                and selected_occurred.month == actual_month_start.month
+            )
+            if not editable:
+                st.info(
+                    "Transactions from previous or future months are read-only. "
+                    "You can still delete them."
+                )
+                st.text_input("Description", value=selected["description"], disabled=True)
+                detail_left, detail_right = st.columns(2)
+                detail_left.text_input(
+                    "Category", value=_category_label(selected["category"]), disabled=True
+                )
+                detail_right.number_input(
+                    "Amount (SGD)",
+                    value=float(selected["amount"]["amount"]),
+                    disabled=True,
+                )
+                detail_left.date_input(
+                    "Date", value=selected_occurred, disabled=True,
+                    key=f"manage-transaction-{selected_id}-readonly-date",
+                )
+                detail_right.toggle(
+                    "Recurring expense",
+                    value=selected["recurring"],
+                    disabled=True,
+                    key=f"manage-transaction-{selected_id}-readonly-recurring",
+                )
+                if st.button(
+                    "Delete", icon=":material/delete:", key=f"manage-transaction-{selected_id}-delete-readonly"
+                ):
+                    backend_call(lambda: client.delete_transaction(user_id, selected_id))
+                    st.success("Transaction deleted.")
+                    st.rerun()
+                return
             with st.form("manage-transaction"):
                 edit_description = st.text_input(
                     "Description",
