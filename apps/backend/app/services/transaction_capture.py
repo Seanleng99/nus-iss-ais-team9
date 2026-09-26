@@ -175,33 +175,71 @@ class CaptureDraft:
     description: str
     category: str
     booking: bool = False
+    when: date | None = None
 
 
 class PendingCaptureStore:
     def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
         self.ttl_seconds = ttl_seconds
         self._lock = threading.Lock()
-        self._entries: dict[str, tuple[CaptureDraft, float]] = {}
+        self._entries: dict[str, tuple[list[CaptureDraft], float]] = {}
 
     def put(self, user_id: str, draft: CaptureDraft) -> None:
+        self.put_queue(user_id, [draft])
+
+    def put_queue(self, user_id: str, drafts: list[CaptureDraft]) -> None:
         with self._lock:
-            self._entries[user_id] = (draft, time.monotonic())
+            if drafts:
+                self._entries[user_id] = (list(drafts), time.monotonic())
+            else:
+                self._entries.pop(user_id, None)
+
+    def _live(self, user_id: str) -> list[CaptureDraft] | None:
+        entry = self._entries.get(user_id)
+        if entry is None:
+            return None
+        drafts, stored_at = entry
+        if time.monotonic() - stored_at > self.ttl_seconds:
+            del self._entries[user_id]
+            return None
+        return drafts or None
 
     def get(self, user_id: str) -> CaptureDraft | None:
         with self._lock:
-            entry = self._entries.get(user_id)
-            if entry is None:
-                return None
-            draft, stored_at = entry
-            if time.monotonic() - stored_at > self.ttl_seconds:
-                del self._entries[user_id]
-                return None
-            return draft
+            drafts = self._live(user_id)
+            return drafts[0] if drafts else None
+
+    def peek_all(self, user_id: str) -> list[CaptureDraft]:
+        with self._lock:
+            drafts = self._live(user_id)
+            return list(drafts) if drafts else []
+
+    def replace(self, user_id: str, drafts: list[CaptureDraft]) -> None:
+        with self._lock:
+            stored_at = self._entries[user_id][1] if user_id in self._entries else time.monotonic()
+            if drafts:
+                self._entries[user_id] = (list(drafts), stored_at)
+            else:
+                self._entries.pop(user_id, None)
+
+    def drop(self, user_id: str) -> list[CaptureDraft]:
+        with self._lock:
+            drafts = self._live(user_id)
+            self._entries.pop(user_id, None)
+            return list(drafts) if drafts else []
 
     def pop(self, user_id: str) -> CaptureDraft | None:
         with self._lock:
-            entry = self._entries.pop(user_id, None)
-        return entry[0] if entry is not None else None
+            drafts = self._live(user_id)
+            if not drafts:
+                self._entries.pop(user_id, None)
+                return None
+            first = drafts.pop(0)
+            if drafts:
+                self._entries[user_id] = (drafts, self._entries[user_id][1])
+            else:
+                del self._entries[user_id]
+            return first
 
     def clear(self) -> None:
         with self._lock:
@@ -227,6 +265,7 @@ DESCRIPTION_STRIP_TOKENS = frozenset(
         "spent", "spend", "spends", "paid", "pays", "pay", "bought", "buy", "buys",
         "purchased", "purchase", "purchases", "took", "take", "takes", "used",
         "got", "getting", "costing", "cost", "costs", "priced",
+        "add", "added", "record", "recorded", "log", "logged", "enter", "here",
         "booked", "book", "books", "reserved", "reserve", "reservation",
         # pronouns / auxiliaries / fillers
         "i", "we", "you", "they", "he", "she", "it", "me", "him", "them", "us",
@@ -272,7 +311,27 @@ BRAND_DISPLAY_NAMES = {
 }
 
 
+MEAL_REWRITE_PATTERN = re.compile(
+    r"\bon\s+([a-z0-9][a-z0-9 ]*?)\s+(?:for\s+)?(?:\S*'s\s+|'s\s+)?"
+    r"(lunch|dinner|breakfast|brunch|supper|snack)\b",
+    re.IGNORECASE,
+)
+
+
+def _titlecase_phrase(phrase: str) -> str:
+    def cap_word(word: str) -> str:
+        for index, character in enumerate(word):
+            if character.isalpha():
+                return word[:index] + character.upper() + word[index + 1:]
+        return word
+
+    return " ".join(cap_word(word) for word in phrase.split())
+
+
 def _extract_description(text: str, *, drop_bare_numbers: bool) -> str:
+    text = MEAL_REWRITE_PATTERN.sub(
+        lambda m: f"{m.group(2).capitalize()} ({_titlecase_phrase(m.group(1).strip())})", text
+    )
     text = DESCRIPTION_STRIP_PHRASES.sub(" ", text)
     text = re.sub(r"[.!?,;:]", " ", text)
     kept = []
@@ -282,6 +341,8 @@ def _extract_description(text: str, *, drop_bare_numbers: bool) -> str:
         lowered = token.lower().strip("'\"")
         if not lowered or lowered in DESCRIPTION_STRIP_TOKENS:
             continue
+        if token.startswith("'"):
+            continue
         if lowered in {"s$", "sgd"}:
             continue
         if AMOUNT_TOKEN_PATTERN.match(token):
@@ -289,7 +350,12 @@ def _extract_description(text: str, *, drop_bare_numbers: bool) -> str:
         if drop_bare_numbers and token.isdigit():
             continue
         brand = BRAND_DISPLAY_NAMES.get(lowered)
-        kept.append(brand if brand is not None else token.capitalize())
+        if brand is not None:
+            kept.append(brand)
+        elif token[:1].isalpha():
+            kept.append(token[0].upper() + token[1:])
+        else:
+            kept.append(token)
     return " ".join(kept).strip()
 
 
@@ -481,6 +547,56 @@ def is_cancel_message(message: str) -> bool:
     return bool(CANCEL_PATTERN.fullmatch(message.strip().rstrip(".!")))
 
 
+BATCH_HEADER_PATTERN = re.compile(
+    r"\b(?:add|record|log|enter|input)\b[^.:;]*\b(?:expense|expenses|transaction|transactions|"
+    r"spending|purchase|purchases)\b",
+    re.IGNORECASE,
+)
+
+
+def _split_segments(message: str) -> list[str]:
+    raw_lines = re.split(r"[\r\n]+|(?<=:)\s+", message)
+    segments: list[str] = []
+    for line in raw_lines:
+        line = line.strip()
+        if not line:
+            continue
+        segments.extend(part.strip() for part in re.split(r"(?<=[.!?])\s+", line) if part.strip())
+    return segments
+
+
+def parse_batch(message: str) -> list[CaptureDraft] | None:
+    segments = _split_segments(message)
+    if len(segments) < 2:
+        return None
+    header_present = any(
+        BATCH_HEADER_PATTERN.search(segment) and parse_spending_statement(segment) is None
+        for segment in segments
+    )
+    drafts: list[CaptureDraft] = []
+    for segment in segments:
+        draft = parse_spending_statement(segment)
+        if draft is None:
+            continue
+        draft.when = extract_date_from_text(segment, allow_future=draft.booking)
+        drafts.append(draft)
+    if len(drafts) >= 2:
+        return drafts
+    if header_present and drafts:
+        return drafts
+    return None
+
+
+def _ask_queue_reply(session_id: str, next_draft: CaptureDraft, saved_parts: list[str]) -> CoachResponse:
+    prefix = " ".join(saved_parts)
+    question = (
+        f"When did you spend the {next_draft.description.lower()}? "
+        "You can say 'yesterday', 'today', or a date like 21/9."
+    )
+    answer = f"{prefix} {question}" if prefix else question
+    return _local_reply(session_id, answer)
+
+
 def _local_reply(session_id: str, answer: str) -> CoachResponse:
     audit: dict[str, Any] = {"source": "transaction_capture"}
     return CoachResponse(
@@ -501,21 +617,12 @@ def _ask_date_reply(session_id: str, draft: CaptureDraft) -> CoachResponse:
     )
 
 
-def _saved_reply(session_id: str, draft: CaptureDraft, when: date) -> CoachResponse:
-    formatted = f"{when.day} {when.strftime('%b %Y')}"
-    return _local_reply(
-        session_id,
-        f"Saved: {draft.description} for SGD {draft.amount:.2f} on {formatted} "
-        f"under {draft.category.capitalize()}.",
-    )
-
-
 def handle_transaction_capture(session: Session, request: CoachRequest) -> CoachResponse | None:
     user_id = request.user_id
     session_id = request.session_id
     message = request.message
 
-    def save(draft: CaptureDraft, when: date) -> CoachResponse:
+    def save_one(draft: CaptureDraft, when: date) -> str:
         try:
             SQLAlchemyTransactionRepository(session).create(
                 user_id,
@@ -530,54 +637,112 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
         except SQLAlchemyError:
             session.rollback()
             pending_capture_store.put(user_id, draft)
-            return _local_reply(
-                session_id, "Sorry, I couldn't save that transaction. Please try again."
-            )
+            return "Sorry, I couldn't save that transaction. Please try again."
         log_event(
             "transaction.added",
             source="coach_capture",
             category=draft.category,
         )
-        reply = _saved_reply(session_id, draft, when)
+        formatted = f"{when.day} {when.strftime('%b %Y')}"
+        part = (
+            f"{draft.description} for SGD {draft.amount:.2f} on {formatted} "
+            f"under {draft.category.capitalize()}"
+        )
         from app.services.budget_alert import category_overage_note
 
         note = category_overage_note(session, user_id, when.replace(day=1), draft.category)
         if note:
-            reply = reply.model_copy(update={"answer": reply.answer + note})
-        return reply
+            part = part + " " + note.strip()
+        return part
 
-    pending = pending_capture_store.get(user_id)
-    if pending is not None:
+    def finalize(parts: list[str]) -> str:
+        body = "; ".join(parts)
+        return f"Saved: {body}" + ("" if body.endswith((".", "!")) else ".")
+
+    def save_list(drafts: list[CaptureDraft], dates: list[date]) -> str:
+        parts = [save_one(draft, when) for draft, when in zip(drafts, dates, strict=True)]
+        return finalize(parts)
+
+    pending = pending_capture_store.peek_all(user_id)
+    if pending:
         if is_cancel_message(message):
-            pending_capture_store.pop(user_id)
+            dropped = pending_capture_store.drop(user_id)
+            if len(dropped) == 1:
+                return _local_reply(
+                    session_id, "OK, I've dropped that transaction. Nothing was saved."
+                )
             return _local_reply(
-                session_id, "OK, I've dropped that transaction. Nothing was saved."
+                session_id,
+                f"OK, I've dropped {len(dropped)} pending transactions. Nothing was saved.",
             )
-        resolved = parse_date_expression(message, allow_future=pending.booking)
+        allow_future = any(draft.booking for draft in pending)
+        resolved = parse_date_expression(message, allow_future=allow_future)
         if resolved is not None:
-            pending_capture_store.pop(user_id)
-            return save(pending, resolved)
-        if mentions_future_date(message) and not pending.booking:
+            drafts = pending_capture_store.drop(user_id)
+            target = drafts[0]
+            remainder = drafts[1:]
+            saved_part = save_one(target, resolved)
+            failed = saved_part.startswith("Sorry")
+            if failed:
+                pending_capture_store.put_queue(user_id, drafts)
+                return _local_reply(session_id, saved_part)
+            if remainder:
+                pending_capture_store.put_queue(user_id, remainder)
+                return _ask_queue_reply(session_id, remainder[0], [saved_part])
+            return _local_reply(session_id, finalize([saved_part]))
+        if mentions_future_date(message) and not allow_future:
             return _local_reply(
                 session_id,
                 "That date is in the future — when did you spend it?",
             )
+        batch = parse_batch(message)
+        if batch is not None:
+            pending_capture_store.drop(user_id)
+            return _handle_parsed_batch(session, session_id, user_id, batch, save_list, save_one)
         replacement = parse_spending_statement(message)
         if replacement is not None:
+            pending_capture_store.drop(user_id)
             inline = extract_date_from_text(message, allow_future=replacement.booking)
             if inline is not None:
-                pending_capture_store.pop(user_id)
-                return save(replacement, inline)
+                saved_part = save_one(replacement, inline)
+                answer = saved_part if saved_part.startswith("Sorry") else finalize([saved_part])
+                return _local_reply(session_id, answer)
             pending_capture_store.put(user_id, replacement)
             return _ask_date_reply(session_id, replacement)
-        pending_capture_store.pop(user_id)
+        pending_capture_store.drop(user_id)
         return None
+
+    batch = parse_batch(message)
+    if batch is not None:
+        return _handle_parsed_batch(session, session_id, user_id, batch, save_list, save_one)
 
     draft = parse_spending_statement(message)
     if draft is None:
         return None
     inline = extract_date_from_text(message, allow_future=draft.booking)
     if inline is not None:
-        return save(draft, inline)
+        saved_part = save_one(draft, inline)
+        answer = saved_part if saved_part.startswith("Sorry") else finalize([saved_part])
+        return _local_reply(session_id, answer)
     pending_capture_store.put(user_id, draft)
     return _ask_date_reply(session_id, draft)
+
+
+def _handle_parsed_batch(
+    session: Session,
+    session_id: str,
+    user_id: str,
+    batch: list[CaptureDraft],
+    save_list,
+    save_one,
+) -> CoachResponse:
+    dated = [draft for draft in batch if draft.when is not None]
+    undated = [draft for draft in batch if draft.when is None]
+    if dated:
+        summary = save_list(dated, [draft.when for draft in dated])  # type: ignore[arg-type]
+    else:
+        summary = ""
+    if undated:
+        pending_capture_store.put_queue(user_id, undated)
+        return _ask_queue_reply(session_id, undated[0], [summary] if summary else [])
+    return _local_reply(session_id, summary)

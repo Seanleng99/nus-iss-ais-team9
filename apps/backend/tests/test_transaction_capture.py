@@ -113,6 +113,7 @@ def add_transaction(user_id: str, description: str, category: str, amount: float
         ("i paid 18 dollars for a grab ride", 18.0, "Grab ride"),
         ("i bought a nintendo switch 2 costing about 750 dollars", 750.0, "nintendo switch 2"),
         ("got a iphone 15 pro, paid 1200 dollars", 1200.0, "iphone 15 pro"),
+        ("I have spent 7.50 dollars on fried rice for today's lunch", 7.5, "Lunch (Fried Rice)"),
         ("i have booked for a $1288 anniversary dinner on the 28 sep", 1288.0, "anniversary dinner"),
     ],
 )
@@ -378,6 +379,83 @@ def test_capture_saves_title_cased_description(stub_ai: type[StubAIServiceClient
     post_coach("cap-u15", "i spent $5 on chicken rice today")
     saved = transactions_for("cap-u15")
     assert saved[0]["description"] == "Chicken Rice"
+
+
+# --- batch capture ---------------------------------------------------------------
+
+BATCH_MESSAGE = (
+    "Help me add my following expenses:\n"
+    "\n"
+    "Spent $3.50 for lunch (Fried Rice) on 05 Sep\n"
+    "Booked an anniversary dinner that costs 888 dollars on 15 Sep"
+)
+
+
+def test_batch_saves_multiple_dated_lines(stub_ai: type[StubAIServiceClient]) -> None:
+    body = post_coach("cap-b1", BATCH_MESSAGE)
+    assert stub_ai.last_request is None
+    answer = body["answer"]
+    assert "no transactions" not in answer.lower()
+    assert "3.50" in answer
+    assert "888.00" in answer
+    saved = transactions_for("cap-b1")
+    assert len(saved) == 2
+    assert sorted(item["occurred_on"] for item in saved) == ["2026-09-05", "2026-09-15"]
+    assert {item["category"] for item in saved} == {"food"}
+
+
+def test_batch_with_undated_line_asks_then_saves(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    first = post_coach(
+        "cap-b2",
+        "add these expenses:\nSpent $5 on coffee\nSpent $12 on mrt yesterday",
+    )
+    assert stub_ai.last_request is None
+    assert "when" in first["answer"].lower()
+    saved = transactions_for("cap-b2")
+    assert len(saved) == 1
+    assert saved[0]["category"] == "transport"
+
+    second = post_coach("cap-b2", "yesterday")
+    assert "coffee" in second["answer"].lower()
+    saved = transactions_for("cap-b2")
+    assert len(saved) == 2
+    coffee = next(item for item in saved if item["category"] == "food")
+    assert coffee["occurred_on"] == (TODAY - timedelta(days=1)).isoformat()
+
+
+def test_batch_cancel_drops_all_undated(stub_ai: type[StubAIServiceClient]) -> None:
+    post_coach("cap-b3", "log expenses:\nSpent $5 on coffee\nSpent $12 on movie tickets")
+    assert transactions_for("cap-b3") == []
+    body = post_coach("cap-b3", "cancel")
+    assert "nothing was saved" in body["answer"].lower()
+    assert transactions_for("cap-b3") == []
+
+
+def test_batch_multi_pending_asks_next_after_date(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    first = post_coach(
+        "cap-b4",
+        "log expenses:\nSpent $5 on coffee\nSpent $12 on movie tickets",
+    )
+    assert "when" in first["answer"].lower()
+    second = post_coach("cap-b4", "yesterday")
+    assert "movie" in second["answer"].lower() or "tickets" in second["answer"].lower()
+    assert "when" in second["answer"].lower()
+    assert len(transactions_for("cap-b4")) == 1
+    post_coach("cap-b4", "the day before")
+    assert len(transactions_for("cap-b4")) == 2
+
+
+def test_two_sentences_saved_as_batch(stub_ai: type[StubAIServiceClient]) -> None:
+    post_coach(
+        "cap-b5", "I spent $5 on coffee today. I paid $10 for lunch yesterday"
+    )
+    assert stub_ai.last_request is None
+    saved = transactions_for("cap-b5")
+    assert len(saved) == 2
 
 
 # --- transaction.added telemetry log --------------------------------------------
