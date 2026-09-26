@@ -167,22 +167,19 @@ def test_duplicate_policy_chunks_are_only_returned_once():
     assert len(_retriever(DuplicateClient()).retrieve("Review")) == 1
 
 
-def test_deployed_config_creates_bedrock_policy_retriever() -> None:
+def test_deployed_config_creates_governed_local_policy_retriever() -> None:
     config = Settings(
         APP_ENV="demo",
         AI_SERVICE_API_KEY="a-secure-demo-key-that-is-long-enough",
-        MODEL_PROVIDER="bedrock",
-        RAG_PROVIDER="bedrock",
-        EDUCATION_KNOWLEDGE_BASE_ID="EDUCATION123",
+        MODEL_PROVIDER="openai",
+        OPENAI_API_KEY="test-key",
+        RAG_PROVIDER="local_documents",
         EDUCATION_CORPUS_VERSION="investment-education-sg@2026-08-28.1",
-        POLICY_RAG_PROVIDER="bedrock",
-        POLICY_KNOWLEDGE_BASE_ID="POLICYKB12",
+        POLICY_RAG_PROVIDER="local_documents",
         POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-08-29.1",
-        POLICY_RAG_MINIMUM_SCORE=0.7,
     )
 
     retriever = create_policy_retriever(config)
 
-    assert isinstance(retriever, BedrockPolicyRetriever)
-    assert retriever.knowledge_base_id == "POLICYKB12"
-    assert retriever.minimum_score == 0.7
+    assert retriever.expected_corpus_version == "financial-coach-policy-sg@2026-08-29.1"
+    assert len(retriever.retrieve("advice boundary")) == 3

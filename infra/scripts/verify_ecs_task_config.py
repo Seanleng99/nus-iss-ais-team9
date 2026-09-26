@@ -19,6 +19,21 @@ def load_container_environment(task_definition: Path, container_name: str) -> di
     }
 
 
+def load_container_secrets(task_definition: Path, container_name: str) -> dict[str, str]:
+    payload = json.loads(task_definition.read_text(encoding="utf-8"))
+    container = next(
+        (item for item in payload.get("containerDefinitions", []) if item.get("name") == container_name),
+        None,
+    )
+    if container is None:
+        raise ValueError(f"container {container_name!r} is absent from the task definition")
+    return {
+        str(item["name"]): str(item.get("valueFrom", ""))
+        for item in container.get("secrets", [])
+        if item.get("name")
+    }
+
+
 def verify_environment(
     environment: dict[str, str],
     expected: dict[str, str],
@@ -55,6 +70,7 @@ def main() -> None:
     parser.add_argument("--container", required=True)
     parser.add_argument("--expect", action="append", default=[])
     parser.add_argument("--require-nonempty", action="append", default=[])
+    parser.add_argument("--require-secret", action="append", default=[])
     args = parser.parse_args()
 
     environment = load_container_environment(args.task_definition, args.container)
@@ -62,6 +78,12 @@ def main() -> None:
         environment,
         parse_expected(args.expect),
         set(args.require_nonempty),
+    )
+    secrets = load_container_secrets(args.task_definition, args.container)
+    errors.extend(
+        f"{name} must be configured as an ECS secret"
+        for name in args.require_secret
+        if not secrets.get(name, "").strip()
     )
     if errors:
         raise SystemExit("ECS runtime configuration drift detected:\n- " + "\n- ".join(errors))

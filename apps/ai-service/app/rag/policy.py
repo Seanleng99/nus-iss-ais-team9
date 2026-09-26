@@ -280,6 +280,20 @@ def create_policy_retriever(settings: Settings) -> PolicyRetriever:
     provider = settings.policy_rag_provider.lower()
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalPolicyRetriever()
+    if provider == "local_documents":
+        from pathlib import Path
+
+        from app.rag.local_policy import DEFAULT_POLICY_ROOT, LocalDocumentPolicyRetriever
+
+        retriever = LocalDocumentPolicyRetriever(
+            Path(settings.policy_rag_manifest_path)
+            if settings.policy_rag_manifest_path else DEFAULT_POLICY_ROOT / "source_manifest.json",
+            Path(settings.policy_rag_documents_path)
+            if settings.policy_rag_documents_path else DEFAULT_POLICY_ROOT / "documents",
+        )
+        if retriever.expected_corpus_version != settings.policy_corpus_version:
+            raise ValueError("POLICY_CORPUS_VERSION must match the approved local manifest")
+        return retriever
     if provider == "bedrock" and settings.policy_knowledge_base_id:
         return BedrockPolicyRetriever(
             knowledge_base_id=settings.policy_knowledge_base_id,

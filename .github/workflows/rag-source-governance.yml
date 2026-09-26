@@ -5,31 +5,14 @@ on:
   schedule:
     - cron: "30 2 * * 0"
 
-concurrency:
-  group: education-rag-source-governance-demo
-  cancel-in-progress: false
-
 permissions:
   contents: read
-  id-token: write
-
-env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
-  DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-  KNOWLEDGE_BASE_ID: ${{ vars.EDUCATION_KNOWLEDGE_BASE_ID }}
-  DATA_SOURCE_ID: ${{ vars.EDUCATION_DATA_SOURCE_ID }}
-  SOURCE_BUCKET: ${{ vars.EDUCATION_SOURCE_BUCKET }}
-  SOURCE_PREFIX: ${{ vars.EDUCATION_SOURCE_PREFIX || 'investment-education/documents/' }}
 
 jobs:
   audit:
-    name: Audit governed Education corpus
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      vars.RAG_SOURCE_GOVERNANCE_ENABLED == 'true'
+    name: Validate packaged Education and Policy corpora
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: demo
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,43 +22,15 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: apps/ai-service/pyproject.toml
-      - name: Install governance runtime
+      - name: Install corpus validation runtime
         run: python -m pip install -e "apps/ai-service[dev]"
-      - name: Validate governed manifest offline
-        run: >-
-          python infra/scripts/rag_source_governance.py validate
-          --manifest knowledge/investment_education/source_manifest.json
-          --output artifacts/rag-manifest-validation.json
-      - name: Validate AWS governance inputs
-        run: |
-          required=(DEPLOY_ROLE KNOWLEDGE_BASE_ID DATA_SOURCE_ID SOURCE_BUCKET SOURCE_PREFIX)
-          for name in "${required[@]}"; do
-            if [[ -z "${!name}" ]]; then
-              echo "Missing RAG governance variable: $name" >&2
-              exit 1
-            fi
-          done
-      - name: Configure short-lived AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ env.DEPLOY_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-          mask-aws-account-id: true
-      - name: Audit deployed corpus, freshness, and ingestion state
-        run: >-
-          python infra/scripts/rag_source_governance.py audit-aws
-          --manifest knowledge/investment_education/source_manifest.json
-          --knowledge-base-id "$KNOWLEDGE_BASE_ID"
-          --data-source-id "$DATA_SOURCE_ID"
-          --bucket "$SOURCE_BUCKET"
-          --prefix "$SOURCE_PREFIX"
-          --region "$AWS_REGION"
-          --output artifacts/rag-source-governance.json
-      - name: Upload privacy-safe governance evidence
+      - name: Verify manifests, provenance, approval, freshness, and document checksums
+        run: python infra/scripts/validate_packaged_corpora.py
+      - name: Upload governance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: education-rag-governance-${{ github.run_id }}
-          path: artifacts/
-          if-no-files-found: error
+          name: packaged-rag-governance-${{ github.run_id }}
+          path: artifacts/packaged-corpus-governance.json
+          if-no-files-found: warn
           retention-days: 90

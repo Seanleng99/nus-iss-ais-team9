@@ -14,20 +14,9 @@ Parameters:
   FrontendRepositoryName:
     Type: String
     Default: nus-iss-ais-team9-frontend
-  BedrockInferenceProfileId:
+  OpenAiApiKeySecretArn:
     Type: String
-    Default: apac.amazon.nova-lite-v1:0
-  BedrockFoundationModelId:
-    Type: String
-    Default: amazon.nova-lite-v1:0
-  EducationKnowledgeBaseId:
-    Type: String
-    MinLength: 10
-    MaxLength: 10
-  PolicyKnowledgeBaseId:
-    Type: String
-    MinLength: 10
-    MaxLength: 10
+    Description: ARN of the existing Secrets Manager JSON secret containing the OpenAI API key under value.
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
@@ -646,6 +635,7 @@ Resources:
                 Resource:
                   - !Ref BackendApiKeySecret
                   - !Ref AiServiceApiKeySecret
+                  - !Ref OpenAiApiKeySecretArn
                   - !Ref FrontendOidcCookieSecret
                   - !If
                     - RestoreDatabaseSnapshot
@@ -695,42 +685,6 @@ Resources:
             Principal:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: InvokeApprovedApacBedrockProfile
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Sid: InvokeInferenceProfile
-                Effect: Allow
-                Action: bedrock:InvokeModel
-                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}
-                Condition:
-                  StringEquals:
-                    aws:RequestedRegion: !Ref AWS::Region
-              - Sid: InvokeApacDestinationModelsThroughProfile
-                Effect: Allow
-                Action: bedrock:InvokeModel
-                Resource:
-                  - !Sub arn:${AWS::Partition}:bedrock:ap-south-1::foundation-model/${BedrockFoundationModelId}
-                  - !Sub arn:${AWS::Partition}:bedrock:ap-northeast-1::foundation-model/${BedrockFoundationModelId}
-                  - !Sub arn:${AWS::Partition}:bedrock:ap-northeast-2::foundation-model/${BedrockFoundationModelId}
-                  - !Sub arn:${AWS::Partition}:bedrock:ap-northeast-3::foundation-model/${BedrockFoundationModelId}
-                  - !Sub arn:${AWS::Partition}:bedrock:ap-southeast-1::foundation-model/${BedrockFoundationModelId}
-                  - !Sub arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/${BedrockFoundationModelId}
-                Condition:
-                  StringEquals:
-                    bedrock:InferenceProfileArn: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockInferenceProfileId}
-        - PolicyName: RetrieveApprovedKnowledgeBases
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:GetKnowledgeBase
-                  - bedrock:Retrieve
-                Resource:
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
 
   AiRepository:
     Type: AWS::ECR::Repository
@@ -852,6 +806,8 @@ Outputs:
     Value: !Ref BackendApiKeySecret
   AiServiceApiKeySecretArn:
     Value: !Ref AiServiceApiKeySecret
+  OpenAiApiKeySecretArn:
+    Value: !Ref OpenAiApiKeySecretArn
   DatabaseEndpoint:
     Value: !GetAtt Database.Endpoint.Address
   DatabaseInstanceId:

@@ -183,7 +183,7 @@ def check_investment_education_rag(
     response = json.loads(body)
     assert response.get("blocked") is False, "approved education request was blocked"
     sources = response.get("sources", [])
-    assert sources, "Bedrock Knowledge Base returned no approved sources"
+    assert sources, "The governed Education corpus returned no approved sources"
     required_source_fields = {
         "source_id",
         "title",
@@ -469,7 +469,7 @@ def main() -> None:
     parser.add_argument("--coach-url")
     parser.add_argument("--persistence-base-url")
     parser.add_argument("--api-key")
-    parser.add_argument("--expected-model-provider", default="bedrock")
+    parser.add_argument("--expected-model-provider", default="openai")
     parser.add_argument("--expected-corpus-version")
     parser.add_argument("--expected-policy-corpus-version")
     args = parser.parse_args()
@@ -525,7 +525,7 @@ def main() -> None:
                 args.expected_corpus_version,
                 args.expected_policy_corpus_version,
             ),
-            "Bedrock Education and Policy Knowledge Base retrieval",
+            "Governed Education and Policy corpus retrieval",
         )
         retry(
             lambda: check_conditional_education_rag(

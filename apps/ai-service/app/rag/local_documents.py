@@ -13,10 +13,19 @@ from app.rag.ingestion import active_sources, governance_issues, load_source_man
 from app.rag.ranking import terms
 from app.rag.retriever import RetrievalError, RetrievedChunk, _is_trusted_education_url
 
-DEFAULT_CORPUS_ROOT = Path(__file__).resolve().parents[4] / "knowledge/investment_education"
+_SERVICE_ROOT = Path(__file__).resolve().parents[2]
+_KNOWLEDGE_ROOT = (_SERVICE_ROOT if (_SERVICE_ROOT / "knowledge").is_dir()
+                   else Path(__file__).resolve().parents[4]) / "knowledge"
+DEFAULT_CORPUS_ROOT = _KNOWLEDGE_ROOT / "investment_education"
 
 
-def load_documents(manifest_path: Path, documents_dir: Path, *, as_of: date | None = None):
+def load_documents(
+    manifest_path: Path,
+    documents_dir: Path,
+    *,
+    as_of: date | None = None,
+    allowed_url=_is_trusted_education_url,
+):
     manifest = load_source_manifest(manifest_path)
     if governance_issues(manifest, as_of=as_of):
         raise RetrievalError("The local corpus is not currently approved.")
@@ -26,7 +35,7 @@ def load_documents(manifest_path: Path, documents_dir: Path, *, as_of: date | No
         path = (root / Path(source.s3_document_key).name).resolve()
         if (
             path.parent != root
-            or not _is_trusted_education_url(source.canonical_url)
+            or not allowed_url(source.canonical_url)
             or sanitize_rag_document(f"{source.title} {source.issuing_organization}").findings
         ):
             raise RetrievalError("The local corpus contains an unapproved source location.")

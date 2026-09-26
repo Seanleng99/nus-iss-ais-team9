@@ -35,72 +35,41 @@ flowchart LR
   PolicyRAG["Policy RAG: advice boundaries + safety rules"] -->|"Independent validation"| Compliance
   Compliance -->|"Approved or blocked answer"| Backend
 
-  Orchestrator -. "Model routing and specialist calls" .-> Bedrock["Amazon Bedrock"]
-  Synthesis -. "Model synthesis" .-> Bedrock
-  Compliance -. "Model-assisted review" .-> Bedrock
+  Orchestrator -. "Model routing and specialist calls" .-> OpenAI["OpenAI GPT-6 Luna"]
+  Synthesis -. "Model synthesis" .-> OpenAI
+  Compliance -. "Model-assisted review" .-> OpenAI
 ```
 
 PostgreSQL is the system of record for personal financial data. The application backend owns database access and sends only a minimized, request-scoped financial snapshot to the private AI service. Agents do not connect directly to PostgreSQL: Spending receives transactions, Budget receives income and recurring expenses, Goal Strategy receives savings goals, and Investment Education receives only the sanitized question and relevant risk constraints.
 
 The retrieval design separates educational knowledge from policy controls. Investment Education can retrieve trusted CPF, MAS, SGX, and government education content. Budget and Goal Strategy retrieve only when the user explicitly asks about an allowlisted investment concept relevant to their calculation. Spending does not use RAG. Risk and Compliance independently retrieves advice-boundary and safety policy before approving or blocking the synthesized response.
 
-Investment Education has a dedicated `education_retriever`; Budget and Goal Strategy can request the same governed retriever through the orchestrator's typed `education_context` capability; Risk and Compliance has an independently allowlisted `policy_retriever`. Both collections provide offline fixtures for local and CI execution and strict Bedrock Knowledge Base adapters for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Spending remains retrieval-free.
+Investment Education has a dedicated `education_retriever`; Budget and Goal Strategy can request the same governed retriever through the orchestrator's typed `education_context` capability; Risk and Compliance has an independently allowlisted `policy_retriever`. Both collections provide offline fixtures for local and CI execution and checksum-verified, version-pinned local-document retrievers for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Spending remains retrieval-free.
 
 ## Implemented Physical AWS View
 
 ```mermaid
 flowchart LR
-  User["User Browser"] -->|"HTTPS"| CloudFront["Amazon CloudFront"]
-  User <-->|"OIDC authorization code + PKCE"| Cognito["Amazon Cognito"]
+  User["User Browser"] --> CloudFront["Amazon CloudFront"]
+  User <-->|"OIDC + PKCE"| Cognito["Amazon Cognito"]
   CloudFront --> ALB["Application Load Balancer"]
-
-  subgraph AWS["AWS Account"]
-    subgraph VPC["VPC across two Availability Zones"]
-      subgraph AppTier["Private Application Subnets"]
-        UI["ECS Fargate: Streamlit"]
-        Backend["ECS Fargate: FastAPI Backend"]
-        AI["ECS Fargate: Private AI Service"]
-        Ingestion["Scheduled Trusted-Content Ingestion Task"]
-      end
-
-      subgraph DataTier["Private Data Subnets"]
-        RDS["Amazon RDS PostgreSQL"]
-        VectorDB["Vector DB: Education + Policy Collections"]
-      end
-
-      ALB --> UI
-      UI -->|"Bearer ID token"| Backend
-      Backend -->|"Private service key + minimized snapshot"| AI
-      Backend <-->|"Personal financial records"| RDS
-      AI <-->|"Role-scoped retrieval"| VectorDB
-    end
-
-    S3["S3 Curated Document Store"]
-    Bedrock["Amazon Bedrock: Models + Embeddings"]
-    Secrets["AWS Secrets Manager"]
-    Logs["Amazon CloudWatch"]
-
-    S3 --> Ingestion
-    Ingestion -->|"Chunk + metadata"| Bedrock
-    Bedrock -->|"Document embeddings"| VectorDB
-    AI <-->|"Routing, generation, compliance review"| Bedrock
-    Secrets -.->|"OIDC cookie secret"| UI
-    Secrets -.-> Backend
-    Secrets -.-> AI
-    UI -.-> Logs
-    Backend -.-> Logs
-    AI -.-> Logs
-    Ingestion -.-> Logs
-  end
-
-  Sources["Trusted Sources: CPF, MAS, SGX, Government"] -->|"Allowlisted offline collection"| S3
+  ALB --> UI["ECS Fargate: Streamlit"]
+  UI --> Backend["ECS Fargate: FastAPI Backend"]
+  Backend <--> RDS["Amazon RDS PostgreSQL"]
+  Backend --> AI["ECS Fargate: Private AI Service"]
+  AI --> Education["Packaged approved Education corpus"]
+  AI --> Policy["Packaged approved Policy corpus"]
+  AI -->|"HTTPS: model generation"| OpenAI["OpenAI GPT-6 Luna Responses API"]
+  Secrets["AWS Secrets Manager"] -.-> AI
+  Logs["Amazon CloudWatch"] -.-> AI
 ```
+
 
 The target architecture terminates TLS at the ALB and keeps ECS tasks and data stores in private subnets. Its security groups permit only ALB-to-Streamlit, Streamlit-to-backend, backend-to-AI, backend-to-PostgreSQL, and AI-to-vector traffic. The AI service is not exposed to the browser or public load balancer.
 
-Trusted CPF, MAS, SGX, and government documents enter through an allowlisted, reviewed manifest. A controlled operator command validates exact checksums, freshness, usage scope, and indirect-injection controls before uploading documents and governed sidecars to S3 and synchronizing Bedrock. A separate scheduled read-only job audits manifest, S3, ingestion, and withdrawal state. Runtime AI tasks receive read-only, role-scoped retrieval access and an exact corpus pin; they cannot ingest arbitrary user or web content.
+Trusted CPF and MoneySense documents and the separate operating policies are packaged with the AI image. Their reviewed manifests, SHA-256 checksums, freshness, usage scope, and indirect-injection controls are verified at startup and retrieval. Runtime requests cannot ingest arbitrary user or web content, and the two retrievers remain role-scoped.
 
-The provisioned minimum demo intentionally keeps three single-task Fargate services in public subnets to avoid NAT Gateway cost. CloudFront provides the public HTTPS URL in front of the ALB, and Cognito provides an admin-created-user OIDC boundary. Each task receives a public IP for outbound AWS service access, but security groups deny direct task ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. The deployment consumes externally provisioned Education and Policy Knowledge Bases with exact corpus pins. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. The edge-hardening path restricts ALB ingress to AWS's CloudFront origin-facing managed prefix list and requires a generated CloudFront origin header before listener rules forward. Optional custom-domain activation uses modern viewer TLS and an HTTPS ALB origin with a separate regional certificate.
+The provisioned minimum demo intentionally keeps three single-task Fargate services in public subnets to avoid NAT Gateway cost. CloudFront provides the public HTTPS URL in front of the ALB, and Cognito provides an admin-created-user OIDC boundary. Each task receives a public IP for outbound AWS service access, but security groups deny direct task ingress. A Single-AZ encrypted RDS PostgreSQL instance runs without a public address in two dedicated database subnets; only the backend security group can connect. The deployment consumes the image-packaged Education and Policy corpora with exact corpus pins. The AI service is not ALB-exposed; successful backend coaching verifies the private service-discovery hop end to end. The edge-hardening path restricts ALB ingress to AWS's CloudFront origin-facing managed prefix list and requires a generated CloudFront origin header before listener rules forward. Optional custom-domain activation uses modern viewer TLS and an HTTPS ALB origin with a separate regional certificate.
 
 Authentication rollout is deliberately staged. First, compatible images and the nullable ownership migration are released while the existing task configuration still accepts the automation key. Then `activate_user_auth.ps1` verifies the exact released SHA, applies the migration, provisions Cognito/CloudFront, enables strict JWT validation, and removes the automation credential from Streamlit. The backend accepts exact-issuer, exact-audience RS256 Cognito ID tokens and stores `(issuer, subject)` on each newly created profile. Legacy unowned profiles cannot be claimed. Resource mismatches return a non-enumerating 404. The automation key remains backend-only and is constrained to configured synthetic user-ID prefixes outside local development; the independent backend-to-AI credential is unchanged.
 
@@ -108,9 +77,9 @@ Authentication rollout is deliberately staged. First, compatible images and the 
 
 - Streamlit frontend: provides Overview, Transactions, Budget, Goals, Coach, and Profile workflows; calls the application backend server-side; and presents answers, source citations, rationale, confidence, disclaimers, and audit metadata.
 - FastAPI application backend: owns user-facing APIs, access control, profiles, transactions, monthly budgets, goals, dashboard summaries, coaching snapshots, and PostgreSQL persistence workflows. It is the only application service allowed to call the AI service.
-- FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, enforces agent-specific retrieval permissions, and integrates with Bedrock.
-- Data services: PostgreSQL stores synthetic personal financial records, chat messages, and privacy-safe orchestration traces; S3 retains curated source documents; and separate Education and Policy Knowledge Bases preserve collection and permission boundaries.
-- AWS boundary: ECS runs the three application services, Secrets Manager supplies separate service credentials, Bedrock supplies generation, Cohere embedding, ingestion, and retrieval, and CloudWatch captures operational telemetry. Controlled source mutations are operator-initiated; GitHub Actions performs read-only scheduled governance. ECR publishing and protected deployment remain documented separately in `docs/cicd-pipeline.md`.
+- FastAPI AI service: validates internal requests, orchestrates agents, applies shared guardrails, enforces agent-specific retrieval permissions, and integrates with the OpenAI Responses API.
+- Data services: PostgreSQL stores synthetic personal financial records, chat messages, and privacy-safe orchestration traces; the AI image contains separate governed Education and Policy corpora, preserving their role and citation boundaries.
+- AWS boundary: ECS runs the three application services, Secrets Manager supplies separate service credentials, OpenAI supplies model generation, and CloudWatch captures operational telemetry. Corpus changes require a reviewed image release and a manifest/checksum update. ECR publishing and protected deployment remain documented separately in `docs/cicd-pipeline.md`.
 
 Each FastAPI health endpoint is available for load balancer checks. After activation, the browser authenticates through Streamlit, Streamlit forwards only the exposed ID token to the backend, and the frontend task no longer receives `BACKEND_API_KEY`. The backend validates signature, issuer, audience, expiry, issued-at time, and Cognito `token_use=id` before checking profile ownership. GitHub smoke and operational jobs continue to use the backend-only automation key for allowlisted synthetic identities. The backend receives `AI_SERVICE_API_KEY` for the separate private AI boundary; the AI service remains unexposed to the browser and public load balancer.
 
@@ -124,9 +93,9 @@ ECS Fargate remains preferable to EKS for the initial scope because there are on
 
 ## Orchestration
 
-The implemented LangGraph workflow is `guard_input -> route -> initialize_tasks -> run_ready_tasks -> resolve_dependencies -> run_ready_tasks -> synthesize -> review_compliance -> finalize`. Dependency resolution loops only while a validated request remains outstanding. Independent ready tasks run concurrently; a dependent task resumes only after its required capabilities have resolved. The router, prompt-v6 dependency decisions, specialist narratives, synthesis, and compliance review are model calls with non-zero temperatures. The graph can select one or more initial specialists and add an allowlisted agent provider or invoke an allowlisted tool provider when a specialist dynamically requests a capability.
+The implemented LangGraph workflow is `guard_input -> route -> initialize_tasks -> run_ready_tasks -> resolve_dependencies -> run_ready_tasks -> synthesize -> review_compliance -> finalize`. Dependency resolution loops only while a validated request remains outstanding. Independent ready tasks run concurrently; a dependent task resumes only after its required capabilities have resolved. The router, prompt-v6 dependency decisions, specialist narratives, synthesis, and compliance review call GPT-6 Luna at low reasoning effort; the OpenAI gateway omits temperature. The graph can select one or more initial specialists and add an allowlisted agent provider or invoke an allowlisted tool provider when a specialist dynamically requests a capability.
 
-Hard boundary controls run before the first model call. Each specialist receives a role-scoped task and minimized deterministic grounding. Specialists cannot call one another or select the next specialist: they return a typed `ready`, `needs_dependency`, or `needs_input` result, and the orchestrator alone authorizes, schedules, invokes, deduplicates, traces, and resolves it. Goal Strategy can request Budget's `monthly_savings_capacity`; Budget can then request Spending's `transaction_category_totals`, demonstrating a centrally governed multi-hop dependency. Budget and Goal Strategy can request `education_context` only when deterministic topic detection finds an allowlisted investment concept. The orchestrator sends only canonical topic labels to the Education knowledge base, reuses one result for identical input, and records a tool dependency edge without scheduling Investment Education. Required failures fail closed; optional Education failure preserves calculations and produces an explicit evidence gap. Execution is bounded by retries, backoff, timeouts, dependency rounds, provider calls, model calls, and model tokens. The sanitized evidence is supplied to Risk and Compliance for independent validation. Structured model responses are schema-validated, and the independent compliance result can block the draft before release. Local and CI integration use an explicitly configured offline fixture; ECS requires the Bedrock model and RAG providers.
+Hard boundary controls run before the first model call. Each specialist receives a role-scoped task and minimized deterministic grounding. Specialists cannot call one another or select the next specialist: they return a typed `ready`, `needs_dependency`, or `needs_input` result, and the orchestrator alone authorizes, schedules, invokes, deduplicates, traces, and resolves it. Goal Strategy can request Budget's `monthly_savings_capacity`; Budget can then request Spending's `transaction_category_totals`, demonstrating a centrally governed multi-hop dependency. Budget and Goal Strategy can request `education_context` only when deterministic topic detection finds an allowlisted investment concept. The orchestrator sends only canonical topic labels to the Education corpus, reuses one result for identical input, and records a tool dependency edge without scheduling Investment Education. Required failures fail closed; optional Education failure preserves calculations and produces an explicit evidence gap. Execution is bounded by retries, backoff, timeouts, dependency rounds, provider calls, model calls, and model tokens. The sanitized evidence is supplied to Risk and Compliance for independent validation. Structured model responses are schema-validated, and the independent compliance result can block the draft before release. Local and CI integration use an explicitly configured offline fixture; ECS requires the OpenAI model provider and both governed local-document retrievers.
 
 Every completed run emits a privacy-safe trace containing task lifecycle events, dependency edges and resolutions, selected agents, model/prompt identity, model-call durations, and token usage. The backend stores that trace against the profile-scoped session and assistant message; JWT ownership enforcement or constrained synthetic automation scope protects retrieval, export, and deletion. The versioned lifecycle policy keeps traces for 30 days and conversations for 90 days, while explicit workspace or chat deletion cascades to their traces. Raw prompts, identity tokens, and financial grounding are not copied into the trace.
 

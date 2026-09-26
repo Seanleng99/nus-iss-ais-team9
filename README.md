@@ -2,7 +2,7 @@
 
 Multi-agent financial education platform for young adults in Singapore. The system provides budgeting guidance, spending insights, goal planning, and investment education while avoiding regulated financial advice.
 
-This repository is an executable synthetic-data demo. A LangGraph workflow uses Amazon Bedrock for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. Cognito OIDC authentication, immutable profile ownership, CloudFront custom-domain TLS, HTTPS origin restriction, and live cross-owner isolation evidence are implemented for the AWS demo. This does not approve real personal financial data or production users.
+This repository is an executable synthetic-data demo. A LangGraph workflow uses OpenAI GPT-6 Luna for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. Cognito OIDC authentication, immutable profile ownership, CloudFront custom-domain TLS, HTTPS origin restriction, and live cross-owner isolation evidence are implemented for the AWS demo. This does not approve real personal financial data or production users.
 
 ## Repository Layout
 
@@ -23,7 +23,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/responsible-ai.md`: intended use, fairness, accountability, human control, and lifecycle gates.
 - `docs/security-risk-register.md`: AI/security risks, controls, residual ratings, and owners.
 - `docs/evaluation-plan.md`: datasets, expected outputs, metrics, drift, and acceptance criteria.
-- `docs/model-selection.md`: repeatable Bedrock candidate comparison and current model decision.
+- `docs/model-selection.md`: current OpenAI model decision and historical Bedrock comparison.
 - `docs/representative-user-validation.md`: representative-user protocol for explanations, confidence, uncertainty, sources, and safe next actions.
 - `docs/data-lifecycle.md`: versioned retention, consent, export, deletion, and scheduled-purge controls.
 - `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
@@ -41,8 +41,8 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - Presentation tier: Streamlit deployed as an ECS Fargate service.
 - Application tier: FastAPI backend for access control, profiles, transactions, monthly budgets, goals, dashboard summaries, and backend-built financial snapshots.
 - AI tier: private FastAPI service with a model-driven LangGraph orchestrator and five agents.
-- Data tier: PostgreSQL for transactional records and a vector database for controlled financial education content.
-- AWS services: Cognito, CloudFront, Bedrock, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch.
+- Data tier: PostgreSQL for transactional records and packaged, governed Education and Policy corpora.
+- AWS services: Cognito, CloudFront, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch; the AI service calls the OpenAI API.
 
 After authentication activation, Streamlit completes Cognito authorization-code login with PKCE and sends the server-side ID token to the backend. The backend validates the JWT and authorizes each profile by immutable issuer and subject. A separately scoped automation key remains only for synthetic CI/operational users, and the backend-to-AI key remains an independent service secret. All three services can scale and roll back independently.
 
@@ -74,14 +74,14 @@ cd C:\ai-financial-wellness-coach\apps\backend
 alembic upgrade head
 ```
 
-Compose explicitly uses `MODEL_PROVIDER=local_fixture` so local integration tests do not require AWS credentials or incur model charges. This fixture is deterministic and permitted only when `APP_ENV` is `local` or `test`; deployed environments fail configuration validation unless `MODEL_PROVIDER=bedrock`.
+Compose explicitly uses `MODEL_PROVIDER=local_fixture` so local integration tests do not need an OpenAI API key or incur model charges. This fixture is deterministic and permitted only when `APP_ENV` is `local` or `test`; deployed environments fail configuration validation unless `MODEL_PROVIDER=openai` with both governed local-document retrievers.
 
 To run the services separately:
 
 ```powershell
 cd C:\ai-financial-wellness-coach\apps\ai-service
 pip install -e ".[dev]"
-$env:MODEL_PROVIDER="local_fixture" # remove this to exercise Bedrock with an AWS identity
+$env:MODEL_PROVIDER="local_fixture" # use openai plus OPENAI_API_KEY for a live synthetic test
 uvicorn app.main:app --reload --port 8001
 
 cd C:\ai-financial-wellness-coach\apps\backend
@@ -95,7 +95,7 @@ streamlit run app.py --server.port 8501
 
 ## CI/CD And LLMSecOps
 
-GitHub Actions detects affected services, runs their Python tests and security gates, and builds only their containers. Backend or AI changes also run the cross-service integration and load smoke tests. Docs-only pushes and pull requests do not start CI. Successful push CI for the current `main` SHA automatically starts `Release to AWS`. An application release publishes and deploys all three service images from that SHA, including the backend migration check: after a failed release rolls back, a later push diff alone cannot identify earlier fixes still missing from AWS. A separate weekly/manual workflow records privacy-safe live Bedrock/RAG, governed data-lifecycle retention, load, scaling, and CloudWatch evidence. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
+GitHub Actions detects affected services, runs their Python tests and security gates, and builds only their containers. Backend or AI changes also run the cross-service integration and load smoke tests. Docs-only pushes and pull requests do not start CI. Successful push CI for the current `main` SHA automatically starts `Release to AWS`. An application release publishes and deploys all three service images from that SHA, including the backend migration check: after a failed release rolls back, a later push diff alone cannot identify earlier fixes still missing from AWS. A separate weekly/manual workflow records privacy-safe live OpenAI/RAG, governed data-lifecycle retention, load, scaling, and CloudWatch evidence. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
 
 ## Evaluation
 

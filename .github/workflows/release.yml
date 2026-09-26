@@ -371,10 +371,12 @@ jobs:
           image: ${{ needs.build-images.outputs.ai-image }}
           environment-variables: |
             APP_ENV=demo
-            MODEL_PROVIDER=bedrock
+            MODEL_PROVIDER=openai
+            MODEL_ID=gpt-6-luna
+            MODEL_REASONING_EFFORT=low
             PROMPT_SET_VERSION=v6
-            RAG_PROVIDER=bedrock
-            POLICY_RAG_PROVIDER=bedrock
+            RAG_PROVIDER=local_documents
+            POLICY_RAG_PROVIDER=local_documents
       - name: Verify AI runtime configuration has not drifted
         if: needs.release-gate.outputs.ai == 'true'
         env:
@@ -384,14 +386,15 @@ jobs:
           --task-definition "$RENDERED_AI_TASK"
           --container "$AI_CONTAINER_NAME"
           --expect APP_ENV=demo
-          --expect MODEL_PROVIDER=bedrock
+          --expect MODEL_PROVIDER=openai
+          --expect MODEL_ID=gpt-6-luna
+          --expect MODEL_REASONING_EFFORT=low
           --expect PROMPT_SET_VERSION=v6
-          --expect RAG_PROVIDER=bedrock
-          --expect POLICY_RAG_PROVIDER=bedrock
-          --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID
+          --expect RAG_PROVIDER=local_documents
+          --expect POLICY_RAG_PROVIDER=local_documents
           --require-nonempty EDUCATION_CORPUS_VERSION
-          --require-nonempty POLICY_KNOWLEDGE_BASE_ID
           --require-nonempty POLICY_CORPUS_VERSION
+          --require-secret OPENAI_API_KEY
       - name: Deploy AI service
         if: needs.release-gate.outputs.ai == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2

@@ -4,6 +4,7 @@ import pytest
 
 from infra.scripts.verify_ecs_task_config import (
     load_container_environment,
+    load_container_secrets,
     parse_expected,
     verify_environment,
 )
@@ -21,6 +22,7 @@ def test_loads_named_container_environment(tmp_path) -> None:
                             {"name": "PROMPT_SET_VERSION", "value": "v4"},
                             {"name": "RAG_PROVIDER", "value": "bedrock"},
                         ],
+                        "secrets": [{"name": "OPENAI_API_KEY", "valueFrom": "arn:secret"}],
                     }
                 ]
             }
@@ -32,6 +34,7 @@ def test_loads_named_container_environment(tmp_path) -> None:
         "PROMPT_SET_VERSION": "v4",
         "RAG_PROVIDER": "bedrock",
     }
+    assert load_container_secrets(task, "ai-service") == {"OPENAI_API_KEY": "arn:secret"}
 
 
 def test_reports_mismatched_and_missing_configuration() -> None:

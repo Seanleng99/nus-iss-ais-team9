@@ -1,17 +1,25 @@
 from typing import Self
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, SecretStr, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=(".env", "../../.env"),
+        env_file_encoding="utf-8",
+        hide_input_in_errors=True,
+    )
+
     app_env: str = Field(default="local", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    model_provider: str = Field(default="bedrock", alias="MODEL_PROVIDER")
+    model_provider: str = Field(default="openai", alias="MODEL_PROVIDER")
     model_id: str = Field(
-        default="apac.amazon.nova-lite-v1:0",
+        default="gpt-6-luna",
         alias="MODEL_ID",
     )
+    openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    model_reasoning_effort: str = Field(default="low", pattern=r"^(none|low|medium|high|xhigh|max)$", alias="MODEL_REASONING_EFFORT")
     embedding_model_id: str = Field(
         default="cohere.embed-multilingual-v3",
         alias="EMBEDDING_MODEL_ID",
@@ -27,7 +35,7 @@ class Settings(BaseSettings):
     compliance_temperature: float = Field(
         default=0.1, ge=0.01, le=1.0, alias="COMPLIANCE_TEMPERATURE"
     )
-    model_max_tokens: int = Field(default=800, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
+    model_max_tokens: int = Field(default=1600, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
     max_dependency_rounds: int = Field(
         default=6,
         ge=1,
@@ -95,6 +103,8 @@ class Settings(BaseSettings):
         default="local_fixture",
         alias="POLICY_RAG_PROVIDER",
     )
+    policy_rag_manifest_path: str | None = Field(default=None, alias="POLICY_RAG_MANIFEST_PATH")
+    policy_rag_documents_path: str | None = Field(default=None, alias="POLICY_RAG_DOCUMENTS_PATH")
     policy_knowledge_base_id: str | None = Field(
         default=None,
         alias="POLICY_KNOWLEDGE_BASE_ID",
@@ -119,27 +129,22 @@ class Settings(BaseSettings):
         ):
             raise ValueError("AI_SERVICE_API_KEY must be a non-default value of at least 20 characters")
         if (
-            self.app_env.lower() not in {"local", "test"}
-            and self.model_provider.lower() != "bedrock"
+            self.model_provider.lower() == "openai"
+            and self.app_env.lower() not in {"local", "test"}
+            and (not self.openai_api_key or not self.openai_api_key.get_secret_value().strip())
         ):
-            raise ValueError("Deployed environments require MODEL_PROVIDER=bedrock")
+            raise ValueError("OPENAI_API_KEY is required for the deployed OpenAI model")
+        if self.app_env.lower() not in {"local", "test"} and self.model_provider.lower() != "openai":
+            raise ValueError("Deployed environments require MODEL_PROVIDER=openai")
         if self.app_env.lower() not in {"local", "test"}:
-            if self.rag_provider.lower() != "bedrock":
-                raise ValueError("Deployed environments require RAG_PROVIDER=bedrock")
-            if not self.education_knowledge_base_id:
-                raise ValueError(
-                    "EDUCATION_KNOWLEDGE_BASE_ID is required in deployed environments"
-                )
+            if self.rag_provider.lower() != "local_documents":
+                raise ValueError("Deployed environments require RAG_PROVIDER=local_documents")
             if self.education_corpus_version.endswith("@local-fixture-v1"):
                 raise ValueError(
                     "EDUCATION_CORPUS_VERSION must identify the deployed governed corpus"
                 )
-            if self.policy_rag_provider.lower() != "bedrock":
-                raise ValueError("Deployed environments require POLICY_RAG_PROVIDER=bedrock")
-            if not self.policy_knowledge_base_id:
-                raise ValueError(
-                    "POLICY_KNOWLEDGE_BASE_ID is required in deployed environments"
-                )
+            if self.policy_rag_provider.lower() != "local_documents":
+                raise ValueError("Deployed environments require POLICY_RAG_PROVIDER=local_documents")
             if self.policy_corpus_version.endswith("@local-fixture-v1"):
                 raise ValueError(
                     "POLICY_CORPUS_VERSION must identify the deployed governed corpus"

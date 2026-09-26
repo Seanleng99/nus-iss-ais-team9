@@ -1,5 +1,11 @@
 # Education RAG Source Governance
 
+## Current packaged-corpus governance
+
+The deployed Education retriever reads the six approved documents and `source_manifest.json` from the AI image at `knowledge/investment_education`. It verifies manifest approval and review deadlines, canonical URL allowlists, UTF-8 text, content inspection, and SHA-256 checksums before serving evidence. `EDUCATION_CORPUS_VERSION` pins the exact reviewed version. The weekly `rag-source-governance.yml` workflow checks both packaged corpora and retains privacy-safe evidence. A source change requires a reviewed manifest, new corpus version, rebuilt image, and passing retrieval/evaluation gates. The AWS ingestion record below is historical.
+
+## Historical AWS ingestion and governance
+
 ## Governed Corpus
 
 The governed Education knowledge base uses the versioned manifest at `knowledge/investment_education/source_manifest.json` as its source of truth. Corpus version `investment-education-sg@2026-08-28.1` contains six approved public-reference documents for the synthetic-data demo. It supports Investment Education directly and conditional Budget or Goal Strategy explanations through the orchestrator. Approval does not grant a production-content licence or authorize real personal financial data.

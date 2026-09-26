@@ -516,7 +516,7 @@ def write_job_summary(report: dict[str, Any], failures: list[str]) -> None:
         for name, rate in report["category_pass_rates"].items()
     )
     lines = [
-        "## Live Bedrock and RAG evaluation",
+        "## Live OpenAI and RAG evaluation",
         "",
         f"- Result: **{result}**",
         f"- Pass rate: {report['pass_rate']:.1%}",
@@ -544,11 +544,11 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=float, default=60)
-    parser.add_argument("--expected-model-provider", default="bedrock")
+    parser.add_argument("--expected-model-provider", default="openai")
     parser.add_argument("--expected-model-id", required=True)
     parser.add_argument("--expected-prompt-version", default="v6")
-    parser.add_argument("--input-cost-per-million", type=float, default=0.06)
-    parser.add_argument("--output-cost-per-million", type=float, default=0.24)
+    parser.add_argument("--input-cost-per-million", type=float, default=0.10)
+    parser.add_argument("--output-cost-per-million", type=float, default=0.50)
     parser.add_argument("--minimum-pass-rate", type=float, default=1.0)
     parser.add_argument("--maximum-p95-ms", type=float, default=10000)
     parser.add_argument("--maximum-estimated-cost-usd", type=float, default=0.05)

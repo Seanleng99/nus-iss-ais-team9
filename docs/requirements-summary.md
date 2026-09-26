@@ -1,5 +1,7 @@
 # Requirements Summary
 
+The Bedrock provider named below reflects the original proposal. The current synthetic-demo implementation selects OpenAI GPT-6 Luna through the Responses API, with packaged governed Education and Policy corpora. See [model selection](model-selection.md) for the revised decision and its privacy and live-evaluation gates.
+
 Source documents reviewed from the module `/docs` folder:
 
 - AAS Practice Module Briefing.pdf

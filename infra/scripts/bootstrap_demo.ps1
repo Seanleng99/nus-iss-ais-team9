@@ -7,10 +7,6 @@ param(
     [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
     [string]$AlertEmail = "",
     [switch]$EnableDatabaseCredentialRefresh,
-    [string]$BedrockInferenceProfileId = "apac.amazon.nova-lite-v1:0",
-    [string]$BedrockFoundationModelId = "amazon.nova-lite-v1:0",
-    [string]$BedrockComparisonInferenceProfileId = "apac.amazon.nova-micro-v1:0",
-    [string]$BedrockComparisonFoundationModelId = "amazon.nova-micro-v1:0",
     [string]$LegacyCognitoIssuerUrl = "",
     [string]$ExistingOidcIssuerUrl = "",
     [string]$ExistingOidcClientId = "",
@@ -18,19 +14,8 @@ param(
     [string]$DatabaseInstanceIdentifier = "ai-financial-wellness-coach-demo",
     [string]$DatabaseSnapshotIdentifier = "",
     [string]$EducationCorpusVersion = "investment-education-sg@2026-08-28.1",
-    [string]$EducationDataSourceId = "",
-    [string]$EducationSourceBucketName = "",
-    [string]$EducationSourcePrefix = "investment-education/documents/",
     [string]$PolicyCorpusVersion = "financial-coach-policy-sg@2026-08-29.1",
-    [string]$PolicyDataSourceId = "",
-    [string]$PolicySourceBucketName = "",
-    [string]$PolicySourcePrefix = "policy-controls/documents/",
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern("^[A-Za-z0-9]{10}$")]
-    [string]$EducationKnowledgeBaseId,
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern("^[A-Za-z0-9]{10}$")]
-    [string]$PolicyKnowledgeBaseId
+    [string]$OpenAiModelId = "gpt-6-luna"
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,6 +64,20 @@ $identity = (Invoke-Aws sts get-caller-identity --output json | ConvertFrom-Json
 if ($identity.Account -ne $AccountId) {
     throw "Authenticated AWS account $($identity.Account) does not match expected account $AccountId"
 }
+$openAiSecretArn = Invoke-Aws secretsmanager describe-secret `
+    --secret-id "ai-financial-wellness-coach/demo/openai-api-key" `
+    --region $Region `
+    --query ARN `
+    --output text
+$openAiSecret = Invoke-Aws secretsmanager get-secret-value `
+    --secret-id $openAiSecretArn `
+    --region $Region `
+    --query SecretString `
+    --output text | ConvertFrom-Json
+if (-not $openAiSecret.'openai-api-key') {
+    throw "Populate the existing OpenAI API key secret before deploying the foundation."
+}
+$openAiSecret = $null
 $existingFoundationJson = & $Aws cloudformation describe-stacks `
     --stack-name $FoundationStack `
     --region $Region `
@@ -173,10 +172,7 @@ Invoke-Aws cloudformation deploy `
     --region $Region `
     --capabilities CAPABILITY_NAMED_IAM `
     --parameter-overrides `
-        "EducationKnowledgeBaseId=$EducationKnowledgeBaseId" `
-        "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId" `
-        "BedrockInferenceProfileId=$BedrockInferenceProfileId" `
-        "BedrockFoundationModelId=$BedrockFoundationModelId" `
+        "OpenAiApiKeySecretArn=$openAiSecretArn" `
         "DatabaseInstanceIdentifier=$DatabaseInstanceIdentifier" `
         "DatabaseSnapshotIdentifier=$DatabaseSnapshotIdentifier" `
         "CloudFrontOriginPrefixListId=$cloudFrontOriginPrefixListId" `
@@ -219,10 +215,7 @@ if ($DatabaseSnapshotIdentifier) {
         --region $Region `
         --capabilities CAPABILITY_NAMED_IAM `
         --parameter-overrides `
-            "EducationKnowledgeBaseId=$EducationKnowledgeBaseId" `
-            "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId" `
-            "BedrockInferenceProfileId=$BedrockInferenceProfileId" `
-            "BedrockFoundationModelId=$BedrockFoundationModelId" `
+            "OpenAiApiKeySecretArn=$openAiSecretArn" `
             "DatabaseInstanceIdentifier=$DatabaseInstanceIdentifier" `
             "DatabaseSnapshotIdentifier=$DatabaseSnapshotIdentifier" `
             "RestoredDatabaseSecretArn=$($foundation.DatabaseSecretArn)" `
@@ -296,6 +289,7 @@ $applicationParameters = @(
     "AiTaskRoleArn=$($foundation.AiTaskRoleArn)",
     "BackendApiKeySecretArn=$($foundation.BackendApiKeySecretArn)",
     "AiServiceApiKeySecretArn=$($foundation.AiServiceApiKeySecretArn)",
+    "OpenAiApiKeySecretArn=$($foundation.OpenAiApiKeySecretArn)",
     "DatabaseEndpoint=$($foundation.DatabaseEndpoint)",
     "DatabasePort=$($foundation.DatabasePort)",
     "DatabaseName=$($foundation.DatabaseName)",
@@ -303,11 +297,9 @@ $applicationParameters = @(
     "AiLogGroupName=$($foundation.AiLogGroupName)",
     "BackendLogGroupName=$($foundation.BackendLogGroupName)",
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
-    "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
     "EducationCorpusVersion=$EducationCorpusVersion",
-    "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
     "PolicyCorpusVersion=$PolicyCorpusVersion",
-    "BedrockModelId=$BedrockInferenceProfileId",
+    "OpenAiModelId=$OpenAiModelId",
     "AlertEmail=$AlertEmail",
     "AiImageUri=$($images.Ai)",
     "BackendImageUri=$($images.Backend)",
@@ -328,51 +320,6 @@ Invoke-Aws cloudformation deploy `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
 $application = Get-StackOutputs $ApplicationStack
-
-if (-not $EducationDataSourceId) {
-    $EducationDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
-        --knowledge-base-id $EducationKnowledgeBaseId `
-        --region $Region `
-        --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
-        --output text
-}
-if (-not $EducationDataSourceId -or $EducationDataSourceId -eq "None") {
-    throw "An available Education Knowledge Base data source is required."
-}
-$educationDataSource = Invoke-Aws bedrock-agent get-data-source `
-    --knowledge-base-id $EducationKnowledgeBaseId `
-    --data-source-id $EducationDataSourceId `
-    --region $Region `
-    --query "dataSource.dataSourceConfiguration.s3Configuration" `
-    --output json | ConvertFrom-Json
-if (-not $EducationSourceBucketName) {
-    $EducationSourceBucketName = $educationDataSource.bucketArn.Replace("arn:aws:s3:::", "")
-}
-if ($educationDataSource.inclusionPrefixes -notcontains $EducationSourcePrefix) {
-    throw "Education source prefix does not match the Bedrock data source."
-}
-if (-not $PolicyDataSourceId) {
-    $PolicyDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
-        --knowledge-base-id $PolicyKnowledgeBaseId `
-        --region $Region `
-        --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
-        --output text
-}
-if (-not $PolicyDataSourceId -or $PolicyDataSourceId -eq "None") {
-    throw "An available Policy Knowledge Base data source is required."
-}
-$policyDataSource = Invoke-Aws bedrock-agent get-data-source `
-    --knowledge-base-id $PolicyKnowledgeBaseId `
-    --data-source-id $PolicyDataSourceId `
-    --region $Region `
-    --query "dataSource.dataSourceConfiguration.s3Configuration" `
-    --output json | ConvertFrom-Json
-if (-not $PolicySourceBucketName) {
-    $PolicySourceBucketName = $policyDataSource.bucketArn.Replace("arn:aws:s3:::", "")
-}
-if ($policyDataSource.inclusionPrefixes -notcontains $PolicySourcePrefix) {
-    throw "Policy source prefix does not match the Bedrock data source."
-}
 
 Write-Host "Running initial database migration as a one-shot ECS task..."
 $migrationNetwork = "awsvpcConfiguration={subnets=[$($foundation.PublicSubnetAId),$($foundation.PublicSubnetBId)],securityGroups=[$($foundation.BackendSecurityGroupId)],assignPublicIp=ENABLED}"
@@ -443,16 +390,6 @@ $oidcParameters = @(
     "EcsTaskExecutionRoleArn=$($foundation.TaskExecutionRoleArn)",
     "EcsAppTaskRoleArn=$($foundation.AppTaskRoleArn)",
     "EcsAiTaskRoleArn=$($foundation.AiTaskRoleArn)",
-    "BedrockBaselineInferenceProfileId=$BedrockInferenceProfileId",
-    "BedrockBaselineFoundationModelId=$BedrockFoundationModelId",
-    "BedrockCandidateInferenceProfileId=$BedrockComparisonInferenceProfileId",
-    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId",
-    "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
-    "EducationSourceBucketName=$EducationSourceBucketName",
-    "EducationSourcePrefix=$EducationSourcePrefix",
-    "PolicyKnowledgeBaseId=$PolicyKnowledgeBaseId",
-    "PolicySourceBucketName=$PolicySourceBucketName",
-    "PolicySourcePrefix=$PolicySourcePrefix",
     "OperationalAlertsTopicArn=$($application.OperationalAlertsTopicArn)"
 )
 if ($foundation.BackendTaskRoleArn) {

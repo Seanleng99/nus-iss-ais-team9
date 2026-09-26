@@ -136,6 +136,83 @@ class BedrockModelGateway:
             ) from exc
 
 
+class OpenAIModelGateway:
+    """Text-only Responses API adapter for the existing typed agent contract."""
+
+    def __init__(self, settings: Settings, client: Any | None = None) -> None:
+        self.settings = settings
+        self.model_id = settings.model_id
+        self._client = client
+
+    @property
+    def client(self) -> Any:
+        if self._client is None:
+            from openai import OpenAI
+
+            key = self.settings.openai_api_key
+            if not key or not key.get_secret_value().strip():
+                raise ModelGatewayError(
+                    "The OpenAI API key is not configured.",
+                    code="OPENAI_API_KEY_MISSING",
+                    component="openai",
+                )
+            self._client = OpenAI(
+                api_key=key.get_secret_value(),
+                timeout=self.settings.model_read_timeout_seconds,
+                max_retries=0,
+            )
+        return self._client
+
+    @trace_method
+    def generate(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
+        # GPT-6 reasoning requests do not accept temperature. Keep the argument
+        # for the existing agent interface, but do not forward it to OpenAI.
+        del temperature
+        try:
+            log_event("openai.responses.request", model_id=self.model_id, provider="openai")
+            response = self.client.responses.create(
+                model=self.model_id,
+                instructions=system_prompt,
+                input=user_prompt,
+                reasoning={"effort": self.settings.model_reasoning_effort},
+                max_output_tokens=max_tokens,
+                store=False,
+            )
+            if response.status != "completed" or not response.output_text.strip():
+                raise ValueError("incomplete or empty response")
+            usage = response.usage
+            input_tokens = int(usage.input_tokens) if usage else 0
+            output_tokens = int(usage.output_tokens) if usage else 0
+            log_event(
+                "openai.responses.response",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            return ModelGeneration(
+                response.output_text,
+                usage={
+                    "inputTokens": input_tokens,
+                    "outputTokens": output_tokens,
+                    "totalTokens": input_tokens + output_tokens,
+                },
+            )
+        except ModelGatewayError:
+            raise
+        except Exception as exc:
+            raise ModelGatewayError(
+                "The configured model could not produce a response.",
+                code="OPENAI_INVOCATION_FAILED",
+                component="openai",
+            ) from exc
+
+
 class LocalFixtureModelGateway:
     """Offline-only fixture for tests, evaluations, and local service wiring."""
 
@@ -343,8 +420,8 @@ class LocalFixtureModelGateway:
 
 def create_model_gateway(settings: Settings) -> ModelGateway:
     provider = settings.model_provider.lower()
-    if provider == "bedrock":
-        return BedrockModelGateway(settings)
+    if provider == "openai":
+        return OpenAIModelGateway(settings)
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalFixtureModelGateway()
     raise ValueError(f"Unsupported MODEL_PROVIDER for APP_ENV={settings.app_env}: {provider}")

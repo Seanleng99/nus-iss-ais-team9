@@ -1,5 +1,7 @@
 # AWS Account Migration
 
+This runbook records the earlier Bedrock-based account migration. The current AI deployment uses OpenAI GPT-6 Luna and packaged local corpora; do not recreate the Bedrock knowledge bases described below as part of the new bootstrap. See [AWS demo infrastructure](../infra/aws/README.md) and [model selection](model-selection.md).
+
 Source account: `902552928492`. Destination account: `862124275471`.
 Deployment Region: `ap-southeast-1`. Domain: `ai-financial-wellness-coach.click`.
 

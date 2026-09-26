@@ -146,8 +146,8 @@ if (-not $cloudFrontOriginPrefixListId -or $cloudFrontOriginPrefixListId -eq "No
 
 $foundationBefore = Get-StackOutputs $FoundationStack
 $applicationBefore = Get-StackOutputs $ApplicationStack
-if (-not $applicationBefore.EducationKnowledgeBaseId -or -not $applicationBefore.PolicyKnowledgeBaseId) {
-    throw "The application stack must expose both governed Knowledge Base IDs."
+if (-not $applicationBefore.OpenAiModelId -or -not $applicationBefore.OpenAiApiKeySecretArn) {
+    throw "The application stack must expose the OpenAI model and API-key secret."
 }
 
 Invoke-Aws ecs wait services-stable `
@@ -221,8 +221,6 @@ Invoke-Aws cloudformation deploy `
     --region $Region `
     --capabilities CAPABILITY_NAMED_IAM `
     --parameter-overrides `
-        "EducationKnowledgeBaseId=$($applicationBefore.EducationKnowledgeBaseId)" `
-        "PolicyKnowledgeBaseId=$($applicationBefore.PolicyKnowledgeBaseId)" `
         "CloudFrontOriginPrefixListId=$cloudFrontOriginPrefixListId" `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo

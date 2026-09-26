@@ -471,7 +471,7 @@ def create_education_retriever(settings: Settings) -> EducationRetriever:
     provider = settings.rag_provider.lower()
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalEducationRetriever()
-    if provider == "local_documents" and settings.app_env.lower() in {"local", "test"}:
+    if provider == "local_documents":
         from pathlib import Path
 
         from app.rag.local_documents import DEFAULT_CORPUS_ROOT, LocalDocumentEducationRetriever

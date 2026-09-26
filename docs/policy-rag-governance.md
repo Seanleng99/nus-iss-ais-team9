@@ -1,5 +1,11 @@
 # Policy RAG Governance
 
+## Current packaged-corpus governance
+
+The deployed `LocalDocumentPolicyRetriever` reads the three approved Policy documents and manifest from the AI image at `knowledge/policy_controls`. It verifies approval, provenance, review deadlines, UTF-8 content, and SHA-256 checksums; a stale or altered corpus fails closed. `POLICY_CORPUS_VERSION` pins the exact reviewed version. The weekly `rag-source-governance.yml` workflow checks both corpora. A Policy update requires review, a new corpus version, a rebuilt image, and live compliance evaluation. The AWS Knowledge Base record below is historical.
+
+## Historical AWS ingestion and governance
+
 ## Purpose And Boundary
 
 Risk and Compliance uses a Policy RAG collection that is physically and logically separate from Investment Education. Its source of truth is `knowledge/policy_controls/source_manifest.json`, pinned as `financial-coach-policy-sg@2026-08-29.1`. The three internal policy documents define financial-coaching advice boundaries, evidence and uncertainty requirements, and retrieved-instruction security for the synthetic demo.

@@ -2,13 +2,14 @@
 
 The target is at least 99% on a named benchmark, with 100% scope and safety checks.
 A retrieval score does not establish generated-answer quality or population accuracy.
-The approved corpus remains a synthetic-data demo snapshot. Source bytes, approvals,
-review dates, corpus versions, and the managed deployment are unchanged.
+The approved corpus remains a synthetic-data demo snapshot. The current deployment
+packages reviewed Education and Policy documents in the AI image and retrieves them
+locally. Earlier managed-retrieval measurements below are historical evidence.
 
 ## Full local documents
 
 `knowledge/investment_education/documents/` contains six complete approved documents:
-48,885 bytes and about 7,695 words including metadata. The opt-in `local_documents`
+48,885 bytes and about 7,695 words including metadata. The deployed `local_documents`
 provider verifies the manifest, freshness, exact checksums, trusted locations,
 metadata, content safety, and symlink containment before indexing. It rechecks review
 deadlines on retrieval. Restart after approved corpus updates: the index is a startup
@@ -66,7 +67,7 @@ The old fixture passed 8/84 complete development cases and retrieved 0% of the e
 required passages. This is not a 9.52% model-answer accuracy measurement. Full-document
 retrieval now passes 100/100 with 100% passage recall and scope accuracy.
 
-## Real Bedrock and answer review
+## Historical Bedrock retrieval and answer review
 
 Add `--provider bedrock` to the passage command after configuring the actual Education
 Knowledge Base ID and corpus pin. This is read-only retrieval and does not publish

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.core.config import Settings
@@ -5,6 +7,7 @@ from app.models.gateway import (
     BedrockModelGateway,
     ModelGatewayError,
     ModelGeneration,
+    OpenAIModelGateway,
     TracingModelGateway,
 )
 
@@ -39,7 +42,7 @@ def test_bedrock_gateway_uses_converse_and_inference_controls() -> None:
     client = StubBedrockClient(
         {"output": {"message": {"content": [{"text": "{\"answer\":\"ok\"}"}]}}}
     )
-    gateway = BedrockModelGateway(Settings(), client=client)
+    gateway = BedrockModelGateway(Settings(MODEL_ID="apac.amazon.nova-lite-v1:0"), client=client)
     result = gateway.generate(
         system_prompt="system",
         user_prompt="user",
@@ -88,6 +91,49 @@ def test_bedrock_gateway_preserves_only_safe_provider_error_code() -> None:
 
     assert raised.value.code == "BEDROCK_ACCESSDENIEDEXCEPTION"
     assert "provider detail" not in str(raised.value)
+
+
+def test_openai_gateway_uses_responses_without_storing_financial_prompts() -> None:
+    class StubResponses:
+        def __init__(self) -> None:
+            self.request = None
+
+        def create(self, **kwargs):
+            self.request = kwargs
+            return SimpleNamespace(
+                status="completed",
+                output_text='{"answer":"ok"}',
+                usage=SimpleNamespace(input_tokens=123, output_tokens=45),
+            )
+
+    responses = StubResponses()
+    gateway = OpenAIModelGateway(
+        Settings(MODEL_ID="gpt-6-luna", MODEL_REASONING_EFFORT="low"),
+        client=SimpleNamespace(responses=responses),
+    )
+    result = gateway.generate(
+        system_prompt="system", user_prompt="user", temperature=0.35, max_tokens=1600
+    )
+    assert result == '{"answer":"ok"}'
+    assert result.usage == {"inputTokens": 123, "outputTokens": 45, "totalTokens": 168}
+    assert responses.request == {
+        "model": "gpt-6-luna", "instructions": "system", "input": "user",
+        "reasoning": {"effort": "low"}, "max_output_tokens": 1600, "store": False,
+    }
+
+
+def test_openai_gateway_hides_provider_errors_and_empty_responses() -> None:
+    class FailingResponses:
+        def create(self, **kwargs):
+            raise RuntimeError("private provider details")
+
+    gateway = OpenAIModelGateway(
+        Settings(), client=SimpleNamespace(responses=FailingResponses())
+    )
+    with pytest.raises(ModelGatewayError) as error:
+        gateway.generate(system_prompt="s", user_prompt="u", temperature=0.2, max_tokens=100)
+    assert error.value.code == "OPENAI_INVOCATION_FAILED"
+    assert "private provider details" not in str(error.value)
 
 
 def test_default_model_token_budget_allows_assessment_workflow_headroom() -> None:

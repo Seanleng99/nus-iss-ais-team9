@@ -8,7 +8,7 @@ These are initial targets to validate with AWS load evidence, not production gua
 |---|---:|---|
 | Backend availability | 99.5% during demo window | Alarm on 5-minute error rate above 2% |
 | Non-model backend P95 | Under 1 second | Investigate sustained breach for 15 minutes |
-| End-to-end coaching P95 | Under 8 seconds | Review Bedrock latency, retries, and scaling |
+| End-to-end coaching P95 | Under 8 seconds | Review OpenAI request latency, retries, and scaling |
 | Critical safety block rate | 100% on approved eval set | Block release immediately |
 | Retrieval recall@3 | At least 85% | Block release or restore source/index version |
 | Missing correlation IDs | 0 | Alert and treat affected audit trail as incomplete |
@@ -21,14 +21,14 @@ Each workflow receives a server-generated UUID trace ID, independent of the call
 
 Each orchestration run enforces a 20,000-token response budget. Model calls reserve a call slot before provider invocation, so concurrent calls count against the same call limit. A recorded token overrun fails closed with the privacy-safe `MODEL_TOKEN_BUDGET_EXCEEDED` error code and `model_budget` component; once recorded usage reaches the token budget, no further call starts. Usage from calls already in flight is only known after completion, so this is not a strict billed-cost cap. Telemetry retains active traces only; closed workflows reject late calls and ignore late completions without recreating state.
 
-In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention. Restrict log access separately from application access. The foundation enables ECS Container Insights. The application stack creates the `ai-financial-wellness-coach-demo-operational` dashboard for ECS CPU/memory, ALB backend errors/health/latency, Bedrock invocations/errors/throttles/latency/tokens, and privacy-safe AI generation-failure counts.
+In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention. Restrict log access separately from application access. The foundation enables ECS Container Insights. The application stack creates the `ai-financial-wellness-coach-demo-operational` dashboard for ECS CPU/memory, ALB backend errors/health/latency, and privacy-safe AI generation-failure counts. Model latency and token usage are recorded in application evaluation telemetry.
 
 ## Alerts
 
 - ALB/backend target 5xx count and target-health loss.
 - ECS deployment failure events through EventBridge and SNS.
-- AI service sustained CPU pressure and Bedrock P95 invocation latency.
-- Bedrock throttling and invocation server errors.
+- AI service sustained CPU pressure and increased end-to-end model latency.
+- OpenAI throttling or server errors surfaced through sanitized generation-failure telemetry.
 - Privacy-safe AI model/retrieval generation failures derived from logs.
 - Sanitized OIDC/authorization failure spike or prompt-injection spike.
 - Critical/high Inspector finding after deployment.
@@ -88,7 +88,7 @@ Route deployment failures through EventBridge and operational alerts through SNS
 
 ## Drift Detection
 
-The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression. A separate weekly read-only Education governance job compares the reviewed manifest with exact S3 objects, governed sidecars, Bedrock data-source state, the latest ingestion job, checksums, withdrawals, and review deadlines; any issue fails the job and blocks corpus promotion.
+The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression. A weekly packaged-corpus governance job checks both reviewed manifests, exact local documents, checksums, approval, provenance, and review deadlines; any issue fails the job and blocks corpus promotion.
 
 After approved production telemetry exists, observe only privacy-preserving aggregates: intent distribution, selected-agent distribution, missing-input rate, message-length bands, guardrail category rate, retrieval source frequency, source age, latency, token use, and user feedback. Do not retain raw prompts merely to measure drift. A sustained distribution shift triggers dataset review first, followed by prompt, retrieval, or model changes; fine-tuning is considered only when simpler mitigations fail.
 
@@ -109,7 +109,7 @@ The utility gives each independent request a unique chat-only synthetic user, de
 
 Deleting the final chat session for a chat-only synthetic user also prunes the empty user record. PostgreSQL transaction-scoped lifecycle locks serialize same-user creation and deletion, including the boundary where the user row does not yet exist. Users with a profile, demographics, consent, transactions, goals, or budgets are never pruned by chat cleanup. This prevents weekly evaluation and load runs from accumulating empty synthetic identities.
 
-The `AWS Operational Validation` workflow performs this load test, three repetitions of the live Bedrock/RAG suite, governed lifecycle retention, dashboard/alarm verification, and autoscaling verification each week. The live RAG cases require citations and persisted traces to match the configured corpus pin. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures. The default gates are now 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
+The `AWS Operational Validation` workflow performs this load test, three repetitions of the live OpenAI/RAG suite, governed lifecycle retention, dashboard/alarm verification, and autoscaling verification each week. The live RAG cases require citations and persisted traces to match the configured corpus pin. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures **for the earlier Bedrock deployment**. GPT-6 Luna needs new live evidence. The default gates remain 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
 
 The SNS topic, alarm actions, and managed team-mailbox subscription are deployed and confirmed. A controlled test on 2026-08-30 verified the CloudWatch-to-SNS action, restored the alarm to `OK`, and received human acknowledgement of both the `ALARM` and restoration emails. End-to-end delivery is verified. Use `infra/scripts/test_operational_alert.ps1` for repeatable tests. Ownership, severity, response targets, and recovery steps are defined in `docs/operational-alert-runbook.md`.
 

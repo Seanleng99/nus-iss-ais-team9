@@ -63,7 +63,7 @@ env:
   EDGE_CUSTOM_DOMAIN_ENABLED: ${{ vars.EDGE_CUSTOM_DOMAIN_ENABLED || 'false' }}
   COACH_URL: ${{ vars.COACH_SMOKE_URL }}
   SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
-  EXPECTED_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || 'apac.amazon.nova-lite-v1:0' }}
+  EXPECTED_MODEL_ID: gpt-6-luna
   DASHBOARD_NAME: ${{ vars.OPERATIONAL_DASHBOARD_NAME || 'ai-financial-wellness-coach-demo-operational' }}
   ALARM_PREFIX: ${{ vars.OPERATIONAL_ALARM_PREFIX || 'ai-financial-wellness-coach-demo-' }}
   OPERATIONAL_ALERTS_TOPIC_ARN: ${{ vars.OPERATIONAL_ALERTS_TOPIC_ARN }}
@@ -218,7 +218,7 @@ jobs:
             exit 1
           fi
 
-      - name: Run repeated live Bedrock and RAG evaluation
+      - name: Run repeated live OpenAI and RAG evaluation
         id: live_evaluation
         continue-on-error: true
         run: >-

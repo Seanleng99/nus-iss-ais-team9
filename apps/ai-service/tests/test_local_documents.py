@@ -82,8 +82,13 @@ def test_full_document_provider_requires_exact_pin_and_stays_local():
     assert retriever.expected_corpus_version == corpus
     with pytest.raises(ValueError, match="must match"):
         create_education_retriever(Settings(RAG_PROVIDER="local_documents"))
-    with pytest.raises(ValueError, match="require RAG_PROVIDER=bedrock"):
-        Settings(APP_ENV="demo", AI_SERVICE_API_KEY="x" * 24, RAG_PROVIDER="local_documents")
+    deployed = Settings(
+        APP_ENV="demo", AI_SERVICE_API_KEY="x" * 24, OPENAI_API_KEY="test-key",
+        RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=corpus,
+        POLICY_RAG_PROVIDER="local_documents",
+        POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-08-29.1",
+    )
+    assert create_education_retriever(deployed).expected_corpus_version == corpus
 
 
 def test_fine_topics_keep_identifiers_and_amounts_out_of_retrieval():

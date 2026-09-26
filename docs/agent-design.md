@@ -2,7 +2,7 @@
 
 ## Current Execution Mode
 
-The primary runtime is a non-deterministic, model-driven multi-agent workflow. LangGraph executes boundary inspection, model routing, one or more specialist agents, model synthesis, and an independent Risk and Compliance review. Amazon Bedrock Converse is the deployed model gateway, and all model temperatures are intentionally greater than zero.
+The primary runtime is a model-driven multi-agent workflow. LangGraph executes boundary inspection, model routing, one or more specialist agents, model synthesis, and an independent Risk and Compliance review. The deployed model gateway uses the OpenAI Python SDK and Responses API with GPT-6 Luna at low reasoning effort. The gateway omits temperature because this model does not accept that setting with reasoning enabled.
 
 The architecture is hybrid rather than unconstrained. Deterministic calculators, retrieval ranking, PII redaction, prompt-injection checks, and tool allowlists produce trusted grounding and hard policy decisions. Models choose agents and interpret that grounding, but cannot name or invoke arbitrary tools. Pydantic validates every model response before the graph advances; invalid output fails closed as a sanitized `503` response.
 
@@ -30,7 +30,7 @@ The scheduler runs independent ready tasks concurrently, while preserving depend
 
 ## Model Strategy
 
-The implemented deployment adapters call Amazon Nova Lite through the Bedrock APAC geographic inference profile and retrieve Education and Policy evidence from separate configured Amazon Bedrock Knowledge Bases. Each collection is independently pinned by corpus version at runtime; stale, malformed, unapproved, or wrong-version chunks are rejected. Requests can be routed among the profile's APAC destination Regions. Nova Lite remains the selected synthetic-demo baseline because the prompt-set-v4 Nova Micro candidate failed the objective dependency gate and did not advance to blinded review; it is not approved for real-data production use. Prompt set v6 is the current source target and has deterministic local-gate evidence only; it requires a fresh repeated Bedrock evaluation after AWS access is restored before its live behavior is accepted.
+The deployment calls GPT-6 Luna through the OpenAI Responses API and retrieves Education and Policy evidence from separate checksum-verified corpora packaged with the AI service. Each collection is independently pinned by corpus version at runtime; stale, malformed, unapproved, or wrong-version sources are rejected. Prompt set v6 is the current source target. A fresh repeated live evaluation is required before treating the new model and retrieval path as accepted. The selection rationale and prior model evidence are in [model selection](model-selection.md).
 
 The selection harness compares at least one lower-cost model against the baseline on:
 
@@ -39,11 +39,11 @@ The selection harness compares at least one lower-cost model against the baselin
 - Explanation quality and consistency across writing styles.
 - Grounded source use and hallucination rate.
 - P50/P95 latency, token usage, and estimated cost.
-- Availability in `ap-southeast-1` and whether inference remains in an approved geography.
+- Provider availability and the documented data-processing geography for the selected data class.
 
-The current Lite and Micro profiles are invoked from Singapore and remain within the APAC geography, although individual requests may be routed to another listed APAC destination. Global cross-Region inference can route outside that geography and is prohibited unless the privacy owner explicitly approves the data-residency posture. AWS publishes current model IDs and regional inference options in the [Amazon Bedrock model documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models.html).
+The direct OpenAI API's Singapore residency option covers regional storage, not regional processing. The demo therefore remains synthetic-data only pending a new privacy and location review for personal financial information.
 
-The live evaluator initially estimates Nova Lite usage at USD 0.06 per million input tokens and USD 0.24 per million output tokens. These are explicit, configurable assumptions rather than billed-cost telemetry. Confirm them against the current [Amazon Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) before every formal comparison, and record the rates in the evidence artifact with the token totals.
+The live evaluator estimates GPT-6 Luna usage at USD 0.10 per million input tokens and USD 0.50 per million output tokens. These are configurable rate assumptions, not billed-cost telemetry. Recheck the [OpenAI model card](https://developers.openai.com/api/docs/models/gpt-6-luna) before a formal evaluation and record the rates with token totals.
 
 ## Prompt And Model Change Control
 

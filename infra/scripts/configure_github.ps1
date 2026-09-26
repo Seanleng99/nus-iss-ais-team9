@@ -50,60 +50,6 @@ if ($viewer -ne $Repository.Split("/")[0]) {
 $foundation = Get-StackOutputs $FoundationStack
 $application = Get-StackOutputs $ApplicationStack
 $oidc = Get-StackOutputs $OidcStack
-$educationKnowledgeBaseId = $application.EducationKnowledgeBaseId
-if (-not $educationKnowledgeBaseId) {
-    $educationKnowledgeBaseId = Invoke-Aws cloudformation describe-stacks `
-        --stack-name $ApplicationStack `
-        --region $Region `
-        --query "Stacks[0].Parameters[?ParameterKey=='EducationKnowledgeBaseId'].ParameterValue | [0]" `
-        --output text
-}
-$educationDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
-    --knowledge-base-id $educationKnowledgeBaseId `
-    --region $Region `
-    --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
-    --output text
-if (-not $educationDataSourceId -or $educationDataSourceId -eq "None") {
-    throw "An available Education Knowledge Base data source is required."
-}
-$educationDataSource = Invoke-Aws bedrock-agent get-data-source `
-    --knowledge-base-id $educationKnowledgeBaseId `
-    --data-source-id $educationDataSourceId `
-    --region $Region `
-    --query "dataSource.dataSourceConfiguration.s3Configuration" `
-    --output json | ConvertFrom-Json
-$educationSourceBucket = $educationDataSource.bucketArn.Replace("arn:aws:s3:::", "")
-$educationSourcePrefix = [string]$educationDataSource.inclusionPrefixes[0]
-if (-not $educationSourceBucket -or -not $educationSourcePrefix) {
-    throw "Education data source must expose a governed S3 bucket and prefix."
-}
-$policyKnowledgeBaseId = $application.PolicyKnowledgeBaseId
-if (-not $policyKnowledgeBaseId) {
-    $policyKnowledgeBaseId = Invoke-Aws cloudformation describe-stacks `
-        --stack-name $ApplicationStack `
-        --region $Region `
-        --query "Stacks[0].Parameters[?ParameterKey=='PolicyKnowledgeBaseId'].ParameterValue | [0]" `
-        --output text
-}
-$policyDataSourceId = Invoke-Aws bedrock-agent list-data-sources `
-    --knowledge-base-id $policyKnowledgeBaseId `
-    --region $Region `
-    --query "dataSourceSummaries[?status=='AVAILABLE'].dataSourceId | [0]" `
-    --output text
-if (-not $policyDataSourceId -or $policyDataSourceId -eq "None") {
-    throw "An available Policy Knowledge Base data source is required."
-}
-$policyDataSource = Invoke-Aws bedrock-agent get-data-source `
-    --knowledge-base-id $policyKnowledgeBaseId `
-    --data-source-id $policyDataSourceId `
-    --region $Region `
-    --query "dataSource.dataSourceConfiguration.s3Configuration" `
-    --output json | ConvertFrom-Json
-$policySourceBucket = $policyDataSource.bucketArn.Replace("arn:aws:s3:::", "")
-$policySourcePrefix = [string]$policyDataSource.inclusionPrefixes[0]
-if (-not $policySourceBucket -or -not $policySourcePrefix) {
-    throw "Policy data source must expose a governed S3 bucket and prefix."
-}
 $baseUrl = $foundation.FrontendUrl
 if (-not $baseUrl) {
     throw "The foundation stack must expose the authenticated HTTPS FrontendUrl."
@@ -178,17 +124,9 @@ $variables = [ordered]@{
     ALB_ORIGIN_URL = "http://$($foundation.LoadBalancerDnsName)"
     EDGE_ORIGIN_RESTRICTION_ENABLED = $originRestrictionEnabled
     EDGE_CUSTOM_DOMAIN_ENABLED = $customDomainEnabled
-    BEDROCK_MODEL_ID = $application.BedrockModelId
-    EDUCATION_KNOWLEDGE_BASE_ID = $educationKnowledgeBaseId
+    OPENAI_MODEL_ID = $application.OpenAiModelId
     EDUCATION_CORPUS_VERSION = $application.EducationCorpusVersion
-    EDUCATION_DATA_SOURCE_ID = $educationDataSourceId
-    EDUCATION_SOURCE_BUCKET = $educationSourceBucket
-    EDUCATION_SOURCE_PREFIX = $educationSourcePrefix
-    POLICY_KNOWLEDGE_BASE_ID = $policyKnowledgeBaseId
     POLICY_CORPUS_VERSION = $application.PolicyCorpusVersion
-    POLICY_DATA_SOURCE_ID = $policyDataSourceId
-    POLICY_SOURCE_BUCKET = $policySourceBucket
-    POLICY_SOURCE_PREFIX = $policySourcePrefix
     OPERATIONAL_DASHBOARD_NAME = $application.OperationalDashboardName
     OPERATIONAL_ALARM_PREFIX = $application.OperationalAlarmPrefix
     OPERATIONAL_ALERTS_TOPIC_ARN = $application.OperationalAlertsTopicArn

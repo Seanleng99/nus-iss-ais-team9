@@ -8,7 +8,7 @@ Private Python API containing the model-driven LangGraph orchestration layer.
 - Authenticate Streamlit service requests with an API key.
 - Redact sensitive values before prompts and logs.
 - Detect direct and indirect prompt-injection attempts.
-- Route requests through a Bedrock model to one or more specialist agents.
+- Route requests through OpenAI GPT-6 Luna to one or more specialist agents.
 - Resolve typed, capability-based specialist dependencies through the orchestrator.
 - Suspend and resume dependent tasks without allowing direct agent-to-agent calls.
 - Generate grounded specialist narratives and a final synthesis.
@@ -41,13 +41,14 @@ $env:POLICY_CORPUS_VERSION="financial-coach-policy-sg@local-fixture-v1"
 uvicorn app.main:app --reload --port 8001
 ```
 
-For a deployed environment, set both `RAG_PROVIDER=bedrock` and `POLICY_RAG_PROVIDER=bedrock`. Provide the reviewed Education and Policy knowledge-base IDs and corpus versions. The AI task role needs read-only access to those exact knowledge bases. Both retrievers reject chunks that do not carry complete governed metadata, match the configured corpus, and remain within their review deadline.
-The current six-source managed Education collection is owned by Investment Education. Its
+For a deployed environment, set `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, `MODEL_REASONING_EFFORT=low`, and supply `OPENAI_API_KEY` through a secret. Set both `RAG_PROVIDER=local_documents` and `POLICY_RAG_PROVIDER=local_documents`, with exact Education and Policy corpus versions. The image packages the reviewed files and manifests. Retrieval verifies hashes, provenance, approval, and review deadlines before use; policy retrieval supplies all three approved policy documents. No Bedrock service is called by the deployed AI task.
+For a local live-model run, place the key in the ignored repository-root `.env` file or the shell environment. The service reads `.env` from either the repository root or `apps/ai-service`; `.env.example` must remain blank.
+The current six-source packaged Education corpus is owned by Investment Education. Its
 retrieval request contains canonical education topics rather than the raw user question or
 personal values. Prompt set v6 retains fine-grained concepts and a canonical question-intent
 hint, explicitly records unsupported topics, and preserves partial-evidence notices through
 synthesis. Final citation markers are validated and links are generated from approved metadata.
 Blocked narratives are withheld across the response and backend/UI read boundaries. Compliance receives
-its sanitized evidence through the agent result rather than querying the Education knowledge base, and independently retrieves only from the Policy collection.
+its sanitized evidence through the agent result rather than querying the Education corpus, and independently retrieves only from the Policy corpus.
 The `/health` endpoint is public. Send `AI_SERVICE_API_KEY` through the `X-API-Key` header when
 calling `/coach`.

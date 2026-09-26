@@ -70,6 +70,8 @@ Parameters:
     Type: String
   AiServiceApiKeySecretArn:
     Type: String
+  OpenAiApiKeySecretArn:
+    Type: String
   DatabaseEndpoint:
     Type: String
   DatabasePort:
@@ -91,21 +93,13 @@ Parameters:
     Type: String
   FrontendImageUri:
     Type: String
-  BedrockModelId:
+  OpenAiModelId:
     Type: String
-    Default: apac.amazon.nova-lite-v1:0
-  EducationKnowledgeBaseId:
-    Type: String
-    MinLength: 10
-    MaxLength: 10
+    Default: gpt-6-luna
   EducationCorpusVersion:
     Type: String
     Default: investment-education-sg@2026-08-28.1
     AllowedPattern: "^[a-z0-9][a-z0-9@._-]{2,127}$"
-  PolicyKnowledgeBaseId:
-    Type: String
-    MinLength: 10
-    MaxLength: 10
   PolicyCorpusVersion:
     Type: String
     Default: financial-coach-policy-sg@2026-08-29.1
@@ -325,38 +319,32 @@ Resources:
             - Name: AWS_REGION
               Value: !Ref AWS::Region
             - Name: MODEL_PROVIDER
-              Value: bedrock
+              Value: openai
             - Name: MODEL_ID
-              Value: !Ref BedrockModelId
+              Value: !Ref OpenAiModelId
+            - Name: MODEL_REASONING_EFFORT
+              Value: low
             - Name: PROMPT_SET_VERSION
               Value: v6
             - Name: RAG_PROVIDER
-              Value: bedrock
-            - Name: EDUCATION_KNOWLEDGE_BASE_ID
-              Value: !Ref EducationKnowledgeBaseId
+              Value: local_documents
             - Name: EDUCATION_CORPUS_VERSION
               Value: !Ref EducationCorpusVersion
             - Name: RAG_MINIMUM_SCORE
               Value: "0.6"
             - Name: POLICY_RAG_PROVIDER
-              Value: bedrock
-            - Name: POLICY_KNOWLEDGE_BASE_ID
-              Value: !Ref PolicyKnowledgeBaseId
+              Value: local_documents
             - Name: POLICY_CORPUS_VERSION
               Value: !Ref PolicyCorpusVersion
             - Name: POLICY_RAG_MINIMUM_SCORE
               Value: "0.6"
-            - Name: ROUTER_TEMPERATURE
-              Value: "0.2"
-            - Name: AGENT_TEMPERATURE
-              Value: "0.35"
-            - Name: COMPLIANCE_TEMPERATURE
-              Value: "0.1"
             - Name: MODEL_MAX_TOKENS
-              Value: "800"
+              Value: "1600"
           Secrets:
             - Name: AI_SERVICE_API_KEY
               ValueFrom: !Sub "${AiServiceApiKeySecretArn}:value::"
+            - Name: OPENAI_API_KEY
+              ValueFrom: !Sub "${OpenAiApiKeySecretArn}:openai-api-key::"
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -796,70 +784,6 @@ Resources:
       OKActions:
         - !Ref OperationalAlertsTopic
 
-  BedrockThrottlesAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub ${ProjectName}-demo-bedrock-throttles
-      AlarmDescription: Bedrock throttled at least one model invocation.
-      Namespace: AWS/Bedrock
-      MetricName: InvocationThrottles
-      Dimensions:
-        - Name: ModelId
-          Value: !Ref BedrockModelId
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        - !Ref OperationalAlertsTopic
-      OKActions:
-        - !Ref OperationalAlertsTopic
-
-  BedrockServerErrorsAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub ${ProjectName}-demo-bedrock-server-errors
-      AlarmDescription: Bedrock returned at least one server error.
-      Namespace: AWS/Bedrock
-      MetricName: InvocationServerErrors
-      Dimensions:
-        - Name: ModelId
-          Value: !Ref BedrockModelId
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        - !Ref OperationalAlertsTopic
-      OKActions:
-        - !Ref OperationalAlertsTopic
-
-  BedrockLatencyAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub ${ProjectName}-demo-bedrock-p95-latency
-      AlarmDescription: Bedrock p95 invocation latency exceeded five seconds.
-      Namespace: AWS/Bedrock
-      MetricName: InvocationLatency
-      Dimensions:
-        - Name: ModelId
-          Value: !Ref BedrockModelId
-      ExtendedStatistic: p95
-      Period: 300
-      EvaluationPeriods: 2
-      DatapointsToAlarm: 2
-      Threshold: 5000
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        - !Ref OperationalAlertsTopic
-      OKActions:
-        - !Ref OperationalAlertsTopic
-
   AiCpuAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -936,15 +860,11 @@ Resources:
                   "width": 12,
                   "height": 6,
                   "properties": {
-                    "title": "Bedrock invocations, errors, and throttles",
+                    "title": "AI application generation failures",
                     "region": "${AWS::Region}",
                     "period": 300,
                     "metrics": [
-                      ["AWS/Bedrock", "Invocations", "ModelId", "${BedrockModelId}", {"stat": "Sum"}],
-                      [".", "InvocationClientErrors", ".", ".", {"stat": "Sum"}],
-                      [".", "InvocationServerErrors", ".", ".", {"stat": "Sum"}],
-                      [".", "InvocationThrottles", ".", ".", {"stat": "Sum"}],
-                      [".", "InvocationLatency", ".", ".", {"stat": "p95", "yAxis": "right"}]
+                      ["${ProjectName}/Application", "CoachGenerationFailures", {"stat": "Sum"}]
                     ]
                   }
                 },
@@ -955,13 +875,11 @@ Resources:
                   "width": 12,
                   "height": 6,
                   "properties": {
-                    "title": "Token usage and application generation failures",
+                    "title": "AI service CPU",
                     "region": "${AWS::Region}",
                     "period": 300,
                     "metrics": [
-                      ["AWS/Bedrock", "InputTokenCount", "ModelId", "${BedrockModelId}", {"stat": "Sum"}],
-                      [".", "OutputTokenCount", ".", ".", {"stat": "Sum"}],
-                      ["${ProjectName}/Application", "CoachGenerationFailures", {"stat": "Sum"}]
+                      ["AWS/ECS", "CPUUtilization", "ClusterName", "${EcsClusterName}", "ServiceName", "${AiServiceName}", {"stat": "Average"}]
                     ]
                   }
                 }
@@ -1000,14 +918,12 @@ Outputs:
     Value: !Ref OperationalAlertsTopic
   OperationalAlarmPrefix:
     Value: !Sub ${ProjectName}-demo-
-  BedrockModelId:
-    Value: !Ref BedrockModelId
-  EducationKnowledgeBaseId:
-    Value: !Ref EducationKnowledgeBaseId
+  OpenAiModelId:
+    Value: !Ref OpenAiModelId
+  OpenAiApiKeySecretArn:
+    Value: !Ref OpenAiApiKeySecretArn
   EducationCorpusVersion:
     Value: !Ref EducationCorpusVersion
-  PolicyKnowledgeBaseId:
-    Value: !Ref PolicyKnowledgeBaseId
   PolicyCorpusVersion:
     Value: !Ref PolicyCorpusVersion
   FrontendUrl:

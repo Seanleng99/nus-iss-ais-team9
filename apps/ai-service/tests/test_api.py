@@ -70,7 +70,7 @@ def test_deployment_rejects_weak_api_key() -> None:
 
 
 def test_deployment_rejects_fixture_model() -> None:
-    with pytest.raises(ValueError, match="MODEL_PROVIDER=bedrock"):
+    with pytest.raises(ValueError, match="MODEL_PROVIDER=openai"):
         Settings(
             APP_ENV="demo",
             AI_SERVICE_API_KEY="a-secure-demo-key-that-is-long-enough",
