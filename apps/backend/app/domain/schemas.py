@@ -240,11 +240,30 @@ class CoachResponse(BaseModel):
         return self
 
 
+TraceStatus = Literal["running", "completed", "blocked", "failed", "timed_out", "abandoned"]
+
+
+class OrchestrationRunSummary(BaseModel):
+    trace_id: str
+    session_id: str
+    conversation_title: str
+    status: TraceStatus
+    selected_agents: list[AgentName]
+    created_at: datetime
+    finished_at: datetime | None = None
+    error_code: str | None = None
+
+
+class OrchestrationRunPage(BaseModel):
+    items: list[OrchestrationRunSummary]
+    next_offset: int | None = None
+
+
 class OrchestrationTraceResponse(BaseModel):
     trace_id: str
     session_id: str
     assistant_message_id: str | None
-    status: Literal["running", "completed", "blocked", "failed", "timed_out", "abandoned"] = "completed"
+    status: TraceStatus = "completed"
     correlation_id: str | None = None
     finished_at: datetime | None = None
     error_code: str | None = None

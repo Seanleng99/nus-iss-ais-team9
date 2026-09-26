@@ -12,6 +12,7 @@ from ui.components import backend_call, clamp_progress, money, page_header, perc
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
 from ui.telemetry import call_span, context_fields, log_event, trace_context
+from ui.trace_viewer import trace_link
 
 CATEGORIES = [
     "housing",
@@ -164,6 +165,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
                     reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
                 if reference:
                     st.caption(reference)
+                trace_link(trace_id)
                 return
             selected_agents = explanation.get("selected_agents", [])
             if selected_agents:
@@ -194,6 +196,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
                 reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
             if reference:
                 st.caption(reference)
+            trace_link(trace_id)
 
 
 def _transaction_payload(

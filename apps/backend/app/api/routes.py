@@ -3,7 +3,7 @@ import re
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
@@ -16,7 +16,14 @@ from app.core.security import (
     require_principal,
 )
 from app.core.telemetry import call_span, log_event, log_synthetic_exchange, trace_method
-from app.domain.schemas import CoachRequest, CoachResponse, OrchestrationTraceResponse
+from app.domain.schemas import (
+    CoachRequest,
+    CoachResponse,
+    OrchestrationRunPage,
+    OrchestrationRunSummary,
+    OrchestrationTraceResponse,
+    TraceStatus,
+)
 from app.infrastructure.database import get_db_session
 from app.infrastructure.repositories import (
     SQLAlchemyChatRepository,
@@ -134,6 +141,38 @@ def _finalize_coach_response(response: CoachResponse) -> CoachResponse:
     return response
 
 
+@router.get("/coach/traces", response_model=OrchestrationRunPage)
+def list_orchestration_traces(
+    user_id: str,
+    session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
+    status: TraceStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> OrchestrationRunPage:
+    enforce_user_access(principal, session, user_id)
+    repository = SQLAlchemyOrchestrationTraceRepository(session)
+    repository.mark_abandoned(datetime.now(UTC), user_id=user_id)
+    session.commit()
+    rows = repository.list_for_user(user_id, status=status, limit=limit, offset=offset)
+    return OrchestrationRunPage(
+        items=[
+            OrchestrationRunSummary(
+                trace_id=record.trace_id,
+                session_id=record.session_id,
+                conversation_title=title,
+                status=record.status,
+                selected_agents=record.selected_agents,
+                created_at=record.created_at,
+                finished_at=record.finished_at,
+                error_code=record.error_code,
+            )
+            for record, title in rows[:limit]
+        ],
+        next_offset=offset + limit if len(rows) > limit else None,
+    )
+
+
 @router.get(
     "/coach/traces/{trace_id}",
     response_model=OrchestrationTraceResponse,
@@ -161,7 +200,9 @@ def get_orchestration_trace(
             else record.deadline_at
         )
         if deadline < datetime.now(UTC):
-            SQLAlchemyOrchestrationTraceRepository(session).mark_abandoned(datetime.now(UTC))
+            SQLAlchemyOrchestrationTraceRepository(session).mark_abandoned(
+                datetime.now(UTC), user_id=user_id
+            )
             session.commit()
             session.refresh(record)
     return OrchestrationTraceResponse(

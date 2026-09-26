@@ -43,3 +43,18 @@ Existing profile authorization and trace deletion apply to unfinished runs as we
 3. Deploy the backend; verify a normal run and a forced AI failure in the target environment, using their trace IDs to compare API records with logs.
 
 No production migration or deployment is performed by the code change itself. Downgrade refuses to discard incomplete runs silently: export and explicitly remove those records first if reverting the schema is necessary.
+
+
+## Decision trace viewer
+
+Open **Guidance → Decision traces** in the workspace sidebar, or **View decision trace** inside a saved answer's explanation. The viewer uses the active profile's authorization on every request and does not cache trace contents in browser session state.
+
+- Browse recent runs in pages of 25 and filter by run status, including failures without answers.
+- Enter a reference ID for a specific run; expired, deleted, or inaccessible records show an unavailable message.
+- **Decisions & evidence** shows the final approved routing and agent explanations and evidence versions. Blocked runs withhold generated explanations.
+- **Timeline** shows saved event order, Singapore timestamps, elapsed time, component/task filters, and event identifiers. Legacy traces fall back to their final audit events.
+- **Dependencies** draws recorded requester-to-provider capability edges and lists dependency resolutions. Missing edges are not inferred from timestamps.
+- **Model calls** joins started/finished events by call ID, so failures and unfinished calls remain visible even without a final model-call summary. Unknown token counts remain blank.
+- **Refresh** reloads the run from the backend. Runs still in progress are not automatically polled.
+
+The authenticated list endpoint is `GET /api/coach/traces?user_id=...&status=failed&limit=25&offset=0`. Status is optional; limits are bounded to 1–100. It returns summary `items` and `next_offset`, without audit payloads or agent results. Every page is sorted newest first; refresh returns current database state. The viewer needs the updated backend list endpoint and the existing durable-run migration before frontend rollout. No additional database migration is needed for the viewer.

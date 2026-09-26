@@ -3,7 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, delete, func, or_, select, update
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.api.financial_schemas import (
     BudgetUpsert,
@@ -985,6 +985,24 @@ class SQLAlchemyOrchestrationTraceRepository:
         self.session.flush()
         return record
 
+    def list_for_user(self, user_id: str, *, status: str | None, limit: int, offset: int):
+        query = (
+            select(OrchestrationTraceRecord, ChatSessionRecord.title)
+            .join(ChatSessionRecord, ChatSessionRecord.id == OrchestrationTraceRecord.session_id)
+            .options(load_only(
+                OrchestrationTraceRecord.trace_id, OrchestrationTraceRecord.session_id,
+                OrchestrationTraceRecord.status, OrchestrationTraceRecord.selected_agents,
+                OrchestrationTraceRecord.created_at, OrchestrationTraceRecord.finished_at,
+                OrchestrationTraceRecord.error_code,
+            ))
+            .where(ChatSessionRecord.user_id == user_id)
+            .order_by(OrchestrationTraceRecord.created_at.desc(), OrchestrationTraceRecord.trace_id.desc())
+            .offset(offset).limit(limit + 1)
+        )
+        if status is not None:
+            query = query.where(OrchestrationTraceRecord.status == status)
+        return self.session.execute(query).all()
+
     def get_for_user(
         self,
         user_id: str,
@@ -1012,15 +1030,18 @@ class SQLAlchemyOrchestrationTraceRepository:
         self.session.flush()
         return True
 
-    def mark_abandoned(self, now: datetime) -> int:
+    def mark_abandoned(self, now: datetime, *, user_id: str | None = None) -> int:
         """Deadline exceeds the bounded HTTP call, including persistence grace time."""
+        query = update(OrchestrationTraceRecord).where(
+            OrchestrationTraceRecord.status == "running",
+            OrchestrationTraceRecord.deadline_at < now,
+        )
+        if user_id is not None:
+            query = query.where(OrchestrationTraceRecord.session_id.in_(
+                select(ChatSessionRecord.id).where(ChatSessionRecord.user_id == user_id)
+            ))
         result = self.session.execute(
-            update(OrchestrationTraceRecord)
-            .where(
-                OrchestrationTraceRecord.status == "running",
-                OrchestrationTraceRecord.deadline_at < now,
-            )
-            .values(status="abandoned", error_code="RUN_ABANDONED", finished_at=now)
+            query.values(status="abandoned", error_code="RUN_ABANDONED", finished_at=now)
             .execution_options(synchronize_session="fetch")
         )
         return int(result.rowcount or 0)
