@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     oidc_issuer_url: str | None = Field(default=None, alias="OIDC_ISSUER_URL")
     oidc_jwks_url: str | None = Field(default=None, alias="OIDC_JWKS_URL")
     oidc_client_id: str | None = Field(default=None, alias="OIDC_CLIENT_ID")
+    oidc_legacy_issuer_url: str | None = Field(
+        default=None, alias="OIDC_LEGACY_ISSUER_URL"
+    )
     oidc_server_metadata_url: str | None = Field(
         default=None, alias="OIDC_SERVER_METADATA_URL"
     )

@@ -29,6 +29,9 @@ class OidcTokenVerifier:
     def __init__(self, configured_settings: Settings) -> None:
         self.issuer = (configured_settings.oidc_issuer_url or "").rstrip("/")
         self.audience = configured_settings.oidc_client_id or ""
+        self.legacy_issuer = (
+            configured_settings.oidc_legacy_issuer_url or ""
+        ).rstrip("/")
         self.required_token_use = configured_settings.oidc_required_token_use
         self.clock_skew_seconds = configured_settings.oidc_clock_skew_seconds
         self._jwks_client = (
@@ -61,6 +64,14 @@ class OidcTokenVerifier:
                 raise ValueError("OIDC subject is invalid")
             if self.required_token_use and claims.get("token_use") != self.required_token_use:
                 raise ValueError("OIDC token use is invalid")
+            legacy_subject = claims.get("custom:legacy_sub")
+            if legacy_subject is not None and (
+                not self.legacy_issuer
+                or not isinstance(legacy_subject, str)
+                or not legacy_subject.strip()
+                or len(legacy_subject) > 255
+            ):
+                raise ValueError("OIDC legacy identity is invalid")
         except (PyJWTError, ValueError) as error:
             log_event(
                 "auth.oidc.denied", reason_code="token_verification_failed",
@@ -68,6 +79,12 @@ class OidcTokenVerifier:
             )
             raise
         log_event("auth.oidc.accepted", authentication_method="oidc", authenticated=True)
+        if legacy_subject is not None:
+            return AuthenticatedPrincipal(
+                authentication_method="oidc",
+                issuer=self.legacy_issuer,
+                subject=legacy_subject.strip(),
+            )
         return AuthenticatedPrincipal(
             authentication_method="oidc",
             issuer=self.issuer,

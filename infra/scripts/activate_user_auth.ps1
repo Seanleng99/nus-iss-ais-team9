@@ -1,5 +1,5 @@
 param(
-    [string]$AccountId = "902552928492",
+    [string]$AccountId = "862124275471",
     [string]$Region = "ap-southeast-1",
     [string]$Repository = "Seanleng99/nus-iss-ais-team9",
     [string]$FoundationStack = "ai-financial-wellness-coach-foundation",

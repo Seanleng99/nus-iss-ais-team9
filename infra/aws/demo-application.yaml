@@ -33,6 +33,10 @@ Parameters:
   OidcIssuerUrl:
     Type: String
     AllowedPattern: "^https://.+$"
+  OidcLegacyIssuerUrl:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^https://.+$"
   OidcJwksUrl:
     Type: String
     AllowedPattern: "^https://.+$"
@@ -392,6 +396,8 @@ Resources:
               Value: "true"
             - Name: OIDC_ISSUER_URL
               Value: !Ref OidcIssuerUrl
+            - Name: OIDC_LEGACY_ISSUER_URL
+              Value: !Ref OidcLegacyIssuerUrl
             - Name: OIDC_JWKS_URL
               Value: !Ref OidcJwksUrl
             - Name: OIDC_CLIENT_ID

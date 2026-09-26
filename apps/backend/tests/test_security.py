@@ -68,6 +68,52 @@ def test_oidc_verifier_enforces_signature_audience_issuer_and_token_use() -> Non
         verifier.verify(access_token)
 
 
+def test_oidc_verifier_maps_immutable_legacy_subject_to_existing_owner() -> None:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    configured = Settings(
+        OIDC_ISSUER_URL="https://new-issuer.example",
+        OIDC_JWKS_URL="https://new-issuer.example/.well-known/jwks.json",
+        OIDC_CLIENT_ID="coach-client",
+        OIDC_REQUIRED_TOKEN_USE="id",
+        OIDC_LEGACY_ISSUER_URL="https://old-issuer.example",
+    )
+    verifier = OidcTokenVerifier(configured)
+    verifier._jwks_client = SimpleNamespace(
+        get_signing_key_from_jwt=lambda token: SimpleNamespace(key=private_key.public_key())
+    )
+    now = datetime.now(UTC)
+    claims = {
+        "iss": "https://new-issuer.example",
+        "aud": "coach-client",
+        "sub": "new-pool-user-id",
+        "custom:legacy_sub": "old-pool-user-id",
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+        "token_use": "id",
+    }
+
+    principal = verifier.verify(jwt.encode(claims, private_key, algorithm="RS256"))
+
+    assert principal.issuer == "https://old-issuer.example"
+    assert principal.subject == "old-pool-user-id"
+    with pytest.raises(ValueError, match="legacy identity"):
+        verifier.verify(
+            jwt.encode(
+                {**claims, "custom:legacy_sub": " "}, private_key, algorithm="RS256"
+            )
+        )
+    unconfigured = OidcTokenVerifier(
+        Settings(
+            OIDC_ISSUER_URL="https://new-issuer.example",
+            OIDC_JWKS_URL="https://new-issuer.example/.well-known/jwks.json",
+            OIDC_CLIENT_ID="coach-client",
+        )
+    )
+    unconfigured._jwks_client = verifier._jwks_client
+    with pytest.raises(ValueError, match="legacy identity"):
+        unconfigured.verify(jwt.encode(claims, private_key, algorithm="RS256"))
+
+
 def test_oidc_profiles_and_resources_are_owner_isolated(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "oidc_auth_enabled", True)
     monkeypatch.setattr(security, "get_oidc_token_verifier", StubTokenVerifier)
