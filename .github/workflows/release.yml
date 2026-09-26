@@ -193,26 +193,27 @@ jobs:
           BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
           FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
         run: |
+          publish_image() {
+            local repository="$1" dockerfile="$2" output_name="$3"
+            local image="$ECR_REGISTRY/$repository:$RELEASE_SHA"
+            if aws ecr describe-images --repository-name "$repository" \
+              --image-ids "imageTag=$RELEASE_SHA" >/dev/null 2>&1; then
+              echo "Reusing existing immutable image: $image"
+            else
+              docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+                -f "$dockerfile" -t "$image" .
+              docker push "$image"
+            fi
+            echo "$output_name=$image" >> "$GITHUB_OUTPUT"
+          }
           if [[ "$AI_CHANGED" == "true" ]]; then
-            ai_image="$ECR_REGISTRY/$AI_REPOSITORY:$RELEASE_SHA"
-            docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-              -f infra/docker/Dockerfile.ai-service -t "$ai_image" .
-            docker push "$ai_image"
-            echo "ai-image=$ai_image" >> "$GITHUB_OUTPUT"
+            publish_image "$AI_REPOSITORY" infra/docker/Dockerfile.ai-service ai-image
           fi
           if [[ "$BACKEND_CHANGED" == "true" ]]; then
-            backend_image="$ECR_REGISTRY/$BACKEND_REPOSITORY:$RELEASE_SHA"
-            docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-              -f infra/docker/Dockerfile.backend -t "$backend_image" .
-            docker push "$backend_image"
-            echo "backend-image=$backend_image" >> "$GITHUB_OUTPUT"
+            publish_image "$BACKEND_REPOSITORY" infra/docker/Dockerfile.backend backend-image
           fi
           if [[ "$FRONTEND_CHANGED" == "true" ]]; then
-            frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY:$RELEASE_SHA"
-            docker build --label "org.opencontainers.image.revision=$RELEASE_SHA" \
-              -f infra/docker/Dockerfile.frontend -t "$frontend_image" .
-            docker push "$frontend_image"
-            echo "frontend-image=$frontend_image" >> "$GITHUB_OUTPUT"
+            publish_image "$FRONTEND_REPOSITORY" infra/docker/Dockerfile.frontend frontend-image
           fi
       - name: Gate on Amazon ECR and Inspector findings
         env:
