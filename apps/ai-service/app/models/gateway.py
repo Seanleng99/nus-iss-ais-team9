@@ -365,6 +365,9 @@ class LocalFixtureModelGateway:
                 if contexts
                 else "Approved investment-education evidence was unavailable."
             )
+            if not contexts and grounding.get("fallback_topics"):
+                # The offline fixture cannot supply model knowledge; abstain honestly.
+                summary = ""
             if contexts and grounding.get("response_language") == "Chinese":
                 translations = {
                     "cpf-beginners-guide-to-investing": (

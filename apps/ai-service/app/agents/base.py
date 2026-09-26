@@ -76,7 +76,9 @@ class BaseAgent(ABC):
             source_count=len(grounding.get("sources", [])),
             response_language=grounding.get("response_language"),
         )
-        if grounding.get("evidence_status") == "insufficient":
+        if grounding.get("evidence_status") == "insufficient" and not (
+            self.name == AgentName.INVESTMENT_EDUCATION and grounding.get("fallback_topics")
+        ):
             log_event("agent.evidence_gap", agent=self.name.value, reason_code="INSUFFICIENT_EVIDENCE")
             result = self._evidence_gap_result(grounding)
             return CompletedInvocation(
@@ -115,8 +117,8 @@ class BaseAgent(ABC):
                 "\nAnswer the requested concept and question_intent directly and briefly. "
                 "Do not expand into adjacent topics. Preserve each source's qualifications, "
                 "account/product scope and conditions; do not generalize a statement about "
-                "one type of fund to all funds. Do not add definitions or examples absent "
-                "from the supplied passages. Present the relevant information in short "
+                "one type of fund to all funds. Keep summary grounded in the supplied "
+                "passages. Present the relevant information in short "
                 "bullet points: plain-language meaning, the requested comparison or "
                 "illustrative example, risks and costs, and limitations. Include only "
                 "sections needed for this question; do not dump the entire knowledge base. "
@@ -126,12 +128,13 @@ class BaseAgent(ABC):
                 "to invest. Rephrase any source's recommendations as general educational "
                 "considerations rather than telling the user what to do. Source dates "
                 "describe captured documents, not a live market or provider verification. "
-                "For source_verification, identify the supplied source organizations, "
+                "Only when grounding.source_verification is true, identify the source organizations, "
                 "document_version and published_at dates using grounding.sources. "
                 "These sources were retrieved for this request; do not claim they "
                 "supported earlier messages unavailable in this context. "
                 "A review_due_at is a review deadline, not proof of current accuracy. "
-                "State that current rates and provider status were not checked live. "
+                "For that verification question, state that current rates and provider status "
+                "were not checked live. Otherwise omit source-date and verification commentary. "
                 "Keep rationale to one brief assessment sentence "
                 "without additional financial facts."
             )
@@ -156,10 +159,11 @@ class BaseAgent(ABC):
             max_tokens=self.max_tokens,
             validate_response=validate_narrative,
         )
+        summary = self._format_summary(narrative, grounding)
         output_decision = inspect_prompt(
             " ".join(
                 [
-                    narrative.summary,
+                    summary,
                     *narrative.rationale,
                     *getattr(narrative, "uncertainties", []),
                 ]
@@ -169,7 +173,7 @@ class BaseAgent(ABC):
             "agent.output.evaluated", agent=self.name.value,
             allowed=not bool(output_decision.findings),
             finding_count=len(output_decision.findings),
-            output_characters=len(narrative.summary),
+            output_characters=len(summary),
         )
         if output_decision.findings:
             return CompletedInvocation(
@@ -188,7 +192,7 @@ class BaseAgent(ABC):
         narrative = self._validate_narrative(narrative, grounding)
         result = AgentResult(
             agent=self.name,
-            summary=narrative.summary,
+            summary=summary,
             rationale=narrative.rationale,
             confidence=narrative.confidence,
             data=grounding,
@@ -198,6 +202,9 @@ class BaseAgent(ABC):
             result=result,
             capabilities=self._capabilities(task, grounding, result),
         )
+
+    def _format_summary(self, narrative: AgentNarrative, grounding: dict) -> str:
+        return narrative.summary
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         """Return dependency requests required by deterministic specialist policy."""

@@ -73,9 +73,9 @@ def route_state(message, agents=None):
      "The approved knowledge base does not contain enough information to answer this question.",
      "No relevant approved source was retrieved."),
 ])
-def test_evidence_gap_is_localized_without_generation(message, summary, rationale):
+def test_legacy_evidence_gap_is_localized_without_generation(message, summary, rationale):
     agent = InvestmentEducationAgent(
-        NoGenerationGateway(), PromptCatalog("v6"), 0.35, 800, EmptyEducationRetriever(),
+        NoGenerationGateway(), PromptCatalog("v5"), 0.35, 800, EmptyEducationRetriever(),
     )
     outcome = agent.run_task(AgentTask(
         agent="investment_education", sanitized_message=message, input_data={},

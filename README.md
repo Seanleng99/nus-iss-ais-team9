@@ -51,7 +51,7 @@ After authentication activation, Streamlit completes Cognito authorization-code 
 - Spending Agent: spending summaries, patterns, and anomaly explanations.
 - Budget Agent: rule-constrained monthly budget recommendations.
 - Goal Strategy Agent: savings goal decomposition and progress adjustments.
-- Investment Education Agent: reads the Education RAG collection to provide source-grounded education; not financial advice.
+- Investment Education Agent: reads Education RAG first, supplements missing stable concepts with clearly labeled model knowledge, then passes the combined answer through independent safety review; not financial advice.
 - Risk & Compliance Agent: reviews specialist evidence and applies independent policy validation; it does not query the Education RAG collection and uses a separate Policy RAG boundary.
 
 Shared guardrails run before and after every agent call. The Risk & Compliance Agent is a final validation layer, not the only safety control.

@@ -1194,6 +1194,7 @@ class AgentOrchestrator:
                     "uncertainties": result.data.get("uncertainties", []),
                     "evidence_status": result.data.get("evidence_status"),
                     "unanswered_topics": result.data.get("unanswered_topics", []),
+                    "general_knowledge": result.data.get("general_knowledge", []),
                     "question_intent": result.data.get("question_intent"),
                     "needs_input": result.data.get("needs_input", False),
                     "questions": result.data.get("questions", []),
@@ -1250,7 +1251,7 @@ class AgentOrchestrator:
                 validate_response=validate_synthesis,
             )
         for result in state["agent_results"]:
-            if result.data.get("evidence_status") in {"partial", "insufficient"}:
+            if result.data.get("evidence_status") in {"partial", "insufficient"} or result.data.get("unanswered_topics"):
                 gap = education_gap_message(result.data)
                 if gap not in synthesis.answer:
                     synthesis.answer += f"\n\n{gap}"

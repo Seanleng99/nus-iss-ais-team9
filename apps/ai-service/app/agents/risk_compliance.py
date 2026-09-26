@@ -54,6 +54,8 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
         re.compile(
             r"\b(?:i|we)\s+(?:recommend|suggest|advise)\b" + ADVICE_CLAUSE +
             r"\b(?:buying|selling|holding|investing|buy|sell|hold|invest)\b|"
+            r"\b(?:i|we)\s+(?:recommend|suggest|advise)\s+(?:this|that|the)\s+"
+            r"(?:stock|share|bond|etf|fund|reit|investment\s+product|product)\b|"
             r"(?:^|[.!?;]\s*|\n\s*|:\s*)(?:buy|sell|hold)\s+(?:this|that|the)\s+"
             r"(?:stock|share|bond|etf|fund|reit|investment|product)\b",
             re.IGNORECASE,
@@ -190,7 +192,12 @@ def contains_return_guarantee(text: str) -> bool:
                 r"\b(?:no|not|never|without|cannot|can't)\s+"
                 r"(?:(?:offer|provide|promise|any|a|can)\s+){0,3}$",
                 before,
-            )
+            ) or (re.search(
+                r"\b(?:no|without|avoids?)\s+"
+                r"(?:(?:personalized|personal|financial|investment|product)\s+){0,2}"
+                r"(?:advice|recommendations?|instructions?)\s+(?:or|and)\s*$",
+                before,
+            ) and re.fullmatch(r"\s*(?:claims?|promises?)?\s*", after))
             risk_explanation = re.match(
                 r"\s+(?:(?:is|are|can be)\s+)?(?:a\s+)?"
                 r"(?:red flags?|warning signs?|misleading|unrealistic|impossible|scams?)\b",
@@ -538,6 +545,8 @@ class RiskComplianceAgent:
                                     "uncertainties",
                                     "query_topics",
                                     "unanswered_topics",
+                                    "fallback_topics",
+                                    "general_knowledge",
                                 )
                                 if key in result.data
                             },

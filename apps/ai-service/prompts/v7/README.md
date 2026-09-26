@@ -1,3 +1,3 @@
 # Prompt set v7
 
-Candidate for real-Bedrock acceptance. Enforces the requested response language, concise passage-supported answers, and preservation of evidence gaps during synthesis and policy review. v6 remains archived.
+Candidate prompt set; deployment targets v6. Uses the same separately labeled general-knowledge supplements as v6, with mandatory citation markers for nonempty sourced summaries. Both parts pass safety review, and unresolved evidence gaps remain explicit.

@@ -183,6 +183,9 @@ GENERIC_EDUCATION_QUESTION = re.compile(
 )
 
 UNSUPPORTED_EDUCATION_TOPIC_PHRASES = (
+    ("current price", "live market data"), ("current rates", "live market data"),
+    ("latest price", "live market data"), ("today's price", "live market data"),
+    ("实时", "live market data"), ("最新利率", "live market data"),
     ("tax", "tax treatment"), ("taxes", "tax treatment"),
     ("taxation", "tax treatment"), ("税", "tax treatment"),
     ("tokenized", "tokenized assets"), ("tokenised", "tokenized assets"),
@@ -199,6 +202,7 @@ DETAILED_EDUCATION_TOPICS = {
 }
 
 CHINESE_GAP_LABELS = {
+    "live market data": "实时市场数据",
     "bond duration": "债券久期",
     "zero-coupon bonds": "零息债券",
     "treasury bills": "国库券",
@@ -351,6 +355,8 @@ def build_minimal_education_query(
     if invalid_topics:
         raise ValueError("Additional education topics must be canonical allowlisted topics.")
     topics = list(dict.fromkeys(education_topics(message) + list(additional_topics)))
+    if len(topics) > 1 and "investment basics" in topics:
+        topics.remove("investment basics")
     if not topics:
         raise ValueError("No allowlisted education topic was identified.")
     return f"General investment education about {', '.join(topics)}", topics
