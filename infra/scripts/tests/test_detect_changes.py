@@ -101,6 +101,18 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 
+    def test_post_deploy_smoke_change_runs_a_real_release(self):
+        result = detect_changes.classify_changes(
+            ["infra/scripts/post_deploy_smoke.py"]
+        )
+
+        self.assertTrue(result["integration"])
+        self.assertTrue(result["frontend_deploy"])
+        self.assertTrue(result["backend_deploy"])
+        self.assertTrue(result["ai_deploy"])
+        self.assertTrue(result["deploy"])
+        self.assertFalse(result["migrations"])
+
     def test_docs_and_root_readme_do_not_select_service_work(self):
         result = detect_changes.classify_changes(
             ["docs/architecture.md", "README.md"]
