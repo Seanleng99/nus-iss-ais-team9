@@ -101,7 +101,7 @@ def test_coach_forwards_valid_request() -> None:
             headers={"X-API-Key": settings.api_key},
         )
         trace = client.get(
-            "/api/coach/traces/trace-s1?user_id=u1",
+            f"/api/coach/traces/{response.json()['audit']['trace_id']}?user_id=u1",
             headers={"X-API-Key": settings.api_key},
         )
     finally:
@@ -125,7 +125,7 @@ def test_coach_forwards_valid_request() -> None:
         "cpf-beginners-guide-to-investing"
     )
     explanation = conversation.json()["messages"][1]["explanation"]
-    assert explanation["trace_id"] == "trace-s1"
+    assert explanation["trace_id"] == response.json()["audit"]["trace_id"]
     assert explanation["selected_agents"] == ["budget"]
     assert explanation["agent_results"][0] == {
         "agent": "budget",
@@ -135,7 +135,7 @@ def test_coach_forwards_valid_request() -> None:
     }
     assert explanation["prompt_set_version"] == "v3"
     assert trace.status_code == 200
-    assert trace.json()["trace_id"] == "trace-s1"
+    assert trace.json()["trace_id"] == response.json()["audit"]["trace_id"]
     assert trace.json()["session_id"] == "s1"
     assert trace.json()["prompt_set_version"] == "v3"
     assert trace.json()["selected_agents"] == ["budget"]
@@ -225,7 +225,7 @@ def test_trace_is_isolated_to_its_profile() -> None:
             json={"user_id": "owner", "session_id": "owned", "message": "Budget"},
         )
         trace = client.get(
-            "/api/coach/traces/trace-owned?user_id=other-user",
+            f"/api/coach/traces/{response.json()['audit']['trace_id']}?user_id=other-user",
             headers={"X-API-Key": settings.api_key},
         )
     finally:
@@ -244,15 +244,15 @@ def test_trace_can_only_be_deleted_by_its_profile() -> None:
             json={"user_id": "owner", "session_id": "deletable", "message": "Budget"},
         )
         wrong_owner = client.delete(
-            "/api/coach/traces/trace-deletable?user_id=other-user",
+            f"/api/coach/traces/{response.json()['audit']['trace_id']}?user_id=other-user",
             headers={"X-API-Key": settings.api_key},
         )
         deleted = client.delete(
-            "/api/coach/traces/trace-deletable?user_id=owner",
+            f"/api/coach/traces/{response.json()['audit']['trace_id']}?user_id=owner",
             headers={"X-API-Key": settings.api_key},
         )
         missing = client.get(
-            "/api/coach/traces/trace-deletable?user_id=owner",
+            f"/api/coach/traces/{response.json()['audit']['trace_id']}?user_id=owner",
             headers={"X-API-Key": settings.api_key},
         )
         conversation = client.get(
@@ -300,7 +300,7 @@ def test_complete_workspace_deletion_cascades_to_messages_and_traces() -> None:
             },
         )
         missing_trace = client.get(
-            "/api/coach/traces/trace-cascade-chat?user_id=cascade-user",
+            f"/api/coach/traces/{coached.json()['audit']['trace_id']}?user_id=cascade-user",
             headers=headers,
         )
     finally:
@@ -310,7 +310,7 @@ def test_complete_workspace_deletion_cascades_to_messages_and_traces() -> None:
     exported_trace = exported.json()["data"]["chat_sessions"][0]["messages"][1][
         "orchestration_trace"
     ]
-    assert exported_trace["trace_id"] == "trace-cascade-chat"
+    assert exported_trace["trace_id"] == coached.json()["audit"]["trace_id"]
     assert deleted.status_code == 200
     assert deleted.json()["deleted_counts"]["chat_messages"] == 2
     assert deleted.json()["deleted_counts"]["orchestration_traces"] == 1

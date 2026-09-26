@@ -2,13 +2,16 @@ import json
 import logging
 import secrets
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
 from app.core.observability import RequestTelemetryMiddleware, get_correlation_id
 from app.core.schemas import CoachRequest, CoachResponse
 from app.core.telemetry import configure_logging, context_fields, log_event, trace_method
+from app.core.trace_stream import stream_run
 from app.models.gateway import ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 from app.rag.retriever import RetrievalError
@@ -93,3 +96,17 @@ def coach(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The AI service is temporarily unable to generate a validated response.",
         ) from exc
+
+
+@app.post("/coach/stream", dependencies=[Depends(require_api_key)])
+async def coach_stream(
+    request: CoachRequest,
+    agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
+    x_workflow_id: Annotated[UUID, Header()],
+) -> StreamingResponse:
+    """Private transport: validated metadata events followed by one final response."""
+    return StreamingResponse(
+        stream_run(agent_orchestrator, request, str(x_workflow_id)),
+        media_type="application/x-ndjson",
+        headers={"X-Trace-ID": str(x_workflow_id), "Cache-Control": "no-store"},
+    )

@@ -12,6 +12,8 @@ from math import isfinite
 from time import perf_counter
 from uuid import uuid4
 
+from app.core.run_trace import emit, task_context, workflow_id
+
 SERVICE_NAME = "ai-service"
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _journey_id: ContextVar[str | None] = ContextVar("journey_id", default=None)
@@ -66,6 +68,8 @@ _CODES = {
     "trace_id",
     "request_id",
     "task_id",
+    "call_id",
+    "event_id",
     "selected_agents",
     "response_fields",
     "source_ids",
@@ -98,6 +102,8 @@ def context_fields() -> dict:
         "correlation_id": _correlation_id.get(),
         "journey_id": _journey_id.get(),
         **(_span.get() or {}),
+        **({"trace_id": workflow_id.get()} if workflow_id.get() else {}),
+        **(task_context.get() or {}),
     }
 
 
@@ -117,6 +123,8 @@ def log_event(event: str, *, level: int = logging.INFO, **fields) -> None:
                 safe[key] = [code for item in value[:30] if (code := _safe_code(item))]
             elif (code := _safe_code(value)) is not None:
                 safe[key] = code
+    if event.startswith("model.generation."):
+        safe["event_id"] = str(uuid4())
     logger.log(
         level,
         json.dumps(
@@ -131,6 +139,13 @@ def log_event(event: str, *, level: int = logging.INFO, **fields) -> None:
             separators=(",", ":"),
         ),
     )
+    if event.startswith("model.generation."):
+        emit({
+            "event_id": safe["event_id"], "event_type": event,
+            "timestamp": datetime.now(UTC).isoformat(),
+            **context_fields(), "details": safe,
+        })
+
 
 
 @contextmanager

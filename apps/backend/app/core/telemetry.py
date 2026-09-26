@@ -12,6 +12,8 @@ from math import isfinite
 from time import perf_counter
 from uuid import uuid4
 
+from app.core.run_trace import active_run
+
 SERVICE_NAME = "backend"
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _journey_id: ContextVar[str | None] = ContextVar("journey_id", default=None)
@@ -94,10 +96,12 @@ def _safe_code(value):
 
 
 def context_fields() -> dict:
+    run = active_run.get()
     return {
         "correlation_id": _correlation_id.get(),
         "journey_id": _journey_id.get(),
         **(_span.get() or {}),
+        **({"trace_id": run.trace_id} if run is not None else {}),
     }
 
 

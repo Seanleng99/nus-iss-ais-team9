@@ -311,6 +311,17 @@ class SQLAlchemyUserRepository:
                 }
                 for record in budgets
             ],
+            "incomplete_orchestration_traces": [
+                {
+                    "trace_id": trace.trace_id, "session_id": trace.session_id,
+                    "status": trace.status, "correlation_id": trace.correlation_id,
+                    "error_code": trace.error_code, "audit": trace.audit,
+                    "created_at": trace.created_at.isoformat(),
+                    "finished_at": trace.finished_at.isoformat() if trace.finished_at else None,
+                }
+                for chat in chat_sessions for trace in chat.traces
+                if trace.assistant_message_id is None
+            ],
             "chat_sessions": [
                 {
                     "id": record.id,
@@ -343,6 +354,8 @@ class SQLAlchemyUserRepository:
                             "orchestration_trace": (
                                 {
                                     "trace_id": message.orchestration_trace.trace_id,
+                                    "status": message.orchestration_trace.status,
+                                    "correlation_id": message.orchestration_trace.correlation_id,
                                     "selected_agents": message.orchestration_trace.selected_agents,
                                     "agent_results": (
                                         sanitize_blocked_agent_results(
@@ -949,7 +962,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         *,
         trace_id: str,
         session_id: str,
-        assistant_message_id: UUID,
+        assistant_message_id: UUID | None,
         selected_agents: list[str],
         agent_results: list[dict[str, Any]],
         audit: dict[str, Any],
@@ -963,6 +976,7 @@ class SQLAlchemyOrchestrationTraceRepository:
             agent_results=agent_results,
             audit=audit,
             blocked=blocked,
+            status="blocked" if blocked else "completed",
             model_provider=audit.get("model_provider"),
             model_id=audit.get("model_id"),
             prompt_set_version=audit.get("prompt_set_version"),
@@ -998,7 +1012,21 @@ class SQLAlchemyOrchestrationTraceRepository:
         self.session.flush()
         return True
 
+    def mark_abandoned(self, now: datetime) -> int:
+        """Deadline exceeds the bounded HTTP call, including persistence grace time."""
+        result = self.session.execute(
+            update(OrchestrationTraceRecord)
+            .where(
+                OrchestrationTraceRecord.status == "running",
+                OrchestrationTraceRecord.deadline_at < now,
+            )
+            .values(status="abandoned", error_code="RUN_ABANDONED", finished_at=now)
+            .execution_options(synchronize_session="fetch")
+        )
+        return int(result.rowcount or 0)
+
     def delete_expired(self, cutoff: datetime) -> int:
+        self.mark_abandoned(datetime.now(UTC))
         expired = OrchestrationTraceRecord.created_at < cutoff
         language = OrchestrationTraceRecord.audit["response_language"].as_string()
         for response_language, language_filter in (

@@ -66,7 +66,7 @@ fields @timestamp, service, event, event_type, method, caller_method, span_id, p
 - `journey_id`：应用观察到登录成功后，为该 Streamlit 会话随机生成；串联该会话的后续请求。
 - `correlation_id`：一次应用操作/请求的编号，随 HTTP 请求从前端传到后端、AI；响应头也返回。
 - `span_id` / `parent_span_id`：一次方法调用及其父调用。
-- `trace_id`：AI 每次工作流独立生成的编号，连接响应审计与工作流事件。它不由客户端编号决定。
+- `trace_id`：AI 每次工作流独立生成的编号，连接响应审计与工作流事件。它不由公开客户端编号决定；后端在调用 AI 前生成，并通过私有 `X-Workflow-ID` 传递。
 
 登录跳转由 Cognito 与 Streamlit 实现。跳转前后的 Streamlit 会话可能重建，因此
 `auth.login_requested` 与登录后的 `journey_id` 不保证一一关联；日志不会假装看到了
@@ -121,3 +121,8 @@ fields @timestamp, service, correlation_id, method, caller_method, exception_typ
 容器关闭重复的 Uvicorn 原始访问日志，应用改用不含用户路径参数的路由模板记录访问。
 
 这些日志用于理解程序执行和排查故障，不是模型隐藏推理，也不证明金融答案已达到 99% 质量。
+
+
+## 持久化决策记录
+
+后端现在在 AI 执行前创建运行记录，并逐条提交过滤后的决策事件。失败、超时或没有最终回答的请求也可以查询运行状态。详见 [Durable decision traces](durable-decision-traces.md)，包括升级顺序、查询方式、权限、保留期与故障边界。

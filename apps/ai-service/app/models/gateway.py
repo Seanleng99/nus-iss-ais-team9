@@ -5,9 +5,11 @@ from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from time import perf_counter
 from typing import Any, Protocol
+from uuid import uuid4
 
 from app.core.config import Settings
-from app.core.telemetry import log_event, trace_method
+from app.core.run_trace import task_context
+from app.core.telemetry import context_fields, log_event, trace_method
 
 
 class ModelGatewayError(RuntimeError):
@@ -466,10 +468,12 @@ class TracingModelGateway:
         max_tokens: int,
     ) -> str:
         trace_id = _model_trace_id.get()
+        call_id = str(uuid4())
         started = perf_counter()
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         log_event(
             "model.generation.started",
+            call_id=call_id,
             trace_id=trace_id,
             component=component,
             provider=self.settings.model_provider,
@@ -492,6 +496,10 @@ class TracingModelGateway:
                         code="MODEL_TOKEN_BUDGET_EXCEEDED", component="model_budget",
                     )
                 call = {
+                    "call_id": call_id,
+                    "trace_id": trace_id,
+                    "span_id": context_fields().get("span_id"),
+                    **(task_context.get() or {}),
                     "component": system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip() or "unknown",
                     "status": "running",
                     "duration_ms": 0.0,
@@ -523,6 +531,7 @@ class TracingModelGateway:
             usage = getattr(generation, "usage", {})
             log_event(
                 "model.generation.finished",
+                call_id=call_id,
                 trace_id=trace_id,
                 component=component,
                 status=status,

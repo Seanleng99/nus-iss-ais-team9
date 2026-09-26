@@ -31,6 +31,7 @@ from app.core.config import settings as runtime_settings
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
 from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
+from app.core.run_trace import emit, task_context, workflow_id
 from app.core.schemas import (
     AgentName,
     AgentResult,
@@ -74,6 +75,9 @@ from app.rag.retriever import (
 logger = logging.getLogger("service.ai.workflow")
 
 SAFE_WORKFLOW_DETAIL_KEYS = {
+    "model_provider",
+    "model_id",
+    "prompt_set_version",
     "accepted_chunk_count",
     "agent",
     "agent_result_count",
@@ -125,6 +129,7 @@ def _write_workflow_log(
     parent_task_id: str | None = None,
     details: dict | None = None,
     level: int = logging.INFO,
+    event_id: str | None = None,
 ) -> None:
     safe_details = {
         key: value
@@ -143,25 +148,21 @@ def _write_workflow_log(
             )
         ):
             safe_details[code_key] = "UNSAFE_VALUE_REDACTED"
-    logger.log(
-        level,
-        json.dumps(
-            {
-                "timestamp": datetime.now(UTC).isoformat(),
-                "service": "ai-service",
-                **context_fields(),
-                "event_type": event_type,
-                "trace_id": trace_id,
-                "correlation_id": get_correlation_id(),
-                "actor": actor,
-                "task_id": task_id,
-                "parent_task_id": parent_task_id,
-                "details": safe_details,
-            },
-            ensure_ascii=True,
-            separators=(",", ":"),
-        ),
-    )
+    payload = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "service": "ai-service",
+        **context_fields(),
+        "event_type": event_type,
+        "event_id": event_id or str(uuid4()),
+        "trace_id": trace_id,
+        "correlation_id": get_correlation_id(),
+        "actor": actor,
+        "task_id": task_id,
+        "parent_task_id": parent_task_id,
+        "details": safe_details,
+    }
+    logger.log(level, json.dumps(payload, separators=(",", ":")))
+    emit(payload)
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -647,7 +648,11 @@ class AgentOrchestrator:
         final_attempt = task.attempt
         while final_attempt <= self.config.max_task_attempts:
             try:
-                outcome = agent.run_task(task.model_copy(update={"attempt": final_attempt}))
+                token = task_context.set({"task_id": task.task_id, "attempt": final_attempt})
+                try:
+                    outcome = agent.run_task(task.model_copy(update={"attempt": final_attempt}))
+                finally:
+                    task_context.reset(token)
             except (ModelGatewayError, RetrievalError) as exc:
                 error_code = getattr(
                     exc,
@@ -1550,6 +1555,7 @@ class AgentOrchestrator:
         _write_workflow_log(
             trace_id=event.trace_id,
             event_type=event.event_type,
+            event_id=event.event_id,
             actor=event.actor,
             task_id=event.task_id,
             parent_task_id=event.parent_task_id,
@@ -1628,7 +1634,7 @@ class AgentOrchestrator:
 
     @trace_method
     def handle(self, request: CoachRequest) -> CoachResponse:
-        trace_id = str(uuid4())
+        trace_id = workflow_id.get() or str(uuid4())
         log_event(
             "workflow.context",
             trace_id=trace_id,
@@ -1647,7 +1653,10 @@ class AgentOrchestrator:
         _write_workflow_log(
             trace_id=trace_id,
             event_type=started_event.event_type,
+            event_id=started_event.event_id,
             actor=started_event.actor,
+            details={"model_provider": self.config.model_provider,
+                     "model_id": self.config.model_id, "prompt_set_version": self.prompts.version},
         )
         trace_token = self.gateway.bind_trace(trace_id)
         retrieval_token = self.education_retriever.begin_request()

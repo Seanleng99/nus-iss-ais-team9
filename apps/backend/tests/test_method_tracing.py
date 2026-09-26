@@ -94,7 +94,9 @@ def mocked_ai(monkeypatch, ai_response):
 
     def respond(request):
         requests.append(request)
-        return httpx.Response(200, json=ai_response)
+        payload = {**ai_response, "audit": {**ai_response["audit"], "trace_id": request.headers["X-Workflow-ID"]}}
+        return httpx.Response(200, headers={"Content-Type": "application/x-ndjson"},
+                              text=json.dumps({"type": "response", "response": payload}) + "\n")
 
     transport = httpx.MockTransport(respond)
     monkeypatch.setattr(
@@ -194,7 +196,8 @@ def test_frontend_headers_link_auth_snapshot_ai_persistence_and_response(
     assert ready["source_count"] == 1
     assert ready["response_fields"] == list(CoachResponse.model_fields)
     assert ready["output_characters"] == len(_ai_payload()["answer"])
-    assert ready["trace_id"] == "trace-safe-001"
+    assert ready["trace_id"] == response.headers["X-Trace-ID"]
+    assert sent_headers["X-Workflow-ID"] == ready["trace_id"]
     assert any(event["event"] == "coach.persistence.completed" for event in events)
     assert any(event["event"] == "auth.accepted" for event in events)
     assert any(event["event"] == "ai_service.response.validated" for event in events)
@@ -347,8 +350,13 @@ def test_persistence_failure_logs_type_and_rolls_back(
     dependency = app.dependency_overrides[get_db_session]()
     try:
         session = next(dependency)
-        for model in (ChatSessionRecord, ChatMessageRecord, OrchestrationTraceRecord):
-            assert session.scalar(select(func.count()).select_from(model)) == 0
+        assert session.scalar(select(func.count()).select_from(ChatMessageRecord)) == 0
+        for model in (ChatSessionRecord, OrchestrationTraceRecord):
+            assert session.scalar(select(func.count()).select_from(model)) == (1 if failure_at == "messages" else 0)
+        if failure_at == "messages":
+            record = session.scalar(select(OrchestrationTraceRecord))
+            assert record.status == "failed"
+            assert record.assistant_message_id is None
     finally:
         dependency.close()
     _assert_content_free(service_logs)
@@ -365,8 +373,9 @@ def test_ai_failures_log_status_and_type_without_raw_response(
         if failure == "http_status":
             return httpx.Response(502, text="private-error-marker")
         if failure == "json":
-            return httpx.Response(200, text="private-error-marker")
-        return httpx.Response(200, json={"session_id": "private-error-marker"})
+            return httpx.Response(200, headers={"Content-Type": "application/x-ndjson"}, text="private-error-marker\n")
+        return httpx.Response(200, headers={"Content-Type": "application/x-ndjson"},
+                              text=json.dumps({"type": "response", "response": {"session_id": "private-error-marker"}}) + "\n")
 
     monkeypatch.setattr(
         httpx, "AsyncClient",

@@ -243,7 +243,11 @@ class CoachResponse(BaseModel):
 class OrchestrationTraceResponse(BaseModel):
     trace_id: str
     session_id: str
-    assistant_message_id: str
+    assistant_message_id: str | None
+    status: Literal["running", "completed", "blocked", "failed", "timed_out", "abandoned"] = "completed"
+    correlation_id: str | None = None
+    finished_at: datetime | None = None
+    error_code: str | None = None
     selected_agents: list[AgentName]
     agent_results: list[AgentResult]
     audit: dict[str, Any]
