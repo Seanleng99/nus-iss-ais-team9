@@ -44,7 +44,9 @@ registrar delegation changed. Deployment scripts default to the destination acco
   Destination DB `ai-financial-wellness-coach-final` is restored, and the
   application stack points to it. Its RDS-managed secret is scoped exactly in
   the ECS execution role. The final restore matches the frozen source by row
-  count and SHA-256 content fingerprint for all 12 PostgreSQL tables.
+  count and SHA-256 content fingerprint for all 12 PostgreSQL tables. After
+  both private copies completed, temporary cross-account RDS snapshot restore
+  attributes and destination KMS key-policy grants were revoked.
 - GitHub Actions deploy and frontend URL variables point to account
   `862124275471` and the production apex. The two destination knowledge bases
   ingested their source data and passed retrieval checks.
@@ -71,15 +73,14 @@ registrar delegation changed. Deployment scripts default to the destination acco
   source account. A second copy named
   `ai-financial-wellness-coach-pre-migration-shareable-20260925`, encrypted under
   source customer-managed key `alias/ai-financial-wellness-coach-snapshot-share`,
-  is also `available`. The shareable snapshot grants restore access to account
-  `862124275471`, and the customer-managed key policy grants that account the
-  cryptographic operations required to copy it. The destination account has
+  is also `available`. It temporarily granted account `862124275471` restore
+  access and the required KMS operations; those grants have since been revoked.
+  The destination account has
   started a private copy named
   `ai-financial-wellness-coach-pre-migration-copy-20260926`, encrypted with its
   own `aws/rds` key. The destination copy reached `available` with 100% progress.
   This preliminary backup remains available. The final backup and restore are
-  described in the production cutover status above. Revoke temporary source
-  snapshot and KMS sharing after user verification and rollback retention.
+  described in the production cutover status above.
 - Cognito pool `ap-southeast-1_Z1zO5LOAq` contains four users. The app stores
   their Cognito issuer and `sub` in `users.owner_issuer` and
   `users.owner_subject`. Those values change with a new pool. Its only app client
