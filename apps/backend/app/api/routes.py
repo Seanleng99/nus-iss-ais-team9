@@ -1,4 +1,5 @@
 import re
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -13,15 +14,38 @@ from app.core.security import (
     require_principal,
 )
 from app.core.telemetry import call_span, log_event, log_synthetic_exchange, trace_method
-from app.domain.schemas import CoachRequest, CoachResponse, OrchestrationTraceResponse
+from app.domain.schemas import (
+    CoachRequest,
+    CoachResponse,
+    OrchestrationTraceResponse,
+)
 from app.infrastructure.database import get_db_session
 from app.infrastructure.repositories import (
     SQLAlchemyChatRepository,
     SQLAlchemyOrchestrationTraceRepository,
     SQLAlchemyUserRepository,
 )
+from app.services.budget_alert import build_status_reply, parse_budget_status_query
+from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
+from app.services.transaction_capture import handle_transaction_capture
 
 router = APIRouter()
+
+
+def _current_period_start():  # pragma: no cover - trivial
+    return datetime.now(UTC).date().replace(day=1)
+
+
+def _budget_alert_reply(session: Session, request: CoachRequest) -> CoachResponse:
+    answer = build_status_reply(session, request.user_id, _current_period_start())
+    return CoachResponse(
+        session_id=request.session_id,
+        selected_agents=[],
+        answer=answer,
+        agent_results=[],
+        disclaimers=[],
+        audit={"source": "budget_alert"},
+    )
 
 
 def get_ai_service_client() -> AIServiceClient:
@@ -41,6 +65,16 @@ async def coach(
     x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
     enforce_user_access(principal, session, request.user_id)
+    captured = handle_transaction_capture(session, request)
+    if captured is not None:
+        return _finalize_coach_response(_persist_local_coach(session, request, captured))
+    query_date = parse_date_spending_query(request.message)
+    if query_date is not None:
+        queried = handle_date_spending_query(session, request, query_date)
+        return _finalize_coach_response(_persist_local_coach(session, request, queried))
+    if parse_budget_status_query(request.message):
+        alert_reply = _budget_alert_reply(session, request)
+        return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
     user_repository = SQLAlchemyUserRepository(session)
     persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
@@ -60,6 +94,31 @@ async def coach(
     )
     with call_span("pydantic.main.BaseModel.model_validate", response_type="CoachResponse"):
         response = CoachResponse.model_validate(response.model_dump())
+    _persist_coach_exchange(session, request, response)
+    log_event("coach.persistence.completed", persisted=True, message_count=2)
+    if (
+        x_synthetic_log == "true"
+        and principal.is_automation
+        and automation_user_id_reserved(request.user_id)
+        and settings.app_env.lower() in {"local", "test", "demo"}
+    ):
+        log_synthetic_exchange(request.message, response.answer)
+    return _finalize_coach_response(response)
+
+
+@trace_method
+def _persist_local_coach(
+    session: Session, request: CoachRequest, response: CoachResponse
+) -> CoachResponse:
+    _persist_coach_exchange(session, request, response)
+    log_event("coach.persistence.completed", persisted=True, message_count=2)
+    return response
+
+
+@trace_method
+def _persist_coach_exchange(
+    session: Session, request: CoachRequest, response: CoachResponse
+) -> None:
     chat_repository = SQLAlchemyChatRepository(session)
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
     if chat_session is None:
@@ -91,15 +150,6 @@ async def coach(
         )
     with call_span("sqlalchemy.orm.session.Session.commit"):
         session.commit()
-    log_event("coach.persistence.completed", persisted=True, message_count=2)
-    if (
-        x_synthetic_log == "true"
-        and principal.is_automation
-        and automation_user_id_reserved(request.user_id)
-        and settings.app_env.lower() in {"local", "test", "demo"}
-    ):
-        log_synthetic_exchange(request.message, response.answer)
-    return _finalize_coach_response(response)
 
 
 @trace_method

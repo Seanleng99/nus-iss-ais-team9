@@ -69,6 +69,8 @@ _CODES = {
     "selected_agents",
     "response_fields",
     "source_ids",
+    "source",
+    "category",
 }
 
 

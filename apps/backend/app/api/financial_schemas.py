@@ -299,6 +299,27 @@ class SpendingInsight(BaseModel):
     educational_context: str | None = None  # Learning information
 
 
+class BudgetAlertCategory(BaseModel):
+    category: str
+    spent: float
+    limit_amount: float
+
+
+class BudgetAlert(BaseModel):
+    status: Literal["over", "approaching"]
+    income_usage_percent: float | None
+    budget_usage_percent: float | None
+    over_income: bool
+    over_budget: bool
+    categories_over: list[BudgetAlertCategory]
+    categories_at_limit: list[BudgetAlertCategory]
+    amount_over_income: float
+    amount_over_budget: float
+    total_spent: float
+    monthly_income: float
+    total_budget_limit: float
+
+
 class DashboardResponse(BaseModel):
     period_start: date
     currency: str
@@ -313,6 +334,7 @@ class DashboardResponse(BaseModel):
     spending_insights: list[SpendingInsight] = Field(default_factory=list)
     spending_data_quality: str = "insufficient"
     spending_months_analyzed: int = 0
+    budget_alert: BudgetAlert | None = None
 
 
 class ChatSessionCreate(BaseModel):
