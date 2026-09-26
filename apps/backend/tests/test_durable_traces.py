@@ -263,9 +263,10 @@ asyncio.run(main())
             ),
             text=True,
             capture_output=True,
-            check=True,
+            check=False,
             timeout=30,
         )
+        assert result.returncode == 0, f"AI trace subprocess failed:\n{result.stderr}"
         return httpx.Response(
             200, headers={"Content-Type": "application/x-ndjson"}, text=result.stdout
         )
