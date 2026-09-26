@@ -15,6 +15,7 @@ from app.domain.schemas import (
     BLOCKED_RESPONSE_ANSWER_ZH,
     BROKERAGE_RESPONSE_ANSWER,
     BROKERAGE_RESPONSE_ANSWER_ZH,
+    SAFE_REFUSAL_TEMPLATES,
     CoachRequest,
     CoachResponse,
     blocked_response_answer,
@@ -109,16 +110,19 @@ def test_modified_or_unknown_refusal_falls_back_to_generic(answer, response_lang
 
 
 @pytest.mark.parametrize(
-    ("message", "claimed_language", "expected"),
+    ("message", "claimed_language", "answer", "expected"),
     [
-        (ENGLISH_REQUEST, "Chinese", BROKERAGE_RESPONSE_ANSWER),
-        (CHINESE_REQUEST, "English", BROKERAGE_RESPONSE_ANSWER_ZH),
+        row for english, chinese in SAFE_REFUSAL_TEMPLATES for row in (
+            (ENGLISH_REQUEST, "Chinese", english, english),
+            (CHINESE_REQUEST, "English", english, chinese),
+        )
     ],
 )
 def test_live_history_export_and_trace_delete_keep_safe_localized_refusal(
     monkeypatch: pytest.MonkeyPatch,
     message: str,
     claimed_language: str,
+    answer: str,
     expected: str,
 ) -> None:
     user_id = "friendly-brokerage-user"
@@ -127,7 +131,7 @@ def test_live_history_export_and_trace_delete_keep_safe_localized_refusal(
         app.dependency_overrides,
         get_ai_service_client,
         lambda: BrokerageBlockedAIServiceClient(
-            BROKERAGE_RESPONSE_ANSWER, claimed_language
+            answer, claimed_language
         ),
     )
 
@@ -185,6 +189,12 @@ def test_expired_trace_purge_preserves_only_exact_brokerage_templates(db_session
         ("expired-poison-en", POISON, "English", BLOCKED_RESPONSE_ANSWER),
         ("expired-poison-zh", POISON, "Chinese", BLOCKED_RESPONSE_ANSWER_ZH),
     ]
+    for index, (english, chinese) in enumerate(SAFE_REFUSAL_TEMPLATES):
+        rows.extend([
+            (f"safe-{index}-en", english, "English", english),
+            (f"safe-{index}-zh", english, "Chinese", chinese),
+            (f"poison-{index}", english + POISON, "English", BLOCKED_RESPONSE_ANSWER),
+        ])
     message_ids = {}
     with db_session_factory() as session:
         session.add(UserRecord(id="expired-refusal-user"))

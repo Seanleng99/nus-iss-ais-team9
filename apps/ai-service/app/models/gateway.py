@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Any, Protocol
 from uuid import uuid4
 
-from app.agents.education_access import education_topics
+from app.agents.education_access import education_gap_message, education_topics
 from app.core.config import Settings
 from app.core.run_trace import task_context
 from app.core.telemetry import context_fields, log_event, trace_method
@@ -215,7 +215,8 @@ class OpenAIModelGateway:
         except Exception as exc:
             raise ModelGatewayError(
                 "The configured model could not produce a response.",
-                code="OPENAI_INVOCATION_FAILED",
+                code=("OPENAI_RATE_LIMITED" if getattr(exc, "status_code", None) == 429
+                      else "OPENAI_INVOCATION_FAILED"),
                 component="openai",
             ) from exc
 
@@ -261,6 +262,9 @@ class LocalFixtureModelGateway:
                     "summary": "The response passed model-assisted compliance review.",
                     "rationale": ["No disallowed personalized investment instruction was found."],
                     "policy_notes": [],
+                    "request_allowed": True,
+                    "complete": True,
+                    "missing_points": [],
                     "confidence": 0.91,
                 }
             )
@@ -425,6 +429,7 @@ class LocalFixtureModelGateway:
                     ],
                     "uncertainties": [
                         "Investment outcomes vary and losses are possible."
+                        if grounding.get("contexts") else education_gap_message(grounding)
                     ],
                 }
             )

@@ -413,7 +413,7 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
     assert len(app.session_state["backend_client"].sessions) == 1
 
 
-def test_coach_answer_displays_approved_source_citations() -> None:
+def test_coach_answer_and_reopened_history_display_approved_source_links() -> None:
     app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
     app.session_state["backend_client"] = CoachClient()
     app.session_state["active_user_id"] = "coach-user"
@@ -421,11 +421,35 @@ def test_coach_answer_displays_approved_source_citations() -> None:
 
     app.button(key="coach-starter-0").click().run(timeout=30)
 
-    rendered_markdown = "\n".join(item.value for item in app.markdown)
-    assert "[A beginner's guide to investing in Singapore]" in rendered_markdown
-    assert "https://www.cpf.gov.sg/example" in rendered_markdown
-    assert "CPF Board" in rendered_markdown
-    assert "Source ID: `cpf-beginners-guide-to-investing`" in rendered_markdown
+    source_line = (
+        "- [A beginner's guide to investing in Singapore](https://www.cpf.gov.sg/example) — "
+        "CPF Board, 2026-05-07 · Source ID: `cpf-beginners-guide-to-investing`"
+    )
+    assert not app.exception
+    assert source_line in [item.value for item in app.markdown]
+    assert "Retrieved reference sources" in [item.value for item in app.caption]
+
+    app.sidebar.button(key="coach-new-chat").click().run(timeout=30)
+    app.sidebar.button(key="coach-session-coach-session-1").click().run(timeout=30)
+
+    assert not app.exception
+    assert source_line in [item.value for item in app.markdown]
+    assert "Retrieved reference sources" in [item.value for item in app.caption]
+    assert len(app.session_state["backend_client"].questions) == 1
+
+
+def test_model_only_coach_message_does_not_display_reference_sources() -> None:
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        "_render_coach_message({'role': 'assistant', "
+        "'content': 'General educational background: ETF fees reduce returns.', 'sources': []})"
+    ).run(timeout=30)
+
+    assert not app.exception
+    assert [item.value for item in app.markdown] == [
+        "General educational background: ETF fees reduce returns."
+    ]
+    assert not app.caption
 
 
 def test_coach_answer_explains_rationale_confidence_and_reference() -> None:

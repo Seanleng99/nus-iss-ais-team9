@@ -45,7 +45,28 @@ def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
 def render_citations(text: str, sources: Sequence[SourceCitation]) -> str:
     validate_citations(text, sources)
     approved = {source.source_id: source for source in sources}
+
+    def reference(match: re.Match) -> str:
+        source = approved[match[1]]
+        label = re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", " ".join(source.title.split()))
+        return f"[{label}]({quote(source.canonical_url, safe=':/?#=&%')})"
+
     return SOURCE_MARKER.sub(
-        lambda match: f"[{match[1]}]({quote(approved[match[1]].canonical_url, safe=':/?#=&%')})",
+        reference,
         text,
     )
+
+
+def compact_evidence(data: dict) -> dict:
+    """Keep full passages and relevant metadata in model input; audit keeps full provenance."""
+    result = dict(data)
+    for field, keys in (
+        ("contexts", ("source_id", "text")),
+        ("sources", ("source_id", "title", "issuing_organization", "published_at",
+                     "document_version", "review_due_at")),
+    ):
+        if field in data:
+            result[field] = [
+                {key: item[key] for key in keys if key in item} for item in data[field]
+            ]
+    return result

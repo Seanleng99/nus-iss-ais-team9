@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
@@ -19,6 +20,7 @@ from app.core.telemetry import call_span, log_event, log_synthetic_exchange, tra
 from app.domain.schemas import (
     CoachRequest,
     CoachResponse,
+    InternalCoachRequest,
     OrchestrationRunPage,
     OrchestrationRunSummary,
     OrchestrationTraceResponse,
@@ -72,6 +74,13 @@ async def coach(
     x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
     enforce_user_access(principal, session, request.user_id)
+    chat_repository = SQLAlchemyChatRepository(session)
+    try:
+        conversation_existed, revision, context = chat_repository.context_snapshot(
+            request.user_id, request.session_id
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=404, detail="Conversation not found") from error
     captured = handle_transaction_capture(session, request)
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
@@ -87,14 +96,23 @@ async def coach(
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
-    chat_repository = SQLAlchemyChatRepository(session)
+    request = InternalCoachRequest(**request.model_dump(), conversation_context=context)
+    log_event("coach.history.loaded", history_count=len(context))
+    session.rollback()
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
     if chat_session is None:
-        if chat_repository.id_exists(request.session_id):
+        if conversation_existed or chat_repository.id_exists(request.session_id):
             raise HTTPException(status_code=404, detail="Conversation not found")
-        chat_session = chat_repository.create(
-            request.user_id, request.session_id, request.message[:120]
-        )
+        try:
+            chat_session = chat_repository.create(
+                request.user_id, request.session_id, request.message[:120]
+            )
+        except IntegrityError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Conversation changed; please retry.") from error
+    elif len(chat_session.messages) != revision:
+        raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
+    # DurableRun commits metadata and releases the conversation lock before AI.
     run = DurableRun(session, chat_session.id, settings.ai_service_timeout_seconds)
     token = active_run.set(run)
     try:
@@ -109,9 +127,12 @@ async def coach(
             response = CoachResponse.model_validate(response.model_dump())
         # Reacquire the conversation lock after incremental event commits.
         session.expire_all()
+        enforce_user_access(principal, session, request.user_id)
         chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
         if chat_session is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
+        if len(chat_session.messages) != revision:
+            raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
         chat_repository.append_message(chat_session, "user", request.message)
         assistant_message = chat_repository.append_message(
             chat_session,

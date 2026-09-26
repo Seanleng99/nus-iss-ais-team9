@@ -58,6 +58,11 @@ class CoachRequest(BaseModel):
         return value.strip()
 
 
+class InternalCoachRequest(CoachRequest):
+    # Only the backend constructs this; the public request has no history field.
+    conversation_context: list[dict[str, str]] = Field(default_factory=list, max_length=8)
+
+
 class AgentResult(BaseModel):
     agent: AgentName
     summary: str
@@ -82,6 +87,34 @@ BROKERAGE_RESPONSE_ANSWER = (
 BROKERAGE_RESPONSE_ANSWER_ZH = (
     "我不能登录你的券商账户、接收登录凭证或代你买入投资产品。"
     "我可以解释 ETF 的运作方式、费用、风险，以及比较 ETF 时可以了解的因素。"
+)
+SAFE_REFUSAL_TEMPLATES = (
+    (
+        ("I can't help with that action. I can explain general investment concepts, "
+         "risks, and ways to check information through official sources."),
+        ("我不能协助执行这项操作。我可以解释一般投资概念、风险，"
+         "以及通过官方来源核实信息的方法。"),
+    ),
+    (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH),
+    (
+        ("I can't choose investments or give personal buy, sell or allocation instructions. "
+        "I can explain investment types, uncertainty and loss risk, fees, and general comparison factors."),
+        ("我不能替你选择投资产品，或提供个人买卖和配置指示。"
+        "我可以解释投资类别、回报的不确定性与亏损风险、费用及一般比较因素。"),
+    ),
+    (
+        ("I cannot recommend an investment product or promise a return. "
+        "I can explain return claims, risks, fees and ways to check providers "
+        "through official sources, so you can understand and compare the information."),
+        ("我不能推荐投资产品或承诺回报。可以解释收益声明、风险、费用，"
+        "以及通过官方来源核实提供者的方法，供你了解和比较。"),
+    ),
+    (
+        ("I couldn't verify this answer well enough to share it. "
+        "Please try a narrower investment question, such as a definition or a comparison."),
+        ("我还不能充分核实这次回答，所以暂时无法提供。"
+        "你可以把问题缩小到一个投资概念的定义或比较，我会再尝试说明。"),
+    ),
 )
 BLOCKED_AGENT_SUMMARY_ZH = "此回复已被安全措施拦截。"
 BLOCKED_AGENT_RATIONALE_ZH = "安全审查已拦截此回复。"
@@ -122,12 +155,9 @@ def blocked_response_answer(
     *, response_language: str = "English", answer: str | None = None
 ) -> str:
     # Only exact, reviewed templates may survive a blocked response. Never pass through model text.
-    if answer in (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH):
-        return (
-            BROKERAGE_RESPONSE_ANSWER_ZH
-            if response_language == "Chinese"
-            else BROKERAGE_RESPONSE_ANSWER
-        )
+    for english, chinese in SAFE_REFUSAL_TEMPLATES:
+        if answer in (english, chinese):
+            return chinese if response_language == "Chinese" else english
     return (
         BLOCKED_RESPONSE_ANSWER_ZH
         if response_language == "Chinese"

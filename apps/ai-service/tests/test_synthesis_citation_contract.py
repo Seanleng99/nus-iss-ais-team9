@@ -7,6 +7,7 @@ from dataclasses import asdict
 
 import pytest
 
+from app.core.citations import render_citations
 from app.core.config import Settings
 from app.core.schemas import AgentName, AgentResult, CoachRequest, SourceCitation
 from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
@@ -112,6 +113,18 @@ def synthesis_state(sources=()):
         )],
         "audit_events": [],
     }
+
+
+def test_reference_label_uses_escaped_approved_title(approved_sources):
+    source = approved_sources[0].model_copy(update={
+        "title": "Guide [ETF] *basics*\nnext line",
+        "canonical_url": "https://www.moneysense.gov.sg/guide(test)",
+    })
+    rendered = render_citations(f"Definition. [source:{source.source_id}]", [source])
+    assert rendered == (
+        r"Definition. [Guide \[ETF\] \*basics\* next line]"
+        "(https://www.moneysense.gov.sg/guide%28test%29)"
+    )
 
 
 def invalid_answer(kind, unknown_id="unknown-source-id"):

@@ -47,7 +47,7 @@ def test_model_blocked_compliance_text_is_withheld_too():
         def generate(self, **kwargs):
             if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
                 return json.dumps({
-                    "blocked": True, "summary": "UNSAFE_COMPLIANCE_CONTENT",
+                    "blocked": True, "request_allowed": True, "complete": True, "missing_points": [], "summary": "UNSAFE_COMPLIANCE_CONTENT",
                     "rationale": ["UNSAFE_COMPLIANCE_CONTENT"],
                     "policy_notes": ["UNSAFE_COMPLIANCE_CONTENT"], "confidence": 0.9,
                 })

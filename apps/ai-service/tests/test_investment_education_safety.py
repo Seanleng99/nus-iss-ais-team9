@@ -168,7 +168,8 @@ def test_semantic_router_understands_unseen_wording_without_raw_retrieval_query(
     assert any(source.source_id == "moneysense-compound-interest" for source in response.sources)
     education_call = next(c for c in gateway.calls if c["system_prompt"].startswith("PROMPT_ID: agent_investment_education"))
     assert "9876" not in education_call["user_prompt"]
-    assert "earlier gains themselves" not in education_call["user_prompt"]
+    assert "earlier gains themselves" in education_call["user_prompt"]
+    assert all("earlier gains themselves" not in query for query in retriever.queries)
     assert "bullet points" in education_call["system_prompt"]
     assert "no persuasion" in education_call["system_prompt"]
     assert "$108.16" in response.answer

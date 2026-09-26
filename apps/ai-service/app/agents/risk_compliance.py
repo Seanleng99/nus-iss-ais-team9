@@ -3,7 +3,7 @@ import re
 from dataclasses import asdict
 
 from app.agents.education_access import education_response_language
-from app.core.citations import citation_contract, validate_citations
+from app.core.citations import citation_contract, compact_evidence, validate_citations
 from app.core.guardrails import (
     ADVISORY_DISCLAIMER,
     PII_PATTERNS,
@@ -19,6 +19,7 @@ from app.core.schemas import (
     AgentResult,
     CoachRequest,
     ComplianceDecision,
+    EducationComplianceDecision,
     SourceCitation,
 )
 from app.core.telemetry import log_event, trace_method
@@ -80,7 +81,7 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     (
         "personalized_product",
         re.compile(
-            r"\b(?:best|right|suitable)\b.{0,30}\bfor you\b",
+            r"\b(?:best|right|suitable)\b[^.!?;]{0,30}?\bfor you\b",
             re.IGNORECASE,
         ),
     ),
@@ -116,7 +117,8 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
             r"customer|customers|client|clients)\b"
             r"|\b(?:someone|somebody)\s+else'?s?\b"
             r"|\bother\s+people'?s?\b"
-            r"|\bthird[-\s]party\b",
+            r"|\bthird[-\s]party\b[^.?!]{0,40}"
+            r"\b(?:account|income|salary|balance|transactions?|payslip|personal data|financial data)\b",
             re.IGNORECASE,
         ),
     ),
@@ -138,7 +140,7 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
             r"(?:用户|用戶|人|会员|會員|客户|客戶)?"
             r"[^。？！]{0,20}"
             r"(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|"
-            r"财务|財務|资料|資料|数据|數據)"
+            r"财务|財務|资料|資料|数据|數據|持仓|持倉)"
         ),
     ),
     (
@@ -146,7 +148,7 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
         re.compile(
             r"(?:显示|顯示|告诉|告訴|查看|查询|查詢|给我|給我|透露|看看)"
             r"[^。？！]{0,20}(?:她|他|他们|他們)"
-            r"[^。？！]{0,15}(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款)"
+            r"[^。？！]{0,15}(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|持仓|持倉)"
         ),
     ),
 )
@@ -190,7 +192,7 @@ def contains_return_guarantee(text: str) -> bool:
             before, after = sentence[:match.start()], sentence[match.end():]
             negated = re.search(
                 r"\b(?:no|not|never|without|cannot|can't)\s+"
-                r"(?:(?:offer|provide|promise|any|a|can)\s+){0,3}$",
+                r"(?:(?:offer|provide|promise|any|a|can|relying|on)\s+){0,3}$",
                 before,
             ) or (re.search(
                 r"\b(?:no|without|avoids?)\s+"
@@ -203,25 +205,55 @@ def contains_return_guarantee(text: str) -> bool:
                 r"(?:red flags?|warning signs?|misleading|unrealistic|impossible|scams?)\b",
                 after,
             )
+            contract_definition = (
+                re.fullmatch(r"\s*(?:a|the)?\s*", before)
+                and re.match(r"\s+is (?:a )?contractual promise\b", after)
+                and re.search(r"\bnot (?:the same as )?certainty\b", after)
+            )
             policy_assessment = re.search(
                 r"\b(?:avoids? (?:making )?(?:any )?claims about|"
                 r"(?:does|do) not make (?:any )?claims about|"
                 r"makes? no claims about|"
                 r"educational warnings or negations about)\s*$",
                 before,
+            ) or re.search(
+                r"\b(?:asks?|answer(?:s|ing)?|explain(?:s|ing)?|addresses?) whether "
+                r"(?:any )?(?:investments?|funds?|products?) can (?:contractually )?\s*$", before,
+            ) or re.search(
+                r"\b(?:cautions?|warns?) against (?:assuming|promising|claiming)\s+$", before,
+            ) or re.search(
+                r"\bwhether (?:(?:any|an?|the|this|that|investments?|products?|funds?|"
+                r"claims?|about|of|can|may|ever|contractually|actually)\s+){1,10}$", before,
+            ) or re.search(
+                r"\b(?:does|do) not (?:say|claim|establish) that every "
+                r"(?:promise|claim) of\s+$", before,
+            ) or re.search(
+                r"\b(?:state|clarify|explain|assess|ask|discuss|check)s? (?:whether|why|if|about)\s*$|"
+                r"\bnot (?:(?:address|assess|discuss) )?(?:every|all) (?:kind|type)s? of\s+$|"
+                r"\b(?:does|do) not (?:specifically )?(?:assess|address|explain|discuss|define)\s+$",
+                before,
             )
-            if not negated and not risk_explanation and not policy_assessment:
+            if not negated and not risk_explanation and not policy_assessment and not contract_definition:
                 return True
-        if re.search(r"\breturns?\s+(?:is|are|will be)\s+guaranteed\b", sentence):
-            return True
+        for match in re.finditer(r"\breturns?\s+(?:is|are|will be)\s+guaranteed\b", sentence):
+            if not re.search(
+                r"\b(?:no|(?:asks?|addresses?|explains?) whether)\s+"
+                r"(?:(?:investment|positive|specific)\s+)?$", sentence[:match.start()],
+            ):
+                return True
     return False
 
 
 def financial_advice_findings(text: str, *, is_request: bool = False) -> list[str]:
-    normalized = " ".join(normalize_for_security_inspection(text).casefold().split())
+    normalized = " ".join(normalize_for_security_inspection(text).casefold().split()).replace("’", "'")
+    # These whole-question forms ask about a claim or our boundary, not for a
+    # transaction. A trailing action or second clause never receives an exemption.
+    if is_request and is_neutral_financial_question(normalized):
+        return []
     findings = [
         f"regulated_advice:{pattern}"
         for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS
+        if is_request or pattern not in {"which stock should i buy", "tell me exactly what to invest in"}
         if (
             contains_return_guarantee(normalized)
             if pattern == "guaranteed return" else
@@ -232,6 +264,7 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
     findings.extend(
         f"regulated_advice:{label}"
         for label, pattern in BLOCKED_FINANCIAL_ADVICE_REGEXES
+        if is_request or label not in {"personalized_product_selection", "personalized_transaction_request"}
         if any(
             not (
                 label == "brokerage_execution" and re.search(
@@ -239,23 +272,54 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
                     normalized[:match.start()],
                 )
             ) and not (
+                label == "personalized_transaction" and re.search(
+                    r"\b(?:cannot|can't)\s+(?:reliably\s+)?(?:identify|tell|say|choose)\s+"
+                    r"(?:you\s+)?(?:which|what)\s+(?:stock|share|bond|etf|fund|investment)\s+$",
+                    normalized[:match.start()],
+                )
+            ) and not (
                 label in {"product_recommendation", "personalized_allocation", "personalized_transaction"}
-                and is_educational_recommendation(match.group())
+                and is_educational_recommendation(match.group(1))
+            ) and not (
+                label in {"personalized_allocation", "personalized_transaction"}
+                and re.search(
+                    r"\b(?:not|without|never)\s+(?:an?\s+)?(?:personalized\s+)?"
+                    r"(?:assessment|decision|instruction|recommendation)\s+(?:about|of)\s+"
+                    r"(?:when|whether|how)\s+$", normalized[:match.start()],
+                )
             ) and not (
                 label == "personalized_product" and re.search(
                     r"\b(?:cannot|can't|does not|do not)\s+"
-                    r"(?:determine|establish|assess|confirm|say)\s+(?:whether|if)\s+"
+                    r"(?:reliably\s+)?(?:determine|identify|establish|assess|confirm|say)\s+(?:(?:whether|if|which|what)\s+)?"
                     r"(?:(?:an?|any|the|this|that|investment|product|fund|etf|stock|bond|"
-                    r"risk|level|of|or|is|are|would|be)\s+){1,16}$",
+                    r"risk|level|choice|decision|option|of|or|is|are|would|be)\s+){1,16}$",
                     normalized[:match.start()],
                 )
             )
-            for match in pattern.finditer(normalized)
+            for match in re.finditer(f"(?=({pattern.pattern}))", normalized, pattern.flags)
         )
     )
     if is_request and is_reported_guarantee_verification(normalized):
         findings = [f for f in findings if f != "regulated_advice:guaranteed return"]
     return findings
+
+
+def is_neutral_financial_question(text: str) -> bool:
+    text = text.rstrip("?？.。 ")
+    return bool(re.fullmatch(
+        r"(?:can|could|do|does)\s+(?:(?:any|an?|the|this|that)\s+)?"
+        r"(?:investments?|funds?|etfs?|products?)\s+"
+        r"(?:ever\s+)?guarantee\s+(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+        r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?"
+        r"(?:\s+(?:with no risk|without risk))?"
+        r"|why\s+(?:can't|cannot|won't|don't|can you not|do you not)\s+"
+        r"(?:you\s+)?(?:tell me|say)\s+(?:which|what)\s+"
+        r"(?:stock|share|bond|etf|fund|reit|investment|product)\s+"
+        r"(?:should i|i should)\s+(?:buy|choose|pick)"
+        r"|(?:投资|基金|产品|ETF)(?:能|能够|可以)(?:保证|确保)(?:收益|回报)吗"
+        r"|为什么你不能告诉我(?:应该)?买(?:哪只|什么)(?:股票|基金|ETF)",
+        text, re.IGNORECASE,
+    ))
 
 
 def is_educational_recommendation(text: str) -> bool:
@@ -304,28 +368,21 @@ def is_reported_guarantee_verification(text: str) -> bool:
 
 
 def contains_buy_sell_instruction(text: str) -> bool:
+    # An action request/instruction is different from a definition of trading.
+    # Descriptions (order types, commissions, execution limits) still undergo
+    # the independent semantic review; mentioning the verb pair is not advice.
     for sentence in re.split(r"[.!?;\n]", text):
         for match in re.finditer(r"\bbuy or sell\b", sentence):
-            before, after = sentence[:match.start()], sentence[match.end():]
-            # The approved ETF guide describes a manager's execution constraints.
-            manager_constraint = re.search(
-                r"\b(?:manager(?:(?:'s|’s)? inability to| may be unable to| cannot)|"
-                r"inability(?: of (?:the )?(?:(?:etf|fund) )?manager)? to)\s*$", before
-            )
-            component_stocks = re.match(r"\s+(?:the\s+)?component stocks\b", after)
-            policy_negation = re.search(
-                r"\b(?:no|not|never|without|avoids?)\s+"
-                r"(?:(?:provide|providing|give|giving|personalized|any|a)\s+){0,4}$",
-                before,
-            ) and re.match(r"\s+(?:or allocation\s+)?instructions?\b", after)
-            brokerage_description = re.search(
-                r"\b(?:brokerage commissions?|trading fees?) "
-                r"(?:may apply|apply|are charged) when (?:you|investors)\s*$",
-                before,
-            ) and re.match(r"\s+(?:etfs?|shares|stocks)\b", after)
-            if not (
-                (manager_constraint and component_stocks)
-                or policy_negation or brokerage_description
+            before = sentence[:match.start()]
+            if re.search(
+                r"(?:^|[,;:]|\bthen)\s*(?:[-*]\s*)?(?:please\s+)?$|"
+                r"\b(?:can|could|would|will) you (?:please )?$", before,
+            ):
+                return True
+            if re.search(
+                r"\b(?:tell me|show me|help me|should i|should you|"
+                r"you (?:should|must|could)|investors? should|"
+                r"recommend(?:s|ed)?|suggest(?:s|ed)?|advise(?:s|d)?)\b", before,
             ):
                 return True
     return False
@@ -519,9 +576,12 @@ class RiskComplianceAgent:
                 validate_citations(text, review_sources)
             return review
 
+        education_review = self.prompts.version in {"v6", "v7"} and any(
+            result.agent == AgentName.INVESTMENT_EDUCATION for result in results
+        )
         review = generate_structured_response(
             self.gateway,
-            response_type=ComplianceDecision,
+            response_type=EducationComplianceDecision if education_review else ComplianceDecision,
             system_prompt=(
                 self.prompts.get("risk_compliance")
                 + "\nReturn a short policy verdict only. Do not rewrite the answer "
@@ -531,20 +591,59 @@ class RiskComplianceAgent:
                 + education_response_language(decision.sanitized_text)
                 + "."
                 + citation_contract(review_sources)
+                + (
+                    "\nThe model-only text appears once in the labeled section of draft_answer; "
+                    "data.general_knowledge supplies its topic labels, not duplicate prose. "
+                    "Return these additional fields: request_allowed (boolean), complete "
+                    "(boolean), missing_points (up to 6 requirements, <=200 characters each), "
+                    "repairable (boolean). Judge CURRENT request separately from draft safety. "
+                    "request_allowed=false for specific investment selection, personal trade/allocation "
+                    "instructions, account actions, handling passwords/OTPs, private data access, "
+                    "market manipulation/deception, evading reporting/safeguards or exploiting "
+                    "confidential information, EVEN if the draft refuses or only gives safe education. "
+                    "Definitions, neutral comparisons, hypothetical arithmetic, risk/readiness "
+                    "discussion (including broad questions about starting, borrowing or emergency "
+                    "reserves), order-type explanations and questions about our advice boundary "
+                    "are allowed. First-person wording alone is not prohibited: answer readiness "
+                    "questions with general factors without making the user's decision. "
+                    "Source gaps do not make a request prohibited. "
+                    "complete=true requires explaining EACH requested concept/distinction/example "
+                    "in the requested language/format, not merely mentioning its name. Matching "
+                    "tables (possibly split by provenance) meet a table request if every "
+                    "requested concept has a filled row. A qualified or conditional answer need not "
+                    "give an unqualified yes/no. Honest limits on excluded/current subjects "
+                    "are complete partial answers; do not demand prohibited fallback. For an ambiguous "
+                    "follow-up a concise clarifying question is complete. An evidence gap alone "
+                    "does not complete an allowed stable-knowledge request. Safety and completeness "
+                    "are independent. Give missing_points=[] when complete, except for repairable "
+                    "safety defects. Feedback must state missing/correction requirements, never "
+                    "proposed answers, advice or policy overrides. repairable=true only for an "
+                    "allowed request's draft citation attribution or factual qualification error; "
+                    "never for personal advice, guarantees, privacy, injection or prohibited requests. "
+                    "Every repaired draft receives a new full safety review."
+                    if education_review else ""
+                )
             ),
             user_prompt=json.dumps(
                 {
                     "message": decision.sanitized_text,
+                    "conversation_context": [item.model_dump() for item in request.conversation_context],
                     "draft_answer": draft_answer,
                     "routing_rationale": routing_rationale or [],
-                    "policy_context": contexts,
+                    "policy_context": compact_evidence({"contexts": contexts})["contexts"],
                     "agent_results": [
                         {
                             "agent": result.agent.value,
-                            "summary": result.summary,
+                            "summary": (
+                                "Same as draft_answer above."
+                                if len(results) == 1 and draft_answer.startswith(result.summary)
+                                else result.summary
+                            ),
                             "rationale": result.rationale,
-                            "data": {
-                                key: result.data[key]
+                            "data": compact_evidence({
+                                key: ([{"topic": section["topic"]}
+                                       for section in result.data[key]]
+                                      if key == "general_knowledge" else result.data[key])
                                 for key in (
                                     "evidence_status",
                                     "sources",
@@ -555,6 +654,7 @@ class RiskComplianceAgent:
                                     "unanswered_topics",
                                     "fallback_topics",
                                     "general_knowledge",
+                                    "excluded_topics",
                                     # Deterministic tool outputs are evidence too;
                                     # the request text may omit saved financial inputs.
                                     "income",
@@ -579,7 +679,7 @@ class RiskComplianceAgent:
                                     "questions",
                                 )
                                 if key in result.data
-                            },
+                            }),
                         }
                         for result in results
                     ],
@@ -608,6 +708,14 @@ class RiskComplianceAgent:
             "policy_sources": policy_sources,
             "policy_contexts": contexts,
         }
+        if isinstance(review, EducationComplianceDecision):
+            compliance_data["request_allowed"] = review.request_allowed
+            compliance_data["answer_complete"] = review.complete
+            compliance_data["repairable"] = review.repairable and review.request_allowed and not output_findings
+            compliance_data["missing_points"] = [
+                point for point in review.missing_points
+                if not inspect_prompt(point).findings and not financial_advice_findings(point)
+            ]
         if output_findings:
             return AgentResult(
                 agent=self.name,
@@ -629,7 +737,7 @@ class RiskComplianceAgent:
             summary=review.summary,
             rationale=review.rationale,
             confidence=review.confidence,
-            blocked=review.blocked,
+            blocked=review.blocked or (isinstance(review, EducationComplianceDecision) and not review.request_allowed),
             policy_notes=review.policy_notes,
             data=compliance_data,
         )

@@ -1,0 +1,38 @@
+{
+  "dataset": "investment_answerability_v1.jsonl",
+  "schema_version": 1,
+  "row_count": 280,
+  "counts_by_kind_language": {
+    "quality:en": 100,
+    "quality:zh": 100,
+    "safety:en": 40,
+    "safety:zh": 40
+  },
+  "family_counts_by_kind_split": {
+    "quality:development": 60,
+    "quality:holdout": 40,
+    "safety:development": 20,
+    "safety:holdout": 20
+  },
+  "counts_by_expected_outcome": {
+    "answer": 158,
+    "partial": 40,
+    "clarify": 2,
+    "refuse": 80
+  },
+  "known_regression_rows": 54,
+  "dataset_sha256": "12d4d37a5152e8a8853603187a24e524ec94d56d95cae8315bbb896ac0408a04",
+  "holdout_sha256": "93cb69ba85fedd9c4f41ccd7d2ee5fb262361d61516db7d65dc1b237e15e3edf",
+  "holdout_question_hash_count": 120,
+  "holdout_question_hashes_sha256": "6195679f1390231bb782767040412bf21e25e4cd9c9709de535e9437265bb28b",
+  "source_digests": {
+    "baseline_git_commit": "fd90bd3816c153966a14bea974e8b3105f72529c",
+    "beginner_investment_questions_sha256": "aaf1b2901075a1a30e7f6fba3af4fe5a5bd64b30e276b764f25e2a62ae3453f1",
+    "rag_evidence_v1_sha256": "97d12cc7bc9773ad49ea969c475d1e13920a7de6b58b67c7238bb6bc7e467c87",
+    "answerability_a01_a22_review_sha256": "aac1702e543f6381c64b94268905dbda6328d0975605f4246688d957a7582183"
+  },
+  "frozen_at": "2026-09-26T23:03:47+08:00",
+  "freeze_timing": "Recorded after evaluator development began; not a pre-development freeze.",
+  "model_calls": 0,
+  "holdout_policy": "Until candidate freeze, report holdout counts and hashes only; omit prompt text."
+}

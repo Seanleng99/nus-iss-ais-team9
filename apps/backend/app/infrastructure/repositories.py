@@ -18,8 +18,7 @@ from app.core.data_lifecycle import (
 )
 from app.core.telemetry import trace_method
 from app.domain.schemas import (
-    BROKERAGE_RESPONSE_ANSWER,
-    BROKERAGE_RESPONSE_ANSWER_ZH,
+    SAFE_REFUSAL_TEMPLATES,
     FinancialGoal,
     MoneyAmount,
     Transaction,
@@ -860,6 +859,31 @@ class SQLAlchemyChatRepository:
         self.session = session
 
     @trace_method
+    def context_snapshot(self, user_id: str, session_id: str) -> tuple[bool, int, list[dict]]:
+        owner = self.session.scalar(
+            select(ChatSessionRecord.user_id).where(ChatSessionRecord.id == session_id)
+        )
+        if owner is None:
+            return False, 0, []
+        if owner != user_id:
+            raise PermissionError("Conversation not found")
+        messages = list(self.session.scalars(
+            select(ChatMessageRecord)
+            .options(selectinload(ChatMessageRecord.orchestration_trace))
+            .where(ChatMessageRecord.session_id == session_id)
+            .order_by(ChatMessageRecord.position.desc()).limit(8)
+        ))
+        context = []
+        for message in reversed(messages):
+            content = message.content
+            if message.role == "assistant":
+                trace = message.orchestration_trace
+                if trace is None or trace.blocked:
+                    content = "The previous answer is unavailable or was withheld. Ask for clarification."
+            context.append({"role": message.role, "content": content[:1500]})
+        return True, messages[0].position if messages else 0, context
+
+    @trace_method
     def list_for_user(self, user_id: str) -> list[ChatSessionRecord]:
         query = (
             select(ChatSessionRecord)
@@ -1068,15 +1092,13 @@ class SQLAlchemyOrchestrationTraceRepository:
                 )
                 .values(
                     content=case(
-                        (
-                            ChatMessageRecord.content.in_(
-                                (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH)
-                            ),
-                            blocked_response_answer(
-                                response_language=response_language,
-                                answer=BROKERAGE_RESPONSE_ANSWER,
-                            ),
-                        ),
+                        *[
+                            (
+                                ChatMessageRecord.content.in_((english, chinese)),
+                                chinese if response_language == "Chinese" else english,
+                            )
+                            for english, chinese in SAFE_REFUSAL_TEMPLATES
+                        ],
                         else_=blocked_response_answer(response_language=response_language),
                     ),
                     sources=[],

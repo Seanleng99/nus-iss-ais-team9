@@ -914,7 +914,7 @@ def _render_coach_message(message: dict) -> None:
             st.markdown(message["content"])
             sources = message.get("sources", [])
             if sources:
-                st.caption("Sources")
+                st.caption("Retrieved reference sources")
                 for source in sources:
                     st.markdown(
                         f"- [{source['title']}]({source['canonical_url']}) — "

@@ -127,17 +127,20 @@ def test_openai_gateway_uses_responses_without_storing_financial_prompts() -> No
     }
 
 
-def test_openai_gateway_hides_provider_errors_and_empty_responses() -> None:
+@pytest.mark.parametrize("status,code", [(None, "OPENAI_INVOCATION_FAILED"), (429, "OPENAI_RATE_LIMITED")])
+def test_openai_gateway_hides_provider_errors_and_empty_responses(status, code) -> None:
     class FailingResponses:
         def create(self, **kwargs):
-            raise RuntimeError("private provider details")
+            error = RuntimeError("private provider details")
+            error.status_code = status
+            raise error
 
     gateway = OpenAIModelGateway(
         Settings(), client=SimpleNamespace(responses=FailingResponses())
     )
     with pytest.raises(ModelGatewayError) as error:
         gateway.generate(system_prompt="s", user_prompt="u", temperature=0.2, max_tokens=100)
-    assert error.value.code == "OPENAI_INVOCATION_FAILED"
+    assert error.value.code == code
     assert "private provider details" not in str(error.value)
 
 

@@ -216,8 +216,10 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
     assert response.blocked and response.sources == []
     assert response.selected_agents == [AgentName.INVESTMENT_EDUCATION, AgentName.SPENDING]
     assert response.answer == (
-        "我无法提供该建议，但仍可提供一般金融教育信息。" if chinese
-        else "I cannot provide that recommendation. I can still offer general financial education."
+        "我还不能充分核实这次回答，所以暂时无法提供。"
+        "你可以把问题缩小到一个投资概念的定义或比较，我会再尝试说明。" if chinese
+        else "I couldn't verify this answer well enough to share it. "
+        "Please try a narrower investment question, such as a definition or a comparison."
     )
     rationale = (
         "最终安全审查已拦截此回复。" if chinese

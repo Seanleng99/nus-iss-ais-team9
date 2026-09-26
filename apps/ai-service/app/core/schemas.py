@@ -76,12 +76,18 @@ class UserFinancialSnapshot(BaseModel):
     period_start: str | None = None
 
 
+class ConversationMessage(StrictContractModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1500)
+
+
 class CoachRequest(BaseModel):
     user_id: str
     session_id: str
     message: str = Field(min_length=1, max_length=5000)
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
+    conversation_context: list[ConversationMessage] = Field(default_factory=list, max_length=8)
 
     @field_validator("message")
     @classmethod
@@ -301,7 +307,7 @@ class GeneralEducationSection(BaseModel):
 
 class HybridEducationNarrative(GroundedEducationNarrative):
     summary: str = Field(default="", max_length=3000)
-    source_ids: list[str] = Field(default_factory=list, max_length=3)
+    source_ids: list[str] = Field(default_factory=list, max_length=9)
     general_knowledge: list[GeneralEducationSection] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
@@ -321,6 +327,20 @@ class ComplianceDecision(BaseModel):
     rationale: list[str] = Field(min_length=1, max_length=8)
     policy_notes: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class EducationComplianceDecision(ComplianceDecision):
+    request_allowed: bool
+    complete: bool
+    missing_points: list[str] = Field(max_length=6)
+    repairable: bool = False
+
+    @field_validator("missing_points")
+    @classmethod
+    def bound_missing_points(cls, value: list[str]) -> list[str]:
+        if any(not point.strip() or len(point) > 200 for point in value):
+            raise ValueError("Missing points must be brief, nonempty requirements.")
+        return value
 
 
 # Spending Analysis Models
