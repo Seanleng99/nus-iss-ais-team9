@@ -8,9 +8,10 @@ users have since been imported to the new account's Cognito pool with required
 password resets, after the owner changed the earlier decision to keep old sign-in.
 One user confirmed their prior records. The owner explicitly waived retaining
 the old Cognito pool, old backups, historical ECR images, and CloudWatch logs
-while the other three complete password resets. Keep the old DNS hosted zone
-until at least September 28, 2026, 02:20:49 SGT, 48 hours after registrar
-delegation changed. Deployment scripts default to the destination account; pass
+while the other three complete password resets. The owner then explicitly
+requested immediate source-account teardown, including the old hosted zone,
+without waiting for DNS caches. Some cached resolvers may temporarily fail
+until the previous delegation expires. Deployment scripts default to the destination account; pass
 `-AccountId 902552928492` explicitly for a source-account diagnostic script.
 
 ## Production cutover status
@@ -20,9 +21,10 @@ delegation changed. Deployment scripts default to the destination account; pass
   succeeded. Name servers are `ns-498.awsdns-62.com`,
   `ns-908.awsdns-49.net`, `ns-1813.awsdns-34.co.uk`, and
   `ns-1468.awsdns-55.org`. Destination zone `Z053270513FALP98M94L0`
-  and source zone `Z082992016ATT9Y4OFS9V` both alias the apex to new
-  CloudFront distribution `E1I8G8SUBPQYYM` (`d1chx1r2f68pcy.cloudfront.net`).
-  Old distribution `E10L5HJWD7L257` is disabled and retained.
+  zone `Z053270513FALP98M94L0` aliases the apex to new CloudFront
+  distribution `E1I8G8SUBPQYYM` (`d1chx1r2f68pcy.cloudfront.net`).
+  The old hosted zone `Z082992016ATT9Y4OFS9V` and distribution
+  `E10L5HJWD7L257` were deleted.
 - `https://ai-financial-wellness-coach.click/` and `/health` return HTTP 200.
   The production OIDC metadata now advertises the destination issuer
   `https://cognito-idp.ap-southeast-1.amazonaws.com/ap-southeast-1_UwY4lW61s`;
@@ -34,12 +36,11 @@ delegation changed. Deployment scripts default to the destination account; pass
   The other three users still need to reset passwords and verify records; this
   does not block source pool deletion under the owner's revised direction. The
   temporary Cognito import IAM role was removed after the successful import.
-- The old application and GitHub OIDC CloudFormation stacks were deleted. All
-  three old ECS services are gone; the old RDS instance is stopped. Stopping the
-  backend froze application writes before the final snapshot. New AI, backend,
-  and frontend ECS services are healthy at 1/1 each. The old foundation stack
-  remains for the DNS cache transition and still owns the old RDS instance,
-  Cognito client, ECR repositories, CloudFront distribution, and DNS records.
+- All three old CloudFormation stacks were deleted. The source ECS services,
+  RDS instance, ECR repositories and their images, CloudFront distribution,
+  Cognito pool and client, and application network are gone. Stopping the old
+  backend froze writes before the final snapshot. New AI, backend, and frontend
+  ECS services are healthy at 1/1 each.
 - All old manual RDS snapshots, including
   `ai-financial-wellness-coach-final-20260926` and its shareable copy, were
   deleted after the destination private final copy
@@ -56,15 +57,16 @@ delegation changed. Deployment scripts default to the destination account; pass
 - Old Bedrock knowledge bases, S3 vector buckets/indexes, and source corpus
   bucket were deleted after the destination corpus and retrieval checks passed.
   The migration-only source KMS key is scheduled for deletion October 3, 2026,
-  09:07:54 SGT; its cross-account policy grants were revoked. A temporary log
-  archive in the destination account was removed under the owner's revised
-  retention preference; the old log groups remain until foundation deletion.
-- Do not delete the old foundation stack or hosted zone before September 28,
-  2026, 02:20:49 SGT. Old recursive DNS caches may still follow the source zone.
-  After that time, delete the foundation stack and old hosted zone, then manually
-  delete the retained old Cognito pool and any RDS snapshot created by stack
-  deletion. The owner chose not to keep historical source ECR images. Check for
-  remaining source-account resources and charges.
+  09:07:54 SGT; its cross-account policy grants were revoked and its alias was
+  deleted. A temporary log archive in the destination account was removed under
+  the owner's revised retention preference. All four old log groups are gone.
+- The old foundation deletion snapshot, old ACM certificates, four IAM users,
+  their admin group, and an orphan Lambda execution role and policy were also
+  deleted. A 17-Region scan found no remaining active CloudFormation stacks,
+  RDS instances, ECS clusters, ECR repositories, Lambda functions, EC2 instances,
+  or CloudWatch log groups. The old account still has AWS-managed default keys,
+  service-linked roles, and a default VPC. Verify billing and other account-wide
+  services before closing the source account.
 
 ## Verified source inventory (September 25, 2026)
 
@@ -123,7 +125,7 @@ delegation changed. Deployment scripts default to the destination account; pass
 An additional scan of all 17 enabled Regions found CloudFormation stacks, RDS,
 ECS, ECR, and CloudWatch log groups only in `ap-southeast-1`; no EC2 instances
 or Lambda functions were found in those Regions. The global and project-specific
-resources listed above have since been partially removed. This scan does not
+resources listed above have since been removed. This scan does not
 cover every AWS service, untagged resource, billing item, or retained
 CloudFormation resource, so do not claim the source account is empty. The owner
 does not require retention of the old CloudWatch logs.
@@ -155,7 +157,7 @@ does not require retention of the old CloudWatch logs.
   and the staging origin certificate
   `arn:aws:acm:ap-southeast-1:862124275471:certificate/a88be948-3792-4357-ac08-54456a2778cc`.
   Production apex DNS now targets the destination distribution, and the old
-  distribution is disabled.
+  distribution was deleted.
 
 ## Migration and remaining verification
 
@@ -187,17 +189,15 @@ does not require retention of the old CloudWatch logs.
 5. Deploy the application, certificates, GitHub OIDC roles, and CI/CD variables
    in the destination account. Verify database migrations, login, owner isolation,
    RAG provenance, alarms, smoke tests, and HTTPS edge restrictions.
-6. Completed: disable the old CloudFront distribution, move its apex alias to
-   the destination distribution, point both hosted zones at the new distribution,
-   and update registrar name servers to the destination zone. One user verified
-   prior records. Keep the old zone until September 28, 2026, 02:20:49 SGT.
-7. Completed before the DNS transition deadline: delete old application and
-   GitHub OIDC stacks, manual RDS snapshots, Bedrock knowledge bases, vector
-   stores, and source corpus bucket; schedule the migration KMS key for
-   deletion. After the deadline, delete the source foundation stack and hosted
-   zone. CloudFormation retains the old Cognito pool and snapshots the old RDS
-   instance; remove those deliberately. Verify billing and account-wide
-   resources before closing the source account.
+6. Completed: move the apex alias to the destination distribution and update
+   registrar name servers to the destination zone. One user verified prior
+   records. At the owner's direction, delete the old zone before the 48-hour
+   DNS cache window ended; cached resolvers may have a temporary outage.
+7. Completed: delete all old project CloudFormation stacks, manual RDS
+   snapshots, Bedrock knowledge bases, vector stores, corpus bucket, log groups,
+   ECR images, Cognito pool, ACM certificates, hosted zone, and IAM users/roles.
+   The migration KMS key remains pending deletion until October 3, 2026.
+   Verify billing and account-wide resources before closing the source account.
 
 ## AWS references
 
