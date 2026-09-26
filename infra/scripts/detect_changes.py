@@ -120,7 +120,10 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 result["ai_ci"] = True
                 continue
 
-            if path == "infra/scripts/post_deploy_smoke.py":
+            if path in {
+                "infra/scripts/detect_changes.py",
+                "infra/scripts/post_deploy_smoke.py",
+            }:
                 _select_all(result)
                 continue
 

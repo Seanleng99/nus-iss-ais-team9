@@ -113,6 +113,14 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["deploy"])
         self.assertFalse(result["migrations"])
 
+    def test_change_classifier_update_runs_a_real_release(self):
+        result = detect_changes.classify_changes(["infra/scripts/detect_changes.py"])
+
+        self.assertTrue(result["deploy"])
+        self.assertTrue(result["frontend_deploy"])
+        self.assertTrue(result["backend_deploy"])
+        self.assertTrue(result["ai_deploy"])
+
     def test_docs_and_root_readme_do_not_select_service_work(self):
         result = detect_changes.classify_changes(
             ["docs/architecture.md", "README.md"]
