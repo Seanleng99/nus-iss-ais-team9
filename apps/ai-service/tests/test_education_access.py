@@ -1,3 +1,5 @@
+import pytest
+
 from app.agents.education_access import build_minimal_education_query, education_topics
 
 
@@ -44,3 +46,34 @@ def test_minimal_query_contains_topics_without_personal_data() -> None:
     assert query == "General investment education about exchange-traded funds"
     assert "9,876" not in query
     assert "learner@example.com" not in query
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "im new to investment, how do i start",
+        "I am new to investing. How do I start?",
+        "I'm new to investing. How do I start?",
+        "I’m new to investing. How do I start?",
+        "Where do I begin with investing?",
+        "How can I get started with investing?",
+    ],
+)
+def test_beginner_questions_use_canonical_investment_basics_query(message: str) -> None:
+    assert build_minimal_education_query(message) == (
+        "General investment education about investment basics",
+        ["investment basics"],
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Explain the investment implications of extraterrestrial mineral rights.",
+        "I am new to investment tax, how do I start?",
+    ],
+)
+def test_unsupported_or_unrecognized_question_does_not_use_generic_fallback(
+    message: str,
+) -> None:
+    assert education_topics(message) == []

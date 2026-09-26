@@ -137,8 +137,9 @@ GENERIC_EDUCATION_TOPIC_PHRASES = (
 )
 
 GENERIC_EDUCATION_QUESTION = re.compile(
-    r"(?:\b(?:please|explain|teach|tell|me|i|want|would|like|to|learn|understand|"
-    r"what|is|are|how|can|should|do|you|start|with|the|a|an|of|in|for|about|"
+    r"(?:\b(?:please|explain|teach|tell|me|i|am|im|i['’]m|new|want|would|like|to|learn|"
+    r"understand|what|is|are|how|can|should|do|you|where|get|getting|started|begin|start|"
+    r"with|the|a|an|of|in|for|about|"
     r"basic|basics|beginner|beginners|general|simple|terms|introduction|education|"
     r"financial|investment|investments|investing|invest)\b|"
     r"请问|请|用|简单|中文|英文|解释|介绍|一下|什么|是|如何|开始|了解|学习|"
