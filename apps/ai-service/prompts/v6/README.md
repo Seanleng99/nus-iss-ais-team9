@@ -10,6 +10,10 @@ handling, and source markers rendered by the application rather than model-gener
 Compliance reviews the final answer and specialist rationale/uncertainty against the
 actual evidence, including unsupported subtopics, and distinguishes risk education
 about return guarantees from promises or product-selection requests.
+Compliance also receives the specialists' allowlisted deterministic calculation
+outputs. Budget, spending and goal amounts are checked against those outputs,
+without requiring investment citations for arithmetic. Missing expense information
+remains explicit; a zero recorded total does not establish actual zero expenses.
 
 Runtime contracts preserve Unicode in routing and require the requested language
 throughout generated public explanations. A recognized Education topic cannot be

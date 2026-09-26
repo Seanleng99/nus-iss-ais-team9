@@ -102,7 +102,12 @@ class BaseAgent(ABC):
                 "The savings field is estimated monthly savings capacity, not "
                 "the user's current savings balance or observed saving behavior. "
                 "Do not infer actual expenses from category limits or claim that "
-                "a single transaction establishes a spending pattern."
+                "a single transaction establishes a spending pattern. "
+                "recurring_expenses is the total recorded in the supplied snapshot, "
+                "not proof of all actual expenses. If it is zero, explicitly state "
+                "that recorded recurring expenses total zero but actual expenses "
+                "are unknown and may reduce disposable income and these illustrative amounts. "
+                "Never claim that there are no expenses or no pending expenses."
             )
 
         def validate_narrative(narrative: AgentNarrative) -> AgentNarrative:

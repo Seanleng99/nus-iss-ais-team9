@@ -241,6 +241,14 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
             ) and not (
                 label in {"product_recommendation", "personalized_allocation", "personalized_transaction"}
                 and is_educational_recommendation(match.group())
+            ) and not (
+                label == "personalized_product" and re.search(
+                    r"\b(?:cannot|can't|does not|do not)\s+"
+                    r"(?:determine|establish|assess|confirm|say)\s+(?:whether|if)\s+"
+                    r"(?:(?:an?|any|the|this|that|investment|product|fund|etf|stock|bond|"
+                    r"risk|level|of|or|is|are|would|be)\s+){1,16}$",
+                    normalized[:match.start()],
+                )
             )
             for match in pattern.finditer(normalized)
         )
@@ -547,6 +555,28 @@ class RiskComplianceAgent:
                                     "unanswered_topics",
                                     "fallback_topics",
                                     "general_knowledge",
+                                    # Deterministic tool outputs are evidence too;
+                                    # the request text may omit saved financial inputs.
+                                    "income",
+                                    "recurring_expenses",
+                                    "disposable_income",
+                                    "needs",
+                                    "wants",
+                                    "savings",
+                                    "method",
+                                    "spending_context",
+                                    "projections",
+                                    "monthly_savings_capacity",
+                                    "feasibility",
+                                    "category_totals",
+                                    "transaction_count",
+                                    "category_trends",
+                                    "temporal_patterns",
+                                    "anomalies",
+                                    "data_quality",
+                                    "months_analyzed",
+                                    "needs_input",
+                                    "questions",
                                 )
                                 if key in result.data
                             },

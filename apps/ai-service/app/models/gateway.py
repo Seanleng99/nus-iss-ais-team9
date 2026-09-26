@@ -181,9 +181,13 @@ class OpenAIModelGateway:
             response = self.client.responses.create(
                 model=self.model_id,
                 instructions=system_prompt,
-                input=user_prompt,
+                input=[
+                    {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
+                    {"role": "user", "content": user_prompt},
+                ],
                 reasoning={"effort": self.settings.model_reasoning_effort},
                 max_output_tokens=max_tokens,
+                text={"format": {"type": "json_object"}},
                 store=False,
             )
             if response.status != "completed" or not response.output_text.strip():
