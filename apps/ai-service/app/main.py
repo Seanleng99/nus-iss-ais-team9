@@ -8,9 +8,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from app.core.config import settings
 from app.core.observability import RequestTelemetryMiddleware, get_correlation_id
 from app.core.schemas import CoachRequest, CoachResponse
+from app.core.telemetry import configure_logging, context_fields, log_event, trace_method
 from app.models.gateway import ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 from app.rag.retriever import RetrievalError
+
+configure_logging(settings.log_level)
 
 app = FastAPI(title="AI Financial Wellness Coach AI Service", version="0.1.0")
 app.add_middleware(RequestTelemetryMiddleware, service_name="ai-service")
@@ -24,6 +27,8 @@ def _log_generation_failure(exc: ModelGatewayError | RetrievalError) -> None:
         json.dumps(
             {
                 "event": "coach_generation_failed",
+                "service": "ai-service",
+                **context_fields(),
                 "correlation_id": get_correlation_id(),
                 "error_code": getattr(
                     exc,
@@ -47,12 +52,15 @@ def get_orchestrator() -> AgentOrchestrator:
     return orchestrator
 
 
+@trace_method
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     if not x_api_key or not secrets.compare_digest(x_api_key, settings.api_key):
+        log_event("authentication.rejected", authentication_method="service_api_key")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="A valid API key is required.",
         )
+    log_event("authentication.accepted", authentication_method="service_api_key")
 
 
 @app.get("/health")
@@ -61,12 +69,24 @@ def health() -> dict[str, str]:
 
 
 @app.post("/coach", response_model=CoachResponse, dependencies=[Depends(require_api_key)])
+@trace_method
 def coach(
     request: CoachRequest,
     agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
 ) -> CoachResponse:
     try:
-        return agent_orchestrator.handle(request)
+        log_event("coach.request.accepted", input_characters=len(request.message))
+        response = agent_orchestrator.handle(request)
+        log_event(
+            "coach.response.ready",
+            trace_id=response.audit.get("trace_id"),
+            selected_agents=[agent.value for agent in response.selected_agents],
+            blocked=response.blocked,
+            output_characters=len(response.answer),
+            source_count=len(response.sources),
+            response_fields=list(CoachResponse.model_fields),
+        )
+        return response
     except (ModelGatewayError, RetrievalError) as exc:
         _log_generation_failure(exc)
         raise HTTPException(

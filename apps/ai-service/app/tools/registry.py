@@ -1,7 +1,9 @@
 from app.core.guardrails import validate_tool_permission
 from app.core.schemas import AgentName, UserFinancialSnapshot
+from app.core.telemetry import trace_method
 
 
+@trace_method
 def summarize_transactions(snapshot: UserFinancialSnapshot) -> dict[str, float]:
     totals: dict[str, float] = {}
     for transaction in snapshot.recent_transactions:
@@ -9,6 +11,7 @@ def summarize_transactions(snapshot: UserFinancialSnapshot) -> dict[str, float]:
     return totals
 
 
+@trace_method
 def calculate_budget(snapshot: UserFinancialSnapshot) -> dict[str, float | str]:
     income = snapshot.monthly_income.amount if snapshot.monthly_income else 0.0
     recurring = sum(item.amount.amount for item in snapshot.recurring_expenses)
@@ -24,6 +27,7 @@ def calculate_budget(snapshot: UserFinancialSnapshot) -> dict[str, float | str]:
     }
 
 
+@trace_method
 def project_goals(snapshot: UserFinancialSnapshot) -> list[dict[str, float | str]]:
     projections: list[dict[str, float | str]] = []
     for goal in snapshot.goals:
@@ -40,6 +44,7 @@ def project_goals(snapshot: UserFinancialSnapshot) -> list[dict[str, float | str
     return projections
 
 
+@trace_method
 def call_tool(agent: AgentName, tool_name: str, snapshot: UserFinancialSnapshot):
     validate_tool_permission(agent, tool_name)
     if tool_name == "transaction_summarizer":

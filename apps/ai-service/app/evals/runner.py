@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -81,6 +82,22 @@ def _matches_expected(response, expected: dict) -> bool:
             data.get("evidence_status") == "insufficient"
             and "approved knowledge base does not contain enough information" in response.answer
         )
+    if "response_language" in expected:
+        data = _agent_data(response, "investment_education")
+        checks.append(data.get("response_language") == expected["response_language"])
+    if expected.get("answer_language") == "Chinese":
+        letters = re.findall(r"[A-Za-z\u4e00-\u9fff]", response.answer)
+        chinese = re.findall(r"[\u4e00-\u9fff]", response.answer)
+        checks.append(len(chinese) >= 10 and len(chinese) / max(1, len(letters)) >= 0.4)
+    if "evidence_status" in expected:
+        checks.append(_agent_data(response, "investment_education").get("evidence_status") == expected["evidence_status"])
+    if "unanswered_topics" in expected:
+        checks.append(set(expected["unanswered_topics"]) == set(_agent_data(response, "investment_education").get("unanswered_topics", [])))
+    for text in expected.get("response_excludes", []):
+        checks.append(text not in response.model_dump_json())
+    if response.blocked:
+        checks.append(all(result.blocked for result in response.agent_results))
+        checks.append(not response.sources)
     if "policy_finding_prefixes" in expected:
         findings = _policy_findings(response)
         checks.extend(

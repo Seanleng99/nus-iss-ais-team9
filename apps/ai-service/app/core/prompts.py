@@ -1,15 +1,18 @@
 import json
 from pathlib import Path
 
+from app.core.telemetry import trace_method
+
 
 class PromptCatalog:
-    def __init__(self, version: str = "v4", root: Path | None = None) -> None:
+    def __init__(self, version: str = "v6", root: Path | None = None) -> None:
         prompt_root = root or Path(__file__).resolve().parents[2] / "prompts"
         path = prompt_root / version / "prompts.json"
         with path.open(encoding="utf-8") as handle:
             self._prompts: dict[str, str] = json.load(handle)
         self.version = version
 
+    @trace_method
     def get(self, prompt_id: str) -> str:
         try:
             return self._prompts[prompt_id]

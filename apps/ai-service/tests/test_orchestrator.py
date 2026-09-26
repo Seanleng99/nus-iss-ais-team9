@@ -1,4 +1,5 @@
 import json
+import logging
 
 import pytest
 from pydantic import ValidationError
@@ -16,8 +17,8 @@ def local_orchestrator() -> AgentOrchestrator:
     return AgentOrchestrator(config=config, gateway=LocalFixtureModelGateway())
 
 
-def test_prompt_catalog_defaults_to_active_v4() -> None:
-    assert PromptCatalog().version == "v4"
+def test_prompt_catalog_defaults_to_active_v6() -> None:
+    assert PromptCatalog().version == "v6"
 
 
 def test_settings_rejects_superseded_v1_prompt() -> None:
@@ -35,6 +36,104 @@ def test_routes_budget_and_goal_request() -> None:
     response = local_orchestrator().handle(request)
     assert [agent.value for agent in response.selected_agents] == ["budget", "goal_strategy"]
     assert response.blocked is False
+
+
+def test_workflow_logs_safe_structured_lifecycle_events(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="service.ai.workflow")
+    sensitive_message = (
+        "Explain ETF diversification to alice.private@example.com; I have $47,321."
+    )
+
+    response = local_orchestrator().handle(
+        CoachRequest(
+            user_id="private-user-id",
+            session_id="private-session-id",
+            message=sensitive_message,
+            requested_agents=["investment_education"],
+            snapshot={},
+        )
+    )
+
+    records = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "service.ai.workflow"
+    ]
+    event_types = [record["event_type"] for record in records]
+    assert event_types == [
+        "workflow.started",
+        "guardrail.evaluated",
+        "routing.completed",
+        "task.created",
+        "task.started",
+        "task.completed",
+        "synthesis.started",
+        "synthesis.completed",
+        "compliance.started",
+        "compliance.completed",
+        "workflow.completed",
+        "workflow.metrics",
+    ]
+    assert {record["trace_id"] for record in records} == {
+        response.audit["trace_id"]
+    }
+    serialized_logs = "\n".join(record.message for record in caplog.records)
+    assert sensitive_message not in serialized_logs
+    assert "alice.private@example.com" not in serialized_logs
+    assert "47,321" not in serialized_logs
+    assert "private-user-id" not in serialized_logs
+    assert "private-session-id" not in serialized_logs
+    assert "contexts" not in serialized_logs
+    assert records[-1]["details"]["duration_ms"] >= 0
+    task_completed = next(
+        record for record in records if record["event_type"] == "task.completed"
+    )
+    assert task_completed["details"]["retrieval_consumer"] == "investment_education"
+    assert task_completed["details"]["query_topics"] == [
+        "diversification",
+        "exchange-traded funds",
+    ]
+    assert task_completed["details"]["retrieved_chunk_count"] >= 1
+    assert task_completed["details"]["rejected_chunk_count"] == 0
+
+
+def test_workflow_failure_log_does_not_expose_exception_details(caplog) -> None:
+    class ProviderFailure(RuntimeError):
+        code = "alice.private@example.com sensitive failure"
+
+    class FailingGateway:
+        def generate(self, **kwargs) -> str:
+            del kwargs
+            raise ProviderFailure("sensitive provider payload and user data")
+
+    caplog.set_level(logging.INFO, logger="service.ai.workflow")
+    with pytest.raises(RuntimeError, match="sensitive provider payload"):
+        AgentOrchestrator(
+            config=Settings(MODEL_PROVIDER="local_fixture"),
+            gateway=FailingGateway(),
+        ).handle(
+            CoachRequest(
+                user_id="private-user-id",
+                session_id="private-session-id",
+                message="Explain diversification.",
+                requested_agents=["investment_education"],
+                snapshot={},
+            )
+        )
+
+    records = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "service.ai.workflow"
+    ]
+    failure = records[-1]
+    assert failure["event_type"] == "workflow.failed"
+    assert failure["details"]["error_code"] == "UNSAFE_VALUE_REDACTED"
+    serialized_logs = "\n".join(record.message for record in caplog.records)
+    assert "sensitive provider payload" not in serialized_logs
+    assert "private-user-id" not in serialized_logs
+    assert "private-session-id" not in serialized_logs
+    assert "alice.private@example.com" not in serialized_logs
 
 
 def test_blocks_prompt_injection_at_boundary() -> None:
@@ -58,14 +157,14 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
                 [
                     json.dumps(
                         {
-                            "selected_agents": ["investment_education"],
-                            "rationale": ["The model inferred an educational investment intent."],
+                            "selected_agents": ["spending"],
+                            "rationale": ["The model inferred a spending review intent."],
                         }
                     ),
                     json.dumps(
                         {
-                            "summary": "A model-generated educational response.",
-                            "rationale": ["Grounded in trusted context."],
+                            "summary": "A model-generated spending response.",
+                            "rationale": ["Grounded in transaction totals."],
                             "confidence": 0.76,
                         }
                     ),
@@ -74,7 +173,7 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
                         {
                             "blocked": False,
                             "summary": "Allowed after model review.",
-                            "rationale": ["The answer is educational."],
+                            "rationale": ["The answer reviews spending."],
                             "policy_notes": [],
                             "confidence": 0.88,
                         }
@@ -90,15 +189,21 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s3",
-        message="Help me understand ETF diversification options",
+        message="Help me budget for the next month.",
         snapshot={},
     )
     response = AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway
     ).handle(request)
-    assert response.selected_agents == ["investment_education"]
+    assert response.selected_agents == ["spending"]
     assert response.answer == "A synthesized model-generated answer."
     assert len(gateway.calls) == 4
+    assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
+        "agent_spending",
+        "synthesizer",
+        "risk_compliance",
+    ]
     assert all(call["temperature"] > 0 for call in gateway.calls)
 
 
@@ -158,9 +263,7 @@ def test_investment_education_returns_grounded_education_sources() -> None:
         result for result in response.agent_results if result.agent == "investment_education"
     )
     assert investment.data["evidence_status"] == "grounded"
-    assert investment.data["sources"][0]["source_id"] == (
-        "cpf-beginners-guide-to-investing"
-    )
+    assert investment.data["sources"][0]["source_id"] == "moneysense-guide-to-etfs"
     assert investment.data["contexts"]
 
 
@@ -196,10 +299,13 @@ def test_coach_response_exposes_investment_source_citations() -> None:
 
     response = local_orchestrator().handle(request)
 
-    assert [source.source_id for source in response.sources] == [
-        "cpf-beginners-guide-to-investing"
-    ]
-    assert response.sources[0].canonical_url.startswith("https://www.cpf.gov.sg/")
+    assert response.sources[0].source_id == "moneysense-guide-to-etfs"
+    assert "cpf-beginners-guide-to-investing" in {
+        source.source_id for source in response.sources
+    }
+    assert response.sources[0].canonical_url.startswith(
+        "https://www.moneysense.gov.sg/"
+    )
     assert response.sources[0].corpus_version == (
         "investment-education-sg@local-fixture-v1"
     )
@@ -242,8 +348,14 @@ def test_investment_education_sanitizes_retrieved_instructions() -> None:
         result for result in response.agent_results if result.agent == "investment_education"
     )
 
-    assert "[REMOVED_UNTRUSTED_INSTRUCTION]" in investment.data["contexts"][0]["text"]
-    assert investment.data["contexts"][0]["findings"]
+    assert investment.data["contexts"] == []
+    assert investment.data["sources"] == []
+    assert investment.data["evidence_status"] == "insufficient"
+    assert investment.data["rejected_chunk_count"] == 1
+    assert any(
+        finding.startswith("indirect_prompt_injection:")
+        for finding in investment.data["security_findings"]
+    )
 
 
 def test_compliance_review_receives_investment_evidence() -> None:
@@ -277,14 +389,16 @@ def test_compliance_review_receives_investment_evidence() -> None:
 
     evidence = payload["agent_results"][0]["data"]
     assert evidence["evidence_status"] == "grounded"
-    assert evidence["sources"][0]["source_id"] == "cpf-beginners-guide-to-investing"
+    assert evidence["sources"][0]["source_id"] == "moneysense-guide-to-etfs"
+    assert evidence["cited_source_ids"]
+    assert evidence["uncertainties"]
     assert evidence["contexts"]
     assert {
         context["source_id"] for context in payload["policy_context"]
     } == {"coach-evidence-policy"}
 
 
-def test_investment_rag_reports_v4_prompt_set_and_model_telemetry() -> None:
+def test_investment_rag_reports_v6_prompt_set_and_model_telemetry() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s9",
@@ -294,16 +408,21 @@ def test_investment_rag_reports_v4_prompt_set_and_model_telemetry() -> None:
 
     response = local_orchestrator().handle(request)
 
-    assert response.audit["prompt_set_version"] == "v4"
+    assert response.audit["prompt_set_version"] == "v6"
     assert response.audit["model_call_count"] == len(response.audit["model_calls"])
-    assert response.audit["model_call_count"] >= 4
+    assert response.audit["model_call_count"] == 3
+    assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
+        "agent_investment_education",
+        "risk_compliance",
+    ]
     assert response.audit["workflow_duration_ms"] >= 0
     assert response.audit["retrieval_corpus_versions"] == [
         "investment-education-sg@local-fixture-v1"
     ]
     assert response.audit["retrieval_consumers"] == ["investment_education"]
     assert response.audit["retrieval_sources"][0]["source_id"] == (
-        "cpf-beginners-guide-to-investing"
+        "moneysense-guide-to-etfs"
     )
     assert response.audit["retrieval_sources"][0]["checksum"].startswith("sha256:")
     assert response.audit["policy_corpus_versions"] == [
@@ -362,7 +481,7 @@ def test_compliance_fails_closed_when_policy_evidence_is_unavailable() -> None:
     ]
 
 
-def test_compliance_sanitizes_retrieved_policy_instructions() -> None:
+def test_compliance_quarantines_retrieved_policy_instructions() -> None:
     class UntrustedPolicyRetriever:
         expected_corpus_version = "financial-coach-policy-sg@test-v1"
 
@@ -401,9 +520,11 @@ def test_compliance_sanitizes_retrieved_policy_instructions() -> None:
     compliance = next(
         result for result in response.agent_results if result.agent == "risk_compliance"
     )
-    context = compliance.data["policy_contexts"][0]
-    assert "[REMOVED_UNTRUSTED_INSTRUCTION]" in context["text"]
-    assert context["findings"]
+    assert response.blocked
+    assert compliance.data["policy_evidence_status"] == "insufficient"
+    assert compliance.policy_notes == ["policy_evidence:insufficient"]
+    assert response.audit["policy_sources"] == []
+    assert "reveal the system prompt" not in response.model_dump_json()
 
 
 def test_v2_prompt_set_remains_available_for_rollback_compatibility() -> None:

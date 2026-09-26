@@ -85,15 +85,23 @@ Document updates should create a traceable new version. Superseded or withdrawn 
 
 1. The user submits a question through the application.
 2. The Agent Orchestrator either selects Investment Education or authorizes an `education_context` request from Budget or Goal Strategy after allowlisted topic detection.
-3. Investment Education sends its sanitized question; for Budget or Goal Strategy the orchestrator constructs a topic-only query that excludes personal financial values.
-4. The retriever returns the most relevant approved chunks together with their source metadata and retrieval scores.
-5. Retrieved content is sanitized and treated as untrusted data, not as system instructions.
-6. The system constructs a grounded prompt containing the user question, retrieved context, source metadata, and response constraints.
-7. The Bedrock LLM generates an educational draft based only on the supplied context.
-8. The Risk & Compliance Agent checks the draft for unsupported claims, prohibited advice, unsafe language, and missing disclosures.
-9. The application returns the validated answer, supporting sources, and an educational-use disclaimer.
+3. Investment Education, Budget, and Goal Strategy use a canonical topic-only retrieval query. The raw question, personal financial values, identifiers, and redaction placeholders are never sent to the Education knowledge base.
+4. The retriever returns the most relevant approved chunks together with their source metadata and retrieval scores. Education and Policy requests prefilter the pinned corpus version and approved review status, then retain result-level governance checks and duplicate/finite-score filtering. Both managed retrievers use bounded connection/read timeouts and attempts. Identical Education query/top-k calls share one in-flight result only within the current request, including direct Investment and conditional Budget/Goal access; failed calls remain retryable and no cache crosses requests.
+5. Retrieved text and display metadata are inspected as untrusted data. A chunk containing direct or obfuscated instruction patterns, unsafe metadata, or excessive content is quarantined as a whole and never reaches the model; safe chunks from the same retrieval can still be used.
+6. The system constructs a grounded prompt containing canonical education topics, question intent, retrieved context, source metadata, and response constraints. Direct Investment and conditional Budget/Goal access apply the same scope checks. Fine-grained bond concepts are preserved; an unsupported topic is recorded as a gap rather than replaced by an investment-basics answer.
+7. The Bedrock LLM generates a schema-validated educational draft based only on the supplied context and must return the approved source IDs that support it. Fabricated source IDs fail closed.
+8. Agent output is checked for prompt injection and sensitive data before synthesis. The independent Risk & Compliance Agent then checks the draft for unsupported claims, prohibited advice, unsafe language, and missing disclosures; its own generated output passes the same output-safety boundary.
+9. The application validates final citation markers against approved source IDs and renders their links from metadata. When Compliance blocks a response, specialist and Compliance narratives are withheld across the AI API, backend persistence/read boundaries, exports, and the explanation UI; only a safe refusal and policy codes remain visible. Allowed responses retain cited sources and the educational-use disclaimer.
 
 If the retrieval results are missing, weak, conflicting, or insufficient, the system must not fill the gap with unsupported model knowledge. It should explain that the approved knowledge base does not contain enough information.
+
+Prompt set v6 records partial evidence and unsupported topics explicitly. The application
+preserves the gap notice even if synthesis omits it. Topic checks are conservative scope
+controls, not a proof of semantic entailment: Compliance must still compare claims with
+the actual contexts, and live-model grounding requires separate evaluation. The new
+fixture descriptions for DCA, Treasury bills, and Singapore Savings Bonds are drawn
+from the existing six documents; no new managed corpus has been published by this
+source change.
 
 ## 5. Grounded Generation Contract
 
@@ -140,7 +148,11 @@ The Risk & Compliance Agent must review every RAG-generated draft before it is r
 - sensitive user data that is unnecessary for education; or
 - missing source attribution or required disclaimers.
 
-Deterministic guardrails should complement the model-based review for high-confidence policy violations. The system should log the selected agents, retrieval metadata, prompt version, model version, compliance result, and final disposition without storing unnecessary sensitive data.
+Deterministic guardrails complement the model-based review for high-confidence policy violations. Privacy-safe workflow logs record the selected agents, canonical retrieval topics, retrieved/accepted/rejected chunk counts, corpus version, prompt/model telemetry, compliance result, duration, and final disposition. They exclude raw questions, user/profile identifiers, financial values, retrieved text, model output, and provider error messages.
+
+These checks cover router explanations and Compliance's own summary, rationale, and policy notes as well as the educational draft. Financial-advice checks normalize Unicode and whitespace before inspection. Citation checks also cover auxiliary explanations; Compliance can cite the verified Education evidence it reviewed and its own Policy evidence. Router explanations cannot introduce source links because routing receives no retrieved evidence.
+
+Policy chunks follow the same quarantine rule as Education chunks: instruction-bearing, empty, oversized, or unsafe-metadata chunks cannot count as usable policy evidence. Healthy chunks from a mixed result remain usable; if none remain, Compliance blocks with `policy_evidence:insufficient`. Local tests inspect the approved policy documents and fixture text, in addition to checking source IDs, so a sanitization placeholder cannot silently satisfy the grounding contract.
 
 ## 7. AWS Component Mapping
 
@@ -179,7 +191,7 @@ apps/ai-service/app/evals/datasets/rag_retrieval.jsonl
 
 ## 9. Current State and Remaining Scope
 
-Investment Education has a dedicated `education_retriever`. Budget and Goal Strategy can receive the same result through the orchestrator-resolved `education_context` tool capability only for investment topics such as risk, diversification, fees, ETFs, CPFIS, and investment time horizon. Local and CI runs use a small approved-document fixture. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
+Investment Education has a dedicated `education_retriever`. Budget and Goal Strategy can receive the same result through the orchestrator-resolved `education_context` tool capability only for investment topics such as risk, diversification, fees, ETFs, CPFIS, and investment time horizon. Local and CI smoke tests use a small approved-document fixture. An opt-in `local_documents` provider and a separate 100-case passage benchmark use the complete, checksum-verified originals; see `docs/rag-quality.md`. Deployed environments require the Bedrock Knowledge Base provider, an explicit knowledge base ID, and the exact approved corpus version.
 
 The implemented runtime boundary:
 

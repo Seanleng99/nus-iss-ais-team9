@@ -9,11 +9,11 @@ Critical safeguards are distributed across all boundaries. The Risk & Compliance
 - Request validation: every external request is validated before orchestration.
 - PII detection: NRIC-like, Singapore phone, email, and card-like values are redacted before model prompts. Access logs never record request bodies.
 - Financial sensitivity handling: income, expense, and goal values are treated as sensitive even when not direct identifiers.
-- Prompt-injection protection: suspicious user instructions are blocked or downgraded before agent execution.
-- Indirect prompt-injection protection: retrieved documents are sanitized and metadata-isolated before being used as context.
+- Prompt-injection protection: suspicious user instructions, Unicode-obfuscated attacks, role impersonation, and fake system/instruction tags are blocked before agent execution.
+- Indirect prompt-injection protection: retrieved text and display metadata are inspected before use; a suspicious or oversized chunk is quarantined in full rather than partially rewritten and passed onward.
 - Tool permission allowlist: agents can call only approved tools for their role.
-- Output validation: agent output must include rationale, confidence, and advisory boundaries.
-- Auditability: execution metadata and policy decisions are logged with trace identifiers.
+- Output validation: Investment Education output must include rationale, confidence, uncertainty, and source IDs drawn only from approved grounding. Specialist and Compliance output is quarantined if it contains injection patterns or sensitive data.
+- Auditability: privacy-safe structured lifecycle events record routing, task status, RAG counts/topics, compliance disposition, duration, and model usage under one trace identifier without prompts, financial values, retrieved text, or model output.
 
 The staged AWS authentication boundary uses Cognito authorization code flow with PKCE at Streamlit. The frontend exposes only the ID token to its server-side client. The backend accepts RS256 JWTs only after exact issuer, audience, lifetime, subject, and Cognito `token_use=id` validation through the configured JWKS endpoint. An `Authorization` header is never downgraded to API-key authentication when malformed or invalid.
 

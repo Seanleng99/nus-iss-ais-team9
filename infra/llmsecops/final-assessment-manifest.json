@@ -48,7 +48,7 @@
       "evidence": [
         {"kind": "documentation", "path": "docs/model-selection.md"},
         {"kind": "implementation", "path": "apps/ai-service/app/models/gateway.py"},
-        {"kind": "implementation", "path": "apps/ai-service/prompts/v4/prompts.json"},
+        {"kind": "implementation", "path": "apps/ai-service/prompts/v6/prompts.json"},
         {"kind": "workflow", "path": ".github/workflows/model-comparison.yml"}
       ],
       "demo_scenarios": ["DEMO-02"]

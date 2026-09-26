@@ -59,6 +59,11 @@ Parameters:
     Type: String
   AppTaskRoleArn:
     Type: String
+  BackendTaskRoleArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:aws:iam::[0-9]{12}:role/.+$"
+    Description: Dedicated backend role for runtime database credential refresh; enable with a compatible backend image.
   AiTaskRoleArn:
     Type: String
   BackendApiKeySecretArn:
@@ -120,6 +125,7 @@ Parameters:
     Description: Optional email subscription for operational alarms.
 
 Conditions:
+  HasBackendTaskRole: !Not [!Equals [!Ref BackendTaskRoleArn, ""]]
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
   HasOriginCertificate: !Not [!Equals [!Ref OriginCertificateArn, ""]]
 
@@ -323,7 +329,7 @@ Resources:
             - Name: MODEL_ID
               Value: !Ref BedrockModelId
             - Name: PROMPT_SET_VERSION
-              Value: v4
+              Value: v6
             - Name: RAG_PROVIDER
               Value: bedrock
             - Name: EDUCATION_KNOWLEDGE_BASE_ID
@@ -368,7 +374,7 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      TaskRoleArn: !Ref AppTaskRoleArn
+      TaskRoleArn: !If [HasBackendTaskRole, !Ref BackendTaskRoleArn, !Ref AppTaskRoleArn]
       ContainerDefinitions:
         - Name: backend
           Essential: true
@@ -422,15 +428,28 @@ Resources:
               Value: !Ref DatabaseName
             - Name: POSTGRES_SSLMODE
               Value: require
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - !If
+              - HasBackendTaskRole
+              - Name: POSTGRES_SECRET_ARN
+                Value: !Ref DatabaseSecretArn
+              - !Ref AWS::NoValue
           Secrets:
             - Name: BACKEND_API_KEY
               ValueFrom: !Sub "${BackendApiKeySecretArn}:value::"
             - Name: AI_SERVICE_API_KEY
               ValueFrom: !Sub "${AiServiceApiKeySecretArn}:value::"
-            - Name: POSTGRES_USER
-              ValueFrom: !Sub "${DatabaseSecretArn}:username::"
-            - Name: POSTGRES_PASSWORD
-              ValueFrom: !Sub "${DatabaseSecretArn}:password::"
+            - !If
+              - HasBackendTaskRole
+              - !Ref AWS::NoValue
+              - Name: POSTGRES_USER
+                ValueFrom: !Sub "${DatabaseSecretArn}:username::"
+            - !If
+              - HasBackendTaskRole
+              - !Ref AWS::NoValue
+              - Name: POSTGRES_PASSWORD
+                ValueFrom: !Sub "${DatabaseSecretArn}:password::"
           LogConfiguration:
             LogDriver: awslogs
             Options:

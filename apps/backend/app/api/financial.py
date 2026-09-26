@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -28,6 +28,7 @@ from app.api.financial_schemas import (
     GoalCreate,
     GoalProgressResponse,
     GoalResponse,
+    # GoalUpdate,
     ProfileCreate,
     ProfileResponse,
     ProfileSummary,
@@ -55,6 +56,7 @@ from app.core.security import (
     require_owned_path_user,
     require_principal,
 )
+from app.core.telemetry import log_event, trace_method
 from app.domain.schemas import MoneyAmount
 from app.infrastructure.database import get_db_session
 from app.infrastructure.models import (
@@ -77,6 +79,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyTransactionRepository,
     SQLAlchemyUserRepository,
 )
+from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
 router = APIRouter(dependencies=[Depends(require_owned_path_user)])
 UserId = Annotated[str, Path(min_length=1, max_length=128)]
@@ -176,12 +179,14 @@ def _budget_response(
     )
 
 
+@trace_method
 def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse | None:
     trace = message.orchestration_trace
     if trace is None:
         return None
     return ChatExplanationResponse(
         trace_id=trace.trace_id,
+        response_language=trace.audit.get("response_language", "English"),
         selected_agents=trace.selected_agents,
         routing_rationale=trace.audit.get("routing_rationale", []),
         agent_results=[
@@ -198,6 +203,7 @@ def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse 
     )
 
 
+@trace_method
 def _chat_session_response(
     record: ChatSessionRecord, *, include_messages: bool
 ) -> ChatSessionSummary | ChatSessionResponse:
@@ -318,6 +324,7 @@ def delete_profile(
     "/users/{user_id}/chat-sessions",
     response_model=list[ChatSessionSummary],
 )
+@trace_method
 def list_chat_sessions(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
@@ -333,6 +340,7 @@ def list_chat_sessions(
     response_model=ChatSessionResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@trace_method
 def create_chat_session(
     user_id: UserId,
     chat: ChatSessionCreate,
@@ -356,6 +364,7 @@ def create_chat_session(
     "/users/{user_id}/chat-sessions/{chat_session_id}",
     response_model=ChatSessionResponse,
 )
+@trace_method
 def get_chat_session(
     user_id: UserId,
     chat_session_id: str,
@@ -831,6 +840,41 @@ def get_dashboard(
     ]
     available_balance = monthly_income - total_spent
     savings_rate = available_balance / monthly_income * 100 if monthly_income else 0.0
+    
+    # NEW: Generate spending insights from 6 months of transaction history
+    spending_insights = []
+    spending_data_quality = "insufficient"
+    spending_months_analyzed = 0
+    
+    try:
+        # Fetch 6 months of transactions
+        six_months_ago = period_start - timedelta(days=180)
+        historical_transactions = budget_repository.get_transactions_in_range(
+            user_id, six_months_ago, period_start
+        )
+        
+        if len(historical_transactions) >= 10:
+            # Convert to analyzer format
+            txn_list = [
+                {
+                    "category": txn.category,
+                    "amount": {"currency": "SGD", "amount": float(txn.amount)},
+                    "occurred_on": txn.occurred_on.isoformat(),
+                }
+                for txn in historical_transactions
+            ]
+            
+            # Run analysis
+            analysis_result = analyze_spending_patterns(txn_list, period_start)
+            
+            # Generate insights
+            spending_insights = _generate_insights(analysis_result)
+            spending_data_quality = analysis_result["data_quality"]
+            spending_months_analyzed = analysis_result["months_analyzed"]
+    except (KeyError, TypeError, ValueError) as insight_error:
+        # Gracefully degrade - insights are optional
+        log_event("dashboard.spending_insights_failed", error=str(insight_error))
+    
     return DashboardResponse(
         period_start=period_start,
         currency=currency,
@@ -844,4 +888,7 @@ def get_dashboard(
         category_spending=spending,
         goals=goals,
         transaction_count=budget_repository.transaction_count(user_id, period_start),
+        spending_insights=spending_insights,
+        spending_data_quality=spending_data_quality,
+        spending_months_analyzed=spending_months_analyzed,
     )

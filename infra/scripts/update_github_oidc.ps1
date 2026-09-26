@@ -188,6 +188,9 @@ $parameters = @(
     "OperationalAlertsTopicArn=$($application.OperationalAlertsTopicArn)"
 )
 
+if ($foundation.BackendTaskRoleArn) {
+    $parameters += "EcsBackendTaskRoleArn=$($foundation.BackendTaskRoleArn)"
+}
 Invoke-Aws cloudformation deploy `
     --template-file (Join-Path $ProjectRoot "infra\aws\github-actions-oidc.yaml") `
     --stack-name $OidcStack `

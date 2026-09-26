@@ -1,14 +1,17 @@
 import json
 import re
+from collections.abc import Callable
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGateway, ModelGatewayError
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
 
+@trace_method
 def parse_structured_response(raw: str, response_type: type[StructuredModel]) -> StructuredModel:
     candidate = raw.strip()
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", candidate, flags=re.DOTALL)
@@ -21,7 +24,14 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
             candidate = candidate[start : end + 1]
 
     try:
-        return response_type.model_validate(json.loads(candidate))
+        response = response_type.model_validate(json.loads(candidate))
+        log_event(
+            "model.response.parsed",
+            response_type=response_type.__name__,
+            response_fields=list(response_type.model_fields),
+            output_characters=len(raw),
+        )
+        return response
     except (json.JSONDecodeError, ValidationError) as exc:
         raise ModelGatewayError(
             "The model returned an invalid structured response.",
@@ -30,6 +40,7 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
         ) from exc
 
 
+@trace_method
 def generate_structured_response(
     gateway: ModelGateway,
     *,
@@ -38,6 +49,7 @@ def generate_structured_response(
     user_prompt: str,
     temperature: float,
     max_tokens: int,
+    validate_response: Callable[[StructuredModel], StructuredModel] | None = None,
 ) -> StructuredModel:
     """Generate a typed response with one explicit, bounded correction attempt."""
     raw = gateway.generate(
@@ -47,12 +59,29 @@ def generate_structured_response(
         max_tokens=max_tokens,
     )
     try:
-        return parse_structured_response(raw, response_type)
+        parsed = parse_structured_response(raw, response_type)
+        return validate_response(parsed) if validate_response else parsed
     except ModelGatewayError as exc:
-        if exc.code != "INVALID_STRUCTURED_RESPONSE":
+        if exc.code not in {
+            "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_CITATION", "MISSING_CITATION",
+        }:
             raise
+        log_event(
+            "model.correction.requested",
+            response_type=response_type.__name__,
+            error_code=exc.code,
+            attempt=2,
+        )
         cause = exc.__cause__
-        if isinstance(cause, ValidationError):
+        if exc.code in {"UNAPPROVED_CITATION", "MISSING_CITATION"}:
+            validation_issues = (
+                "Follow the citation contract and use only actual source IDs supplied "
+                "in the request. Never copy example or placeholder IDs. If there are "
+                "no approved sources, use no citation markers, links or square brackets. "
+                "When sources are required, declare only the sources used and cite "
+                "the supporting IDs in the summary. Do not generate URLs."
+            )
+        elif isinstance(cause, ValidationError):
             validation_issues = json.dumps(
                 [
                     {
@@ -80,4 +109,5 @@ def generate_structured_response(
         temperature=min(temperature, 0.1),
         max_tokens=max_tokens,
     )
-    return parse_structured_response(corrected, response_type)
+    parsed = parse_structured_response(corrected, response_type)
+    return validate_response(parsed) if validate_response else parsed

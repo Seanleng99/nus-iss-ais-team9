@@ -1,6 +1,7 @@
 import json
 import re
-from datetime import date
+from contextlib import nullcontext
+from datetime import UTC, date, datetime
 
 import httpx
 import pandas as pd
@@ -8,7 +9,9 @@ import streamlit as st
 
 from client import build_request
 from ui.components import backend_call, clamp_progress, money, page_header, percent
+from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
+from ui.telemetry import call_span, context_fields, log_event, trace_context
 
 CATEGORIES = [
     "housing",
@@ -135,45 +138,62 @@ def _confidence_band(value: float) -> str:
 
 
 def _render_coach_explanation(explanation: dict | None) -> None:
-    if not explanation:
-        return
-    with st.expander("Why this answer and how certain it is"):
-        st.caption(
-            "Confidence is each AI component's self-assessment. It is not a "
-            "probability, an accuracy guarantee, or a substitute for checking "
-            "your inputs and the cited sources."
-        )
-        selected_agents = explanation.get("selected_agents", [])
-        if selected_agents:
-            labels = [
-                AGENT_LABELS.get(agent, agent.replace("_", " ").title())
-                for agent in selected_agents
-            ]
-            st.markdown(f"**Areas used:** {', '.join(labels)}")
-        routing_rationale = explanation.get("routing_rationale", [])
-        if routing_rationale:
-            st.markdown("**Why these areas were used**")
-            for rationale in routing_rationale:
-                st.markdown(f"- {rationale}")
-        for result in explanation.get("agent_results", []):
-            agent = result.get("agent", "unknown")
-            label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
-            confidence = min(max(float(result.get("confidence", 0.0)), 0.0), 1.0)
-            st.markdown(
-                f"**{label} — {_confidence_band(confidence)} confidence "
-                f"(self-assessed score {confidence:.2f})**"
+    with (
+        call_span(f"{__name__}._render_coach_explanation")
+        if context_fields().get("correlation_id") else nullcontext()
+    ):
+        if not explanation:
+            return
+        with st.expander("Why this answer and how certain it is"):
+            st.caption(
+                "Confidence is each AI component's self-assessment. It is not a "
+                "probability, an accuracy guarantee, or a substitute for checking "
+                "your inputs and the cited sources."
             )
-            for rationale in result.get("rationale", []):
-                st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
-        if explanation.get("blocked"):
-            st.warning("The safety review blocked the requested guidance.")
-        trace_id = explanation.get("trace_id")
-        prompt_version = explanation.get("prompt_set_version")
-        reference = f"Reference ID: {trace_id}" if trace_id else ""
-        if prompt_version:
-            reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
-        if reference:
-            st.caption(reference)
+            if explanation.get("blocked"):
+                st.warning(
+                    "此回复未通过安全审查，因此已隐藏助手生成的指导内容。"
+                    if explanation.get("response_language") == "Chinese"
+                    else "The safety review blocked this response, so the assistant-generated "
+                    "guidance was withheld."
+                )
+                trace_id = explanation.get("trace_id")
+                prompt_version = explanation.get("prompt_set_version")
+                reference = f"Reference ID: {trace_id}" if trace_id else ""
+                if prompt_version:
+                    reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+                if reference:
+                    st.caption(reference)
+                return
+            selected_agents = explanation.get("selected_agents", [])
+            if selected_agents:
+                labels = [
+                    AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                    for agent in selected_agents
+                ]
+                st.markdown(f"**Areas used:** {', '.join(labels)}")
+            routing_rationale = explanation.get("routing_rationale", [])
+            if routing_rationale:
+                st.markdown("**Why these areas were used**")
+                for rationale in routing_rationale:
+                    st.markdown(f"- {rationale}")
+            for result in explanation.get("agent_results", []):
+                agent = result.get("agent", "unknown")
+                label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                confidence = min(max(float(result.get("confidence", 0.0)), 0.0), 1.0)
+                st.markdown(
+                    f"**{label} — {_confidence_band(confidence)} confidence "
+                    f"(self-assessed score {confidence:.2f})**"
+                )
+                for rationale in result.get("rationale", []):
+                    st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
+            trace_id = explanation.get("trace_id")
+            prompt_version = explanation.get("prompt_set_version")
+            reference = f"Reference ID: {trace_id}" if trace_id else ""
+            if prompt_version:
+                reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+            if reference:
+                st.caption(reference)
 
 
 def _transaction_payload(
@@ -190,6 +210,51 @@ def _transaction_payload(
         "occurred_on": occurred_on.isoformat(),
         "recurring": recurring,
     }
+
+
+def _create_pie_chart(categories: list[str], amounts: list[float], currency: str):
+    """
+    Create a pie chart for spending category distribution.
+    Returns None if plotly is not available.
+    """
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        return None
+    
+    # Color palette for categories
+    colors = [
+        "#18794e",  # Green
+        "#2563eb",  # Blue
+        "#dc2626",  # Red
+        "#d97706",  # Amber
+        "#7c3aed",  # Purple
+        "#db2777",  # Pink
+        "#0891b2",  # Cyan
+        "#65a30d",  # Lime
+        "#ea580c",  # Orange
+        "#4f46e5",  # Indigo
+    ]
+    
+    fig = go.Figure(data=[
+        go.Pie(
+            labels=categories,
+            values=amounts,
+            hole=0.4,  # Donut chart
+            marker={"colors": colors[:len(categories)]},
+            textinfo="percent",
+            hoverinfo="label+value+percent",
+            textposition="outside",
+        )
+    ])
+
+    fig.update_layout(
+        showlegend=False,
+        margin={"t": 30, "b": 30, "l": 30, "r": 30},
+        height=300,
+    )
+    
+    return fig
 
 
 def dashboard_page() -> None:
@@ -211,17 +276,118 @@ def dashboard_page() -> None:
     rate.metric("Savings rate", percent(dashboard["savings_rate_percent"]))
 
     st.subheader("Spending")
+    
+    # Add context description
+    st.markdown(
+        """
+        <div style="margin-bottom: 20px; color: #6b7280; font-size: 14px;">
+            Track your spending patterns and get personalized insights to understand 
+            where your money goes each month. Add transactions regularly to unlock 
+            smarter analysis and recommendations.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    # NEW: Render spending insights if available
+    spending_insights = dashboard.get("spending_insights", [])
+    spending_data_quality = dashboard.get("spending_data_quality", "insufficient")
+    spending_months_analyzed = dashboard.get("spending_months_analyzed", 0)
+    
+    if spending_insights:
+        from ui.spending_insights_component.spending_insights import (
+            render_spending_insights_section,
+        )
+        render_spending_insights_section(spending_insights)
+        
+        # Show data quality indicator
+        if spending_data_quality in ["limited", "insufficient"]:
+            st.info(
+                f"💡 **Data Quality: {spending_data_quality.title()}**  "
+                f"You have {spending_months_analyzed} month(s) of transaction data. "
+                f"For more accurate insights and pattern detection, aim for at least 3 months of consistent transaction tracking."
+            )
+        elif spending_data_quality == "good":
+            st.success(
+                f"✅ **Data Quality: Good**  "
+                f"You have {spending_months_analyzed} months of transaction data. Keep tracking to unlock even deeper insights!"
+            )
+        else:  # excellent
+            st.success(
+                f"✅ **Data Quality: Excellent**  "
+                f"You have {spending_months_analyzed}+ months of transaction data. You're getting the most accurate insights possible!"
+            )
+    
+    # Show category charts: Pie chart (distribution) + Bar chart (breakdown)
     category_spending = dashboard.get("category_spending", {})
     if category_spending:
+        categories = [_category_label(name) for name in category_spending]
+        amounts = list(category_spending.values())
+        
+        # Show summary metrics
+        metric_cols = st.columns(2)
+        metric_cols[0].metric(
+            "Categories",
+            str(len(categories)),
+            delta=None
+        )
+        metric_cols[1].metric(
+            "Average per Category",
+            money(sum(amounts) / len(categories), currency) if categories else money(0, currency),
+            delta=None
+        )
+        
+        # Chart 1: Pie Chart - Category Distribution
+        st.markdown("#### Category Distribution")
+        st.markdown(
+            "<div style='color: #6b7280; font-size: 13px; margin-bottom: 10px;'>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "This chart shows how your spending is distributed across different categories as percentages. "
+            "Each slice represents the proportion of your total spending for that category. "
+            "Larger slices indicate categories where you spend a higher percentage of your budget. "
+            "Hover over any slice to see the exact amount and percentage."
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        pie_chart = _create_pie_chart(categories, amounts, currency)
+        if pie_chart:
+            st.plotly_chart(pie_chart, use_container_width=True, key="spending_pie_chart")
+        else:
+            st.info("📊 Install plotly for pie chart: `pip install plotly`")
+        
+        # Chart 2: Bar Chart - Category Breakdown
+        st.markdown("#### Category Breakdown")
+        st.markdown(
+            "<div style='color: #6b7280; font-size: 13px; margin-bottom: 10px;'>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "This chart displays the actual spending amounts for each category, making it easy to compare "
+            "where your money is going. Categories are arranged to help you quickly identify your top "
+            "spending areas. Use this view to spot categories that might need attention or budget adjustments."
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        
         spending_frame = pd.DataFrame(
             {
-                "Category": [_category_label(name) for name in category_spending],
-                "Amount": list(category_spending.values()),
+                "Category": categories,
+                "Amount": amounts,
             }
         ).set_index("Category")
-        st.bar_chart(spending_frame, horizontal=True, color="#18794e")
+        st.bar_chart(
+            spending_frame,
+            horizontal=True,
+            color="#18794e",
+            use_container_width=True
+        )
     else:
-        st.caption("No transactions recorded for this month.")
+        st.info(
+            "📝 **No transactions recorded yet**  "
+            "Start by adding your transactions in the Transactions tab. As you add more data, "
+            "you'll see your spending patterns visualized here with helpful insights."
+        )
 
     budget = dashboard.get("budget")
     st.subheader("Budget")
@@ -340,19 +506,58 @@ def transactions_page() -> None:
         )
 
         st.subheader("Manage transaction")
+        
+        # Month filter for viewing historical transactions
+        st.caption("View transactions from different months")
+        
+        # Get ALL transactions (no period filter) to extract available months
+        all_transactions = backend_call(lambda: client.list_transactions(user_id, None)) or []
+        
+        # Extract unique months from all transactions
+        if all_transactions:
+            transaction_months = sorted({
+                datetime.strptime(item["occurred_on"], "%Y-%m-%d").replace(tzinfo=UTC).strftime("%Y-%m")
+                for item in all_transactions
+            }, reverse=True)
+
+            # Add current month if not present
+            current_month = period_start.strftime("%Y-%m")
+            if current_month not in transaction_months:
+                transaction_months.insert(0, current_month)
+        else:
+            transaction_months = [period_start.strftime("%Y-%m")]
+
+        selected_month = st.selectbox(
+            "Filter by month",
+            options=transaction_months,
+            format_func=lambda x: datetime.strptime(x + "-01", "%Y-%m-%d").replace(tzinfo=UTC).strftime("%B %Y"),
+            index=0,
+            key=f"transactions-{user_id}-month-filter"
+        )
+        
+        # Convert selected month to period_start date
+        selected_year, selected_month_num = map(int, selected_month.split("-"))
+        filter_period_start = date(selected_year, selected_month_num, 1)
+        
+        # Fetch transactions for selected month
+        filtered_transactions = backend_call(lambda: client.list_transactions(user_id, filter_period_start)) or []
+        
+        # Use filtered transactions for the rest of the page
+        display_transactions = filtered_transactions if filtered_transactions else transactions
+        
         selected_id = st.selectbox(
             "Transaction",
-            [item["id"] for item in transactions],
+            [item["id"] for item in display_transactions],
             index=None,
             format_func=lambda value: next(
                 f"{item['occurred_on']} · {item['description']}"
-                for item in transactions
+                for item in display_transactions
                 if item["id"] == value
             ),
             key=f"manage-transaction-{user_id}-selection-v2",
         )
         if selected_id is not None:
-            selected = next(item for item in transactions if item["id"] == selected_id)
+            selected = next(item for item in display_transactions if item["id"] == selected_id)
             selected_category = (
                 selected["category"] if selected["category"] in CATEGORIES else "other"
             )
@@ -608,11 +813,51 @@ def goals_page() -> None:
                 st.rerun()
 
 
+def _render_coach_message(message: dict) -> None:
+    with (
+        call_span(f"{__name__}._render_coach_message")
+        if context_fields().get("correlation_id") else nullcontext()
+    ):
+        avatar = (
+            ":material/person:"
+            if message["role"] == "user"
+            else ":material/account_balance_wallet:"
+        )
+        with st.chat_message(message["role"], avatar=avatar):
+            st.markdown(message["content"])
+            sources = message.get("sources", [])
+            if sources:
+                st.caption("Sources")
+                for source in sources:
+                    st.markdown(
+                        f"- [{source['title']}]({source['canonical_url']}) — "
+                        f"{source['issuing_organization']}, {source['published_at']} · "
+                        f"Source ID: `{source['source_id']}`"
+                    )
+            _render_coach_explanation(message.get("explanation"))
+        if context_fields().get("correlation_id"):
+            log_event("coach.response_rendered", **response_metadata(message))
+
+
 def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
+    
+    # Check if there's a pending question from insight cards with navigation flag
+    pending_question = st.session_state.pop("pending_coach_question", None)
+    should_navigate = st.session_state.pop("navigate_to_coach", False)
+    
     with st.container(key="coach-page-header"):
         page_header("Coach", "Financial education", marker_class="coach-shell")
+    
+    # If we have a pending question and navigation was triggered, auto-submit it
+    if pending_question and should_navigate:
+        st.info(f"💬 **Asking Coach:** \"{pending_question}\"")
+        # Set the question to be sent
+        st.session_state.coach_pending_question = pending_question
+        # Trigger the send
+        st.session_state.coach_auto_submit = True
+        st.rerun()
 
     sessions = backend_call(lambda: client.list_chat_sessions(user_id)) or []
     session_by_id = {item["id"]: item for item in sessions}
@@ -637,6 +882,7 @@ def coach_page() -> None:
         ):
             st.session_state.coach_active_session_id = None
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.pop("coach_rename_open", None)
             st.session_state.pop("coach_delete_open", None)
             st.rerun()
@@ -666,6 +912,7 @@ def coach_page() -> None:
                     ):
                         st.session_state.coach_active_session_id = session_id
                         st.session_state.pop("coach_pending_question", None)
+                        st.session_state.pop("coach_pending_render", None)
                         st.session_state.pop("coach_rename_open", None)
                         st.session_state.pop("coach_delete_open", None)
                         st.rerun()
@@ -730,6 +977,7 @@ def coach_page() -> None:
                     )
                     if session_id == active_session_id:
                         st.session_state.coach_active_session_id = None
+                        st.session_state.pop("coach_pending_render", None)
                     st.session_state.pop("coach_delete_open", None)
                     st.rerun()
                 if st.button(
@@ -740,7 +988,10 @@ def coach_page() -> None:
                     st.session_state.pop("coach_delete_open", None)
                     st.rerun()
 
+    # Check for pending question (from insight cards or chat input)
     pending_question = st.session_state.pop("coach_pending_question", None)
+    auto_submit = st.session_state.pop("coach_auto_submit", False)
+    
     if pending_question and active_session_id is None:
         title = pending_question[:117] + "..." if len(pending_question) > 120 else pending_question
         created_session = backend_call(
@@ -749,46 +1000,71 @@ def coach_page() -> None:
         if created_session:
             active_session_id = created_session["id"]
             st.session_state.coach_active_session_id = active_session_id
+    
+    # Auto-submit if flag is set
+    if pending_question and auto_submit:
+        st.session_state.coach_pending_question = pending_question
+        st.rerun()
 
-    active_session = (
-        backend_call(lambda: client.get_chat_session(user_id, active_session_id))
-        if active_session_id
-        else None
-    )
+    pending_render = st.session_state.get("coach_pending_render")
+    if pending_render and pending_render["journey_id"] != st.session_state.get("journey_id"):
+        st.session_state.pop("coach_pending_render", None)
+        pending_render = None
+    with (
+        trace_context(**{key: value for key, value in pending_render.items() if key != "trace_id"})
+        if pending_render else nullcontext()
+    ):
+        active_session = (
+            backend_call(lambda: client.get_chat_session(user_id, active_session_id))
+            if active_session_id
+            else None
+        )
     history = active_session.get("messages", []) if active_session else []
 
     for message in history:
-        avatar = (
-            ":material/person:"
-            if message["role"] == "user"
-            else ":material/account_balance_wallet:"
+        matches_pending = (
+            pending_render
+            and message["role"] == "assistant"
+            and response_metadata(message).get("trace_id") == pending_render["trace_id"]
         )
-        with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
-            sources = message.get("sources", [])
-            if sources:
-                st.caption("Sources")
-                for source in sources:
-                    st.markdown(
-                        f"- [{source['title']}]({source['canonical_url']}) — "
-                        f"{source['issuing_organization']}, {source['published_at']} · "
-                        f"Source ID: `{source['source_id']}`"
-                    )
-            _render_coach_explanation(message.get("explanation"))
+        if matches_pending:
+            with trace_context(**{key: value for key, value in pending_render.items() if key != "trace_id"}):
+                _render_coach_message(message)
+            st.session_state.pop("coach_pending_render", None)
+            pending_render = None
+        else:
+            _render_coach_message(message)
 
     if pending_question and active_session_id:
         with st.chat_message("user", avatar=":material/person:"):
             st.markdown(pending_question)
-        with st.chat_message(
-            "assistant", avatar=":material/account_balance_wallet:"
-        ), st.spinner("Thinking"):
-            response = backend_call(
-                lambda: client.ask_coach(
-                    build_request(user_id, pending_question, active_session_id)
+        with trace_context(journey_id=st.session_state.get("journey_id")), call_span(
+            f"{__name__}.coach_page"
+        ):
+            log_event("coach.request.submitted", input_characters=len(pending_question))
+            with st.chat_message(
+                "assistant", avatar=":material/account_balance_wallet:"
+            ), st.spinner("Thinking"):
+                response = backend_call(
+                    lambda: client.ask_coach(
+                        build_request(user_id, pending_question, active_session_id)
+                    )
                 )
-            )
-        if response:
-            st.rerun()
+            if response:
+                metadata = response_metadata(response)
+                log_event("coach.response_accepted", **metadata)
+                current = context_fields()
+                # Only trace metadata crosses the rerun. Match the persisted
+                # explanation's trace ID before attributing a rendered answer.
+                if metadata.get("trace_id"):
+                    st.session_state.coach_pending_render = {
+                        "correlation_id": current["correlation_id"],
+                        "journey_id": current["journey_id"],
+                        "parent_span_id": current["span_id"],
+                        "caller_method": current["method"],
+                        "trace_id": metadata["trace_id"],
+                    }
+                st.rerun()
 
     starter_question = None
     if not history:
@@ -821,6 +1097,7 @@ def coach_page() -> None:
     if submitted_question:
         normalized_question = submitted_question.strip()
         if normalized_question:
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.coach_pending_question = normalized_question
             st.rerun()
 
@@ -1150,6 +1427,7 @@ def profile_page() -> None:
             st.session_state.pop("coach_active_session_id", None)
             st.session_state.pop("coach_history", None)
             st.session_state.pop("coach_pending_question", None)
+            st.session_state.pop("coach_pending_render", None)
             st.session_state.pop("coach_rename_open", None)
             st.session_state.pop("coach_delete_open", None)
             st.session_state.pop(export_key, None)
@@ -1227,6 +1505,7 @@ def create_profile_page() -> None:
     st.session_state.pop("coach_active_session_id", None)
     st.session_state.pop("coach_history", None)
     st.session_state.pop("coach_pending_question", None)
+    st.session_state.pop("coach_pending_render", None)
     st.session_state.pop("coach_rename_open", None)
     st.session_state.pop("coach_delete_open", None)
     st.session_state.profile_created_notice = (

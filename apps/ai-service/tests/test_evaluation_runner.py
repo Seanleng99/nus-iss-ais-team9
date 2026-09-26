@@ -42,6 +42,16 @@ def test_expected_properties_are_conjunctive() -> None:
     )
 
 
+def test_chinese_answer_check_rejects_an_english_answer_with_chinese_metadata() -> None:
+    response = _orchestrator().handle(CoachRequest(
+        user_id="eval", session_id="language-check",
+        message="请解释ETF的风险。", requested_agents=["investment_education"],
+    ))
+    assert _matches_expected(response, {"answer_language": "Chinese"})
+    response.answer = "This is an English answer regardless of the Chinese language hint."
+    assert not _matches_expected(response, {"answer_language": "Chinese"})
+
+
 def test_dataset_evidence_includes_failed_case_ids(tmp_path: Path) -> None:
     dataset = tmp_path / "failed.jsonl"
     dataset.write_text(

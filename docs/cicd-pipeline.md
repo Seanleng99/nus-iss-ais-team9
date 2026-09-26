@@ -12,7 +12,7 @@ flowchart LR
   CI --> SAST["Bandit SAST and dependency review"]
   EVAL --> AUTO["Successful current main CI"]
   SAST --> AUTO
-  AUTO --> BUILD["Build selected service images"]
+  AUTO --> BUILD["Build all three images at the tested SHA"]
   BUILD --> ECR["Amazon ECR"]
   ECR --> SCAN["ECR and Inspector vulnerability gate"]
   SCAN --> CONFIG["Rendered task configuration gate"]
@@ -32,7 +32,7 @@ The first deployment target remains ECS Fargate. EKS is outside the initial pipe
 ## Workflow Files
 
 - `.github/workflows/ci.yml`: repository-owned change detection; selected Streamlit, backend, AI service, and operational-script tests; PostgreSQL migration application and drift checks; CloudFormation and Compose validation; service integration and load smoke; selected hardened container builds; Bandit SAST; dependency review; and LLMSecOps threshold/regression gates. Pushes and pull requests that change only `docs/**` are ignored. Weekly and manual runs select the complete CI suite for drift observation.
-- `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, selective immutable container builds, ECR publishing and scanning, rendered task-configuration validation, migration before every backend deployment, selective ECS deployment through the `demo` environment, live Education and Policy RAG trace-aware smoke testing, and targeted service rollback.
+- `.github/workflows/release.yml`: automatic release after successful push CI on the current `main` SHA, immutable builds of all three services, ECR publishing and scanning, rendered task-configuration validation, migration before every backend deployment, ECS deployment through the `demo` environment, live Education and Policy RAG trace-aware smoke testing, and targeted service rollback.
 - `.github/workflows/aws-operational-validation.yml`: weekly and manual privacy-safe validation against AWS, including repeated Bedrock/RAG cases, bounded synthetic load with cleanup, ECS/autoscaling state, CloudWatch dashboard and alarm existence, complete data-lifecycle retention enforcement, and an optional backend task-replacement exercise. Evidence is retained for 90 days.
 - `.github/workflows/rag-source-governance.yml`: weekly and manual read-only validation of the governed Education manifest against exact S3 objects, sidecar provenance, checksums, source freshness, Bedrock catalog state, and the latest ingestion job. Its privacy-safe evidence is retained for 90 days, and its OIDC role cannot upload, delete, or start ingestion.
 - `.github/workflows/policy-rag-source-governance.yml`: equivalent weekly and manual read-only validation for the separate Policy manifest, Knowledge Base, data source, and S3 prefix, with independently retained 90-day evidence.
@@ -47,10 +47,10 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 
 | Changed paths | CI selection | Release selection |
 |---|---|---|
-| `apps/frontend/**` or its Dockerfile | Frontend tests, SAST, frontend container | Frontend image and ECS service |
-| `apps/backend/**` or its Dockerfile | Backend tests, SAST, integration, backend container | Backend image and ECS service |
-| `apps/backend/migrations/**` or `apps/backend/alembic.ini` | Backend path above | Backend release plus one-shot Alembic migration |
-| `apps/ai-service/**` or its Dockerfile | AI and backend tests, AI evals, SAST, integration, AI and backend containers | AI and compatible backend images and ECS services |
+| `apps/frontend/**` or its Dockerfile | Frontend tests, SAST, frontend container | All three images and services, plus backend migration |
+| `apps/backend/**` or its Dockerfile | Backend tests, SAST, integration, backend container | All three images and services, plus backend migration |
+| `apps/backend/migrations/**` or `apps/backend/alembic.ini` | Backend path above | All three images and services, plus backend migration |
+| `apps/ai-service/**` or its Dockerfile | AI and backend tests, AI evals, SAST, integration, AI and backend containers | All three images and services, plus backend migration |
 | `infra/llmsecops/**` | AI tests and evaluation gate | No application deployment |
 | `infra/aws/**` | CloudFormation and Compose validation | No application deployment |
 | `infra/scripts/**` | Operational-script tests, infrastructure validation, and SAST; load/post-deploy smoke changes also select integration | No application deployment |
@@ -61,7 +61,7 @@ The change detector stores a seven-day `change-manifest` artifact on every CI ru
 | CI/release workflow or shared container graph | Complete service CI and container validation | All three service images and ECS services; backend deployment always runs the migration task |
 | `docs/**` only | No workflow | No release |
 
-AI changes deploy the backend from the same commit because the backend persists orchestration traces and exposes the trace-aware coaching contract used by the release smoke test. This also guarantees that a recovery after coordinated rollback does not pair a new AI service with an older backend API. Unknown executable or configuration paths take the conservative complete-service route. Root documentation and repository metadata run only change detection and do not publish application images.
+Application releases deploy all three services from the same tested commit. A failed release can roll back the entire application, so the next push diff cannot prove that an unchanged service already contains earlier fixes. Publishing the complete application costs additional build time but prevents recovery from leaving a stale frontend or backend. Unknown executable or configuration paths take the conservative complete-service route. Root documentation and repository metadata run only change detection and do not publish application images.
 
 ## AWS Provisioning
 
@@ -140,7 +140,7 @@ Create a `demo` environment and restrict it to `main`. Required environment revi
 
 Add `SMOKE_BACKEND_API_KEY` as a `demo` environment secret. Its value must match the automation key in Secrets Manager. It is restricted by the backend to configured synthetic user-ID prefixes outside local development. Do not place the OIDC cookie secret, `AI_SERVICE_API_KEY`, application AWS credentials, or runtime model credentials in GitHub.
 
-Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful push CI, but it does not prevent a direct push to `main`. Enable GitHub secret scanning, push protection, and GitHub Code Security when supported by the repository plan. Until GitHub Code Security is enabled, Bandit provides the in-workflow Python SAST gate and uploads its JSON evidence as a 30-day workflow artifact.
+Protect `main` with required pull-request review and CI checks when the repository plan supports private-repository branch protection. The current plan returns an upgrade requirement, so `protect_main.ps1` reports a warning instead of failing setup. The release workflow still blocks deployment without successful push CI, but it does not prevent a direct push to `main`. Enable GitHub secret scanning, push protection, and GitHub Code Security when supported by the repository plan. Until GitHub Code Security is enabled, Bandit provides the in-workflow Python SAST gate and uploads its JSON evidence as a 30-day workflow artifact. The dependency gate uses pinned `pip-audit` 2.10.1 because native Dependency Review is unavailable on this private repository's plan. Every CI run resolves each service's declared runtime and development dependencies in its own clean environment, then freezes every installed public dependency, including transitive dependencies, to an exact version and audits that complete list without re-resolving it. Any known vulnerability or dependency-collection error fails the job; there is no ignored-advisory list. Only the first-party editable project is excluded from package-advisory lookup; its dependencies remain scanned and its code is covered by SAST/tests. JSON reports for all three services are retained for 30 days. This checks Python dependencies, not operating-system packages or GitHub Actions; container findings remain subject to ECR/Inspector gates. Resolution follows the existing package constraints, so the reports identify the versions actually checked. See [pip-audit's documented scope](https://github.com/pypa/pip-audit).
 
 ## Release Gates
 
@@ -163,7 +163,7 @@ The versioned policy also records metric baselines and maximum permitted regress
 
 ## Operational Notes
 
-The workflow uses commit SHAs as image tags and never deploys `latest`. It downloads task definitions and changes images only for selected services. Before an AI update, it verifies the rendered deployment still selects Bedrock generation, prompt set v4, both Bedrock RAG providers, non-empty Education and Policy Knowledge Base IDs, and both corpus pins. Every backend deployment runs Alembic before updating the service. Post-deployment smoke first proves an unauthenticated coach request is rejected, then uses the scoped automation identity to verify direct and conditional Education citations, Policy evidence, tool-dependency traces, and persisted provenance. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
+The workflow uses commit SHAs as image tags and never deploys `latest`. For an application release, it downloads task definitions and updates all three images to the tested commit. Before an AI update, it verifies the rendered deployment still selects Bedrock generation, prompt set v6, both Bedrock RAG providers, non-empty Education and Policy Knowledge Base IDs, and both corpus pins. Every backend deployment runs Alembic before updating the service. Post-deployment smoke first proves an unauthenticated coach request is rejected, then uses the scoped automation identity to verify direct and conditional Education citations, Policy evidence, tool-dependency traces, and persisted provenance. Each successful ECS update is marked independently; if a later smoke test fails, rollback restores only those marked services. AWS credentials are short-lived OIDC sessions. Database migrations use expand-and-contract compatibility because service rollback does not reverse a successful schema migration.
 
 The ECR gate supports basic scan-on-push and Inspector enhanced continuous scanning. An exception must match the exact CVE, source package, package version, and repository; include a dated reviewer, rationale, and authoritative source; and expire no more than 30 days after review. Expired exceptions are ignored and therefore restore the normal zero-critical/zero-high block automatically. The current review evidence is in `docs/container-security.md`.
 

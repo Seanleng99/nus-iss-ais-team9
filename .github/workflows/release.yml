@@ -65,7 +65,6 @@ jobs:
               exit 1
             fi
             printf -v "$output" '%s' "$value"
-            echo "$output=$value" >> "$GITHUB_OUTPUT"
           done
           deploy=$(jq -r '.deploy' "$manifest")
           if [[ "$deploy" != "true" && "$deploy" != "false" ]]; then
@@ -88,6 +87,19 @@ jobs:
             echo "Deploy flag does not match selected services." >&2
             exit 1
           fi
+          # A previous release may have rolled back every service. A push diff
+          # cannot prove that unchanged services already contain earlier fixes.
+          # Publish a coherent release from the tested SHA so recovery cannot
+          # leave an unchanged frontend or backend on a vulnerable old image.
+          if [[ "$deploy" == "true" ]]; then
+            frontend=true
+            backend=true
+            ai=true
+            migrations=true
+          fi
+          for output in frontend backend ai migrations; do
+            echo "$output=${!output}" >> "$GITHUB_OUTPUT"
+          done
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "Release selection for $RELEASE_SHA: $(jq -c . "$manifest")"
 
@@ -360,7 +372,7 @@ jobs:
           environment-variables: |
             APP_ENV=demo
             MODEL_PROVIDER=bedrock
-            PROMPT_SET_VERSION=v4
+            PROMPT_SET_VERSION=v6
             RAG_PROVIDER=bedrock
             POLICY_RAG_PROVIDER=bedrock
       - name: Verify AI runtime configuration has not drifted
@@ -373,7 +385,7 @@ jobs:
           --container "$AI_CONTAINER_NAME"
           --expect APP_ENV=demo
           --expect MODEL_PROVIDER=bedrock
-          --expect PROMPT_SET_VERSION=v4
+          --expect PROMPT_SET_VERSION=v6
           --expect RAG_PROVIDER=bedrock
           --expect POLICY_RAG_PROVIDER=bedrock
           --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID

@@ -2,6 +2,8 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from app.agents.education_access import education_gap_message, education_response_language
+from app.core.citations import citation_contract, validate_citations
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -16,7 +18,9 @@ from app.core.schemas import (
     DependencyRequestDraft,
     NeedsDependencyInvocation,
     NeedsInputInvocation,
+    SourceCitation,
 )
+from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGateway, ModelGatewayError
 from app.models.structured import generate_structured_response
 
@@ -24,6 +28,7 @@ from app.models.structured import generate_structured_response
 class BaseAgent(ABC):
     name: AgentName
     prompt_id: str
+    narrative_type: type[AgentNarrative] = AgentNarrative
 
     def __init__(
         self,
@@ -39,10 +44,15 @@ class BaseAgent(ABC):
 
     dependency_planning_enabled = False
 
+    @trace_method
     def run_task(
         self, task: AgentTask
     ) -> CompletedInvocation | NeedsDependencyInvocation | NeedsInputInvocation:
         decision = inspect_prompt(task.sanitized_message)
+        log_event(
+            "agent.guardrail.evaluated", agent=self.name.value,
+            allowed=decision.allowed, finding_count=len(decision.findings),
+        )
         if not decision.allowed:
             return CompletedInvocation(
                 result=AgentResult(
@@ -60,23 +70,106 @@ class BaseAgent(ABC):
             return preflight
 
         grounding = self._ground(task, decision.sanitized_text)
+        log_event(
+            "agent.grounding.ready", agent=self.name.value,
+            evidence_status=grounding.get("evidence_status"),
+            source_count=len(grounding.get("sources", [])),
+            response_language=grounding.get("response_language"),
+        )
         if grounding.get("evidence_status") == "insufficient":
+            log_event("agent.evidence_gap", agent=self.name.value, reason_code="INSUFFICIENT_EVIDENCE")
             result = self._evidence_gap_result(grounding)
             return CompletedInvocation(
                 result=result,
                 capabilities=self._capabilities(task, grounding, result),
             )
+        model_message = self._model_message(
+            task,
+            decision.sanitized_text,
+            grounding,
+        )
+        system_prompt = self.prompts.get(self.prompt_id)
+        narrative_sources = [
+            SourceCitation.model_validate(source) for source in grounding.get("sources", [])
+        ]
+        system_prompt += citation_contract(narrative_sources)
+        if self.name == AgentName.BUDGET:
+            system_prompt += (
+                "\nDescribe the supplied budget as an illustrative calculation: "
+                "say 'the baseline allocates', not 'you should allocate'. "
+                "The savings field is estimated monthly savings capacity, not "
+                "the user's current savings balance or observed saving behavior. "
+                "Do not infer actual expenses from category limits or claim that "
+                "a single transaction establishes a spending pattern."
+            )
+
+        def validate_narrative(narrative: AgentNarrative) -> AgentNarrative:
+            for text in (narrative.summary, *narrative.rationale):
+                validate_citations(text, narrative_sources)
+            # Contract correction precedes output safety review. Do not attach
+            # generated uncertainties or citation selections to public data yet.
+            return self._validate_narrative(narrative, dict(grounding))
+
+        if self.name == AgentName.INVESTMENT_EDUCATION:
+            system_prompt += (
+                "\nAnswer the requested concept and question_intent directly and briefly. "
+                "Do not expand into adjacent topics. Preserve each source's qualifications, "
+                "account/product scope and conditions; do not generalize a statement about "
+                "one type of fund to all funds. Do not add definitions or examples absent "
+                "from the supplied passages. Keep rationale to one brief assessment sentence "
+                "without additional financial facts."
+            )
+        response_language = grounding.get("response_language") or education_response_language(
+            decision.sanitized_text
+        )
+        if response_language in {"English", "Chinese"}:
+            system_prompt += (
+                "\nRequired output language for THIS request: "
+                + response_language
+                + ". Use this language for every summary, rationale and uncertainty sentence."
+            )
         narrative = generate_structured_response(
             self.gateway,
-            response_type=AgentNarrative,
-            system_prompt=self.prompts.get(self.prompt_id),
+            response_type=self.narrative_type,
+            system_prompt=system_prompt,
             user_prompt=json.dumps(
-                {"message": decision.sanitized_text, "grounding": grounding},
-                ensure_ascii=True,
+                {"message": model_message, "grounding": grounding},
+                ensure_ascii=False,
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            validate_response=validate_narrative,
         )
+        output_decision = inspect_prompt(
+            " ".join(
+                [
+                    narrative.summary,
+                    *narrative.rationale,
+                    *getattr(narrative, "uncertainties", []),
+                ]
+            )
+        )
+        log_event(
+            "agent.output.evaluated", agent=self.name.value,
+            allowed=not bool(output_decision.findings),
+            finding_count=len(output_decision.findings),
+            output_characters=len(narrative.summary),
+        )
+        if output_decision.findings:
+            return CompletedInvocation(
+                result=AgentResult(
+                    agent=self.name,
+                    summary="Agent output was blocked by safety controls.",
+                    rationale=[
+                        "Generated content matched output safety checks."
+                    ],
+                    confidence=1.0,
+                    data=grounding,
+                    blocked=True,
+                    policy_notes=output_decision.findings,
+                )
+            )
+        narrative = self._validate_narrative(narrative, grounding)
         result = AgentResult(
             agent=self.name,
             summary=narrative.summary,
@@ -103,6 +196,7 @@ class BaseAgent(ABC):
         del task
         return ()
 
+    @trace_method
     def _preflight(
         self,
         task: AgentTask,
@@ -202,14 +296,33 @@ class BaseAgent(ABC):
         del task, grounding, result
         return []
 
+    def _validate_narrative(
+        self,
+        narrative: AgentNarrative,
+        grounding: dict,
+    ) -> AgentNarrative:
+        del grounding
+        return narrative
+
+    def _model_message(
+        self,
+        task: AgentTask,
+        sanitized_message: str,
+        grounding: dict,
+    ) -> str:
+        del task, grounding
+        return sanitized_message
+
+    @trace_method
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
         return AgentResult(
             agent=self.name,
-            summary=(
-                "The approved knowledge base does not contain enough information "
-                "to answer this question."
-            ),
-            rationale=["No relevant approved source was retrieved."],
+            summary=education_gap_message(grounding),
+            rationale=[
+                "未检索到相关的经批准资料。"
+                if grounding.get("response_language") == "Chinese"
+                else "No relevant approved source was retrieved."
+            ],
             confidence=1.0,
             data=grounding,
         )

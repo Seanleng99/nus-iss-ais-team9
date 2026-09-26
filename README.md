@@ -29,6 +29,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
 - `docs/policy-rag-governance.md`: separate policy-corpus lifecycle, runtime enforcement, and deployment gates.
 - `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
+- [Investment Agent 调用链日志](docs/investment-call-logging.md): login, method calls, RAG/model execution, response packaging, CloudWatch queries, and explicitly marked synthetic Q&A logs.
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
 - `docs/container-security.md`: exact-version image-scan exceptions, current risk review, and expiry controls.
@@ -94,7 +95,7 @@ streamlit run app.py --server.port 8501
 
 ## CI/CD And LLMSecOps
 
-GitHub Actions detects affected services, runs their Python tests and security gates, and builds only their containers. Backend or AI changes also run the cross-service integration and load smoke tests. Docs-only pushes and pull requests do not start CI. Successful push CI for the current `main` SHA automatically starts `Release to AWS`, which publishes and deploys only changed service images. A separate weekly/manual workflow records privacy-safe live Bedrock/RAG, governed data-lifecycle retention, load, scaling, and CloudWatch evidence. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
+GitHub Actions detects affected services, runs their Python tests and security gates, and builds only their containers. Backend or AI changes also run the cross-service integration and load smoke tests. Docs-only pushes and pull requests do not start CI. Successful push CI for the current `main` SHA automatically starts `Release to AWS`. An application release publishes and deploys all three service images from that SHA, including the backend migration check: after a failed release rolls back, a later push diff alone cannot identify earlier fixes still missing from AWS. A separate weekly/manual workflow records privacy-safe live Bedrock/RAG, governed data-lifecycle retention, load, scaling, and CloudWatch evidence. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
 
 ## Evaluation
 
@@ -106,8 +107,10 @@ python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --outpu
 
 Use only synthetic financial profiles in the current demo. The production-readiness exclusions and AWS go/no-go sequence are documented in `infra/aws/README.md`.
 
-Evaluation policy v6 enforces all 52 cases/pairs conjunctively across routing, dynamic agent/tool
+Evaluation policy v7 enforces all 80 cases/pairs conjunctively across routing, dynamic agent/tool
 dependencies, direct and conditional Education RAG, Policy RAG, deterministic guardrails,
 regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,
 latency, cost, or synthetic-cleanup failure.
+
+Full-document local retrieval and its separate 99% evidence-quality gate are documented in [RAG quality acceptance](docs/rag-quality.md). This score does not establish real-model answer quality.

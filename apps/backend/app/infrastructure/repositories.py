@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, delete, func, or_, select
+from sqlalchemy import Select, delete, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.financial_schemas import (
@@ -16,7 +16,16 @@ from app.core.data_lifecycle import (
     DURABLE_MEMORY_CONSENT_VERSION,
     DURABLE_MEMORY_PURPOSE,
 )
-from app.domain.schemas import FinancialGoal, MoneyAmount, Transaction, UserFinancialSnapshot
+from app.core.telemetry import trace_method
+from app.domain.schemas import (
+    FinancialGoal,
+    MoneyAmount,
+    Transaction,
+    UserFinancialSnapshot,
+    blocked_response_answer,
+    sanitize_blocked_agent_results,
+    sanitize_blocked_audit,
+)
 from app.infrastructure.models import (
     BudgetCategoryRecord,
     ChatMessageRecord,
@@ -35,6 +44,7 @@ FAIRNESS_EVALUATION_PURPOSE = "fairness_evaluation"
 FAIRNESS_CONSENT_VERSION = "1.0"
 
 
+@trace_method
 def _lock_user_lifecycle(session: Session, user_id: str) -> None:
     if session.get_bind().dialect.name != "postgresql":
         return
@@ -45,6 +55,7 @@ def _lock_user_lifecycle(session: Session, user_id: str) -> None:
     )
 
 
+@trace_method
 def _ensure_user(session: Session, user_id: str) -> UserRecord:
     _lock_user_lifecycle(session, user_id)
     user = session.get(UserRecord, user_id)
@@ -56,6 +67,7 @@ def _ensure_user(session: Session, user_id: str) -> UserRecord:
     return user
 
 
+@trace_method
 def _touch_user(session: Session, user_id: str) -> None:
     user = session.get(UserRecord, user_id)
     if user is not None:
@@ -72,6 +84,7 @@ class SQLAlchemyUserRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def get_profile(self, user_id: str) -> FinancialProfileRecord | None:
         return self.session.get(FinancialProfileRecord, user_id)
 
@@ -308,15 +321,46 @@ class SQLAlchemyUserRepository:
                         {
                             "id": str(message.id),
                             "role": message.role,
-                            "content": message.content,
-                            "sources": message.sources,
+                            "content": (
+                                blocked_response_answer(
+                                    response_language=message.orchestration_trace.audit.get(
+                                        "response_language", "English"
+                                    )
+                                )
+                                if message.role == "assistant"
+                                and message.orchestration_trace is not None
+                                and message.orchestration_trace.blocked
+                                else message.content
+                            ),
+                            "sources": (
+                                []
+                                if message.role == "assistant"
+                                and message.orchestration_trace is not None
+                                and message.orchestration_trace.blocked
+                                else message.sources
+                            ),
                             "created_at": message.created_at.isoformat(),
                             "orchestration_trace": (
                                 {
                                     "trace_id": message.orchestration_trace.trace_id,
                                     "selected_agents": message.orchestration_trace.selected_agents,
-                                    "agent_results": message.orchestration_trace.agent_results,
-                                    "audit": message.orchestration_trace.audit,
+                                    "agent_results": (
+                                        sanitize_blocked_agent_results(
+                                            message.orchestration_trace.agent_results,
+                                            response_language=message.orchestration_trace.audit.get(
+                                                "response_language", "English"
+                                            ),
+                                        )
+                                        if message.orchestration_trace.blocked
+                                        else message.orchestration_trace.agent_results
+                                    ),
+                                    "audit": (
+                                        sanitize_blocked_audit(
+                                            message.orchestration_trace.audit
+                                        )
+                                        if message.orchestration_trace.blocked
+                                        else message.orchestration_trace.audit
+                                    ),
                                     "blocked": message.orchestration_trace.blocked,
                                     "model_provider": message.orchestration_trace.model_provider,
                                     "model_id": message.orchestration_trace.model_id,
@@ -414,6 +458,7 @@ class SQLAlchemyUserRepository:
         self.session.flush()
         return True
 
+    @trace_method
     def get_financial_snapshot(self, user_id: str) -> UserFinancialSnapshot | None:
         if self.session.get(UserRecord, user_id) is None:
             return None
@@ -544,6 +589,7 @@ class SQLAlchemyTransactionRepository:
         self.session = session
 
     @staticmethod
+    @trace_method
     def _query(
         user_id: str, period_start: date | None = None
     ) -> Select[tuple[TransactionRecord]]:
@@ -559,11 +605,13 @@ class SQLAlchemyTransactionRepository:
             )
         return query
 
+    @trace_method
     def list_records(
         self, user_id: str, *, period_start: date | None = None, limit: int = 500
     ) -> list[TransactionRecord]:
         return list(self.session.scalars(self._query(user_id, period_start).limit(limit)))
 
+    @trace_method
     def list_for_user(self, user_id: str) -> list[Transaction]:
         return [
             Transaction(
@@ -631,6 +679,7 @@ class SQLAlchemyGoalRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def list_records(self, user_id: str) -> list[FinancialGoalRecord]:
         query = (
             select(FinancialGoalRecord)
@@ -639,6 +688,7 @@ class SQLAlchemyGoalRepository:
         )
         return list(self.session.scalars(query))
 
+    @trace_method
     def list_for_user(self, user_id: str) -> list[FinancialGoal]:
         return [
             FinancialGoal(
@@ -776,12 +826,24 @@ class SQLAlchemyBudgetRepository:
             TransactionRecord.occurred_on < next_month(period_start),
         )
         return int(self.session.scalar(query) or 0)
+    
+    def get_transactions_in_range(
+        self, user_id: str, start_date: date, end_date: date
+    ) -> list[TransactionRecord]:
+        """Get all transactions for a user in a date range."""
+        query = select(TransactionRecord).where(
+            TransactionRecord.user_id == user_id,
+            TransactionRecord.occurred_on >= start_date,
+            TransactionRecord.occurred_on <= end_date,
+        ).order_by(TransactionRecord.occurred_on)
+        return list(self.session.scalars(query))
 
 
 class SQLAlchemyChatRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def list_for_user(self, user_id: str) -> list[ChatSessionRecord]:
         query = (
             select(ChatSessionRecord)
@@ -791,6 +853,7 @@ class SQLAlchemyChatRepository:
         )
         return list(self.session.scalars(query))
 
+    @trace_method
     def get(self, user_id: str, session_id: str) -> ChatSessionRecord | None:
         query = (
             select(ChatSessionRecord)
@@ -806,6 +869,7 @@ class SQLAlchemyChatRepository:
         )
         return self.session.scalar(query)
 
+    @trace_method
     def get_for_update(
         self, user_id: str, session_id: str
     ) -> ChatSessionRecord | None:
@@ -820,9 +884,11 @@ class SQLAlchemyChatRepository:
         )
         return self.session.scalar(query)
 
+    @trace_method
     def id_exists(self, session_id: str) -> bool:
         return self.session.get(ChatSessionRecord, session_id) is not None
 
+    @trace_method
     def create(self, user_id: str, session_id: str, title: str) -> ChatSessionRecord:
         _ensure_user(self.session, user_id)
         record = ChatSessionRecord(id=session_id, user_id=user_id, title=title)
@@ -851,6 +917,7 @@ class SQLAlchemyChatRepository:
         SQLAlchemyUserRepository(self.session).delete_if_empty(user_id)
         return True
 
+    @trace_method
     def append_message(
         self,
         chat_session: ChatSessionRecord,
@@ -876,6 +943,7 @@ class SQLAlchemyOrchestrationTraceRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @trace_method
     def create(
         self,
         *,
@@ -925,17 +993,45 @@ class SQLAlchemyOrchestrationTraceRepository:
         record = self.get_for_user(user_id, trace_id)
         if record is None:
             return False
+        self._sanitize_blocked_assistant_message(record)
         self.session.delete(record)
         self.session.flush()
         return True
 
     def delete_expired(self, cutoff: datetime) -> int:
-        result = self.session.execute(
-            delete(OrchestrationTraceRecord).where(
-                OrchestrationTraceRecord.created_at < cutoff
+        expired = OrchestrationTraceRecord.created_at < cutoff
+        language = OrchestrationTraceRecord.audit["response_language"].as_string()
+        for response_language, language_filter in (
+            ("Chinese", language == "Chinese"),
+            ("English", or_(language.is_(None), language != "Chinese")),
+        ):
+            blocked_message_ids = select(
+                OrchestrationTraceRecord.assistant_message_id
+            ).where(expired, OrchestrationTraceRecord.blocked.is_(True), language_filter)
+            self.session.execute(
+                update(ChatMessageRecord)
+                .where(
+                    ChatMessageRecord.id.in_(blocked_message_ids),
+                    ChatMessageRecord.role == "assistant",
+                )
+                .values(
+                    content=blocked_response_answer(response_language=response_language),
+                    sources=[],
+                )
+                .execution_options(synchronize_session="fetch")
             )
-        )
+        result = self.session.execute(delete(OrchestrationTraceRecord).where(expired))
         return int(getattr(result, "rowcount", 0) or 0)
+
+    def _sanitize_blocked_assistant_message(
+        self, record: OrchestrationTraceRecord
+    ) -> None:
+        message = record.assistant_message
+        if record.blocked and message is not None and message.role == "assistant":
+            message.content = blocked_response_answer(
+                response_language=record.audit.get("response_language", "English")
+            )
+            message.sources = []
 
 
 class SQLAlchemyDataLifecycleRepository:

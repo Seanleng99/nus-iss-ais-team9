@@ -59,6 +59,36 @@
       "expires_on": "2026-09-30",
       "reason": "The services do not invoke scanf %mc with attacker-controlled width values. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-5450"
+    },
+    {
+      "id": "CVE-2026-85091",
+      "package_name": "zlib",
+      "package_version": "1.3.dfsg+really1.3.1-1",
+      "repositories": [
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
+      ],
+      "reviewed_on": "2026-09-06",
+      "reviewed_by": "NUS ISS AIS Team 9",
+      "expires_on": "2026-09-30",
+      "reason": "The services do not call gzprintf or gzvprintf and do not use non-blocking gzwrite with externally managed buffers. Debian lists the exact Trixie package as vulnerable with no fixed version available.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-85091"
+    },
+    {
+      "id": "CVE-2026-86145",
+      "package_name": "pcre2",
+      "package_version": "10.46-1~deb13u1",
+      "repositories": [
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
+      ],
+      "reviewed_on": "2026-09-06",
+      "reviewed_by": "NUS ISS AIS Team 9",
+      "expires_on": "2026-09-30",
+      "reason": "The services do not accept attacker-controlled PCRE2 patterns or call pcre2_dfa_match. Upstream confirms that applications using only trusted patterns or other match APIs are not exposed; Debian Trixie has not yet packaged the fixed PCRE2 10.48 release.",
+      "source": "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-3r4p-g7gg-ppmf"
     }
   ]
 }

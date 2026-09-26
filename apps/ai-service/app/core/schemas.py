@@ -69,9 +69,11 @@ class UserFinancialSnapshot(BaseModel):
     monthly_income: MoneyAmount | None = None
     recurring_expenses: list[Transaction] = Field(default_factory=list)
     recent_transactions: list[Transaction] = Field(default_factory=list)
+    historical_transactions: list[Transaction] = Field(default_factory=list)
     goals: list[FinancialGoal] = Field(default_factory=list)
     risk_tolerance: str | None = None
     preferences: dict[str, Any] = Field(default_factory=dict)
+    period_start: str | None = None
 
 
 class CoachRequest(BaseModel):
@@ -286,6 +288,11 @@ class AgentNarrative(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class GroundedEducationNarrative(AgentNarrative):
+    source_ids: list[str] = Field(min_length=1, max_length=3)
+    uncertainties: list[str] = Field(default_factory=list, max_length=4)
+
+
 class SynthesisDecision(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)
 
@@ -296,6 +303,68 @@ class ComplianceDecision(BaseModel):
     rationale: list[str] = Field(min_length=1, max_length=8)
     policy_notes: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+# Spending Analysis Models
+
+
+class Trend(BaseModel):
+    """Category trend detection result."""
+    category: str
+    current_amount: float
+    previous_amount: float
+    change_percent: float
+    change_absolute: float
+    significance: Literal["low", "moderate", "high"]
+    direction: Literal["increased", "decreased", "stable"]
+
+
+class TemporalPattern(BaseModel):
+    """Temporal spending pattern."""
+    pattern_type: Literal["weekday_weekend", "day_of_week", "monthly_cycle"]
+    description: str
+    metric: str
+    value: float
+    baseline: float
+    variance_percent: float
+    confidence: float
+
+
+class Anomaly(BaseModel):
+    """Detected spending anomaly."""
+    transaction_id: str | None
+    category: str
+    amount: float
+    expected_amount: float
+    deviation_percent: float
+    z_score: float | None
+    detection_method: Literal["z_score", "iqr", "rule_based"]
+    occurred_on: str
+    severity: Literal["low", "medium", "high"]
+
+
+class SpendingInsight(BaseModel):
+    """Final spending insight presented to user."""
+    insight_id: str
+    insight_type: Literal["trend", "pattern", "anomaly", "opportunity"]
+    title: str
+    description: str
+    category: str | None
+    confidence: float = Field(ge=0.0, le=1.0)
+    data_refs: list[str]
+    suggested_action: str | None
+    severity: str | None
+
+
+class SpendingAnalysisResult(BaseModel):
+    """Complete spending analysis result."""
+    summary: str
+    insights: list[SpendingInsight]
+    category_trends: list[Trend]
+    temporal_patterns: list[TemporalPattern]
+    anomalies: list[Anomaly]
+    data_quality: Literal["insufficient", "limited", "good", "excellent"]
+    months_analyzed: int
 
 
 class CoachResponse(BaseModel):
