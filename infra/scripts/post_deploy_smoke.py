@@ -151,7 +151,9 @@ def check_model_backed_coaching(
     assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
 
 
-def retrieval_provenance(sources: list[dict], label: str) -> dict[str, tuple[str, ...]]:
+def retrieval_provenance(
+    sources: list[dict], label: str, *, allow_repeated_source: bool = False
+) -> dict[str, tuple[str, ...]]:
     fields = ("document_version", "checksum", "corpus_version", "review_due_at")
     indexed = {}
     for source in sources:
@@ -160,8 +162,12 @@ def retrieval_provenance(sources: list[dict], label: str) -> dict[str, tuple[str
             for field in ("source_id", *fields)
         ), f"{label} contained incomplete source provenance"
         source_id = source["source_id"]
-        assert source_id not in indexed, f"{label} contained duplicate source provenance"
-        indexed[source_id] = tuple(source[field] for field in fields)
+        provenance = tuple(source[field] for field in fields)
+        if source_id in indexed:
+            assert allow_repeated_source and indexed[source_id] == provenance, (
+                f"{label} contained duplicate or conflicting source provenance"
+            )
+        indexed[source_id] = provenance
     return indexed
 
 
@@ -242,7 +248,9 @@ def check_investment_education_rag(
     # The public bibliography can cite a subset. Audit evidence must retain ALL
     # retrieved sources, including sources that did not appear in the answer.
     retrieved = retrieval_provenance(
-        investment.get("data", {}).get("sources", []), "retrieved education evidence"
+        investment.get("data", {}).get("sources", []),
+        "retrieved education evidence",
+        allow_repeated_source=True,
     )
     assert retrieved, "investment education result omitted retrieved sources"
     cited = retrieval_provenance(sources, "education citations")

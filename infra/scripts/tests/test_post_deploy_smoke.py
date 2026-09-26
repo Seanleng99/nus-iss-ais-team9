@@ -58,6 +58,25 @@ def test_education_trace_retains_retrieved_sources_beyond_final_citations(
     run_education_smoke(monkeypatch, education_response)
 
 
+def test_education_smoke_accepts_multiple_chunks_from_one_approved_source(
+    monkeypatch, education_response,
+):
+    retrieved = education_response["agent_results"][0]["data"]["sources"]
+    retrieved.append(copy.deepcopy(retrieved[0]))
+    run_education_smoke(monkeypatch, education_response)
+
+
+def test_education_smoke_rejects_conflicting_chunks_from_one_source(
+    monkeypatch, education_response,
+):
+    retrieved = education_response["agent_results"][0]["data"]["sources"]
+    duplicate = copy.deepcopy(retrieved[0])
+    duplicate["checksum"] = "sha256:" + "b" * 64
+    retrieved.append(duplicate)
+    with pytest.raises(AssertionError, match="conflicting source provenance"):
+        run_education_smoke(monkeypatch, education_response)
+
+
 @pytest.mark.parametrize("damage", ["missing_uncited", "wrong_id", "wrong_checksum", "duplicate", "missing_version"])
 def test_education_smoke_rejects_incomplete_or_changed_retrieval_provenance(
     monkeypatch, education_response, damage,
