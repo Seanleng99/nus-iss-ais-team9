@@ -6,9 +6,11 @@ Deployment Region: `ap-southeast-1`. Domain: `ai-financial-wellness-coach.click`
 The production cutover completed September 26, 2026 (Singapore time). The four
 users have since been imported to the new account's Cognito pool with required
 password resets, after the owner changed the earlier decision to keep old sign-in.
-Keep the old account and pool until all four users confirm their new sign-in and
-financial records. Keep the old DNS hosted zone for at least 48 hours after
-registrar delegation changed. Deployment scripts default to the destination account; pass
+One user confirmed their prior records. The owner explicitly waived retaining
+the old Cognito pool, old backups, historical ECR images, and CloudWatch logs
+while the other three complete password resets. Keep the old DNS hosted zone
+until at least September 28, 2026, 02:20:49 SGT, 48 hours after registrar
+delegation changed. Deployment scripts default to the destination account; pass
 `-AccountId 902552928492` explicitly for a source-account diagnostic script.
 
 ## Production cutover status
@@ -29,18 +31,19 @@ registrar delegation changed. Deployment scripts default to the destination acco
   import job `import-qzxgvzQyoR` succeeded with zero failures or skips. One
   user reset their password, signed in, and confirmed their prior financial
   data is visible; Cognito shows one `CONFIRMED` and three `RESET_REQUIRED`.
-  The other three users still need to reset passwords and verify records. The
+  The other three users still need to reset passwords and verify records; this
+  does not block source pool deletion under the owner's revised direction. The
   temporary Cognito import IAM role was removed after the successful import.
-- All three old ECS services are stopped at 0/0; AI and backend autoscaling are
-  suspended. Stopping the backend froze application writes before the final
-  snapshot. The old RDS instance was stopped after its final snapshot and the
-  matching destination restore were verified; RDS may restart it automatically
-  after seven days, so delete it only after user validation and backup review.
-  New AI, backend, and frontend ECS services are healthy at 1/1 each.
-- The final old manual snapshot is `ai-financial-wellness-coach-final-20260926`.
-  Its source-CMK shareable copy is
-  `ai-financial-wellness-coach-final-shareable-20260926`, and the destination
-  private copy is `ai-financial-wellness-coach-final-copy-20260926`.
+- The old application and GitHub OIDC CloudFormation stacks were deleted. All
+  three old ECS services are gone; the old RDS instance is stopped. Stopping the
+  backend froze application writes before the final snapshot. New AI, backend,
+  and frontend ECS services are healthy at 1/1 each. The old foundation stack
+  remains for the DNS cache transition and still owns the old RDS instance,
+  Cognito client, ECR repositories, CloudFront distribution, and DNS records.
+- All old manual RDS snapshots, including
+  `ai-financial-wellness-coach-final-20260926` and its shareable copy, were
+  deleted after the destination private final copy
+  `ai-financial-wellness-coach-final-copy-20260926` became available.
   Destination DB `ai-financial-wellness-coach-final` is restored, and the
   application stack points to it. Its RDS-managed secret is scoped exactly in
   the ECS execution role. The final restore matches the frozen source by row
@@ -50,10 +53,18 @@ registrar delegation changed. Deployment scripts default to the destination acco
 - GitHub Actions deploy and frontend URL variables point to account
   `862124275471` and the production apex. The two destination knowledge bases
   ingested their source data and passed retrieval checks.
-- Do not delete the old foundation stack or hosted zone for at least 48 hours
-  after the registrar name-server change. Old recursive DNS caches may still
-  follow the source zone. Keep the old Cognito pool and app client until all
-  four reset-imported users confirm sign-in and access to their prior records.
+- Old Bedrock knowledge bases, S3 vector buckets/indexes, and source corpus
+  bucket were deleted after the destination corpus and retrieval checks passed.
+  The migration-only source KMS key is scheduled for deletion October 3, 2026,
+  09:07:54 SGT; its cross-account policy grants were revoked. A temporary log
+  archive in the destination account was removed under the owner's revised
+  retention preference; the old log groups remain until foundation deletion.
+- Do not delete the old foundation stack or hosted zone before September 28,
+  2026, 02:20:49 SGT. Old recursive DNS caches may still follow the source zone.
+  After that time, delete the foundation stack and old hosted zone, then manually
+  delete the retained old Cognito pool and any RDS snapshot created by stack
+  deletion. The owner chose not to keep historical source ECR images. Check for
+  remaining source-account resources and charges.
 
 ## Verified source inventory (September 25, 2026)
 
@@ -88,7 +99,7 @@ registrar delegation changed. Deployment scripts default to the destination acco
   migration would require a temporary password-authentication client for the
   old pool and a migration trigger for the new pool. The owner declined that
   approach and later approved a password-reset import. The old pool and app
-  client remain untouched while the four users validate their new sign-ins.
+  client were not modified to enable password migration.
 - Two Bedrock knowledge bases are available: Education `X2BXBRYX2X` and
   Policy `MLOCSOIFML`. Both use Cohere Embed Multilingual v3, S3 source data,
   and separate S3 Vector buckets and indexes. The source S3 bucket has 18 current
@@ -112,11 +123,10 @@ registrar delegation changed. Deployment scripts default to the destination acco
 An additional scan of all 17 enabled Regions found CloudFormation stacks, RDS,
 ECS, ECR, and CloudWatch log groups only in `ap-southeast-1`; no EC2 instances
 or Lambda functions were found in those Regions. The global and project-specific
-resources listed above also remain. This scan does not cover every AWS service,
-untagged resource, billing item, or retained CloudFormation resource, so do not
-claim the source account is empty. The old four CloudWatch log groups retain
-data for 1 or 30 days; preserve operational history before their normal expiry
-if it is needed beyond those limits.
+resources listed above have since been partially removed. This scan does not
+cover every AWS service, untagged resource, billing item, or retained
+CloudFormation resource, so do not claim the source account is empty. The owner
+does not require retention of the old CloudWatch logs.
 
 ## Deployment details
 
@@ -168,7 +178,8 @@ if it is needed beyond those limits.
    and hashes cannot be exported from Cognito. The new pool requires each user
    to reset a password. The backend validates new-pool ID tokens, then maps
    the immutable legacy subject to existing database ownership. Test all four
-   users' sign-in and records before deleting the old pool.
+   users' sign-in and records. One user has completed this check; the owner
+   authorized removal of the old pool without waiting for the other three.
 4. Completed: copy and verify both governed S3 corpora, including metadata sidecars and any
    object versions that must be retained. Recreate Bedrock knowledge bases and
    S3 vector indexes with equivalent configuration, ingest, then run the
@@ -178,13 +189,15 @@ if it is needed beyond those limits.
    RAG provenance, alarms, smoke tests, and HTTPS edge restrictions.
 6. Completed: disable the old CloudFront distribution, move its apex alias to
    the destination distribution, point both hosted zones at the new distribution,
-   and update registrar name servers to the destination zone. Verify all four
-   users and application data before removing other source resources.
-   Keep the old zone for at least 48 hours after delegation.
-7. After validation, remove source resources and remaining retained resources
-   deliberately. CloudFormation retains the old Cognito pool and snapshots the
-   old RDS instance; stack deletion alone does not clear the account. Verify
-   billing and account-wide resources before closing the source account.
+   and update registrar name servers to the destination zone. One user verified
+   prior records. Keep the old zone until September 28, 2026, 02:20:49 SGT.
+7. Completed before the DNS transition deadline: delete old application and
+   GitHub OIDC stacks, manual RDS snapshots, Bedrock knowledge bases, vector
+   stores, and source corpus bucket; schedule the migration KMS key for
+   deletion. After the deadline, delete the source foundation stack and hosted
+   zone. CloudFormation retains the old Cognito pool and snapshots the old RDS
+   instance; remove those deliberately. Verify billing and account-wide
+   resources before closing the source account.
 
 ## AWS references
 
