@@ -75,6 +75,14 @@ BLOCKED_AGENT_SUMMARY = "Response withheld by safety controls."
 BLOCKED_AGENT_RATIONALE = "The safety review blocked this response."
 BLOCKED_ROUTING_RATIONALE = "Response withheld by safety controls."
 BLOCKED_RESPONSE_ANSWER_ZH = "为保障您的安全，此回复因无法通过安全验证而被隐藏。"
+BROKERAGE_RESPONSE_ANSWER = (
+    "I can't log in to your brokerage account, handle your login details, or buy investments for you. "
+    "I can explain how ETFs work, their fees and risks, and factors to consider when comparing them."
+)
+BROKERAGE_RESPONSE_ANSWER_ZH = (
+    "我不能登录你的券商账户、接收登录凭证或代你买入投资产品。"
+    "我可以解释 ETF 的运作方式、费用、风险，以及比较 ETF 时可以了解的因素。"
+)
 BLOCKED_AGENT_SUMMARY_ZH = "此回复已被安全措施拦截。"
 BLOCKED_AGENT_RATIONALE_ZH = "安全审查已拦截此回复。"
 BLOCKED_ROUTING_RATIONALE_ZH = "此回复已被安全措施拦截。"
@@ -110,7 +118,16 @@ def normalize_response_language(value: Any) -> Literal["English", "Chinese"]:
     return "Chinese" if value == "Chinese" else "English"
 
 
-def blocked_response_answer(*, response_language: str = "English") -> str:
+def blocked_response_answer(
+    *, response_language: str = "English", answer: str | None = None
+) -> str:
+    # Only exact, reviewed templates may survive a blocked response. Never pass through model text.
+    if answer in (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH):
+        return (
+            BROKERAGE_RESPONSE_ANSWER_ZH
+            if response_language == "Chinese"
+            else BROKERAGE_RESPONSE_ANSWER
+        )
     return (
         BLOCKED_RESPONSE_ANSWER_ZH
         if response_language == "Chinese"
@@ -225,7 +242,9 @@ class CoachResponse(BaseModel):
         if self.blocked:
             self.audit = sanitize_blocked_audit(self.audit)
             response_language = self.audit["response_language"]
-            self.answer = blocked_response_answer(response_language=response_language)
+            self.answer = blocked_response_answer(
+                response_language=response_language, answer=self.answer
+            )
             self.sources = []
             self.agent_results = [
                 AgentResult.model_validate(item)

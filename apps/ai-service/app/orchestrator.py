@@ -1307,12 +1307,12 @@ class AgentOrchestrator:
             request_findings = financial_advice_findings(state["sanitized_message"], is_request=True)
             if "regulated_advice:brokerage_execution" in request_findings:
                 answer = (
-                    "我不能登录券商账户、接收登录凭证或代为下单。"
-                    "可以提供 ETF 的结构、交易流程、费用和风险等一般教育信息；账户操作由你自行决定。"
+                    "我不能登录你的券商账户、接收登录凭证或代你买入投资产品。"
+                    "我可以解释 ETF 的运作方式、费用、风险，以及比较 ETF 时可以了解的因素。"
                     if response_language == "Chinese"
-                    else "I cannot log in to brokerage accounts, accept credentials or place trades. "
-                    "I can explain ETF structures, trading processes, fees and risks in general "
-                    "educational terms. You remain in control of any account action."
+                    else "I can't log in to your brokerage account, handle your login details, "
+                    "or buy investments for you. I can explain how ETFs work, their fees and risks, "
+                    "and factors to consider when comparing them."
                 )
             elif "regulated_advice:guaranteed return" in request_findings:
                 answer = (

@@ -393,7 +393,7 @@ class ChatMessageResponse(BaseModel):
     def sanitize_blocked_assistant_message(self) -> "ChatMessageResponse":
         if self.role == "assistant" and self.explanation and self.explanation.blocked:
             self.content = blocked_response_answer(
-                response_language=self.explanation.response_language
+                response_language=self.explanation.response_language, answer=self.content
             )
             self.sources = []
         return self
