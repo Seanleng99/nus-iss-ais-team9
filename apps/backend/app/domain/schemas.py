@@ -254,6 +254,10 @@ class SourceCitation(BaseModel):
     checksum: str | None = None
     corpus_version: str | None = None
     review_due_at: str | None = None
+    document_filename: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.md$"
+    )
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
 
 class CoachResponse(BaseModel):

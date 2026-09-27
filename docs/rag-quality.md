@@ -8,8 +8,10 @@ locally. Earlier managed-retrieval measurements below are historical evidence.
 
 ## Full local documents
 
-`knowledge/investment_education/documents/` contains six complete approved documents:
-48,885 bytes and about 7,695 words including metadata. The deployed `local_documents`
+`knowledge/investment_education/documents/` contains six saved source documents
+and four project-written educational summaries based on linked MoneySense pages.
+The manifest records `content_kind` so a summary is not presented as publisher text.
+The deployed `local_documents`
 provider verifies the manifest, freshness, exact checksums, trusted locations,
 metadata, content safety, and symlink containment before indexing. It rechecks review
 deadlines on retrieval. Restart after approved corpus updates: the index is a startup
@@ -26,13 +28,31 @@ Set these environment variables before starting the local AI service:
 ```text
 APP_ENV=local
 RAG_PROVIDER=local_documents
-EDUCATION_CORPUS_VERSION=investment-education-sg@2026-09-26.1
+EDUCATION_CORPUS_VERSION=investment-education-sg@2026-09-27.1
 ```
 
 `RAG_MANIFEST_PATH` and `RAG_DOCUMENTS_PATH` support governed files outside a checkout.
 The configured corpus version must match the manifest. Generation is separately
 controlled by `MODEL_PROVIDER`; fixture answers are not quality evidence. Deployment
-environments still require real Bedrock generation and both Bedrock retrievers.
+environments require real OpenAI generation and both local document retrievers.
+
+## Answer provenance
+
+Answers distinguish **RAG knowledge base** from **AI model knowledge**, and explicitly
+state that neither is a live web search. Each RAG citation retains its readable linked
+title and shows the local document filename. `Project-written summary` identifies the
+four authored paraphrases; `Saved source document` identifies the six captured documents.
+The original-source URL is attribution, not evidence that the application fetched the
+page while answering. Model-only sections carry no RAG citations and identify their
+content as not verified against the retrieved sources. The prompt instructs the model
+to keep only missing facts or qualifications in that section, without repeating sourced
+definitions. Citation validation checks source identity and formatting; it does not
+prove sentence-level entailment. Independent safety review still evaluates the answer.
+
+The AI and backend APIs preserve `document_filename` and `content_kind` through chat
+history. Legacy records without those fields retain their existing references; the UI
+does not invent provenance for them. Manifest approval is an internal ingestion status,
+not publisher endorsement of an AI answer. The corpus remains for synthetic demos.
 
 ## Passage benchmark
 

@@ -6,6 +6,7 @@ import socket
 from dataclasses import asdict
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.citations import render_citations
 from app.core.config import Settings
@@ -125,6 +126,14 @@ def test_reference_label_uses_escaped_approved_title(approved_sources):
         r"Definition. [Guide \[ETF\] \*basics\* next line]"
         "(https://www.moneysense.gov.sg/guide%28test%29)"
     )
+
+
+@pytest.mark.parametrize("filename", ["../source.md", "x`evil`.md", "x[link].md", "x\n.md"])
+def test_citation_filenames_cannot_inject_paths_or_markup(approved_sources, filename):
+    payload = approved_sources[0].model_dump()
+    payload["document_filename"] = filename
+    with pytest.raises(ValidationError):
+        SourceCitation.model_validate(payload)
 
 
 def invalid_answer(kind, unknown_id="unknown-source-id"):

@@ -274,6 +274,10 @@ class SourceCitation(BaseModel):
     checksum: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     corpus_version: str
     review_due_at: str
+    document_filename: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.md$",
+    )
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
 
 class RouterDecision(BaseModel):

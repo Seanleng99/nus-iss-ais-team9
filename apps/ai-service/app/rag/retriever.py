@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
 from pydantic import ValidationError
@@ -34,6 +34,8 @@ class RetrievedChunk:
     text: str
     score: float
     findings: tuple[str, ...] = ()
+    document_filename: str | None = None
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
 
 class EducationRetriever(Protocol):
@@ -60,6 +62,8 @@ SOURCE_METADATA_FIELDS = (
     "checksum",
     "corpus_version",
     "review_due_at",
+    "document_filename",
+    "content_kind",
 )
 
 
@@ -563,6 +567,8 @@ class BedrockEducationRetriever:
                     review_due_at=governed.review_due_at.isoformat(),
                     text=text,
                     score=score,
+                    document_filename=governed.document_filename,
+                    content_kind=governed.content_kind,
                 )
             )
         # Semantic retrieval finds candidate documents; lexical scoring selects

@@ -194,17 +194,23 @@ class InvestmentEducationAgent(BaseAgent):
             narrative.summary += " " + " ".join(
                 f"[source:{source_id}]" for source_id in dict.fromkeys(narrative.source_ids)
             )
+        chinese = grounding.get("response_language") == "Chinese"
+        sourced_summary = narrative.summary
+        if sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
+            sourced_summary = (
+                "RAG 知识库（已保存资料；未进行实时网页搜索）：\n\n" if chinese else
+                "RAG knowledge base (saved documents; no live web search):\n\n"
+            ) + sourced_summary
         if not isinstance(narrative, HybridEducationNarrative) or not narrative.general_knowledge:
             # The explicit limitation/clarifying question belongs in the answer,
             # including when a supported portion precedes it.
             if getattr(narrative, "uncertainties", []):
                 grounding["uncertainties_visible"] = True
-                return "\n\n".join(part for part in [narrative.summary, *narrative.uncertainties] if part)
-            return narrative.summary or education_gap_message(grounding)
-        chinese = grounding.get("response_language") == "Chinese"
+                return "\n\n".join(part for part in [sourced_summary, *narrative.uncertainties] if part)
+            return sourced_summary or education_gap_message(grounding)
         parts = []
         if narrative.summary.strip():
-            parts.append(("知识库资料：\n" if chinese else "From approved sources:\n") + narrative.summary)
+            parts.append(sourced_summary)
         sections = []
         for section in narrative.general_knowledge:
             text = section.text
@@ -217,8 +223,8 @@ class InvestmentEducationAgent(BaseAgent):
                 text = f"| {headings} |\n|---|---|\n| {label} | {explanation} |"
             sections.append(text if text.lstrip().startswith("|") else "- " + text)
         parts.append(
-            ("一般知识补充（来自模型知识，未经本次检索资料验证）：\n" if chinese else
-             "General educational background (model knowledge; not verified against retrieved sources):\n")
+            ("AI 模型知识补充（未进行实时网页搜索；未经本次检索资料验证）：\n\n" if chinese else
+             "AI model knowledge — no live web search (not verified against retrieved sources):\n\n")
             + "\n\n".join(sections)
         )
         if narrative.uncertainties:

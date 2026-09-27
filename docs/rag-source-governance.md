@@ -8,13 +8,15 @@ The deployed Education retriever reads the ten approved documents and `source_ma
 
 ## Governed Corpus
 
-The governed Education knowledge base uses the versioned manifest at `knowledge/investment_education/source_manifest.json` as its source of truth. Corpus version `investment-education-sg@2026-09-26.1` contains ten approved documents for the synthetic-data demo: six existing public-reference documents and four project-authored MoneySense paraphrases. It supports Investment Education directly and conditional Budget or Goal Strategy explanations through the orchestrator. Approval does not grant a production-content licence or authorize real personal financial data.
+The governed Education knowledge base uses the versioned manifest at `knowledge/investment_education/source_manifest.json` as its source of truth. Corpus version `investment-education-sg@2026-09-27.1` contains ten approved documents for the synthetic-data demo: six existing public-reference documents and four project-authored MoneySense paraphrases. It supports Investment Education directly and conditional Budget or Goal Strategy explanations through the orchestrator. Approval does not grant a production-content licence or authorize real personal financial data.
 
 Each manifest entry records:
 
 - stable source ID, title, issuing organization, and canonical HTTPS URL;
 - publication and document versions; `published_at` records the source page’s displayed last-updated date when that is the available date, not necessarily its original publication date;
 - exact SHA-256 document checksum and S3 document/metadata keys;
+- `content_kind`: saved source document or project-written summary, carried with the
+  document filename into displayed citations and persisted chat history;
 - source, content, and public-reference rights review states;
 - Singapore jurisdiction and `synthetic_demo_only` usage scope;
 - last verification, next review, and withdrawal dates; and

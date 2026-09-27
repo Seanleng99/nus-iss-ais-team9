@@ -640,7 +640,8 @@ def test_local_fixture_answer_uses_the_most_relevant_retrieved_context() -> None
     context = investment.data["contexts"][0]
     reference = response.sources[0]
     assert response.answer == investment.summary == (
-        context["text"] + f" [{reference.title}]({reference.canonical_url})"
+        "RAG knowledge base (saved documents; no live web search):\n\n"
+        + context["text"] + f" [{reference.title}]({reference.canonical_url})"
         + "\n\nInvestment outcomes vary and losses are possible."
     )
     assert "bonds" in response.answer.lower()
