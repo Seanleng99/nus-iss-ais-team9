@@ -238,7 +238,7 @@ def test_explicit_specialist_selection_cannot_be_overridden_by_router() -> None:
         )
     )
 
-    assert response.selected_agents[:2] == ["goal_strategy", "budget"]
+    assert response.selected_agents == ["goal_strategy"]
     assert not any(
         call["system_prompt"].startswith("PROMPT_ID: router")
         for call in gateway.calls

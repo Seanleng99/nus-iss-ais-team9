@@ -90,6 +90,12 @@ BROKERAGE_RESPONSE_ANSWER_ZH = (
 )
 SAFE_REFUSAL_TEMPLATES = (
     (
+        ("I couldn't verify this answer well enough to share it. "
+         "You can ask me to explain a financial concept or review your recorded spending and savings goals."),
+        ("我还不能充分核实这次回答，所以暂时无法提供。"
+         "你可以让我解释一个金融概念，或查看你已记录的支出和储蓄目标。"),
+    ),
+    (
         ("I can't help with that action. I can explain general investment concepts, "
          "risks, and ways to check information through official sources."),
         ("我不能协助执行这项操作。我可以解释一般投资概念、风险，"

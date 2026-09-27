@@ -127,7 +127,7 @@ EDUCATION_DETAIL_PHRASES = (
     ("source verification", ("reliable sources", "check your explanation", "how up to date", "financial explanation", "verify the source", "authoritative sources", "更新时间", "核实投资说明", "可靠来源", "核实来源", "是否最新")),
     ("irregular income investment readiness", ("irregular income", "income is irregular", "收入不稳定", "收入不固定", "收入不规律")),
     ("debt and investment readiness", ("credit card debt", "credit card balance", "borrow money", "borrowing money", "debt before investing", "信用卡债务", "信用卡还有欠款", "借钱投资")),
-    ("emergency fund readiness", ("emergency fund", "emergency savings", "emergency reserve", "应急基金", "应急储蓄")),
+    ("emergency fund readiness", ("emergency fund", "emergency funds", "emergency savings", "emergency reserve", "应急基金", "应急储蓄", "应急金", "紧急备用金")),
     ("investment pooling", ("pool", "pooled", "汇集")),
     ("passive index tracking", ("passive", "index-tracking", "index-tracking fund", "outperform", "被动", "跑赢指数", "指数追踪")),
     ("investment principal loss", ("lose all", "principal-guaranteed", "invested capital", "损失全部", "本金保证", "最坏")),
@@ -302,7 +302,6 @@ def education_topics(message: str) -> list[str]:
             matched = _contains_phrase(normalized, "goal date") and _contains_phrase(normalized, "investment choices")
         if matched and topic not in topics:
             if topic in {
-                "emergency fund readiness",
                 "debt and investment readiness",
                 "irregular income investment readiness",
             } and not any(

@@ -324,7 +324,10 @@ class LocalFixtureModelGateway:
                 ],
             }
             selected = [name for name, terms in rules.items() if any(term in message for term in terms)]
-            if education_topics(str(payload["message"])) and "investment_education" not in selected:
+            topics = education_topics(str(payload["message"]))
+            if topics and "investment_education" not in selected and not (
+                topics == ["emergency fund readiness"] and "goal_strategy" in selected
+            ):
                 selected.append("investment_education")
         return {
             "selected_agents": selected or ["budget"],

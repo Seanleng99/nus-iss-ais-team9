@@ -19,6 +19,7 @@ from app.agents.education_access import (
     build_minimal_education_query,
     education_gap_message,
     education_response_language,
+    education_topics,
     should_request_education_context,
 )
 from app.agents.goal_strategy import GoalStrategyAgent
@@ -77,6 +78,7 @@ from app.rag.retriever import (
     build_education_context,
     create_education_retriever,
 )
+from app.tools.registry import call_tool
 
 logger = logging.getLogger("service.ai.workflow")
 
@@ -435,6 +437,10 @@ class AgentOrchestrator:
             needs_semantic_specialist = (
                 decision.education_topics
                 and AgentName.INVESTMENT_EDUCATION not in decision.selected_agents
+                and not (
+                    decision.education_topics == ["emergency fund readiness"]
+                    and AgentName.GOAL_STRATEGY in decision.selected_agents
+                )
             )
             has_education_access = any(
                 agent in decision.selected_agents
@@ -1258,16 +1264,22 @@ class AgentOrchestrator:
             log_event("synthesis.strategy", component="needs_input_questions")
         elif (
             len(state["agent_results"]) == 1
-            and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
             and (
-                self.prompts.version in {"v6", "v7"}
-                or state["agent_results"][0].data.get("evidence_status") == "insufficient"
+                (state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
+                 and (self.prompts.version in {"v6", "v7"}
+                      or state["agent_results"][0].data.get("evidence_status") == "insufficient"))
+                or (state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
+                    and self.prompts.version in {"v6", "v7"}
+                    and "emergency_fund" in state["agent_results"][0].data)
             )
         ):
             # Preserve the single specialist answer without a second model rewrite.
             # Citation validation and independent policy review still run below.
             synthesis = SynthesisDecision(answer=state["agent_results"][0].summary)
-            log_event("synthesis.strategy", component="reuse_investment_specialist")
+            log_event("synthesis.strategy", component=(
+                "reuse_goal_specialist" if state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
+                else "reuse_investment_specialist"
+            ))
         else:
             log_event("synthesis.strategy", component="model_synthesizer")
             synthesis = generate_structured_response(
@@ -1452,10 +1464,10 @@ class AgentOrchestrator:
             else:
                 answer = (
                     "我还不能充分核实这次回答，所以暂时无法提供。"
-                    "你可以把问题缩小到一个投资概念的定义或比较，我会再尝试说明。"
+                    "你可以让我解释一个金融概念，或查看你已记录的支出和储蓄目标。"
                     if response_language == "Chinese" else
                     "I couldn't verify this answer well enough to share it. "
-                    "Please try a narrower investment question, such as a definition or a comparison."
+                    "You can ask me to explain a financial concept or review your recorded spending and savings goals."
                 )
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
@@ -1608,6 +1620,11 @@ class AgentOrchestrator:
             input_data = {
                 "goals": [item.model_dump(mode="json") for item in snapshot.goals]
             }
+            if "emergency fund readiness" in (
+                education_topics(state["sanitized_message"]) + state.get("education_topics", [])
+            ):
+                # Share aggregates, not raw transaction descriptions, with Goal Strategy.
+                input_data["emergency_fund"] = call_tool(agent, "emergency_fund_summary", snapshot)
         elif agent == AgentName.INVESTMENT_EDUCATION:
             input_data = {"risk_tolerance": snapshot.risk_tolerance}
         else:

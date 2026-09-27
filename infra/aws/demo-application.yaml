@@ -98,7 +98,7 @@ Parameters:
     Default: gpt-6-luna
   EducationCorpusVersion:
     Type: String
-    Default: investment-education-sg@2026-09-27.1
+    Default: investment-education-sg@2026-09-27.2
     AllowedPattern: "^[a-z0-9][a-z0-9@._-]{2,127}$"
   PolicyCorpusVersion:
     Type: String

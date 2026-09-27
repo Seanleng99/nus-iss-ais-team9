@@ -37,7 +37,7 @@ def goal_request(*, requested_agents: list[str]) -> CoachRequest:
     return CoachRequest(
         user_id="u1",
         session_id="s1",
-        message="Can I reach my emergency fund goal within twelve months?",
+        message="Can I reach my home deposit goal within twelve months?",
         requested_agents=requested_agents,
         snapshot={
             "monthly_income": {"amount": 5000},
@@ -51,7 +51,7 @@ def goal_request(*, requested_agents: list[str]) -> CoachRequest:
             ],
             "goals": [
                 {
-                    "name": "Emergency fund",
+                    "name": "Home deposit",
                     "target_amount": {"amount": 12000},
                     "current_amount": {"amount": 0},
                     "target_months": 12,
@@ -71,7 +71,7 @@ def test_goal_dynamically_schedules_budget_and_resumes() -> None:
     assert response.selected_agents == ["goal_strategy", "budget"]
     goal = next(result for result in response.agent_results if result.agent == "goal_strategy")
     assert goal.data["feasibility"][0] == {
-        "name": "Emergency fund",
+        "name": "Home deposit",
         "monthly_required": 1000.0,
         "estimated_savings_capacity": 700.0,
         "monthly_shortfall": 300.0,
@@ -441,7 +441,7 @@ def test_goal_budget_spending_dependency_chain_fans_in() -> None:
     request = goal_request(requested_agents=["goal_strategy"])
     payload = request.model_dump(mode="json")
     payload["message"] = (
-        "Use my recent spending to assess whether I can reach my emergency fund goal."
+        "Use my recent spending to assess whether I can reach my home deposit goal."
     )
     payload["snapshot"]["recent_transactions"] = [
         {

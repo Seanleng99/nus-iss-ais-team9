@@ -72,9 +72,9 @@ def test_repository_manifest_is_current_and_has_stable_digest() -> None:
     manifest = load_source_manifest(MANIFEST_PATH)
 
     assert manifest.schema_version == 2
-    assert manifest.corpus_version == "investment-education-sg@2026-09-27.1"
+    assert manifest.corpus_version == "investment-education-sg@2026-09-27.2"
     assert len(manifest.sources) == 10
-    assert governance_issues(manifest, as_of=date(2026, 9, 26)) == []
+    assert governance_issues(manifest, as_of=date(2026, 9, 27)) == []
     assert manifest_digest(manifest).startswith("sha256:")
     assert len(manifest_digest(manifest)) == 71
 

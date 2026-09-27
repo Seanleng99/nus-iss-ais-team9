@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from app.core.guardrails import validate_tool_permission
 from app.core.schemas import AgentName, UserFinancialSnapshot
 from app.core.telemetry import trace_method
@@ -45,6 +48,37 @@ def project_goals(snapshot: UserFinancialSnapshot) -> list[dict[str, float | str
 
 
 @trace_method
+def summarize_emergency_fund(snapshot: UserFinancialSnapshot) -> dict:
+    # Logged rows are not evidence of a complete month's essential expenses.
+    # Recurring rows may also occur in recent_transactions; never add both lists.
+    totals: dict[tuple[str, str], Decimal] = {}
+    invalid_dates = 0
+    for transaction in snapshot.recent_transactions:
+        try:
+            month = date.fromisoformat(transaction.occurred_on).strftime("%Y-%m")
+        except ValueError:
+            invalid_dates += 1
+            continue
+        key = (month, transaction.amount.currency)
+        totals[key] = totals.get(key, Decimal(0)) + Decimal(str(transaction.amount.amount))
+    return {
+        "monthly_logged_spending": [
+            {"month": month, "currency": currency, "amount": float(total.quantize(Decimal("0.01")))}
+            for (month, currency), total in sorted(totals.items())
+        ],
+        "saved_goals": [goal.model_dump(mode="json") for goal in snapshot.goals],
+        "expense_coverage": "unconfirmed",
+        "invalid_transaction_dates": invalid_dates,
+        "method": (
+            "Sum recent_transactions once by calendar month and currency; no currency conversion. "
+            "Recurring rows are not added because they may duplicate these transactions and have no cadence. "
+            "Logged spending may be partial and includes unclassified needs and wants. "
+            "Saved goal amounts are user records, not verified bank balances."
+        ),
+    }
+
+
+@trace_method
 def call_tool(agent: AgentName, tool_name: str, snapshot: UserFinancialSnapshot):
     validate_tool_permission(agent, tool_name)
     if tool_name == "transaction_summarizer":
@@ -53,4 +87,6 @@ def call_tool(agent: AgentName, tool_name: str, snapshot: UserFinancialSnapshot)
         return calculate_budget(snapshot)
     if tool_name == "goal_projection":
         return project_goals(snapshot)
+    if tool_name == "emergency_fund_summary":
+        return summarize_emergency_fund(snapshot)
     raise KeyError(f"Unknown tool: {tool_name}")

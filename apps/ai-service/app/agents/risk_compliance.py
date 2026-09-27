@@ -769,6 +769,7 @@ class RiskComplianceAgent:
                                     "method",
                                     "spending_context",
                                     "projections",
+                                    "emergency_fund",
                                     "monthly_savings_capacity",
                                     "feasibility",
                                     "category_totals",

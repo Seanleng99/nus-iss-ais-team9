@@ -159,7 +159,7 @@ class AgentTask(StrictContractModel):
         allowed_fields = {
             AgentName.SPENDING: {"recent_transactions"},
             AgentName.BUDGET: {"monthly_income", "recurring_expenses"},
-            AgentName.GOAL_STRATEGY: {"goals"},
+            AgentName.GOAL_STRATEGY: {"goals", "emergency_fund"},
             AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
         }
         allowed = allowed_fields.get(self.agent)
