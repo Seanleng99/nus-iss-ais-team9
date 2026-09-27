@@ -117,7 +117,9 @@ class BaseAgent(ABC):
             # generated uncertainties or citation selections to public data yet.
             return self._validate_narrative(narrative, dict(grounding))
 
-        if self.name == AgentName.INVESTMENT_EDUCATION:
+        # Hybrid profiles keep the complete writer contract in the versioned
+        # prompt. Repeating the legacy guidance crowds out safe repair calls.
+        if self.name == AgentName.INVESTMENT_EDUCATION and self.prompts.version not in {"v6", "v7"}:
             system_prompt += (
                 "\nAnswer the requested concept and question_intent directly, with enough "
                 "detail for a beginner to understand the practical meaning and trade-offs. "

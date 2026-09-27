@@ -338,6 +338,7 @@ class EducationComplianceDecision(ComplianceDecision):
     complete: bool
     missing_points: list[str] = Field(max_length=6)
     repairable: bool = False
+    financial_language_safe: bool = Field(default=False, strict=True)
 
     @field_validator("missing_points")
     @classmethod

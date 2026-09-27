@@ -451,8 +451,10 @@ def test_sole_insufficient_education_preserves_gap_without_synthesis(version):
     assert education.data["contexts"] == education.data["sources"] == []
     assert education.data["unanswered_topics"] == ["tax treatment", "tokenized assets"]
     assert response.answer == education.summary == (
-        "The approved knowledge base does not contain enough information to answer this question."
-        " Uncovered topics: tax treatment, tokenized assets."
+        "The approved knowledge base does not contain enough information to answer this question. "
+        "These topics are outside this version's supported investment education scope: tax treatment, tokenized assets. "
+        "The saved RAG documents do not cover them. This is a scope limit, not an unsafe question. "
+        "I can explain general investment risk or diversification."
     )
     assert_independent_compliance_review(gateway, response)
 

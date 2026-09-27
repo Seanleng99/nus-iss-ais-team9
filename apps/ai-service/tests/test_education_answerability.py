@@ -113,6 +113,88 @@ def test_safe_prefix_does_not_hide_later_positive_advice(text):
     assert financial_advice_findings(text)
 
 
+@pytest.mark.parametrize("text", [
+    "In short, do not assume that an investment return is guaranteed.",
+    "Never assume an investment return is guaranteed.",
+    "Don't say that the investment returns are guaranteed.",
+    "You cannot claim that any investment returns are guaranteed.",
+    "You can't establish that an investment return is guaranteed.",
+    "A promised or guaranteed return is not, by itself, proof of a scam.",
+    "A claim of guaranteed returns deserves scrutiny, but the word guaranteed alone does not establish that an offer is a scam.",
+    "A claim of guaranteed returns is a warning sign, but does not by itself prove fraud.",
+    "Comparing companies can help you understand their businesses and risks, but research cannot guarantee an outcome or determine which stock is right for you.",
+    "The evidence addresses promises of high returns paired with little or no risk, rather than every promise of a guaranteed return.",
+    "The evidence addresses high returns paired with little or no risk, not every promise of a guaranteed return.",
+    "A promise of a guaranteed return alone does not establish that an offer is a scam; consider the terms and verify the people and organization independently.",
+    "I can help explain those concepts or how to assess information about a company without deciding what you should buy.",
+    "There is no general rule that an investment guarantees a return.",
+    "The evidence describes investment risk generally but does not explain how a promised or guaranteed return works.",
+    "A claim of guaranteed returns is a reason to examine the promise, but does not by itself prove an offer is a scam or that payment is certain.",
+    "AI model knowledge — no live web search (not verified against retrieved sources):\n\n- A claim of guaranteed returns is not, by itself, proof of a scam.",
+])
+def test_bounded_safe_guarantee_and_personalized_product_wording(text):
+    assert financial_advice_findings(text) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Do not assume an investment return is guaranteed, but this fund return is guaranteed.",
+    "A claim of guaranteed returns deserves scrutiny, but this fund guarantees returns.",
+    "Research cannot guarantee an outcome or determine which stock is right for you. This ETF is right for you.",
+    "A promise of a guaranteed return alone does not establish that an offer is a scam, but this fund guarantees returns.",
+    "I can explain concepts without deciding what you should buy, but you should buy this ETF.",
+    "There is no general rule that an investment guarantees a return, but this fund guarantees returns.",
+    "A claim of guaranteed returns is a reason to examine the promise, but this fund guarantees returns.",
+    "AI model knowledge: - A claim of guaranteed returns is not, by itself, proof of a scam. This fund guarantees returns.",
+])
+def test_bounded_safe_wording_does_not_hide_a_positive_claim(text):
+    assert financial_advice_findings(text)
+
+
+@pytest.mark.parametrize("text", [
+    "The evidence discusses scam checks, rather than guaranteed returns specifically.",
+    "A claim of guaranteed returns is not, by itself, proof that an offer is a scam.",
+    "A claim of guaranteed returns deserves careful checking.",
+    "A guaranteed return is a stated promise, not proof that payment is certain.",
+    "The evidence addresses risk, rather than defining every promise of guaranteed returns.",
+    "A promise of guaranteed returns is not, by itself, proof of a scam.",
+    "The evidence does not specifically assess every claim of guaranteed returns.",
+    "The broader meaning of a guaranteed return needs general explanation.",
+    "A claim of guaranteed returns is not by itself proof of a scam.",
+    "The evidence does not specifically discuss products that promise or guarantee returns.",
+    "No general claim that an investment guarantees returns can be made without examining the terms.",
+    "The evidence does not establish that every investment, or any particular investment outside that context, guarantees returns.",
+    "The evidence does not assess or identify a suitable stock for you.",
+    "Neither label means a payment or return is guaranteed.",
+    "A guaranteed return deserves careful scrutiny.",
+    "A claim of ‘guaranteed returns’ is not, by itself, proof of a scam.",
+    'A claim of “guaranteed returns” is not, by itself, proof of a scam.',
+    "A promise of guaranteed returns is not proof by itself that an investment is a scam.",
+    "A promise of guaranteed returns alone does not establish that an offer is fraudulent.",
+    "A promise of guaranteed returns by itself does not establish whether an offer is legitimate.",
+    "A promised or guaranteed return is different from a return that is merely expected.",
+    "This does not establish that all investments have guaranteed returns.",
+    "I can’t know which share will perform best for you.",
+])
+def test_observed_claim_references_are_not_promises_and_cannot_mask_one(text):
+    assert financial_advice_findings(text) == []
+    for separator in (". ", ", but ", "; "):
+        assert financial_advice_findings(text.rstrip(".") + separator + "this fund guarantees returns")
+        assert financial_advice_findings(text.rstrip(".") + separator + "you should buy this ETF")
+
+
+@pytest.mark.parametrize('question, limitation, alternative', [
+    ('What is Bitcoin?', 'outside this version', 'diversification'),
+    ('什么是比特币？', '支持的投资教育范围', '分散投资'),
+])
+def test_unsupported_education_explains_scope_and_offers_a_supported_topic(question, limitation, alternative):
+    gateway = HybridGateway()
+    response = workflow(gateway, FixedRetriever()).handle(request(question))
+    assert not response.blocked
+    assert limitation in response.answer
+    assert alternative in response.answer
+    assert not response.sources
+
+
 def test_separate_asset_retrieval_keeps_each_available_definition():
     class AssetRetriever(FixedRetriever):
         def retrieve(self, query, top_k=3):
@@ -156,9 +238,46 @@ def test_incomplete_safe_answer_gets_only_one_repair_and_a_new_review(fixed):
     response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain ETFs."))
     assert gateway.reviews == 2
     assert len(gateway.calls_for("agent_investment_education")) == 2
-    assert "Previous draft to correct" in gateway.calls_for("agent_investment_education")[1]["user_prompt"]
+    repair_input = json.loads(gateway.calls_for("agent_investment_education")[1]["user_prompt"])
+    assert "Explain the requested distinction." in repair_input["message"]
+    assert "Previous draft to correct" not in repair_input["message"]
+    assert repair_input['grounding']['contexts']
     assert response.audit["answer_status"] == ("answered" if fixed else "incomplete")
     assert not response.blocked
+
+
+def test_safe_repair_fits_observed_token_usage_without_repeating_the_draft():
+    from app.models.gateway import ModelGeneration
+
+    class ReviewingGateway(HybridGateway):
+        reviews = 0
+
+        def generate(self, **kwargs):
+            component = kwargs['system_prompt'].splitlines()[0]
+            if component.endswith('risk_compliance'):
+                self.reviews += 1
+                complete = self.reviews > 1
+                raw = json.dumps({
+                    'blocked': not complete, 'summary': 'Citation scope reviewed.',
+                    'rationale': ['A source qualification needs correction.'],
+                    'policy_notes': [], 'confidence': 0.9, 'request_allowed': True,
+                    'complete': complete, 'repairable': not complete,
+                    'missing_points': [] if complete else ['Preserve the source qualification.'],
+                })
+                usage = (3590, 586)
+            else:
+                raw = super().generate(**kwargs)
+                usage = (3948, 733) if component.endswith('agent_investment_education') else (944, 82)
+            return ModelGeneration(raw, usage={
+                'inputTokens': usage[0], 'outputTokens': usage[1], 'totalTokens': sum(usage),
+            })
+
+    gateway = ReviewingGateway(summary=('An ETF trades on an exchange. ' * 55) + '[source:etf-source]')
+    response = workflow(gateway, FixedRetriever([source()])).handle(request('Explain ETFs.', agents=()))
+    assert gateway.reviews == 2
+    assert not response.blocked
+    assert response.audit['answer_status'] == 'answered'
+    assert sum(call['total_tokens'] for call in response.audit['model_calls']) < 20000
 
 
 def test_prohibited_request_never_enters_completeness_repair():
@@ -238,6 +357,21 @@ def test_prompt_compaction_preserves_evidence_without_mutating_audit_data():
     assert compact['sources'][0]['document_version'] == '2026-01'
     assert compact['income'] == 123
     assert original['contexts'][0]['checksum'] == 'audit-checksum'
+
+
+def test_review_keeps_full_cited_passages_without_unused_retrieval():
+    gateway = HybridGateway(source_ids=['etf-source'])
+    response = workflow(gateway, FixedRetriever([
+        source(), source('unused-source', 'A separate product has different terms.'),
+    ])).handle(request('Explain ETFs.'))
+    generation = json.loads(gateway.calls_for('agent_investment_education')[0]['user_prompt'])
+    review = json.loads(gateway.calls_for('risk_compliance')[0]['user_prompt'])
+    original = generation['grounding']
+    reviewed = review['agent_results'][0]['data']
+    assert {item['source_id'] for item in original['contexts']} == {'etf-source', 'unused-source'}
+    assert reviewed['contexts'] == [item for item in original['contexts'] if item['source_id'] == 'etf-source']
+    assert {item['source_id'] for item in reviewed['sources']} == {'etf-source'}
+    assert len(response.agent_results[0].data['contexts']) == 2
 
 
 def test_third_party_role_definition_is_not_a_private_data_request():

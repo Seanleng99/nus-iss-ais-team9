@@ -352,6 +352,21 @@ def apply_education_scope(grounding: dict, message: str, topics: list[str]) -> N
 
 def education_gap_message(grounding: dict) -> str:
     topics = grounding.get("unanswered_topics", [])
+    excluded = grounding.get("excluded_topics", [])
+    if excluded and not grounding.get("contexts") and not grounding.get("fallback_topics"):
+        if grounding.get("response_language") == "Chinese":
+            labels = "、".join(CHINESE_GAP_LABELS.get(topic, topic) for topic in excluded)
+            return (
+                "经批准的知识库没有足够资料回答这个问题。"
+                f"{labels}目前不在这个版本支持的投资教育范围内，已保存的 RAG 资料也没有相关内容。"
+                "这是范围限制，并不表示你的问题不安全。我可以解释一般投资风险或分散投资。"
+            )
+        return (
+            "The approved knowledge base does not contain enough information to answer this question. "
+            f"These topics are outside this version's supported investment education scope: {', '.join(excluded)}. "
+            "The saved RAG documents do not cover them. This is a scope limit, not an unsafe question. "
+            "I can explain general investment risk or diversification."
+        )
     if grounding.get("response_language") == "Chinese":
         message = "经批准的知识库没有足够资料回答这个问题。"
         labels = [CHINESE_GAP_LABELS.get(topic, topic) for topic in topics]

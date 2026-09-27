@@ -343,6 +343,9 @@ class AgentOrchestrator:
                 "executed_at": state["executed_at"],
                 "guardrail_findings": decision.findings,
                 "prompt_set_version": self.prompts.version,
+                "model_provider": self.config.model_provider,
+                "model_id": self.config.model_id,
+                "answer_status": "refused",
                 "events": [item.model_dump(mode="json") for item in events],
             },
             blocked=True,
@@ -1315,7 +1318,7 @@ class AgentOrchestrator:
         updated: OrchestratorState = {}
         calls = self.gateway.snapshot(state["trace_id"])
         used_tokens = sum(int(call.get("total_tokens") or 0) for call in calls)
-        previous_draft = state["draft_answer"][:2500]
+        repair_feedback = json.dumps(result.data.get("missing_points", []), ensure_ascii=False)
         repair_inputs = sum(
             int(call.get("input_tokens") or 0) for call in calls
             if call["component"] in {"agent_investment_education", "risk_compliance"}
@@ -1327,7 +1330,7 @@ class AgentOrchestrator:
         # Estimate from the actual pair with output headroom. The tracing gateway
         # still enforces the unchanged hard budget; an over-budget repair is discarded.
         repair_fits = (
-            used_tokens + repair_inputs + len(previous_draft.encode("utf-8")) // 3
+            used_tokens + repair_inputs + len(repair_feedback.encode("utf-8")) // 3
             + repair_outputs
             < self.config.max_model_tokens_per_run
             and len(calls) + 4 <= self.config.max_model_calls_per_run
@@ -1354,7 +1357,6 @@ class AgentOrchestrator:
                 task.status = AgentTaskStatus.READY
                 task.attempt = 1
                 task.context_features["missing_points"] = result.data["missing_points"]
-                task.context_features["previous_draft"] = previous_draft
                 events.append(self._event(
                     state, "education.completeness.repair", AgentName.INVESTMENT_EDUCATION.value,
                     details={"attempt": 1, "reason_code": "INCOMPLETE_ANSWER"},

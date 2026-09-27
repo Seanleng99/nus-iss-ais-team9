@@ -66,7 +66,7 @@ def render_citations(text: str, sources: Sequence[SourceCitation]) -> str:
 
 
 def compact_evidence(data: dict) -> dict:
-    """Keep full passages and relevant metadata in model input; audit keeps full provenance."""
+    """Keep full cited passages in review input; audit keeps all retrieval evidence."""
     result = dict(data)
     for field, keys in (
         ("contexts", ("source_id", "text")),
@@ -76,5 +76,9 @@ def compact_evidence(data: dict) -> dict:
         if field in data:
             result[field] = [
                 {key: item[key] for key in keys if key in item} for item in data[field]
+                # Before generation all evidence is eligible. Once citations are
+                # selected, unrelated passages cannot support the draft's claims.
+                if "cited_source_ids" not in data
+                or item["source_id"] in data["cited_source_ids"]
             ]
     return result
