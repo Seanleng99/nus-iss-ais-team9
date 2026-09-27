@@ -265,6 +265,9 @@ class LocalFixtureModelGateway:
                     "request_allowed": True,
                     "complete": True,
                     "missing_points": [],
+                    "financial_language_safe": not bool(
+                        payload.get("contextual_financial_findings")
+                    ),
                     "confidence": 0.91,
                 }
             )

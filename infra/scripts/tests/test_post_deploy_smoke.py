@@ -72,10 +72,20 @@ def run_education_smoke(monkeypatch, response, persisted_audit=None):
         (200, json.dumps(response)),
         (200, json.dumps({"audit": persisted_audit or response["audit"]})),
     ])
-    monkeypatch.setattr(post_deploy_smoke, "request", lambda *args, **kwargs: next(replies))
+    urls = []
+
+    def record_request(url, **kwargs):
+        urls.append(url)
+        return next(replies)
+
+    monkeypatch.setattr(post_deploy_smoke, "request", record_request)
     post_deploy_smoke.check_investment_education_rag(
         "https://example.test/api/coach", "synthetic-key", "education-v1", "policy-v1",
     )
+    assert urls == [
+        "https://example.test/api/coach",
+        "https://example.test/api/coach/traces/synthetic-trace?user_id=deployment-smoke-test",
+    ]
 
 
 def test_education_trace_retains_retrieved_sources_beyond_final_citations(

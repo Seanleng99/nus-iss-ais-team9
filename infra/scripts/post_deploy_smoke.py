@@ -260,8 +260,8 @@ def check_investment_education_rag(
         "RAG knowledge base (saved documents; no live web search):\n\n"
     ), "education answer did not identify saved RAG documents"
     for source in sources:
-        url = urllib.parse.quote(source["canonical_url"], safe=":/?#=&%")
-        assert f"]({url})" in rag_answer, "education answer omitted a visible RAG citation"
+        source_url = urllib.parse.quote(source["canonical_url"], safe=":/?#=&%")
+        assert f"]({source_url})" in rag_answer, "education answer omitted a visible RAG citation"
     model_knowledge = education_data.get("general_knowledge", [])
     if evidence_status == "hybrid":
         assert isinstance(model_knowledge, list) and model_knowledge, (

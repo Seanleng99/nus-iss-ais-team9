@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from app.core.config import Settings
 from app.models.gateway import (
     BedrockModelGateway,
+    LocalFixtureModelGateway,
     ModelGatewayError,
     ModelGeneration,
     OpenAIModelGateway,
@@ -36,6 +38,25 @@ class UsageGateway:
                 "totalTokens": self.total_tokens,
             },
         )
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [({}, True), ({"contextual_financial_findings": ["ambiguous wording"]}, False)],
+)
+def test_local_fixture_verdict_requires_no_contextual_financial_findings(
+    payload, expected,
+) -> None:
+    result = json.loads(
+        LocalFixtureModelGateway().generate(
+            system_prompt="PROMPT_ID: risk_compliance",
+            user_prompt=json.dumps(payload),
+            temperature=0.1,
+            max_tokens=100,
+        )
+    )
+
+    assert result["financial_language_safe"] is expected
 
 
 def test_bedrock_gateway_uses_converse_and_inference_controls() -> None:
