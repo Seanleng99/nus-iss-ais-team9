@@ -37,6 +37,10 @@ BLOCKED_FINANCIAL_ADVICE_PATTERNS = [
 
 # Decimal points and dotted abbreviations (e.g.) do not end an advice clause.
 ADVICE_CLAUSE = r"(?:[^.!?;]|(?<=\d)\.(?=\d)|(?<=\b[a-z])\.)*"
+# Singular and plural product names: "should I buy ETFs" is the same personal
+# request as "should I buy an ETF" and must not rely on the model to refuse it.
+INVESTMENT_PRODUCT = r"(?:stocks?|shares?|bonds?|etfs?|funds?|reits?|investments?|products?)"
+PRODUCT_DETERMINER = r"(?:this|that|the|these|those)"
 
 BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     (
@@ -55,10 +59,10 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
         re.compile(
             r"\b(?:i|we)\s+(?:recommend|suggest|advise)\b" + ADVICE_CLAUSE +
             r"\b(?:buying|selling|holding|investing|buy|sell|hold|invest)\b|"
-            r"\b(?:i|we)\s+(?:recommend|suggest|advise)\s+(?:this|that|the)\s+"
-            r"(?:stock|share|bond|etf|fund|reit|investment\s+product|product)\b|"
-            r"(?:^|[.!?;]\s*|\n\s*|:\s*)(?:buy|sell|hold)\s+(?:this|that|the)\s+"
-            r"(?:stock|share|bond|etf|fund|reit|investment|product)\b",
+            r"\b(?:i|we)\s+(?:recommend|suggest|advise)\s+" + PRODUCT_DETERMINER + r"\s+"
+            r"(?:investment\s+products?|" + INVESTMENT_PRODUCT + r")\b|"
+            r"(?:^|[.!?;]\s*|\n\s*|:\s*)(?:buy|sell|hold)\s+" + PRODUCT_DETERMINER + r"\s+"
+            + INVESTMENT_PRODUCT + r"\b",
             re.IGNORECASE,
         ),
     ),
@@ -88,8 +92,7 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     (
         "personalized_product_selection",
         re.compile(
-            r"\b(?:which|what)\s+"
-            r"(?:stock|share|bond|etf|fund|reit|investment|product)\b"
+            r"\b(?:which|what)\s+" + INVESTMENT_PRODUCT + r"\b"
             r".{0,40}\b(?:buy|choose|pick|invest in)\b",
             re.IGNORECASE,
         ),
@@ -98,7 +101,7 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
         "personalized_transaction_request",
         re.compile(
             r"\bshould\s+i\b.{0,20}\b(?:buy|sell|hold|choose|invest in)\b"
-            r".{0,40}\b(?:stock|share|bond|etf|fund|reit|investment|product)\b",
+            r".{0,40}\b" + INVESTMENT_PRODUCT + r"\b",
             re.IGNORECASE,
         ),
     ),
