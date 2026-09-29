@@ -46,3 +46,13 @@ def test_review_followup_keeps_review_intent():
     budget = next(item for item in result.agent_results if item.agent.value == "budget")
     assert budget.data["budget_draft"]["action"] == "review"
     assert budget.data["budget_draft"]["period_start"] == "2026-09-01"
+
+
+def test_funded_alternatives_route_to_backend_without_inventing_constraints():
+    result = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture")).handle(
+        CoachRequest(user_id="u", session_id="s", message="Find funded alternatives for my budget for October 2026", requested_agents=["budget"]))
+    budget = next(item for item in result.agent_results if item.agent.value == "budget")
+    assert budget.data["budget_draft"]["action"] == "alternatives"
+    assert budget.data["budget_draft"]["period_start"] == "2026-10-01"
+    assert not budget.data["budget_draft"]["categories"]
+    assert "planning_analysis" not in budget.data

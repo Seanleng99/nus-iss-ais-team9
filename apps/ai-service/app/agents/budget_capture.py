@@ -42,7 +42,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review"] = "plan"
+    action: Literal["plan", "compare", "review", "alternatives"] = "plan"
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -74,6 +74,10 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "draft values unless corrected. questions lists unresolved ambiguities only; remove "
             "questions answered by the user. Confirmation is handled separately by the backend. "
             "Do not treat approval words as permission to populate missing fields. "
+            "FUNDED ALTERNATIVES: requests to fund goals/debts, protect commitments or propose affordable reductions use action=alternatives. "
+            "The backend computes from confirmed monthly commitments. Do not invent floors, debt payments, goal contributions or limits. "
+            "Extract explicit month/year and optional hypothetical take-home income or savings only; ask for missing dates. "
+            "Commitment setup is in the Budget page and requires user confirmation. "
             "PLANNING CONTRACT budget-planning-v3: When planning_requested=true, or continuing a "
             "pending planning draft, include planning (even when every field is unknown). "
             "Extract income only if explicitly supplied or explicitly adopted from profile context; "

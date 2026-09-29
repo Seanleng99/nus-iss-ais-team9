@@ -801,6 +801,11 @@ class SQLAlchemyBudgetRepository:
         return self.session.scalar(query)
 
     def upsert(self, user_id: str, budget: BudgetUpsert) -> MonthlyBudgetRecord:
+        from app.services.budget_constraints import constraint_questions
+        questions = constraint_questions(self.session, user_id, budget.period_start,
+            {item.category: item.limit_amount for item in budget.categories}, budget.planning)
+        if questions:
+            raise ValueError(" ".join(questions))
         _ensure_user(self.session, user_id)
         record = self.get(user_id, budget.period_start, for_update=True)
         if record is None:

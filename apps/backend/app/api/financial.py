@@ -81,6 +81,12 @@ from app.infrastructure.repositories import (
 )
 from app.services.budget_alert import evaluate_budget_alert
 from app.services.budget_capture import BudgetDraft
+from app.services.budget_constraints import (
+    AllocationPolicy,
+    AlternativesRequest,
+    build_alternatives,
+    save_policy,
+)
 from app.services.budget_review import build_budget_review
 from app.services.budget_scenarios import compare_draft
 from app.services.cashflow import CashflowSettings, occurs, project_cashflow
@@ -824,7 +830,10 @@ def put_budget(
     repository = SQLAlchemyBudgetRepository(session)
     if budget.review_evidence and build_budget_review(session, user_id, budget.period_start)["evidence_fingerprint"] != budget.review_evidence:
         raise HTTPException(status_code=409, detail="Budget or spending records changed. Refresh the review before saving its adjustment.")
-    record = repository.upsert(user_id, budget)
+    try:
+        record = repository.upsert(user_id, budget)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     session.commit()
     return _budget_response(
         record, repository.spending_by_category(user_id, budget.period_start)
@@ -967,3 +976,26 @@ def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, 
     result = write_section(session, user_id, "cashflow", config.model_dump(mode="json"))
     session.commit()
     return result
+
+
+@router.get("/users/{user_id}/budget/commitments")
+def get_commitments(user_id: UserId, period_start: date, session: Annotated[Session, Depends(get_db_session)]):
+    _validate_period_start(period_start)
+    return read_section(session, user_id, "constraints:" + period_start.isoformat()) or {}
+
+@router.put("/users/{user_id}/budget/commitments")
+def put_commitments(user_id: UserId, policy: AllocationPolicy, session: Annotated[Session, Depends(get_db_session)]):
+    try:
+        result = save_policy(session, user_id, policy)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    session.commit()
+    return result
+
+@router.post("/users/{user_id}/budget/alternatives")
+def funded_alternatives(user_id: UserId, request: AlternativesRequest, session: Annotated[Session, Depends(get_db_session)]):
+    _validate_period_start(request.period_start)
+    try:
+        return build_alternatives(session, user_id, request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

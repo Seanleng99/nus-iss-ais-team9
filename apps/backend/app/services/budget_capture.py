@@ -51,7 +51,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review"] = "plan"
+    action: Literal["plan", "compare", "review", "alternatives"] = "plan"
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -142,6 +142,8 @@ def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, d
         questions.append(
             "Separate savings transfers from expense limits before confirming; use the savings allocation and remove any duplicate savings category in Budget."
         )
+    from app.services.budget_constraints import constraint_questions
+    questions.extend(constraint_questions(session, user_id, payload.period_start, merged, planning))
     lines = [
         f"Budget {'proposal' if planning else 'changes'} for {payload.period_start:%B %Y} (SGD):"
     ]
@@ -213,6 +215,32 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         response.answer = "Nothing has been saved. Please provide the month, year, category, SGD amount and currency again."
         return
     if not draft.is_budget_request:
+        return
+    if draft.action == "alternatives":
+        from app.services.budget_constraints import AlternativesRequest, build_alternatives
+        if draft.period_start is None or draft.period_start.day != 1 or draft.questions:
+            response.answer = "Please specify the month and year for funded alternatives. " + " ".join(draft.questions)
+            if not chat.pending_budget:
+                chat.pending_budget = {"draft": draft.model_dump(mode="json"), "ready": False,
+                    "baseline": None, "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat()}
+            return
+        if draft.currency not in {None, "SGD"}:
+            response.answer = "Funded alternatives support SGD plans only. Nothing was saved."
+            return
+        try:
+            comparison = build_alternatives(session, user_id, AlternativesRequest(
+                period_start=draft.period_start,
+                take_home_income=draft.planning.take_home_income if draft.planning else None,
+                savings_target=draft.planning.savings_target if draft.planning else None))
+        except ValueError as error:
+            response.answer = str(error) + ". Update your commitments in Budget; nothing was saved."
+            return
+        record = SQLAlchemyBudgetRepository(session).get(user_id, draft.period_start)
+        chat.pending_budget = {"draft": draft.model_dump(mode="json"), "ready": False,
+            "baseline": _snapshot(record), "comparison": comparison,
+            "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat()}
+        response.answer = describe_comparison(comparison)
+        response.audit["budget_capture"] = "read_only_alternatives"
         return
     if draft.action == "review":
         if draft.period_start is None or draft.period_start.day != 1 or draft.questions:

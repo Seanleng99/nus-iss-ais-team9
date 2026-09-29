@@ -28,7 +28,7 @@ class BudgetAgent(BaseAgent):
             draft = extract_budget_draft(self, task)
             if draft.is_budget_request:
                 analysis = None
-                if draft.action != "review" and (task.context_features.get("budget_planning") or draft.planning is not None):
+                if draft.action not in {"review", "alternatives"} and (task.context_features.get("budget_planning") or draft.planning is not None):
                     if draft.planning is None:
                         draft.planning = PlanningInputs.model_validate(
                             (task.context_features.get("pending_budget") or {}).get("planning") or {}

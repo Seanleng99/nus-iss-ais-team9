@@ -257,6 +257,15 @@ class BackendClient:
         )
 
     @_trace_operation
+    def get_budget_commitments(self, user_id, period):
+        return self._request("GET", f"/api/users/{user_id}/budget/commitments", params={"period_start": period.isoformat()})
+
+    def save_budget_commitments(self, user_id, payload):
+        return self._request("PUT", f"/api/users/{user_id}/budget/commitments", json=payload)
+
+    def budget_alternatives(self, user_id, payload):
+        return self._request("POST", f"/api/users/{user_id}/budget/alternatives", json=payload)
+
     def get_cashflow_settings(self, user_id):
         return self._request("GET", f"/api/users/{user_id}/cashflow/settings")
 
