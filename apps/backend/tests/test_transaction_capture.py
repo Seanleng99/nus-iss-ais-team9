@@ -195,6 +195,8 @@ def test_parse_spending_statement_positives(
         "my monthly income is 6000",
         "i am 35 years old",
         "how many days until 25/12",
+        "private question 43210",
+        "error code 500",
     ],
 )
 def test_parse_spending_statement_negatives(message: str) -> None:

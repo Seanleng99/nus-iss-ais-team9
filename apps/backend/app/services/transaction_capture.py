@@ -530,6 +530,15 @@ def _draft_from_rest(
 
 FILLER_LEADING_TOKENS = frozenset({"grand", "got", "get", "a", "an", "the"})
 MAX_NO_VERB_TOKENS = 8
+MAX_BARE_UNMARKED_AMOUNT = 9999.99
+
+NO_VERB_GUARD_WORDS = frozenset(
+    {
+        "question", "code", "error", "errors", "issue", "issues", "number",
+        "id", "uuid", "trace", "score", "version", "answer", "password",
+        "token", "secret", "limit", "count", "port", "timestamp", "temperature",
+    }
+)
 
 
 def _unit_guard_hit(match: re.Match[str], text: str) -> bool:
@@ -563,8 +572,16 @@ def _bare_amount_without_verb(
     first = tokens[0].lower().strip(".,!?;:")
     if not first.isalpha() or first in DESCRIPTION_STRIP_TOKENS:
         return None
+    if any(token.lower().strip(".,!?;:") in NO_VERB_GUARD_WORDS for token in tokens):
+        return None
     match = BARE_AMOUNT_PATTERN.search(stripped_text)
     if match is None or _unit_guard_hit(match, stripped_text):
+        return None
+    try:
+        value = float(match.group(0).replace(",", "."))
+    except ValueError:
+        return None
+    if value > MAX_BARE_UNMARKED_AMOUNT:
         return None
     return stripped_text, match
 
