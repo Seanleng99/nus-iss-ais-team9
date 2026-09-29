@@ -14,6 +14,7 @@ from ui.pages import (
 from ui.state import get_client, period_options, today_singapore
 from ui.styles import SPENDING_INSIGHTS_CSS
 from ui.telemetry import configure_logging
+from ui.trace_viewer import trace_page
 
 configure_logging()
 st.set_page_config(
@@ -74,6 +75,7 @@ coach = st.Page(
     icon=":material/forum:",
     url_path="coach",
 )
+traces = st.Page(trace_page, title="Decision traces", icon=":material/account_tree:", url_path="decision-traces")
 profile_settings = st.Page(
     profile_page,
     title="Profile settings",
@@ -95,6 +97,7 @@ navigation = st.navigation(
             budget,
             goals,
             coach,
+            traces,
             profile_settings,
             create_profile,
         ]
@@ -201,9 +204,14 @@ with st.sidebar:
         disabled=not has_active_profile,
     )
 
+    st.page_link(traces, label="Decision traces", icon=":material/account_tree:", disabled=not has_active_profile)
+
 # Handle navigation from query params
 if st.query_params.get("page") == "coach":
     st.query_params["page"] = ""
     st.switch_page(coach)
+elif st.query_params.get("page") == "traces" and has_active_profile:
+    st.query_params["page"] = ""
+    st.switch_page(traces)
 else:
     navigation.run()

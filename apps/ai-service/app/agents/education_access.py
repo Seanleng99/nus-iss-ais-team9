@@ -1,6 +1,14 @@
 import re
 
 EDUCATION_TOPIC_PHRASES: tuple[tuple[str, str], ...] = (
+    ("market order", "market orders"), ("market orders", "market orders"),
+    ("市价单", "market orders"), ("市價單", "market orders"),
+    ("limit order", "limit orders"), ("limit orders", "limit orders"),
+    ("限价单", "limit orders"), ("限價單", "limit orders"),
+    ("bid-ask spread", "bid-ask spread"), ("bid ask spread", "bid-ask spread"),
+    ("买卖价差", "bid-ask spread"), ("買賣價差", "bid-ask spread"),
+    ("tracking difference", "tracking difference"), ("跟踪差异", "tracking difference"),
+    ("追踪差异", "tracking difference"),
     ("market risk", "market risk"),
     ("市场风险", "market risk"),
     ("credit risk", "credit risk"),
@@ -119,7 +127,7 @@ EDUCATION_DETAIL_PHRASES = (
     ("source verification", ("reliable sources", "check your explanation", "how up to date", "financial explanation", "verify the source", "authoritative sources", "更新时间", "核实投资说明", "可靠来源", "核实来源", "是否最新")),
     ("irregular income investment readiness", ("irregular income", "income is irregular", "收入不稳定", "收入不固定", "收入不规律")),
     ("debt and investment readiness", ("credit card debt", "credit card balance", "borrow money", "borrowing money", "debt before investing", "信用卡债务", "信用卡还有欠款", "借钱投资")),
-    ("emergency fund readiness", ("emergency fund", "emergency savings", "emergency reserve", "应急基金", "应急储蓄")),
+    ("emergency fund readiness", ("emergency fund", "emergency funds", "emergency savings", "emergency reserve", "应急基金", "应急储蓄", "应急金", "紧急备用金")),
     ("investment pooling", ("pool", "pooled", "汇集")),
     ("passive index tracking", ("passive", "index-tracking", "index-tracking fund", "outperform", "被动", "跑赢指数", "指数追踪")),
     ("investment principal loss", ("lose all", "principal-guaranteed", "invested capital", "损失全部", "本金保证", "最坏")),
@@ -161,7 +169,7 @@ EDUCATION_DETAIL_PHRASES = (
 CANONICAL_EDUCATION_TOPICS: tuple[str, ...] = tuple(dict.fromkeys(
     [topic for _, topic in EDUCATION_TOPIC_PHRASES]
     + [topic for topic, _ in EDUCATION_DETAIL_PHRASES]
-    + ["investment basics"]
+    + ["investment basics", "general investment concepts"]
 ))
 
 GENERIC_EDUCATION_TOPIC_PHRASES = (
@@ -191,6 +199,7 @@ UNSUPPORTED_EDUCATION_TOPIC_PHRASES = (
     ("tokenized", "tokenized assets"), ("tokenised", "tokenized assets"),
     ("代币化", "tokenized assets"), ("crypto", "crypto assets"),
     ("cryptocurrency", "crypto assets"), ("加密货币", "crypto assets"),
+    ("bitcoin", "crypto assets"), ("比特币", "crypto assets"),
     ("options trading", "options trading"), ("call options", "options trading"),
     ("put options", "options trading"), ("期权", "options trading"),
 )
@@ -202,6 +211,17 @@ DETAILED_EDUCATION_TOPICS = {
 }
 
 CHINESE_GAP_LABELS = {
+    "shares": "股票",
+    "bonds": "债券",
+    "funds": "共同基金",
+    "exchange-traded funds": "交易所交易基金（ETF）",
+    "index funds": "指数基金",
+    "real estate investment trusts": "房地产投资信托",
+    "market orders": "市价单",
+    "limit orders": "限价单",
+    "bid-ask spread": "买卖价差",
+    "tracking difference": "跟踪差异",
+    "tracking error": "跟踪误差",
     "live market data": "实时市场数据",
     "bond duration": "债券久期",
     "zero-coupon bonds": "零息债券",
@@ -282,7 +302,6 @@ def education_topics(message: str) -> list[str]:
             matched = _contains_phrase(normalized, "goal date") and _contains_phrase(normalized, "investment choices")
         if matched and topic not in topics:
             if topic in {
-                "emergency fund readiness",
                 "debt and investment readiness",
                 "irregular income investment readiness",
             } and not any(
@@ -332,6 +351,21 @@ def apply_education_scope(grounding: dict, message: str, topics: list[str]) -> N
 
 def education_gap_message(grounding: dict) -> str:
     topics = grounding.get("unanswered_topics", [])
+    excluded = grounding.get("excluded_topics", [])
+    if excluded and not grounding.get("contexts") and not grounding.get("fallback_topics"):
+        if grounding.get("response_language") == "Chinese":
+            labels = "、".join(CHINESE_GAP_LABELS.get(topic, topic) for topic in excluded)
+            return (
+                "经批准的知识库没有足够资料回答这个问题。"
+                f"{labels}目前不在这个版本支持的投资教育范围内，已保存的 RAG 资料也没有相关内容。"
+                "这是范围限制，并不表示你的问题不安全。我可以解释一般投资风险或分散投资。"
+            )
+        return (
+            "The approved knowledge base does not contain enough information to answer this question. "
+            f"These topics are outside this version's supported investment education scope: {', '.join(excluded)}. "
+            "The saved RAG documents do not cover them. This is a scope limit, not an unsafe question. "
+            "I can explain general investment risk or diversification."
+        )
     if grounding.get("response_language") == "Chinese":
         message = "经批准的知识库没有足够资料回答这个问题。"
         labels = [CHINESE_GAP_LABELS.get(topic, topic) for topic in topics]
@@ -342,6 +376,23 @@ def education_gap_message(grounding: dict) -> str:
 
 def education_response_language(message: str) -> str:
     return "Chinese" if _contains_cjk(message) else "English"
+
+
+def education_model_question(message: str) -> str:
+    """Retain the question's meaning without passing identifiers or personal sums."""
+    from app.core.guardrails import redact_sensitive_text
+
+    message, _ = redact_sensitive_text(message)
+    message = re.sub(r"\[REDACTED_[A-Z_]+\]", "", message)
+    message = re.sub(
+        r"(?:SGD|USD|S\$|US\$|\$)\s*\d[\d,]*(?:\.\d+)?",
+        "(amount omitted)", message, flags=re.IGNORECASE,
+    )
+    message = re.sub(
+        r"(?i)\b(?:account|salary|income|balance)\s*(?:is|of|:)?\s*\d[\d,.]*",
+        "(personal value omitted)", message,
+    )
+    return message.strip()
 
 
 def should_request_education_context(message: str) -> bool:

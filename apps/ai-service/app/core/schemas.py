@@ -76,12 +76,18 @@ class UserFinancialSnapshot(BaseModel):
     period_start: str | None = None
 
 
+class ConversationMessage(StrictContractModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1500)
+
+
 class CoachRequest(BaseModel):
     user_id: str
     session_id: str
     message: str = Field(min_length=1, max_length=5000)
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
+    conversation_context: list[ConversationMessage] = Field(default_factory=list, max_length=8)
 
     @field_validator("message")
     @classmethod
@@ -153,7 +159,7 @@ class AgentTask(StrictContractModel):
         allowed_fields = {
             AgentName.SPENDING: {"recent_transactions"},
             AgentName.BUDGET: {"monthly_income", "recurring_expenses"},
-            AgentName.GOAL_STRATEGY: {"goals"},
+            AgentName.GOAL_STRATEGY: {"goals", "emergency_fund"},
             AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
         }
         allowed = allowed_fields.get(self.agent)
@@ -268,6 +274,10 @@ class SourceCitation(BaseModel):
     checksum: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     corpus_version: str
     review_due_at: str
+    document_filename: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.md$",
+    )
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
 
 class RouterDecision(BaseModel):
@@ -301,7 +311,7 @@ class GeneralEducationSection(BaseModel):
 
 class HybridEducationNarrative(GroundedEducationNarrative):
     summary: str = Field(default="", max_length=3000)
-    source_ids: list[str] = Field(default_factory=list, max_length=3)
+    source_ids: list[str] = Field(default_factory=list, max_length=9)
     general_knowledge: list[GeneralEducationSection] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
@@ -321,6 +331,21 @@ class ComplianceDecision(BaseModel):
     rationale: list[str] = Field(min_length=1, max_length=8)
     policy_notes: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class EducationComplianceDecision(ComplianceDecision):
+    request_allowed: bool
+    complete: bool
+    missing_points: list[str] = Field(max_length=6)
+    repairable: bool = False
+    financial_language_safe: bool = Field(default=False, strict=True)
+
+    @field_validator("missing_points")
+    @classmethod
+    def bound_missing_points(cls, value: list[str]) -> list[str]:
+        if any(not point.strip() or len(point) > 200 for point in value):
+            raise ValueError("Missing points must be brief, nonempty requirements.")
+        return value
 
 
 # Spending Analysis Models

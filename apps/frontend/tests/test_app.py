@@ -157,6 +157,8 @@ class CoachClient:
                 "issuing_organization": "CPF Board",
                 "canonical_url": "https://www.cpf.gov.sg/example",
                 "published_at": "2026-05-07",
+                "document_filename": "cpf-investing-guide.md",
+                "content_kind": "source_document",
             }
         ]
         session["messages"].extend(
@@ -368,6 +370,8 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
                     "issuing_organization": "CPF Board",
                     "canonical_url": "https://www.cpf.gov.sg/example",
                     "published_at": "2026-05-07",
+                    "document_filename": "cpf-investing-guide.md",
+                    "content_kind": "source_document",
                 }
             ],
             "explanation": {
@@ -413,7 +417,7 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
     assert len(app.session_state["backend_client"].sessions) == 1
 
 
-def test_coach_answer_displays_approved_source_citations() -> None:
+def test_coach_answer_and_reopened_history_display_approved_source_links() -> None:
     app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
     app.session_state["backend_client"] = CoachClient()
     app.session_state["active_user_id"] = "coach-user"
@@ -421,11 +425,79 @@ def test_coach_answer_displays_approved_source_citations() -> None:
 
     app.button(key="coach-starter-0").click().run(timeout=30)
 
-    rendered_markdown = "\n".join(item.value for item in app.markdown)
-    assert "[A beginner's guide to investing in Singapore]" in rendered_markdown
-    assert "https://www.cpf.gov.sg/example" in rendered_markdown
-    assert "CPF Board" in rendered_markdown
-    assert "Source ID: `cpf-beginners-guide-to-investing`" in rendered_markdown
+    source_line = (
+        "- [A beginner's guide to investing in Singapore](https://www.cpf.gov.sg/example) — "
+        "Saved source document · CPF Board, 2026-05-07 · cpf-investing-guide.md · "
+        "Source ID: cpf-beginners-guide-to-investing"
+    )
+    assert not app.exception
+    assert source_line in [item.value for item in app.markdown]
+    assert "RAG knowledge base references — no live web search" in [
+        item.value for item in app.caption
+    ]
+
+    app.sidebar.button(key="coach-new-chat").click().run(timeout=30)
+    app.sidebar.button(key="coach-session-coach-session-1").click().run(timeout=30)
+
+    assert not app.exception
+    assert source_line in [item.value for item in app.markdown]
+    assert "RAG knowledge base references — no live web search" in [
+        item.value for item in app.caption
+    ]
+    assert len(app.session_state["backend_client"].questions) == 1
+
+
+def test_model_only_coach_message_does_not_display_reference_sources() -> None:
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        "_render_coach_message({'role': 'assistant', "
+        "'content': 'General educational background: ETF fees reduce returns.', 'sources': []})"
+    ).run(timeout=30)
+
+    assert not app.exception
+    assert [item.value for item in app.markdown] == [
+        "General educational background: ETF fees reduce returns."
+    ]
+    assert not app.caption
+
+
+def test_coach_source_labels_summary_and_legacy_citations_without_inventing_metadata() -> None:
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        "_render_coach_message({'role': 'assistant', 'content': 'Answer.', 'sources': ["
+        "{'source_id': 'summary', 'title': 'Summary', 'issuing_organization': 'Team 9', "
+        "'canonical_url': 'https://example.com/source', 'published_at': '2026-01-01', "
+        "'document_filename': 'summary.md', 'content_kind': 'project_summary'}, "
+        "{'source_id': 'legacy', 'title': 'Legacy', 'issuing_organization': 'Agency', "
+        "'canonical_url': 'https://example.com/legacy', 'published_at': '2025-01-01'}]})"
+    ).run(timeout=30)
+
+    rendered = "\n".join(item.value for item in app.markdown)
+    captions = [item.value for item in app.caption]
+    assert not app.exception
+    assert "Project-written summary based on the linked source" in rendered
+    assert "summary.md" in rendered
+    assert "Retrieved reference sources" in captions
+    assert "RAG knowledge base references — no live web search" in captions
+    assert "Saved source document" not in rendered
+
+
+def test_source_filename_and_title_cannot_inject_markdown_or_html() -> None:
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        "_render_coach_message({'role': 'assistant', 'content': 'Answer.', 'sources': [{"
+        "'source_id': 'hostile', 'title': 'evil](javascript:alert(1))<img src=x>', "
+        "'issuing_organization': 'Agency', 'canonical_url': 'https://example.com/a(b)', "
+        "'published_at': '2026-01-01', 'document_filename': 'bad`[x](y).md', "
+        "'content_kind': 'source_document'}]})"
+    ).run(timeout=30)
+
+    rendered = "\n".join(item.value for item in app.markdown)
+    assert not app.exception
+    assert "](javascript:" not in rendered
+    assert "<img src=x>" not in rendered
+    assert "bad\\`\\[x\\]\\(y\\).md" in rendered
+    assert "https://example.com/a%28b%29" in rendered
 
 
 def test_coach_answer_explains_rationale_confidence_and_reference() -> None:

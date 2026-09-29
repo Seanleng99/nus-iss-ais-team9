@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 
 from app.agents.base import BaseAgent
-from app.agents.education_access import should_request_education_context
+from app.agents.education_access import education_topics, should_request_education_context
 from app.core.schemas import (
     AgentName,
     AgentResult,
@@ -20,9 +20,19 @@ class GoalStrategyAgent(BaseAgent):
     prompt_id = "agent_goal_strategy"
     dependency_planning_enabled = True
 
+    @staticmethod
+    def _emergency_fund_request(task: AgentTask) -> bool:
+        return (
+            "emergency_fund" in task.input_data
+            or "emergency fund readiness" in education_topics(task.sanitized_message)
+        )
+
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         goals = task.input_data.get("goals", [])
-        if goals and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies:
+        if (
+            goals and not self._emergency_fund_request(task)
+            and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies
+        ):
             return (
                 DependencyRequest(
                     requester_task_id=task.task_id,
@@ -36,8 +46,7 @@ class GoalStrategyAgent(BaseAgent):
                 ),
             )
         if (
-            goals
-            and should_request_education_context(task.sanitized_message)
+            (self._emergency_fund_request(task) or should_request_education_context(task.sanitized_message))
             and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
             and not any(
                 CapabilityName.EDUCATION_CONTEXT.value in warning
@@ -62,6 +71,8 @@ class GoalStrategyAgent(BaseAgent):
         return ()
 
     def _dependency_options(self, task: AgentTask) -> Sequence[DependencyRequestDraft]:
+        if self._emergency_fund_request(task):
+            return ()
         goals = task.input_data.get("goals", [])
         if goals and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies:
             return (
@@ -81,6 +92,9 @@ class GoalStrategyAgent(BaseAgent):
         return ()
 
     def _missing_input_questions(self, task: AgentTask) -> Sequence[str]:
+        if self._emergency_fund_request(task):
+            # Explain the sourced benchmark first, even without a saved goal/income.
+            return ()
         questions = []
         if not task.input_data.get("goals"):
             questions.append("What goal amount and target date would you like to plan for?")
@@ -94,9 +108,19 @@ class GoalStrategyAgent(BaseAgent):
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)
-        projections = call_tool(self.name, "goal_projection", snapshot)
+        projection_snapshot = snapshot
+        if self._emergency_fund_request(task):
+            projection_snapshot = snapshot.model_copy(update={
+                "goals": [goal for goal in snapshot.goals
+                          if goal.current_amount.currency == goal.target_amount.currency],
+            })
+        projections = call_tool(self.name, "goal_projection", projection_snapshot)
         capacity = task.resolved_dependencies.get(CapabilityName.MONTHLY_SAVINGS_CAPACITY)
         grounding: dict = {"projections": projections}
+        if self._emergency_fund_request(task):
+            grounding["emergency_fund"] = task.input_data.get("emergency_fund") or call_tool(
+                self.name, "emergency_fund_summary", snapshot,
+            )
         if capacity is not None:
             monthly_capacity = float(capacity.data["estimated_savings_capacity"])
             feasibility = [
@@ -144,6 +168,21 @@ class GoalStrategyAgent(BaseAgent):
         return grounding
 
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
+        if "emergency_fund" in grounding:
+            return AgentResult(
+                agent=self.name,
+                summary=(
+                    "目前无法从已保存的资料核实应急基金的一般指引，因此不能据此估算目标金额。"
+                    "已记录的交易可能不完整。请提供完整的每月支出，以便继续评估目标。"
+                    if grounding.get("response_language") == "Chinese" else
+                    "I couldn't verify the general emergency-fund guidance from the saved sources, "
+                    "so I can't use it to estimate a target yet. Logged transactions may be incomplete. "
+                    "Please share your complete monthly expenses to continue assessing the goal."
+                ),
+                rationale=["Source guidance was unavailable; no unsupported benchmark was supplied."],
+                confidence=1.0,
+                data=grounding,
+            )
         return AgentResult(
             agent=self.name,
             summary=(

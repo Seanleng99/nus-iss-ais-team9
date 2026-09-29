@@ -141,7 +141,7 @@ def test_blocked_response_withholds_poison_from_all_backend_surfaces() -> None:
             "/api/users/blocked-user/chat-sessions/blocked-chat", headers=HEADERS
         )
         trace = client.get(
-            "/api/coach/traces/trace-blocked-chat?user_id=blocked-user",
+            f"/api/coach/traces/{response.json()['audit']['trace_id']}?user_id=blocked-user",
             headers=HEADERS,
         )
         exported = client.get(
@@ -156,7 +156,7 @@ def test_blocked_response_withholds_poison_from_all_backend_surfaces() -> None:
     assert response.json()["sources"] == []
     assert BLOCKED_EDUCATIONAL_DISCLAIMER in response.json()["disclaimers"]
     assert response.json()["selected_agents"] == ["budget"]
-    assert response.json()["audit"]["trace_id"] == "trace-blocked-chat"
+    assert response.json()["audit"]["trace_id"] == response.headers["X-Trace-ID"]
     assert response.json()["agent_results"] == [
         {
             "agent": "budget",
@@ -176,7 +176,7 @@ def test_blocked_response_withholds_poison_from_all_backend_surfaces() -> None:
     assert history.json()["messages"][1]["sources"] == []
     assert trace.status_code == 200
     assert POISON not in trace.text
-    assert trace.json()["trace_id"] == "trace-blocked-chat"
+    assert trace.json()["trace_id"] == response.headers["X-Trace-ID"]
     assert exported.status_code == 200
     assert POISON not in exported.text
     assert exported.json()["data"]["chat_sessions"][0]["messages"][1]["sources"] == []

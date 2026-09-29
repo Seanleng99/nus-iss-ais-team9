@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
 from pydantic import ValidationError
@@ -34,6 +34,8 @@ class RetrievedChunk:
     text: str
     score: float
     findings: tuple[str, ...] = ()
+    document_filename: str | None = None
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
 
 class EducationRetriever(Protocol):
@@ -60,6 +62,8 @@ SOURCE_METADATA_FIELDS = (
     "checksum",
     "corpus_version",
     "review_due_at",
+    "document_filename",
+    "content_kind",
 )
 
 
@@ -77,11 +81,42 @@ def build_education_context(
     query: str,
     *,
     scope: str,
+    topics: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any]:
     contexts = []
     rejected_chunk_count = 0
     security_findings: list[str] = []
-    retrieved = retriever.retrieve(query)
+    # Round-robin candidates preserve each subject's opportunity within one
+    # bounded evidence budget. Queries contain canonical concepts, never PII.
+    if len(topics) > 1:
+        candidates = [
+            retriever.retrieve(f"General investment education about {topic}")
+            for topic in topics[:6]
+        ]
+        retrieved = []
+        seen = set()
+        for rank in range(3):
+            for group in candidates:
+                if rank >= len(group):
+                    continue
+                item = group[rank]
+                identity = (item.source_id, item.document_version, item.text)
+                if identity not in seen:
+                    seen.add(identity)
+                    retrieved.append(item)
+        retrieved = retrieved[:9]
+        # Prefer passages with actual subject headings over repeated mentions
+        # in fees/eligibility prose, preserving a bounded 1,200-word context.
+        from app.rag.ranking import terms
+
+        topic_terms = [set(terms(topic)) for topic in topics]
+        def heading_coverage(item):
+            headings = [set(terms(p)) for p in item.text.split("\n\n") if len(p.split()) <= 8]
+            return sum(any(t == h for h in headings) for t in topic_terms)
+        retrieved.sort(key=heading_coverage, reverse=True)
+    else:
+        retrieved = retriever.retrieve(query)
+    context_words = 0
     for item in retrieved:
         context = asdict(item)
         metadata_decision = sanitize_rag_document(
@@ -112,11 +147,15 @@ def build_education_context(
         ):
             rejected_chunk_count += 1
             continue
+        words = len(context["text"].split())
+        if context_words + words > 1_200:
+            continue
+        context_words += words
         contexts.append(context)
-    sources = [
-        {key: context[key] for key in SOURCE_METADATA_FIELDS}
+    sources = list({
+        context["source_id"]: {key: context[key] for key in SOURCE_METADATA_FIELDS}
         for context in contexts
-    ]
+    }.values())
     log_event(
         "rag.education.context.ready",
         retrieved_chunk_count=len(retrieved), accepted_chunk_count=len(contexts),
@@ -528,6 +567,8 @@ class BedrockEducationRetriever:
                     review_due_at=governed.review_due_at.isoformat(),
                     text=text,
                     score=score,
+                    document_filename=governed.document_filename,
+                    content_kind=governed.content_kind,
                 )
             )
         # Semantic retrieval finds candidate documents; lexical scoring selects

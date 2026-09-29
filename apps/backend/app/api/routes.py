@@ -1,12 +1,15 @@
+import asyncio
 import re
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
 from app.core.config import settings
+from app.core.run_trace import active_run
 from app.core.security import (
     AuthenticatedPrincipal,
     automation_user_id_reserved,
@@ -17,7 +20,11 @@ from app.core.telemetry import call_span, log_event, log_synthetic_exchange, tra
 from app.domain.schemas import (
     CoachRequest,
     CoachResponse,
+    InternalCoachRequest,
+    OrchestrationRunPage,
+    OrchestrationRunSummary,
     OrchestrationTraceResponse,
+    TraceStatus,
 )
 from app.infrastructure.database import get_db_session
 from app.infrastructure.repositories import (
@@ -25,6 +32,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyOrchestrationTraceRepository,
     SQLAlchemyUserRepository,
 )
+from app.infrastructure.run_trace import DurableRun
 from app.services.budget_alert import build_status_reply, parse_budget_status_query
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
@@ -59,12 +67,20 @@ def get_ai_service_client() -> AIServiceClient:
 @trace_method
 async def coach(
     request: CoachRequest,
+    http_response: Response,
     ai_service: Annotated[AIServiceClient, Depends(get_ai_service_client)],
     session: Annotated[Session, Depends(get_db_session)],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
     x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
     enforce_user_access(principal, session, request.user_id)
+    chat_repository = SQLAlchemyChatRepository(session)
+    try:
+        conversation_existed, revision, context = chat_repository.context_snapshot(
+            request.user_id, request.session_id
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=404, detail="Conversation not found") from error
     captured = handle_transaction_capture(session, request)
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
@@ -80,30 +96,79 @@ async def coach(
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
+    request = InternalCoachRequest(**request.model_dump(), conversation_context=context)
+    log_event("coach.history.loaded", history_count=len(context))
+    session.rollback()
+    chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
+    if chat_session is None:
+        if conversation_existed or chat_repository.id_exists(request.session_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        try:
+            chat_session = chat_repository.create(
+                request.user_id, request.session_id, request.message[:120]
+            )
+        except IntegrityError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Conversation changed; please retry.") from error
+    elif len(chat_session.messages) != revision:
+        raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
+    # DurableRun commits metadata and releases the conversation lock before AI.
+    run = DurableRun(session, chat_session.id, settings.ai_service_timeout_seconds)
+    token = active_run.set(run)
     try:
         response = await ai_service.coach(request)
+        response.audit["trace_id"] = run.trace_id
+        response.audit["response_language"] = (
+            "Chinese"
+            if any("\u4e00" <= character <= "\u9fff" for character in request.message)
+            else "English"
+        )
+        with call_span("pydantic.main.BaseModel.model_validate", response_type="CoachResponse"):
+            response = CoachResponse.model_validate(response.model_dump())
+        # Reacquire the conversation lock after incremental event commits.
+        session.expire_all()
+        enforce_user_access(principal, session, request.user_id)
+        chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
+        if chat_session is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if len(chat_session.messages) != revision:
+            raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
+        chat_repository.append_message(chat_session, "user", request.message)
+        assistant_message = chat_repository.append_message(
+            chat_session,
+            "assistant",
+            response.answer,
+            [source.model_dump() for source in response.sources],
+        )
+        run.complete(response, assistant_message.id)
+        log_event("coach.persistence.completed", persisted=True, message_count=2)
+        if (
+            x_synthetic_log == "true"
+            and principal.is_automation
+            and automation_user_id_reserved(request.user_id)
+            and settings.app_env.lower() in {"local", "test", "demo"}
+        ):
+            log_synthetic_exchange(request.message, response.answer)
+        http_response.headers["X-Trace-ID"] = run.trace_id
+        return _finalize_coach_response(response)
     except AIServiceUnavailableError as error:
+        run.fail(
+            "timed_out" if error.timed_out else "failed",
+            "AI_SERVICE_TIMEOUT" if error.timed_out else "AI_SERVICE_UNAVAILABLE",
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The coaching service is temporarily unavailable.",
+            headers={"X-Trace-ID": run.trace_id},
         ) from error
-    response.audit["response_language"] = (
-        "Chinese"
-        if any("\u4e00" <= character <= "\u9fff" for character in request.message)
-        else "English"
-    )
-    with call_span("pydantic.main.BaseModel.model_validate", response_type="CoachResponse"):
-        response = CoachResponse.model_validate(response.model_dump())
-    _persist_coach_exchange(session, request, response)
-    log_event("coach.persistence.completed", persisted=True, message_count=2)
-    if (
-        x_synthetic_log == "true"
-        and principal.is_automation
-        and automation_user_id_reserved(request.user_id)
-        and settings.app_env.lower() in {"local", "test", "demo"}
-    ):
-        log_synthetic_exchange(request.message, response.answer)
-    return _finalize_coach_response(response)
+    except asyncio.CancelledError:
+        run.fail("abandoned", "REQUEST_CANCELLED")
+        raise
+    except Exception:
+        run.fail("failed", "RESPONSE_PERSISTENCE_FAILED")
+        raise
+    finally:
+        active_run.reset(token)
 
 
 @trace_method
@@ -164,11 +229,44 @@ def _finalize_coach_response(response: CoachResponse) -> CoachResponse:
         output_characters=len(response.answer),
         trace_id=(
             trace_id
-            if isinstance(trace_id, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", trace_id)
+            if isinstance(trace_id, str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", trace_id)
             else None
         ),
     )
     return response
+
+
+@router.get("/coach/traces", response_model=OrchestrationRunPage)
+def list_orchestration_traces(
+    user_id: str,
+    session: Annotated[Session, Depends(get_db_session)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
+    status: TraceStatus | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> OrchestrationRunPage:
+    enforce_user_access(principal, session, user_id)
+    repository = SQLAlchemyOrchestrationTraceRepository(session)
+    repository.mark_abandoned(datetime.now(UTC), user_id=user_id)
+    session.commit()
+    rows = repository.list_for_user(user_id, status=status, limit=limit, offset=offset)
+    return OrchestrationRunPage(
+        items=[
+            OrchestrationRunSummary(
+                trace_id=record.trace_id,
+                session_id=record.session_id,
+                conversation_title=title,
+                status=record.status,
+                selected_agents=record.selected_agents,
+                created_at=record.created_at,
+                finished_at=record.finished_at,
+                error_code=record.error_code,
+            )
+            for record, title in rows[:limit]
+        ],
+        next_offset=offset + limit if len(rows) > limit else None,
+    )
 
 
 @router.get(
@@ -191,10 +289,28 @@ def get_orchestration_trace(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Orchestration trace not found",
         )
+    if record.status == "running" and record.deadline_at is not None:
+        deadline = (
+            record.deadline_at.replace(tzinfo=UTC)
+            if record.deadline_at.tzinfo is None
+            else record.deadline_at
+        )
+        if deadline < datetime.now(UTC):
+            SQLAlchemyOrchestrationTraceRepository(session).mark_abandoned(
+                datetime.now(UTC), user_id=user_id
+            )
+            session.commit()
+            session.refresh(record)
     return OrchestrationTraceResponse(
+        status=record.status,
+        correlation_id=record.correlation_id,
+        finished_at=record.finished_at,
+        error_code=record.error_code,
         trace_id=record.trace_id,
         session_id=record.session_id,
-        assistant_message_id=str(record.assistant_message_id),
+        assistant_message_id=str(record.assistant_message_id)
+        if record.assistant_message_id
+        else None,
         selected_agents=record.selected_agents,
         agent_results=record.agent_results,
         audit=record.audit,
@@ -217,9 +333,7 @@ def delete_orchestration_trace(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> Response:
     enforce_user_access(principal, session, user_id)
-    if not SQLAlchemyOrchestrationTraceRepository(session).delete_for_user(
-        user_id, trace_id
-    ):
+    if not SQLAlchemyOrchestrationTraceRepository(session).delete_for_user(user_id, trace_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Orchestration trace not found",

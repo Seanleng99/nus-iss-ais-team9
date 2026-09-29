@@ -1,6 +1,7 @@
 """Bounded behavior regressions for hybrid investment education (v6/v7)."""
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -140,6 +141,60 @@ def test_all_rag_answer_keeps_grounded_status_and_empty_general_sections():
     assert result.data["evidence_status"] == "grounded"
     assert result.data.get("general_knowledge", []) == []
     assert result.data["cited_source_ids"] == ["etf-source"]
+    assert "[MoneySense ETF guide](https://www.moneysense.gov.sg/investments/etfs)" in response.answer
+
+
+def test_v6_source_ids_become_visible_references_before_safety_review():
+    gateway = HybridGateway(summary="An ETF trades on an exchange.")
+    response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain ETFs."))
+    assert not response.blocked
+    assert "[MoneySense ETF guide](https://www.moneysense.gov.sg/investments/etfs)" in response.answer
+    review = json.loads(gateway.calls_for("risk_compliance")[0]["user_prompt"])
+    assert "[source:etf-source]" in review["draft_answer"]
+
+
+@pytest.mark.parametrize("kind,label", [
+    ("source_document", "Saved source document"),
+    ("project_summary", "Project-written summary"),
+])
+def test_answer_exposes_trusted_document_provenance_before_history_serialization(kind, label):
+    chunk = replace(source(), document_filename="moneysense_guide_to_etfs.md", content_kind=kind)
+    gateway = HybridGateway([
+        {"topic": "shares", "text": "A share represents ownership in a company."},
+    ])
+    response = workflow(gateway, FixedRetriever([chunk])).handle(request("Explain stocks and ETFs."))
+    assert not response.blocked
+    rag, model = response.answer.split("AI model knowledge — no live web search")
+    assert "RAG knowledge base (saved documents; no live web search)" in rag
+    assert f"(RAG: `moneysense_guide_to_etfs.md`; {label})" in rag
+    assert "[MoneySense ETF guide](https://www.moneysense.gov.sg/investments/etfs)" in rag
+    assert "ownership in a company" in model
+    assert "https://" not in model and "RAG:" not in model
+    assert response.sources[0].document_filename == chunk.document_filename
+    assert response.sources[0].content_kind == kind
+    # Only the application supplies filenames/badges; the model gets the document type.
+    payload = json.loads(gateway.calls_for("agent_investment_education")[0]["user_prompt"])
+    assert payload["grounding"]["sources"][0]["content_kind"] == kind
+    assert "document_filename" not in payload["grounding"]["sources"][0]
+
+
+def test_rag_only_answer_has_explicit_no_web_search_label():
+    response = workflow(HybridGateway(), FixedRetriever([source()])).handle(request("Explain ETFs."))
+    assert not response.blocked
+    assert response.answer.startswith("RAG knowledge base (saved documents; no live web search)")
+    assert "AI model knowledge" not in response.answer
+
+
+def test_model_only_answer_does_not_list_unused_retrieved_sources():
+    gateway = HybridGateway(
+        [{"topic": "shares", "text": "A share represents ownership in a company."}],
+        summary="", source_ids=[],
+    )
+    response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain stocks."))
+    assert not response.blocked
+    assert response.sources == []
+    assert response.audit["retrieval_sources"]
+    assert "not verified against retrieved sources" in response.answer
 
 
 @pytest.mark.parametrize("version", ["v6", "v7"])
@@ -305,7 +360,7 @@ def test_negated_compliance_assessment_does_not_block_educational_answer(text):
         def generate(self, **kwargs):
             if kwargs['system_prompt'].startswith('PROMPT_ID: risk_compliance'):
                 return json.dumps({
-                    'blocked': False, 'summary': 'Educational information.',
+                    'blocked': False, 'request_allowed': True, 'complete': True, 'missing_points': [], 'summary': 'Educational information.',
                     'rationale': [text], 'policy_notes': [], 'confidence': 0.9,
                 })
             return super().generate(**kwargs)

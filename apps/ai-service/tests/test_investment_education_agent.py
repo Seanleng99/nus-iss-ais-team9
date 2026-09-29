@@ -54,7 +54,8 @@ def test_investment_retrieval_query_contains_topics_not_personal_details() -> No
     )
 
     assert retriever.queries == [
-        "General investment education about bonds, exchange-traded funds"
+        "General investment education about bonds",
+        "General investment education about exchange-traded funds",
     ]
     assert "9,876" not in retriever.queries[0]
     assert "learner@example.com" not in retriever.queries[0]
@@ -94,12 +95,13 @@ def test_investment_model_prompt_contains_topics_not_personal_details() -> None:
         )
     )
     payload = json.loads(investment_call["user_prompt"])
-    assert payload["message"] == (
+    assert "Please explain bonds and ETFs." in payload["message"]
+    assert (
         "Answer the requested explanation about bonds, exchange-traded funds. "
         "Search the supplied evidence first; use the separate general_knowledge "
         "field only for missing stable concepts permitted by fallback_topics. "
         "Do not expand to adjacent topics."
-    )
+    ) in payload["message"]
     assert payload["grounding"]["response_language"] == "English"
     assert "9,876" not in investment_call["user_prompt"]
     assert "learner@example.com" not in investment_call["user_prompt"]
@@ -429,7 +431,7 @@ def test_response_exposes_only_sources_cited_by_investment_agent() -> None:
                     ),
                     json.dumps(
                         {
-                            "blocked": False,
+                            "blocked": False, "request_allowed": True, "complete": True, "missing_points": [],
                             "summary": "Allowed.",
                             "rationale": ["The answer is educational."],
                             "policy_notes": [],
@@ -636,7 +638,12 @@ def test_local_fixture_answer_uses_the_most_relevant_retrieved_context() -> None
         if result.agent == "investment_education"
     )
     context = investment.data["contexts"][0]
-    assert response.answer == investment.summary == context["text"]
+    reference = response.sources[0]
+    assert response.answer == investment.summary == (
+        "RAG knowledge base (saved documents; no live web search):\n\n"
+        + context["text"] + f" [{reference.title}]({reference.canonical_url})"
+        + "\n\nInvestment outcomes vary and losses are possible."
+    )
     assert "bonds" in response.answer.lower()
     assert "risks, liquidity, fees, and potential returns differ" in response.answer.lower()
     assert investment.data["uncertainties"] == [
@@ -737,7 +744,7 @@ def test_sensitive_data_in_compliance_model_output_is_quarantined() -> None:
                     ),
                     json.dumps(
                         {
-                            "blocked": False,
+                            "blocked": False, "request_allowed": True, "complete": True, "missing_points": [],
                             "summary": "Call me at +65 9123 4567 for approval.",
                             "rationale": ["The answer is educational."],
                             "policy_notes": [],

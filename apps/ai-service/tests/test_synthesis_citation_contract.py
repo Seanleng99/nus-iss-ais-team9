@@ -6,7 +6,9 @@ import socket
 from dataclasses import asdict
 
 import pytest
+from pydantic import ValidationError
 
+from app.core.citations import render_citations
 from app.core.config import Settings
 from app.core.schemas import AgentName, AgentResult, CoachRequest, SourceCitation
 from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
@@ -112,6 +114,26 @@ def synthesis_state(sources=()):
         )],
         "audit_events": [],
     }
+
+
+def test_reference_label_uses_escaped_approved_title(approved_sources):
+    source = approved_sources[0].model_copy(update={
+        "title": "Guide [ETF] *basics*\nnext line",
+        "canonical_url": "https://www.moneysense.gov.sg/guide(test)",
+    })
+    rendered = render_citations(f"Definition. [source:{source.source_id}]", [source])
+    assert rendered == (
+        r"Definition. [Guide \[ETF\] \*basics\* next line]"
+        "(https://www.moneysense.gov.sg/guide%28test%29)"
+    )
+
+
+@pytest.mark.parametrize("filename", ["../source.md", "x`evil`.md", "x[link].md", "x\n.md"])
+def test_citation_filenames_cannot_inject_paths_or_markup(approved_sources, filename):
+    payload = approved_sources[0].model_dump()
+    payload["document_filename"] = filename
+    with pytest.raises(ValidationError):
+        SourceCitation.model_validate(payload)
 
 
 def invalid_answer(kind, unknown_id="unknown-source-id"):
@@ -429,8 +451,10 @@ def test_sole_insufficient_education_preserves_gap_without_synthesis(version):
     assert education.data["contexts"] == education.data["sources"] == []
     assert education.data["unanswered_topics"] == ["tax treatment", "tokenized assets"]
     assert response.answer == education.summary == (
-        "The approved knowledge base does not contain enough information to answer this question."
-        " Uncovered topics: tax treatment, tokenized assets."
+        "The approved knowledge base does not contain enough information to answer this question. "
+        "These topics are outside this version's supported investment education scope: tax treatment, tokenized assets. "
+        "The saved RAG documents do not cover them. This is a scope limit, not an unsafe question. "
+        "I can explain general investment risk or diversification."
     )
     assert_independent_compliance_review(gateway, response)
 

@@ -156,6 +156,8 @@ class LocalDocumentEducationRetriever:
                     review_due_at=source.review_due_at.isoformat(),
                     text=chunk,
                     score=score,
+                    document_filename=Path(source.s3_document_key).name,
+                    content_kind=source.content_kind,
                 )
             )
             if len(selected) == top_k:

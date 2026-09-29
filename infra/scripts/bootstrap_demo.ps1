@@ -13,7 +13,7 @@ param(
     [string]$ExistingOidcRedirectUri = "",
     [string]$DatabaseInstanceIdentifier = "ai-financial-wellness-coach-demo",
     [string]$DatabaseSnapshotIdentifier = "",
-    [string]$EducationCorpusVersion = "investment-education-sg@2026-09-26.1",
+    [string]$EducationCorpusVersion = "investment-education-sg@2026-09-27.2",
     [string]$PolicyCorpusVersion = "financial-coach-policy-sg@2026-08-29.1",
     [string]$OpenAiModelId = "gpt-6-luna"
 )

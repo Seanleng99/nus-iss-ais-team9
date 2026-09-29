@@ -415,7 +415,7 @@ def test_deployed_config_creates_governed_local_education_retriever() -> None:
         MODEL_PROVIDER="openai",
         OPENAI_API_KEY="test-key",
         RAG_PROVIDER="local_documents",
-        EDUCATION_CORPUS_VERSION="investment-education-sg@2026-09-26.1",
+        EDUCATION_CORPUS_VERSION="investment-education-sg@2026-09-27.2",
         POLICY_RAG_PROVIDER="local_documents",
         POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-08-29.1",
     )
@@ -426,5 +426,5 @@ def test_deployed_config_creates_governed_local_education_retriever() -> None:
 
     assert isinstance(retriever, LocalDocumentEducationRetriever)
     assert retriever.expected_corpus_version == (
-        "investment-education-sg@2026-09-26.1"
+        "investment-education-sg@2026-09-27.2"
     )

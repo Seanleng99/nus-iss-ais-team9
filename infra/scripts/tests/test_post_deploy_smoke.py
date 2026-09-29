@@ -7,6 +7,11 @@ import pytest
 
 from infra.scripts import post_deploy_smoke
 
+MODEL_SECTION_LABEL = (
+    "AI model knowledge — no live web search "
+    "(not verified against retrieved sources):\n\n"
+)
+
 
 @pytest.fixture
 def education_response():
@@ -31,14 +36,35 @@ def education_response():
         "policy_sources": [source("policy", "policy-v1")],
     }
     return {
-        "blocked": False, "sources": [first], "audit": audit,
+        "blocked": False,
+        "answer": (
+            "RAG knowledge base (saved documents; no live web search):\n\n"
+            "Approved material. [Approved education](https://example.test/cited)"
+        ),
+        "sources": [first], "audit": audit,
         "agent_results": [
-            {"agent": "investment_education", "data": {
+            {"agent": "investment_education", "blocked": False, "data": {
                 "evidence_status": "grounded", "sources": [first, second],
             }},
-            {"agent": "risk_compliance", "data": {"policy_evidence_status": "grounded"}},
+            {"agent": "risk_compliance", "blocked": False, "data": {
+                "policy_evidence_status": "grounded", "request_allowed": True,
+                "financial_language_safe": True, "answer_complete": True,
+            }},
         ],
     }
+
+
+@pytest.fixture
+def hybrid_education_response(education_response):
+    investment = education_response["agent_results"][0]["data"]
+    investment["evidence_status"] = "hybrid"
+    investment["general_knowledge"] = [
+        {"topic": "diversification", "text": "General educational context."}
+    ]
+    education_response["answer"] += (
+        f"\n\n{MODEL_SECTION_LABEL}Additional general context."
+    )
+    return education_response
 
 
 def run_education_smoke(monkeypatch, response, persisted_audit=None):
@@ -46,16 +72,158 @@ def run_education_smoke(monkeypatch, response, persisted_audit=None):
         (200, json.dumps(response)),
         (200, json.dumps({"audit": persisted_audit or response["audit"]})),
     ])
-    monkeypatch.setattr(post_deploy_smoke, "request", lambda *args, **kwargs: next(replies))
+    urls = []
+
+    def record_request(url, **kwargs):
+        urls.append(url)
+        return next(replies)
+
+    monkeypatch.setattr(post_deploy_smoke, "request", record_request)
     post_deploy_smoke.check_investment_education_rag(
         "https://example.test/api/coach", "synthetic-key", "education-v1", "policy-v1",
     )
+    assert urls == [
+        "https://example.test/api/coach",
+        "https://example.test/api/coach/traces/synthetic-trace?user_id=deployment-smoke-test",
+    ]
 
 
 def test_education_trace_retains_retrieved_sources_beyond_final_citations(
     monkeypatch, education_response,
 ):
     run_education_smoke(monkeypatch, education_response)
+
+
+def test_education_smoke_accepts_hybrid_investment_response(
+    monkeypatch, hybrid_education_response,
+):
+    run_education_smoke(monkeypatch, hybrid_education_response)
+
+
+@pytest.mark.parametrize("status", ["general_knowledge", "insufficient", "unknown"])
+def test_education_smoke_rejects_non_rag_investment_status(
+    monkeypatch, education_response, status,
+):
+    education_response["agent_results"][0]["data"]["evidence_status"] = status
+
+    with pytest.raises(AssertionError):
+        run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["missing_list", "missing_label", "missing_body", "citation_moved", "model_section_citation"],
+)
+def test_education_smoke_rejects_incomplete_hybrid_sections(
+    monkeypatch, hybrid_education_response, damage,
+):
+    investment = hybrid_education_response["agent_results"][0]["data"]
+    answer = hybrid_education_response["answer"]
+    rag_answer = answer.split(f"\n\n{MODEL_SECTION_LABEL}", 1)[0]
+    if damage == "missing_list":
+        investment["general_knowledge"] = []
+    elif damage == "missing_label":
+        hybrid_education_response["answer"] = rag_answer + "\n\nGeneral context."
+    elif damage == "missing_body":
+        hybrid_education_response["answer"] = rag_answer + f"\n\n{MODEL_SECTION_LABEL}"
+    elif damage == "citation_moved":
+        hybrid_education_response["answer"] = (
+            "RAG knowledge base (saved documents; no live web search):\n\n"
+            "Approved material.\n\n"
+            f"{MODEL_SECTION_LABEL}General context. "
+            "[Approved education](https://example.test/cited)"
+        )
+    else:
+        hybrid_education_response["answer"] += (
+            " [Other source](https://example.test/other)"
+        )
+
+    with pytest.raises(AssertionError):
+        run_education_smoke(monkeypatch, hybrid_education_response)
+
+
+@pytest.mark.parametrize(
+    "damage", ["empty_answer", "blocked", "missing_rag_heading", "missing_rag_link"]
+)
+def test_education_smoke_rejects_incomplete_grounded_response(
+    monkeypatch, education_response, damage,
+):
+    if damage == "empty_answer":
+        education_response["answer"] = ""
+    elif damage == "blocked":
+        education_response["agent_results"][0]["blocked"] = True
+    elif damage == "missing_rag_heading":
+        education_response["answer"] = (
+            "Saved documents:\n\nApproved material. "
+            "[Approved education](https://example.test/cited)"
+        )
+    else:
+        education_response["answer"] = (
+            "RAG knowledge base (saved documents; no live web search):\n\n"
+            "Approved material without a displayed link."
+        )
+
+    with pytest.raises(AssertionError):
+        run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize("damage", ["model_data", "model_section"])
+def test_education_smoke_rejects_model_only_content_in_grounded_response(
+    monkeypatch, education_response, damage,
+):
+    if damage == "model_data":
+        education_response["agent_results"][0]["data"]["general_knowledge"] = [
+            {"topic": "diversification", "text": "Unverified context."}
+        ]
+    else:
+        education_response["answer"] += f"\n\n{MODEL_SECTION_LABEL}Unverified context."
+
+    with pytest.raises(AssertionError):
+        run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["blocked", "ungrounded", "disallowed", "unsafe", "incomplete"],
+)
+def test_education_smoke_requires_positive_compliance_result(
+    monkeypatch, education_response, damage,
+):
+    compliance = education_response["agent_results"][1]
+    if damage == "blocked":
+        compliance["blocked"] = True
+    elif damage == "ungrounded":
+        compliance["data"]["policy_evidence_status"] = "insufficient"
+    else:
+        field = {
+            "disallowed": "request_allowed",
+            "unsafe": "financial_language_safe",
+            "incomplete": "answer_complete",
+        }[damage]
+        compliance["data"][field] = False
+
+    with pytest.raises(AssertionError):
+        run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize(
+    ("damage", "failure"),
+    [("retrieval_checksum", "provenance"), ("compliance", "safe and complete")],
+)
+def test_hybrid_smoke_still_requires_retrieval_provenance_and_compliance(
+    monkeypatch, hybrid_education_response, damage, failure,
+):
+    if damage == "retrieval_checksum":
+        hybrid_education_response["audit"]["retrieval_sources"][1]["checksum"] = (
+            "sha256:" + "b" * 64
+        )
+    else:
+        hybrid_education_response["agent_results"][1]["data"][
+            "financial_language_safe"
+        ] = False
+
+    with pytest.raises(AssertionError, match=failure):
+        run_education_smoke(monkeypatch, hybrid_education_response)
 
 
 def test_education_smoke_accepts_multiple_chunks_from_one_approved_source(

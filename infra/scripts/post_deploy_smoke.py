@@ -242,9 +242,41 @@ def check_investment_education_rag(
         None,
     )
     assert investment is not None, "investment education agent result was absent"
-    assert investment.get("data", {}).get("evidence_status") == "grounded", (
-        "investment education response was not grounded"
+    assert investment.get("blocked") is False, "investment education result was blocked"
+    education_data = investment.get("data", {})
+    evidence_status = education_data.get("evidence_status")
+    assert evidence_status in {"grounded", "hybrid"}, (
+        f"investment education response lacked RAG evidence: {evidence_status!r}"
     )
+    # This English probe permits model gap-filling, but must still exercise RAG
+    # and show users which statements are supported by retrieved documents.
+    answer = response.get("answer", "")
+    model_label = (
+        "AI model knowledge — no live web search "
+        "(not verified against retrieved sources):\n\n"
+    )
+    rag_answer, model_separator, model_answer = answer.partition(model_label)
+    assert rag_answer.startswith(
+        "RAG knowledge base (saved documents; no live web search):\n\n"
+    ), "education answer did not identify saved RAG documents"
+    for source in sources:
+        source_url = urllib.parse.quote(source["canonical_url"], safe=":/?#=&%")
+        assert f"]({source_url})" in rag_answer, "education answer omitted a visible RAG citation"
+    model_knowledge = education_data.get("general_knowledge", [])
+    if evidence_status == "hybrid":
+        assert isinstance(model_knowledge, list) and model_knowledge, (
+            "hybrid education result omitted model knowledge"
+        )
+        assert model_separator and model_answer.strip(), (
+            "hybrid education answer omitted the separate model knowledge section"
+        )
+        assert not any(token in model_answer for token in ("://", "](", "[source:")), (
+            "model knowledge section contained a source attribution"
+        )
+    else:
+        assert not model_knowledge and not model_separator, (
+            "grounded education answer contained model-only knowledge"
+        )
     # The public bibliography can cite a subset. Audit evidence must retain ALL
     # retrieved sources, including sources that did not appear in the answer.
     retrieved = retrieval_provenance(
@@ -269,9 +301,15 @@ def check_investment_education_rag(
         None,
     )
     assert compliance is not None, "Risk and Compliance result was absent"
-    assert compliance.get("data", {}).get("policy_evidence_status") == "grounded", (
+    assert compliance.get("blocked") is False, "Risk and Compliance blocked the answer"
+    compliance_data = compliance.get("data", {})
+    assert compliance_data.get("policy_evidence_status") == "grounded", (
         "Risk and Compliance response was not grounded in approved policy"
     )
+    assert all(
+        compliance_data.get(field) is True
+        for field in ("request_allowed", "financial_language_safe", "answer_complete")
+    ), "Risk and Compliance did not approve a safe and complete answer"
     trace_id = audit.get("trace_id")
     assert trace_id, "education response did not include a trace ID"
     trace_url = (

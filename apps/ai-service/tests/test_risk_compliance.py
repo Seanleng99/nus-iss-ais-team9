@@ -19,7 +19,7 @@ from app.agents.risk_compliance import (
 from app.core.config import Settings
 from app.core.prompts import PromptCatalog
 from app.core.schemas import AgentName, AgentResult, CoachRequest
-from app.models.gateway import LocalFixtureModelGateway
+from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 from app.rag.policy import LocalPolicyRetriever
 
@@ -46,6 +46,39 @@ class _RecordingGateway(LocalFixtureModelGateway):
                 "answer": "I recommend buying this ETF with your SGD 800 savings."
             })
         return super().generate(**kwargs)
+
+
+class _DecisionGateway(LocalFixtureModelGateway):
+    def __init__(self, decision: dict):
+        self.calls = []
+        self.decision = decision
+
+    def generate(self, **kwargs):  # type: ignore[override]
+        self.calls.append(kwargs)
+        return json.dumps(self.decision)
+
+
+class _EmptyPolicyRetriever:
+    expected_corpus_version = "empty-test-corpus"
+
+    def retrieve(self, query: str, top_k: int = 3):
+        return []
+
+
+def _education_decision(**overrides) -> dict:
+    return {
+        "blocked": False,
+        "summary": "The response stays within education boundaries.",
+        "rationale": ["The response gives general information."],
+        "policy_notes": [],
+        "confidence": 0.9,
+        "request_allowed": True,
+        "complete": True,
+        "missing_points": [],
+        "repairable": False,
+        "financial_language_safe": True,
+        **overrides,
+    }
 
 
 def _review_input(request: CoachRequest, gateway: _RecordingGateway):
@@ -156,6 +189,158 @@ def test_clean_answer_still_passes_compliance_review():
     assert result.data.get("policy_evidence_status") == "grounded"
 
 
+@pytest.mark.parametrize("draft", [
+    "The source addresses risk, not every product or arrangement described as having guaranteed returns.",
+    "No investment should be assumed to guarantee returns without those checks.",
+])
+def test_semantic_review_can_allow_contextual_financial_language(draft):
+    gateway = _DecisionGateway(_education_decision())
+    agent = _agent(gateway)
+    request = CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk.")
+    results = [AgentResult(
+        agent=AgentName.INVESTMENT_EDUCATION,
+        summary="An educational discussion of investment risk.",
+        rationale=[],
+        confidence=0.8,
+    )]
+
+    result = agent.validate(request, results, draft)
+
+    assert len(gateway.calls) == 1
+    review = json.loads(gateway.calls[0]["user_prompt"])
+    assert review["contextual_financial_findings"]
+    assert result.blocked is False
+    assert result.data["financial_language_review_required"] is True
+    assert result.data["financial_language_safe"] is True
+
+
+@pytest.mark.parametrize("decision_overrides", [
+    {},
+    {"financial_language_safe": False},
+])
+def test_contextual_financial_findings_block_without_explicit_safe_flag(decision_overrides):
+    decision = _education_decision()
+    decision.update(decision_overrides)
+    if not decision_overrides:
+        decision.pop("financial_language_safe")
+    gateway = _DecisionGateway(decision)
+    agent = _agent(gateway)
+    request = CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk.")
+    results = [AgentResult(
+        agent=AgentName.INVESTMENT_EDUCATION,
+        summary="An educational discussion of investment risk.",
+        rationale=[],
+        confidence=0.8,
+    )]
+
+    result = agent.validate(
+        request, results,
+        "No investment should be assumed to guarantee returns without those checks.",
+    )
+
+    assert result.blocked is True
+    assert "response_withheld" in result.policy_notes
+
+
+@pytest.mark.parametrize("overrides", [
+    {"blocked": True},
+    {"request_allowed": False},
+])
+def test_semantic_safe_flag_does_not_override_other_model_vetoes(overrides):
+    gateway = _DecisionGateway(_education_decision(**overrides))
+    agent = _agent(gateway)
+    request = CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk.")
+    results = [AgentResult(
+        agent=AgentName.INVESTMENT_EDUCATION,
+        summary="An educational discussion of investment risk.",
+        rationale=[],
+        confidence=0.8,
+    )]
+
+    result = agent.validate(
+        request, results,
+        "No investment should be assumed to guarantee returns without those checks.",
+    )
+
+    assert result.blocked is True
+    assert result.data["financial_language_safe"] is True
+
+
+@pytest.mark.parametrize(("message", "draft"), [
+    ("Explain investment risk.", "This fund guarantees returns."),
+    ("Explain investment risk.", "This ETF is suitable for you."),
+    ("Explain investment risk.", "ABC Fund guarantees a 10% annual return."),
+    ("Explain investment risk.", "ABC ETF is the best choice for you."),
+    ("Explain investment risk.", "This\nETF is suitable for you."),
+    ("Log into my brokerage account and buy this ETF for me.", "I can help with that."),
+    ("Recommend an investment with guaranteed returns.", "No investment should be assumed to guarantee returns."),
+])
+def test_clear_promises_recommendations_and_account_actions_block_before_model(message, draft):
+    gateway = _DecisionGateway(_education_decision())
+    agent = _agent(gateway)
+    request = CoachRequest(user_id="u1", session_id="s1", message=message)
+    results = [AgentResult(
+        agent=AgentName.INVESTMENT_EDUCATION,
+        summary="An educational discussion of investment risk.",
+        rationale=[],
+        confidence=0.8,
+    )]
+
+    result = agent.validate(request, results, draft)
+
+    assert result.blocked is True
+    assert gateway.calls == []
+
+
+def test_missing_policy_evidence_blocks_before_model_even_with_safe_flag():
+    gateway = _DecisionGateway(_education_decision())
+    agent = RiskComplianceAgent(
+        gateway=gateway,
+        prompts=PromptCatalog("v6"),
+        temperature=0.1,
+        max_tokens=800,
+        policy_retriever=_EmptyPolicyRetriever(),
+    )
+    request = CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk.")
+    results = [AgentResult(
+        agent=AgentName.INVESTMENT_EDUCATION,
+        summary="An educational discussion of investment risk.",
+        rationale=[],
+        confidence=0.8,
+    )]
+
+    result = agent.validate(
+        request, results,
+        "No investment should be assumed to guarantee returns without those checks.",
+    )
+
+    assert result.blocked is True
+    assert result.data["policy_evidence_status"] == "insufficient"
+    assert gateway.calls == []
+
+
+def test_semantic_flag_must_be_a_real_boolean():
+    gateway = _DecisionGateway(_education_decision(financial_language_safe="true"))
+    results = [AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary="Education.", rationale=[], confidence=0.8)]
+    with pytest.raises(ModelGatewayError):
+        _agent(gateway).validate(
+            CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk."), results,
+            "No investment should be assumed to guarantee returns without those checks.",
+        )
+    assert len(gateway.calls) == 2  # One bounded correction; neither response is accepted.
+
+
+def test_exact_boundary_question_is_identified_without_approving_the_draft():
+    gateway = _DecisionGateway(_education_decision(blocked=True))
+    results = [AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary="Education.", rationale=[], confidence=0.8)]
+    result = _agent(gateway).validate(
+        CoachRequest(user_id="u1", session_id="s1", message="Why can't you tell me which stock should I buy?"),
+        results, "General investment education.",
+    )
+    assert json.loads(gateway.calls[0]["user_prompt"])["known_neutral_financial_question"] is True
+    assert result.blocked is True
+
+
 def test_compliance_review_receives_calculations_and_derived_goal_and_spending_data():
     gateway = _RecordingGateway()
     request = CoachRequest(
@@ -248,3 +433,53 @@ def test_unsafe_recommendation_stays_blocked_with_budget_calculation_data():
     ))
     assert response.blocked
     assert "I recommend buying this ETF" not in response.model_dump_json()
+
+
+@pytest.mark.parametrize("message", [
+    "should I buy ETFs",
+    "Should I invest in ETFs?",
+    "should I sell my stocks now",
+    "should I hold these bonds",
+    "Which funds should I buy?",
+    "What REITs should I pick?",
+    "which shares should I invest in",
+])
+def test_plural_product_advice_requests_are_blocked(message):
+    assert any(
+        finding.startswith("regulated_advice:personalized_")
+        for finding in financial_advice_findings(message, is_request=True)
+    )
+
+
+@pytest.mark.parametrize("text", [
+    "Buy the ETFs before the market opens.",
+    "Sell those stocks today.",
+    "We recommend these funds? No: I recommend the ETFs listed above.",
+])
+def test_plural_product_advice_in_generated_text_is_blocked(text):
+    assert financial_advice_findings(text)
+
+
+@pytest.mark.parametrize("message", [
+    "What are ETFs?",
+    "How do ETFs work?",
+    "Compare bonds and stocks",
+    "What are the risks of REITs and unit trusts?",
+    "Explain the fees charged by funds",
+])
+def test_plural_product_education_questions_remain_allowed(message):
+    assert financial_advice_findings(message, is_request=True) == []
+
+
+def test_plural_etf_purchase_request_gets_the_specific_refusal():
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        gateway=LocalFixtureModelGateway(),
+        policy_retriever=LocalPolicyRetriever(),
+    ).handle(CoachRequest(
+        user_id="synthetic-safety",
+        session_id="plural-etf-request",
+        message="should I buy ETFs",
+    ))
+    assert response.blocked
+    assert response.answer.startswith("I can't choose investments")

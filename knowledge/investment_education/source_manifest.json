@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
   "collection_id": "investment-education-sg",
-  "corpus_version": "investment-education-sg@2026-09-26.1",
+  "corpus_version": "investment-education-sg@2026-09-27.2",
   "scope": "General investment education for Investment Education and conditional Budget or Goal Strategy explanations",
   "jurisdiction": "SG",
   "owner_role": "AI and data governance owner",
-  "approval_reference": "assistant-verified-public-source-summary-review-user-requested-expansion-2026-09-26",
-  "approved_at": "2026-09-26",
+  "approval_reference": "assistant-verified-emergency-fund-summary-review-user-requested-2026-09-27",
+  "approved_at": "2026-09-27",
   "manifest_status": "approved_for_ingestion",
   "s3_prefix": "investment-education/documents/",
   "sources": [
@@ -33,7 +33,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-08-16",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "source_document"
     },
     {
       "source_id": "cpf-investment-scheme-guide",
@@ -58,7 +59,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-08-16",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "source_document"
     },
     {
       "source_id": "moneysense-what-is-investing",
@@ -83,7 +85,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-08-16",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "source_document"
     },
     {
       "source_id": "moneysense-managing-investment-risk",
@@ -109,7 +112,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-08-16",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "source_document"
     },
     {
       "source_id": "moneysense-types-of-investments",
@@ -135,7 +139,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-08-16",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "source_document"
     },
     {
       "source_id": "moneysense-guide-to-etfs",
@@ -161,7 +166,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-08-16",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "source_document"
     },
     {
       "source_id": "moneysense-compound-interest",
@@ -185,7 +191,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-09-26",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "project_summary"
     },
     {
       "source_id": "moneysense-managing-money",
@@ -193,8 +200,8 @@
       "issuing_organization": "MoneySense / Monetary Authority of Singapore",
       "canonical_url": "https://www.moneysense.gov.sg/managing-your-money/",
       "published_at": "2026-07-02",
-      "document_version": "2026-07-02",
-      "checksum": "sha256:be61ddd0df248737c67bff98fe9da1f79e880efd683c32a28a9d7b535112b0e3",
+      "document_version": "2026-07-02-summary-2026-09-27",
+      "checksum": "sha256:d30e1827a62d1fabacf0849f4986e9d5d3966f6468c6a166081afdb9f6c08574",
       "s3_document_key": "investment-education/documents/moneysense_managing_money.md",
       "s3_metadata_key": "investment-education/documents/moneysense_managing_money.md.metadata.json",
       "topics": [
@@ -209,9 +216,10 @@
       "rights_review_status": "public_reference_reviewed_for_demo",
       "usage_scope": "synthetic_demo_only",
       "ingestion_approved": true,
-      "last_verified_at": "2026-09-26",
+      "last_verified_at": "2026-09-27",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "project_summary"
     },
     {
       "source_id": "moneysense-managing-debt",
@@ -236,7 +244,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-09-26",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "project_summary"
     },
     {
       "source_id": "moneysense-investment-scams",
@@ -261,7 +270,8 @@
       "ingestion_approved": true,
       "last_verified_at": "2026-09-26",
       "review_due_at": "2026-11-14",
-      "withdrawn_at": null
+      "withdrawn_at": null,
+      "content_kind": "project_summary"
     }
   ]
 }

@@ -3,7 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, case, delete, func, or_, select, update
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.api.financial_schemas import (
     BudgetUpsert,
@@ -18,8 +18,7 @@ from app.core.data_lifecycle import (
 )
 from app.core.telemetry import trace_method
 from app.domain.schemas import (
-    BROKERAGE_RESPONSE_ANSWER,
-    BROKERAGE_RESPONSE_ANSWER_ZH,
+    SAFE_REFUSAL_TEMPLATES,
     FinancialGoal,
     MoneyAmount,
     Transaction,
@@ -313,6 +312,17 @@ class SQLAlchemyUserRepository:
                 }
                 for record in budgets
             ],
+            "incomplete_orchestration_traces": [
+                {
+                    "trace_id": trace.trace_id, "session_id": trace.session_id,
+                    "status": trace.status, "correlation_id": trace.correlation_id,
+                    "error_code": trace.error_code, "audit": trace.audit,
+                    "created_at": trace.created_at.isoformat(),
+                    "finished_at": trace.finished_at.isoformat() if trace.finished_at else None,
+                }
+                for chat in chat_sessions for trace in chat.traces
+                if trace.assistant_message_id is None
+            ],
             "chat_sessions": [
                 {
                     "id": record.id,
@@ -346,6 +356,8 @@ class SQLAlchemyUserRepository:
                             "orchestration_trace": (
                                 {
                                     "trace_id": message.orchestration_trace.trace_id,
+                                    "status": message.orchestration_trace.status,
+                                    "correlation_id": message.orchestration_trace.correlation_id,
                                     "selected_agents": message.orchestration_trace.selected_agents,
                                     "agent_results": (
                                         sanitize_blocked_agent_results(
@@ -847,6 +859,31 @@ class SQLAlchemyChatRepository:
         self.session = session
 
     @trace_method
+    def context_snapshot(self, user_id: str, session_id: str) -> tuple[bool, int, list[dict]]:
+        owner = self.session.scalar(
+            select(ChatSessionRecord.user_id).where(ChatSessionRecord.id == session_id)
+        )
+        if owner is None:
+            return False, 0, []
+        if owner != user_id:
+            raise PermissionError("Conversation not found")
+        messages = list(self.session.scalars(
+            select(ChatMessageRecord)
+            .options(selectinload(ChatMessageRecord.orchestration_trace))
+            .where(ChatMessageRecord.session_id == session_id)
+            .order_by(ChatMessageRecord.position.desc()).limit(8)
+        ))
+        context = []
+        for message in reversed(messages):
+            content = message.content
+            if message.role == "assistant":
+                trace = message.orchestration_trace
+                if trace is None or trace.blocked:
+                    content = "The previous answer is unavailable or was withheld. Ask for clarification."
+            context.append({"role": message.role, "content": content[:1500]})
+        return True, messages[0].position if messages else 0, context
+
+    @trace_method
     def list_for_user(self, user_id: str) -> list[ChatSessionRecord]:
         query = (
             select(ChatSessionRecord)
@@ -952,7 +989,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         *,
         trace_id: str,
         session_id: str,
-        assistant_message_id: UUID,
+        assistant_message_id: UUID | None,
         selected_agents: list[str],
         agent_results: list[dict[str, Any]],
         audit: dict[str, Any],
@@ -966,6 +1003,7 @@ class SQLAlchemyOrchestrationTraceRepository:
             agent_results=agent_results,
             audit=audit,
             blocked=blocked,
+            status="blocked" if blocked else "completed",
             model_provider=audit.get("model_provider"),
             model_id=audit.get("model_id"),
             prompt_set_version=audit.get("prompt_set_version"),
@@ -973,6 +1011,24 @@ class SQLAlchemyOrchestrationTraceRepository:
         self.session.add(record)
         self.session.flush()
         return record
+
+    def list_for_user(self, user_id: str, *, status: str | None, limit: int, offset: int):
+        query = (
+            select(OrchestrationTraceRecord, ChatSessionRecord.title)
+            .join(ChatSessionRecord, ChatSessionRecord.id == OrchestrationTraceRecord.session_id)
+            .options(load_only(
+                OrchestrationTraceRecord.trace_id, OrchestrationTraceRecord.session_id,
+                OrchestrationTraceRecord.status, OrchestrationTraceRecord.selected_agents,
+                OrchestrationTraceRecord.created_at, OrchestrationTraceRecord.finished_at,
+                OrchestrationTraceRecord.error_code,
+            ))
+            .where(ChatSessionRecord.user_id == user_id)
+            .order_by(OrchestrationTraceRecord.created_at.desc(), OrchestrationTraceRecord.trace_id.desc())
+            .offset(offset).limit(limit + 1)
+        )
+        if status is not None:
+            query = query.where(OrchestrationTraceRecord.status == status)
+        return self.session.execute(query).all()
 
     def get_for_user(
         self,
@@ -1001,7 +1057,24 @@ class SQLAlchemyOrchestrationTraceRepository:
         self.session.flush()
         return True
 
+    def mark_abandoned(self, now: datetime, *, user_id: str | None = None) -> int:
+        """Deadline exceeds the bounded HTTP call, including persistence grace time."""
+        query = update(OrchestrationTraceRecord).where(
+            OrchestrationTraceRecord.status == "running",
+            OrchestrationTraceRecord.deadline_at < now,
+        )
+        if user_id is not None:
+            query = query.where(OrchestrationTraceRecord.session_id.in_(
+                select(ChatSessionRecord.id).where(ChatSessionRecord.user_id == user_id)
+            ))
+        result = self.session.execute(
+            query.values(status="abandoned", error_code="RUN_ABANDONED", finished_at=now)
+            .execution_options(synchronize_session="fetch")
+        )
+        return int(result.rowcount or 0)
+
     def delete_expired(self, cutoff: datetime) -> int:
+        self.mark_abandoned(datetime.now(UTC))
         expired = OrchestrationTraceRecord.created_at < cutoff
         language = OrchestrationTraceRecord.audit["response_language"].as_string()
         for response_language, language_filter in (
@@ -1019,15 +1092,13 @@ class SQLAlchemyOrchestrationTraceRepository:
                 )
                 .values(
                     content=case(
-                        (
-                            ChatMessageRecord.content.in_(
-                                (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH)
-                            ),
-                            blocked_response_answer(
-                                response_language=response_language,
-                                answer=BROKERAGE_RESPONSE_ANSWER,
-                            ),
-                        ),
+                        *[
+                            (
+                                ChatMessageRecord.content.in_((english, chinese)),
+                                chinese if response_language == "Chinese" else english,
+                            )
+                            for english, chinese in SAFE_REFUSAL_TEMPLATES
+                        ],
                         else_=blocked_response_answer(response_language=response_language),
                     ),
                     sources=[],

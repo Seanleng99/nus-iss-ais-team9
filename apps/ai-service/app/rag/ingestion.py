@@ -25,6 +25,10 @@ class ApprovedDocumentMetadata(StrictGovernanceModel):
     manifest_schema_version: Literal[2]
     review_due_at: date
     usage_scope: Literal["synthetic_demo_only"]
+    document_filename: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.md$",
+    )
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
 
 class GovernedSource(StrictGovernanceModel):
@@ -49,6 +53,7 @@ class GovernedSource(StrictGovernanceModel):
     last_verified_at: date
     review_due_at: date
     withdrawn_at: date | None = None
+    content_kind: Literal["source_document", "project_summary"] | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> "GovernedSource":
@@ -173,8 +178,10 @@ def metadata_for_source(
         manifest_schema_version=manifest.schema_version,
         review_due_at=source.review_due_at,
         usage_scope=source.usage_scope,
+        document_filename=Path(source.s3_document_key).name,
+        content_kind=source.content_kind,
     )
 
 
 def build_metadata_sidecar(document: ApprovedDocumentMetadata) -> dict:
-    return {"metadataAttributes": document.model_dump(mode="json")}
+    return {"metadataAttributes": document.model_dump(mode="json", exclude_none=True)}

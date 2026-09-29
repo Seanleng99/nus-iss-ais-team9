@@ -45,7 +45,40 @@ def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
 def render_citations(text: str, sources: Sequence[SourceCitation]) -> str:
     validate_citations(text, sources)
     approved = {source.source_id: source for source in sources}
+
+    def reference(match: re.Match) -> str:
+        source = approved[match[1]]
+        label = re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", " ".join(source.title.split()))
+        reference = f"[{label}]({quote(source.canonical_url, safe=':/?#=&%')})"
+        if source.document_filename:
+            kind = {
+                "project_summary": "Project-written summary",
+                "source_document": "Saved source document",
+            }.get(source.content_kind)
+            detail = f"; {kind}" if kind else ""
+            reference += f" (RAG: `{source.document_filename}`{detail})"
+        return reference
+
     return SOURCE_MARKER.sub(
-        lambda match: f"[{match[1]}]({quote(approved[match[1]].canonical_url, safe=':/?#=&%')})",
+        reference,
         text,
     )
+
+
+def compact_evidence(data: dict) -> dict:
+    """Keep full cited passages in review input; audit keeps all retrieval evidence."""
+    result = dict(data)
+    for field, keys in (
+        ("contexts", ("source_id", "text")),
+        ("sources", ("source_id", "title", "issuing_organization", "published_at",
+                     "document_version", "review_due_at", "content_kind")),
+    ):
+        if field in data:
+            result[field] = [
+                {key: item[key] for key in keys if key in item} for item in data[field]
+                # Before generation all evidence is eligible. Once citations are
+                # selected, unrelated passages cannot support the draft's claims.
+                if "cited_source_ids" not in data
+                or item["source_id"] in data["cited_source_ids"]
+            ]
+    return result

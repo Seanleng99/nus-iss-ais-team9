@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from datetime import date
 from functools import wraps
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 import httpx
@@ -41,8 +42,10 @@ def _trace_operation(function):
 
 
 def _route_template(path: str) -> str:
-    if path in {"/api/profiles", "/api/coach"}:
+    if path in {"/api/profiles", "/api/coach", "/api/coach/traces"}:
         return path
+    if re.fullmatch(r"/api/coach/traces/[^/?#]+", path):
+        return "/api/coach/traces/{trace_id}"
     match = re.fullmatch(
         r"/api/users/[^/?#]+/(profile|data-lifecycle|memory-consent|data-export|data|"
         r"fairness-profile|fairness-consent|demographics|transactions|goals|budget|"
@@ -269,6 +272,18 @@ class BackendClient:
     @_trace_operation
     def ask_coach(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/api/coach", json=payload, timeout=60.0)
+
+    @_trace_operation
+    def list_traces(self, user_id: str, *, status: str | None = None, offset: int = 0) -> dict:
+        params = {"user_id": user_id, "offset": offset, "limit": 25}
+        if status is not None:
+            params["status"] = status
+        return self._request("GET", "/api/coach/traces", params=params)
+
+    @_trace_operation
+    def get_trace(self, user_id: str, trace_id: str) -> dict | None:
+        return self._request("GET", f"/api/coach/traces/{quote(trace_id, safe='')}",
+                             params={"user_id": user_id}, allow_not_found=True)
 
     @_trace_operation
     def list_chat_sessions(self, user_id: str) -> list[dict[str, Any]]:

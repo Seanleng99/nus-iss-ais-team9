@@ -184,9 +184,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: apps/backend/pyproject.toml
+          cache-dependency-path: |
+            apps/backend/pyproject.toml
+            apps/ai-service/pyproject.toml
       - name: Install application backend
         run: python -m pip install -e ".[dev]"
+      - name: Install AI runtime for trace protocol contract test
+        run: python -m pip install -e "../ai-service"
       - name: Lint
         run: ruff check .
       - name: Apply and verify database migrations

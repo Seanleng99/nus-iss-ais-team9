@@ -5,10 +5,12 @@ from collections.abc import Mapping
 from contextvars import ContextVar, Token
 from time import perf_counter
 from typing import Any, Protocol
+from uuid import uuid4
 
-from app.agents.education_access import education_topics
+from app.agents.education_access import education_gap_message, education_topics
 from app.core.config import Settings
-from app.core.telemetry import log_event, trace_method
+from app.core.run_trace import task_context
+from app.core.telemetry import context_fields, log_event, trace_method
 
 
 class ModelGatewayError(RuntimeError):
@@ -213,7 +215,8 @@ class OpenAIModelGateway:
         except Exception as exc:
             raise ModelGatewayError(
                 "The configured model could not produce a response.",
-                code="OPENAI_INVOCATION_FAILED",
+                code=("OPENAI_RATE_LIMITED" if getattr(exc, "status_code", None) == 429
+                      else "OPENAI_INVOCATION_FAILED"),
                 component="openai",
             ) from exc
 
@@ -259,6 +262,12 @@ class LocalFixtureModelGateway:
                     "summary": "The response passed model-assisted compliance review.",
                     "rationale": ["No disallowed personalized investment instruction was found."],
                     "policy_notes": [],
+                    "request_allowed": True,
+                    "complete": True,
+                    "missing_points": [],
+                    "financial_language_safe": not bool(
+                        payload.get("contextual_financial_findings")
+                    ),
                     "confidence": 0.91,
                 }
             )
@@ -318,7 +327,10 @@ class LocalFixtureModelGateway:
                 ],
             }
             selected = [name for name, terms in rules.items() if any(term in message for term in terms)]
-            if education_topics(str(payload["message"])) and "investment_education" not in selected:
+            topics = education_topics(str(payload["message"]))
+            if topics and "investment_education" not in selected and not (
+                topics == ["emergency fund readiness"] and "goal_strategy" in selected
+            ):
                 selected.append("investment_education")
         return {
             "selected_agents": selected or ["budget"],
@@ -423,6 +435,7 @@ class LocalFixtureModelGateway:
                     ],
                     "uncertainties": [
                         "Investment outcomes vary and losses are possible."
+                        if grounding.get("contexts") else education_gap_message(grounding)
                     ],
                 }
             )
@@ -477,10 +490,12 @@ class TracingModelGateway:
         max_tokens: int,
     ) -> str:
         trace_id = _model_trace_id.get()
+        call_id = str(uuid4())
         started = perf_counter()
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         log_event(
             "model.generation.started",
+            call_id=call_id,
             trace_id=trace_id,
             component=component,
             provider=self.settings.model_provider,
@@ -503,6 +518,10 @@ class TracingModelGateway:
                         code="MODEL_TOKEN_BUDGET_EXCEEDED", component="model_budget",
                     )
                 call = {
+                    "call_id": call_id,
+                    "trace_id": trace_id,
+                    "span_id": context_fields().get("span_id"),
+                    **(task_context.get() or {}),
                     "component": system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip() or "unknown",
                     "status": "running",
                     "duration_ms": 0.0,
@@ -534,6 +553,7 @@ class TracingModelGateway:
             usage = getattr(generation, "usage", {})
             log_event(
                 "model.generation.finished",
+                call_id=call_id,
                 trace_id=trace_id,
                 component=component,
                 status=status,

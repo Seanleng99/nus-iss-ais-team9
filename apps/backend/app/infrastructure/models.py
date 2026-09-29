@@ -227,6 +227,9 @@ class ChatSessionRecord(TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     user: Mapped[UserRecord] = relationship(back_populates="chat_sessions")
+    traces: Mapped[list["OrchestrationTraceRecord"]] = relationship(
+        cascade="all, delete-orphan",
+    )
     messages: Mapped[list["ChatMessageRecord"]] = relationship(
         back_populates="chat_session",
         cascade="all, delete-orphan",
@@ -269,14 +272,15 @@ class OrchestrationTraceRecord(Base):
     __tablename__ = "orchestration_traces"
     __table_args__ = (
         Index("ix_orchestration_traces_session_created", "session_id", "created_at"),
+        CheckConstraint("status IN ('running', 'completed', 'blocked', 'failed', 'timed_out', 'abandoned')", name="run_status"),
     )
 
     trace_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     session_id: Mapped[str] = mapped_column(
         ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
     )
-    assistant_message_id: Mapped[UUID] = mapped_column(
-        ForeignKey("chat_messages.id", ondelete="CASCADE"), unique=True, nullable=False
+    assistant_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("chat_messages.id", ondelete="CASCADE"), unique=True, nullable=True
     )
     selected_agents: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     agent_results: Mapped[list[dict[str, Any]]] = mapped_column(
@@ -290,6 +294,11 @@ class OrchestrationTraceRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    assistant_message: Mapped[ChatMessageRecord] = relationship(
+    status: Mapped[str] = mapped_column(String(24), default="completed", server_default="completed", nullable=False)
+    correlation_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    assistant_message: Mapped[ChatMessageRecord | None] = relationship(
         back_populates="orchestration_trace"
     )

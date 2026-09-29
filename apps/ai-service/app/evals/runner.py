@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from app.core.citations import render_citations
 from app.core.config import Settings
 from app.core.guardrails import inspect_prompt, sanitize_rag_document, validate_tool_permission
 from app.core.schemas import AgentName, CoachRequest
@@ -86,8 +87,11 @@ def _matches_expected(response, expected: dict) -> bool:
         data = _agent_data(response, "investment_education")
         checks.append(data.get("response_language") == expected["response_language"])
     if expected.get("answer_language") == "Chinese":
-        letters = re.findall(r"[A-Za-z\u4e00-\u9fff]", response.answer)
-        chinese = re.findall(r"[\u4e00-\u9fff]", response.answer)
+        prose = response.answer
+        for source in response.sources:
+            prose = prose.replace(render_citations(f"[source:{source.source_id}]", [source]), "")
+        letters = re.findall(r"[A-Za-z\u4e00-\u9fff]", prose)
+        chinese = re.findall(r"[\u4e00-\u9fff]", prose)
         checks.append(len(chinese) >= 10 and len(chinese) / max(1, len(letters)) >= 0.4)
     if "evidence_status" in expected:
         checks.append(_agent_data(response, "investment_education").get("evidence_status") == expected["evidence_status"])

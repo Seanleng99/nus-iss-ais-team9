@@ -27,7 +27,7 @@ client = TestClient(app)
 HEADERS = {"X-API-Key": settings.api_key}
 USER_ID = "localized-blocked-user"
 SESSION_ID = "localized-blocked-chat"
-TRACE_ID = f"trace-{SESSION_ID}"
+TRACE_IDS: dict[str, str] = {}
 CHINESE_REQUEST = "请帮我制定预算。"
 POISON = "POISONED_MODEL_PAYLOAD"
 PRIVATE_DATA = "POISONED_PRIVATE_DATA"
@@ -119,6 +119,7 @@ def _post_request(
         json={"user_id": USER_ID, "session_id": session_id, "message": message},
     )
     assert response.status_code == 200
+    monkeypatch.setitem(TRACE_IDS, session_id, response.json()["audit"]["trace_id"])
     return response.json()
 
 
@@ -141,7 +142,7 @@ def _assert_surfaces(
         f"/api/users/{USER_ID}/chat-sessions/{SESSION_ID}", headers=HEADERS
     )
     trace = client.get(
-        f"/api/coach/traces/{TRACE_ID}?user_id={USER_ID}", headers=HEADERS
+        f"/api/coach/traces/{TRACE_IDS[SESSION_ID]}?user_id={USER_ID}", headers=HEADERS
     )
     exported = client.get(f"/api/users/{USER_ID}/data-export", headers=HEADERS)
     assert history.status_code == exported.status_code == 200
@@ -163,7 +164,7 @@ def _assert_surfaces(
         return
     assert explanation["response_language"] == language
     assert trace.json()["assistant_message_id"] == messages[1]["id"]
-    assert explanation["trace_id"] == TRACE_ID
+    assert explanation["trace_id"] == TRACE_IDS[SESSION_ID]
     assert explanation["routing_rationale"] == [SAFE_TEXT[language]["rationale"]]
     assert explanation["agent_results"] == [
         {
@@ -174,7 +175,7 @@ def _assert_surfaces(
         }
     ]
     for item in (trace.json(), export_trace):
-        assert item["trace_id"] == TRACE_ID
+        assert item["trace_id"] == TRACE_IDS[SESSION_ID]
         assert item["selected_agents"] == ["budget"]
         assert item["agent_results"] == [_expected_agent(language)]
         assert item["audit"]["response_language"] == language
@@ -218,7 +219,7 @@ def test_request_language_overrides_model_claim_across_all_surfaces(
     _assert_surfaces(expected_language, message)
     session = next(app.dependency_overrides[get_db_session]())
     try:
-        record = session.get(OrchestrationTraceRecord, TRACE_ID)
+        record = session.get(OrchestrationTraceRecord, TRACE_IDS[SESSION_ID])
         assert record is not None
         assert record.audit["response_language"] == expected_language
         assert record.assistant_message.content == safe_text["answer"]
@@ -235,7 +236,7 @@ def test_chinese_poisoned_storage_is_safe_before_and_after_trace_removal(
     now = datetime.now(UTC)
     session = next(app.dependency_overrides[get_db_session]())
     try:
-        record = session.get(OrchestrationTraceRecord, TRACE_ID)
+        record = session.get(OrchestrationTraceRecord, TRACE_IDS[SESSION_ID])
         assert record is not None
         record.agent_results = [_poisoned_agent()]
         record.audit = {**record.audit, "routing_rationale": [POISON, PRIVATE_DATA]}
@@ -250,7 +251,7 @@ def test_chinese_poisoned_storage_is_safe_before_and_after_trace_removal(
     _assert_surfaces("Chinese")
     if removal == "delete":
         deleted = client.delete(
-            f"/api/coach/traces/{TRACE_ID}?user_id={USER_ID}", headers=HEADERS
+            f"/api/coach/traces/{TRACE_IDS[SESSION_ID]}?user_id={USER_ID}", headers=HEADERS
         )
         assert deleted.status_code == 204
     else:
@@ -278,7 +279,7 @@ def test_legacy_unknown_language_uses_english_at_read_and_delete_boundaries(
     _post_request(monkeypatch)
     session = next(app.dependency_overrides[get_db_session]())
     try:
-        record = session.get(OrchestrationTraceRecord, TRACE_ID)
+        record = session.get(OrchestrationTraceRecord, TRACE_IDS[SESSION_ID])
         assert record is not None
         record.audit = {
             "response_language": audit_language,
@@ -292,7 +293,7 @@ def test_legacy_unknown_language_uses_english_at_read_and_delete_boundaries(
         session.close()
     _assert_surfaces("English")
     deleted = client.delete(
-        f"/api/coach/traces/{TRACE_ID}?user_id={USER_ID}", headers=HEADERS
+        f"/api/coach/traces/{TRACE_IDS[SESSION_ID]}?user_id={USER_ID}", headers=HEADERS
     )
     assert deleted.status_code == 204
     _assert_surfaces("English", trace_present=False)
@@ -321,14 +322,14 @@ def test_bulk_expiry_localizes_exact_chinese_and_defaults_every_other_language(
     session = next(app.dependency_overrides[get_db_session]())
     try:
         for name, audit, _ in cases:
-            record = session.get(OrchestrationTraceRecord, f"trace-{name}")
+            record = session.get(OrchestrationTraceRecord, TRACE_IDS[name])
             assert record is not None
             record.audit = audit
             record.assistant_message.content = POISON
             record.assistant_message.sources = [POISON_SOURCE]
             record.created_at = now - timedelta(days=31)
         for name in ("current", "unblocked", "user-role"):
-            record = session.get(OrchestrationTraceRecord, f"trace-{name}")
+            record = session.get(OrchestrationTraceRecord, TRACE_IDS[name])
             assert record is not None
             record.assistant_message.content = f"Untouched {name}"
             record.assistant_message.sources = [POISON_SOURCE]
@@ -350,8 +351,8 @@ def test_bulk_expiry_localizes_exact_chinese_and_defaults_every_other_language(
         finally:
             event.remove(session, "do_orm_execute", capture_statement)
         assert deleted_count == len(cases) + 2
-        assert len(statements) == 2
-        for statement in statements:
+        assert len(statements) == 3
+        for statement in statements[1:]:
             for dialect in (sqlite.dialect(), postgresql.dialect()):
                 compiled = statement.compile(dialect=dialect)
                 assert "response_language" in compiled.params.values()
@@ -367,7 +368,7 @@ def test_bulk_expiry_localizes_exact_chinese_and_defaults_every_other_language(
             assert message is not None
             assert message.content == SAFE_TEXT[language]["answer"]
             assert message.sources == []
-            assert session.get(OrchestrationTraceRecord, f"trace-{name}") is None
+            assert session.get(OrchestrationTraceRecord, TRACE_IDS[name]) is None
         for name in ("current", "unblocked", "user-role"):
             message = session.scalar(
                 select(ChatMessageRecord).where(
@@ -377,7 +378,7 @@ def test_bulk_expiry_localizes_exact_chinese_and_defaults_every_other_language(
             assert message is not None
             assert message.content == f"Untouched {name}"
             assert message.sources == [POISON_SOURCE]
-        assert session.get(OrchestrationTraceRecord, "trace-current") is not None
+        assert session.get(OrchestrationTraceRecord, TRACE_IDS["current"]) is not None
     finally:
         session.close()
 

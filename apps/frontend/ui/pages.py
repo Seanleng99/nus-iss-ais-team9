@@ -1,7 +1,9 @@
+import html
 import json
 import re
 from contextlib import nullcontext
 from datetime import UTC, date, datetime
+from urllib.parse import quote
 
 import httpx
 import pandas as pd
@@ -12,6 +14,7 @@ from ui.components import backend_call, clamp_progress, money, page_header, perc
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
 from ui.telemetry import call_span, context_fields, log_event, trace_context
+from ui.trace_viewer import trace_link
 
 CATEGORIES = [
     "housing",
@@ -164,6 +167,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
                     reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
                 if reference:
                     st.caption(reference)
+                trace_link(trace_id)
                 return
             selected_agents = explanation.get("selected_agents", [])
             if selected_agents:
@@ -194,6 +198,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
                 reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
             if reference:
                 st.caption(reference)
+            trace_link(trace_id)
 
 
 def _transaction_payload(
@@ -911,16 +916,38 @@ def _render_coach_message(message: dict) -> None:
             st.markdown(message["content"])
             sources = message.get("sources", [])
             if sources:
-                st.caption("Sources")
+                if any(source.get("document_filename") for source in sources):
+                    st.caption("RAG knowledge base references — no live web search")
+                if any(not source.get("document_filename") for source in sources):
+                    st.caption("Retrieved reference sources")
                 for source in sources:
+                    title = _escape_markdown_text(source["title"])
+                    organization = _escape_markdown_text(source["issuing_organization"])
+                    published_at = _escape_markdown_text(source["published_at"])
+                    url = quote(source["canonical_url"], safe=":/?&=#%")
+                    filename = source.get("document_filename")
+                    content_kind = source.get("content_kind")
+                    provenance = {
+                        "source_document": "Saved source document",
+                        "project_summary": "Project-written summary based on the linked source",
+                    }.get(content_kind)
+                    details = f"{organization}, {published_at}"
+                    if filename:
+                        details += f" · {_escape_markdown_text(filename)}"
+                    if provenance:
+                        details = f"{provenance} · {details}"
                     st.markdown(
-                        f"- [{source['title']}]({source['canonical_url']}) — "
-                        f"{source['issuing_organization']}, {source['published_at']} · "
-                        f"Source ID: `{source['source_id']}`"
+                        f"- [{title}]({url}) — {details} · "
+                        f"Source ID: {_escape_markdown_text(source['source_id'])}"
                     )
             _render_coach_explanation(message.get("explanation"))
         if context_fields().get("correlation_id"):
             log_event("coach.response_rendered", **response_metadata(message))
+
+
+def _escape_markdown_text(value: str) -> str:
+    value = html.escape(" ".join(value.split()), quote=False)
+    return re.sub(r"([\\`*_{}\[\]()#+!|>])", r"\\\1", value)
 
 
 def coach_page() -> None:

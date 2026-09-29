@@ -18,9 +18,22 @@ from app.rag.local_documents import (
     LocalDocumentEducationRetriever,
     load_documents,
 )
-from app.rag.retriever import RetrievalError, create_education_retriever
+from app.rag.retriever import RetrievalError, build_education_context, create_education_retriever
 
 DATASET = Path(__file__).resolve().parents[1] / "app/evals/datasets/rag_evidence_v1.jsonl"
+
+
+def test_packaged_sources_keep_original_document_or_project_summary_identity():
+    retriever = LocalDocumentEducationRetriever()
+    for query, filename, kind in (
+        ("compound interest", "moneysense_compound_interest.md", "project_summary"),
+        ("exchange-traded funds", "moneysense_guide_to_etfs.md", "source_document"),
+    ):
+        context = build_education_context(retriever, query, scope="Investment education")
+        matching = [source for source in context["sources"] if source["document_filename"] == filename]
+        assert matching and matching[0]["content_kind"] == kind
+    assert sum(source.content_kind == "project_summary" for source in retriever.manifest.sources) == 4
+    assert sum(source.content_kind == "source_document" for source in retriever.manifest.sources) == 6
 
 
 def test_full_corpus_covers_frozen_passages_with_bounded_context():
@@ -37,7 +50,7 @@ def test_full_corpus_covers_frozen_passages_with_bounded_context():
     report = evaluate(cases, LocalDocumentEducationRetriever())
     assert retrieval_gate_passed(report), [r["id"] for r in report["results"] if not r["passed"]]
     assert report["generated_answer_quality"]["status"] == "not_measured"
-    assert manifest.corpus_version.endswith("@2026-09-26.1")
+    assert manifest.corpus_version.endswith("@2026-09-27.2")
 
 
 @pytest.mark.parametrize(
@@ -80,7 +93,7 @@ def test_expiry_is_checked_after_a_retriever_has_been_loaded():
 
 
 def test_full_document_provider_requires_exact_pin_and_stays_local():
-    corpus = "investment-education-sg@2026-09-26.1"
+    corpus = "investment-education-sg@2026-09-27.2"
     config = Settings(RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=corpus)
     retriever = create_education_retriever(config)
     assert retriever.expected_corpus_version == corpus
@@ -122,6 +135,18 @@ def test_retrieval_limits_are_bounded(top_k):
 
 def test_unrelated_queries_do_not_get_default_evidence():
     assert LocalDocumentEducationRetriever().retrieve("extraterrestrial mineral rights") == []
+
+
+def test_emergency_fund_readiness_retrieves_monthly_expense_benchmark():
+    results = LocalDocumentEducationRetriever().retrieve(
+        "General investment education about emergency fund readiness"
+    )
+
+    assert any(
+        result.source_id == "moneysense-managing-money"
+        and "three to six times monthly expenses" in result.text
+        for result in results
+    )
 
 
 @pytest.mark.parametrize("message,source_id,passage", [
