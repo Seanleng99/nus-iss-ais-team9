@@ -51,8 +51,33 @@ QUESTION_PREFIXES = frozenset(
 )
 
 SPEND_VERB_PATTERN = re.compile(
-    r"\b(?:spent|spends|paid|pays|bought|buys|purchased|purchases|took|take|takes|"
-    r"booked|book|books|reserved|reserve|forked\s+out|shelled\s+out)\b",
+    r"\b(?:spent|spends|spend|paid|pays|pay|bought|buys|purchased|purchases|took|take|takes|"
+    r"booked|book|books|reserved|reserve|forked\s+out|shelled\s+out|"
+    r"gave|give|gives|sent|send|sends|mailed|mail|settled|settle|donated|donate|"
+    r"treated|treat|treats|grabbed|charged|charge|charges|cost|costs|transacted|transact)\b",
+    re.IGNORECASE,
+)
+
+DETAILS_VERB_PATTERN = re.compile(
+    r"\b(?:spent|spend|paid|pays|bought|buys|purchased|purchases|booked|book|books|"
+    r"reserved|reserve)\b",
+    re.IGNORECASE,
+)
+
+DETAILS_WEAK_VERB_PATTERN = re.compile(
+    r"\b(?:got|getting|picked\s+up|took|take|takes)\b", re.IGNORECASE
+)
+
+EXPENSE_NOUN_PATTERN = re.compile(
+    r"\b(?:ticket|tickets|bill|bills|fare|fares|fee|fees|groceries|flight|hotel|"
+    r"rent|insurance|subscription|phone|laptop|bag|bags|shoes|shirt|watch|gift|gifts)\b",
+    re.IGNORECASE,
+)
+
+DETAILS_OPINION_PATTERN = re.compile(
+    r"\b(?:is|are|was|were|be|been|want|wanted|like|liked|think|thought|should|"
+    r"need|needed|prefer|broken|better|reduce|cut|save|"
+    r"question|budget|budgeting|afford)\b",
     re.IGNORECASE,
 )
 
@@ -60,14 +85,44 @@ BOOKING_PATTERN = re.compile(r"\b(?:booked|book|books|reserved|reserve|reservati
 
 MARKED_AMOUNT_PATTERN = re.compile(
     r"(?:(?:[$]|s\$)\s*|sgd\s+)(\d{1,7}(?:[.,]\d{1,2})?)"
-    r"|(\d{1,7}(?:[.,]\d{1,2})?)\s*(?:sgd|dollars?|s\$)\b",
+    r"|(\d{1,7}(?:[.,]\d{1,2})?)\s*(?:(?:sgd|dollars?|s\$)\b|[块元])",
     re.IGNORECASE,
 )
 BARE_AMOUNT_PATTERN = re.compile(
     r"(?<![\d/.,])\d{1,7}(?:[.,]\d{1,2})?(?![\d/])"
 )
-LEADING_AMOUNT_PATTERN = re.compile(
-    r"^\s*(?:s?\$|sgd\s+)\s*(\d{1,7}(?:[.,]\d{1,2})?)",
+AMOUNT_MULTIPLIER_PATTERN = re.compile(
+    r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s*(?:x|×|\*)\s*(\d+(?:\.\d+)?)(?![\d.])"
+)
+K_MULTIPLIER_PATTERN = re.compile(r"(?<![\d.])(\d{1,6}(?:\.\d+)?)k(?![a-z0-9])", re.IGNORECASE)
+THOUSANDS_COMMA_PATTERN = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+LEDGER_NEGATIVE_PATTERN = re.compile(r"(?<![\d.,-])-(?=\d)")
+
+INCOME_GUARD_PATTERN = re.compile(
+    r"\b(?:budget|budgeting|income|salary|wages?|earnings?|owe|owing|owed|debt|"
+    r"savings|afford|lend|lent)\b",
+    re.IGNORECASE,
+)
+
+UNIT_GUARD_WORDS = frozenset(
+    {
+        "degree", "degrees", "°", "year", "years", "old", "age", "ages",
+        "week", "weeks", "day", "days", "hour", "hours", "minute", "minutes",
+        "mins", "second", "seconds", "month", "months", "kg", "km", "cm", "mm",
+        "people", "person", "pax", "percent", "%", "am", "pm", "o'clock",
+    }
+)
+
+COPULA_AMOUNT_PATTERN = re.compile(
+    r"\b(?:was|were|is|are)\s+(?:s?\$\s*|sgd\s+)?(\d{1,7}(?:[.,]\d{1,2})?)(?![\d/])",
+    re.IGNORECASE,
+)
+
+AMOUNT_FOLLOWUP_PATTERN = re.compile(
+    r"^(?:(?:it\s+)?(?:was|cost|costs|paid|for)\s+)?"
+    r"(?:about|around|roughly|approximately|approx)?\s*"
+    r"(?:s?\$\s*|sgd\s*)?(\d{1,7}(?:[.,]\d{1,2})?)\s*"
+    r"(?:sgd|dollars?|s\$|bucks?)?$",
     re.IGNORECASE,
 )
 
@@ -150,7 +205,7 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
               "bubble tea", "din tai fung", "coffee", "bubbletea")),
     ("transport", ("mrt", "grab", "bus", "taxi", "train", "uber", "lyft", "petrol", "fuel",
                    "parking", "carpark", "erp", "top-up", "topup", "transit", "commute",
-                   "scoot", "rideshare")),
+                   "scoot", "rideshare", "flight", "airticket", "air ticket")),
     ("housing", ("rent", "mortgage", "maintenance fee", "service charge", "condo", "hdb")),
     ("utilities", ("electricity", "water bill", "gas bill", "internet", "broadband",
                    "mobile plan", "phone bill", "singtel", "starhub", "m1 ")),
@@ -176,6 +231,7 @@ class CaptureDraft:
     category: str
     booking: bool = False
     when: date | None = None
+    need_amount: bool = False
 
 
 class PendingCaptureStore:
@@ -257,7 +313,9 @@ def classify_category(text: str) -> str:
     return "other"
 
 
-DESCRIPTION_STRIP_PHRASES = re.compile(r"\b(?:forked\s+out|shelled\s+out)\b", re.IGNORECASE)
+DESCRIPTION_STRIP_PHRASES = re.compile(
+    r"\b(?:forked\s+out|shelled\s+out)\b|花了|化了", re.IGNORECASE
+)
 
 DESCRIPTION_STRIP_TOKENS = frozenset(
     {
@@ -265,6 +323,10 @@ DESCRIPTION_STRIP_TOKENS = frozenset(
         "spent", "spend", "spends", "paid", "pays", "pay", "bought", "buy", "buys",
         "purchased", "purchase", "purchases", "took", "take", "takes", "used",
         "got", "getting", "costing", "cost", "costs", "priced",
+        "gave", "give", "gives", "sent", "send", "sends", "mailed", "mail",
+        "settled", "settle", "donated", "donate", "treated", "treat", "treats",
+        "grabbed", "charged", "charge", "charges", "transacted", "transact", "transacts",
+        "grand", "out",
         "add", "added", "record", "recorded", "log", "logged", "enter", "here",
         "booked", "book", "books", "reserved", "reserve", "reservation",
         # pronouns / auxiliaries / fillers
@@ -276,6 +338,7 @@ DESCRIPTION_STRIP_TOKENS = frozenset(
         "home", "back",
         # currency / money words
         "dollars", "dollar", "sgd", "cents", "cent",
+        "night",
         # time expressions
         "today", "yesterday", "tomorrow", "ago", "day", "days", "week", "weeks",
         "before",
@@ -338,7 +401,7 @@ def _extract_description(text: str, *, drop_bare_numbers: bool) -> str:
     for token in re.sub(r"\s+", " ", text).strip().split(" "):
         if not token:
             continue
-        lowered = token.lower().strip("'\"")
+        lowered = token.lower().strip("-'\"")
         if not lowered or lowered in DESCRIPTION_STRIP_TOKENS:
             continue
         if token.startswith("'"):
@@ -363,19 +426,58 @@ def parse_spending_statement(message: str) -> CaptureDraft | None:
     text = re.sub(r"\s+", " ", message).strip()
     if not text or text.endswith("?"):
         return None
+    if INCOME_GUARD_PATTERN.search(text):
+        return None
     first_word = text.split(" ", 1)[0].lower().strip(".,!?;:")
     if first_word in QUESTION_PREFIXES:
         return None
+
+    multiplier = AMOUNT_MULTIPLIER_PATTERN.search(text)
+    if multiplier is not None:
+        try:
+            amount = float(multiplier.group(1).replace(",", ".")) * float(multiplier.group(2))
+        except ValueError:
+            amount = 0.0
+        if amount > 0:
+            rest = text[: multiplier.start()] + " " + text[multiplier.end():]
+            return _draft_from_rest(rest, amount, text)
+
+    text = THOUSANDS_COMMA_PATTERN.sub("", text)
+    thousands_k = K_MULTIPLIER_PATTERN.search(text)
+    if thousands_k is not None:
+        try:
+            amount = float(thousands_k.group(1)) * 1000
+        except ValueError:
+            amount = 0.0
+        if amount > 0:
+            rest = text[: thousands_k.start()] + " " + text[thousands_k.end():]
+            return _draft_from_rest(rest, amount, text)
+    text = LEDGER_NEGATIVE_PATTERN.sub(" ", text)
 
     verb_match = SPEND_VERB_PATTERN.search(text)
     search_from = verb_match.end() if verb_match is not None else 0
     amount_match: re.Match[str] | None = None
     amount_value: str | None = None
     amount_was_bare = False
+    description_before_amount_only = False
     if verb_match is None:
-        amount_match = LEADING_AMOUNT_PATTERN.match(text)
+        amount_match = MARKED_AMOUNT_PATTERN.search(text)
         if amount_match is not None:
-            amount_value = amount_match.group(1)
+            amount_value = amount_match.group(1) or amount_match.group(2)
+        else:
+            copula = COPULA_AMOUNT_PATTERN.search(text)
+            if copula is not None and _passes_unit_guard(copula, text):
+                amount_match = copula
+                amount_value = copula.group(1) or copula.group(2)
+                description_before_amount_only = True
+            else:
+                bare = _bare_amount_without_verb(text)
+                if bare is not None:
+                    stripped_text, bare_match = bare
+                    text = stripped_text
+                    amount_match = bare_match
+                    amount_value = bare_match.group(0)
+                    amount_was_bare = True
     else:
         marked = MARKED_AMOUNT_PATTERN.search(text, search_from)
         if marked is not None:
@@ -395,23 +497,76 @@ def parse_spending_statement(message: str) -> CaptureDraft | None:
     if amount <= 0:
         return None
 
-    description_text = (
-        text[: amount_match.start()] + " " + text[amount_match.end():]
-    )
+    if description_before_amount_only:
+        description_text = text[: amount_match.start()]
+    else:
+        description_text = (
+            text[: amount_match.start()] + " " + text[amount_match.end():]
+        )
+    return _draft_from_rest(description_text, amount, text, drop_bare=amount_was_bare)
+
+
+def _draft_from_rest(
+    description_text: str,
+    amount: float,
+    full_text: str,
+    *,
+    drop_bare: bool = True,
+) -> CaptureDraft | None:
     description_text = INLINE_DATE_PATTERN.sub(" ", description_text)
     description = (
-        _extract_description(description_text, drop_bare_numbers=amount_was_bare)
+        _extract_description(description_text, drop_bare_numbers=drop_bare)
         or _clean_description(description_text)
     )
     if not description:
         description = "expense"
-
     return CaptureDraft(
         amount=amount,
         description=description,
         category=classify_category(description),
-        booking=BOOKING_PATTERN.search(text) is not None,
+        booking=BOOKING_PATTERN.search(full_text) is not None,
     )
+
+
+FILLER_LEADING_TOKENS = frozenset({"grand", "got", "get", "a", "an", "the"})
+MAX_NO_VERB_TOKENS = 8
+
+
+def _unit_guard_hit(match: re.Match[str], text: str) -> bool:
+    if match.end() < len(text) and text[match.end()].isalpha():
+        return True
+    remainder = text[match.end():].strip().split(" ", 1)
+    return bool(remainder) and remainder[0].lower().strip(".,!?;:") in UNIT_GUARD_WORDS
+
+
+def _passes_unit_guard(match: re.Match[str], text: str) -> bool:
+    return not _unit_guard_hit(match, text)
+
+
+def _bare_amount_without_verb(
+    text: str,
+) -> tuple[str, re.Match[str]] | None:
+    tokens = text.split(" ")
+    leading = 0
+    while (
+        leading < len(tokens) - 1
+        and tokens[leading].lower().strip(".,!?;:") in FILLER_LEADING_TOKENS
+    ):
+        leading += 1
+    tokens = tokens[leading:]
+    if len(tokens) > MAX_NO_VERB_TOKENS or len(tokens) < 2:
+        return None
+    stripped_text = " ".join(tokens)
+    if BARE_AMOUNT_PATTERN.fullmatch(tokens[0]):
+        match = BARE_AMOUNT_PATTERN.search(stripped_text)
+        return (stripped_text, match) if match is not None and match.start() == 0 else None
+    first = tokens[0].lower().strip(".,!?;:")
+    if not first.isalpha() or first in DESCRIPTION_STRIP_TOKENS:
+        return None
+    match = BARE_AMOUNT_PATTERN.search(stripped_text)
+    if match is None or _unit_guard_hit(match, stripped_text):
+        return None
+    return stripped_text, match
 
 
 def _validate_calendar_date(
@@ -522,6 +677,54 @@ def parse_date_expression(message: str, *, allow_future: bool = False) -> date |
     return resolved
 
 
+def parse_amount_followup(message: str) -> float | None:
+    match = AMOUNT_FOLLOWUP_PATTERN.match(re.sub(r"\s+", " ", message).strip())
+    if match is None:
+        return None
+    try:
+        value = float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def parse_spending_details(message: str) -> CaptureDraft | None:
+    if MARKED_AMOUNT_PATTERN.search(message) or BARE_AMOUNT_PATTERN.search(message):
+        return None
+    for segment in _split_segments(message):
+        if segment.endswith("?") or "?" in segment:
+            continue
+        lowered_segment = segment.lower()
+        if re.search(r"\b(?:what|how|why|when)\b", lowered_segment):
+            continue
+        if re.search(r"\b(?:next|tomorrow)\b", lowered_segment):
+            continue
+        if DETAILS_OPINION_PATTERN.search(segment):
+            continue
+        first_word = segment.split(" ", 1)[0].lower().strip(".,!?;:")
+        if first_word in QUESTION_PREFIXES:
+            continue
+        has_verb = DETAILS_VERB_PATTERN.search(segment) is not None
+        has_noun = EXPENSE_NOUN_PATTERN.search(segment) is not None
+        has_weak = DETAILS_WEAK_VERB_PATTERN.search(segment) is not None
+        if not has_verb and not (has_noun and has_weak):
+            continue
+        when = extract_date_from_text(segment)
+        description_text = INLINE_DATE_PATTERN.sub(" ", segment)
+        description = _extract_description(description_text, drop_bare_numbers=True)
+        if not description:
+            continue
+        return CaptureDraft(
+            amount=0.0,
+            description=description,
+            category=classify_category(description),
+            booking=BOOKING_PATTERN.search(segment) is not None,
+            when=when,
+            need_amount=True,
+        )
+    return None
+
+
 def extract_date_from_text(message: str, *, allow_future: bool = False) -> date | None:
     for match in INLINE_DATE_PATTERN.finditer(message):
         resolved, _ = _parse_date_token(match.group(0), allow_future=allow_future)
@@ -565,8 +768,20 @@ def _split_segments(message: str) -> list[str]:
     return segments
 
 
+def _split_and_items(segment: str) -> list[str]:
+    parts = re.split(r"\s+and\s+", segment, flags=re.IGNORECASE)
+    if len(parts) < 2:
+        return [segment]
+    if all(BARE_AMOUNT_PATTERN.search(part) for part in parts):
+        return parts
+    return [segment]
+
+
 def parse_batch(message: str) -> list[CaptureDraft] | None:
-    segments = _split_segments(message)
+    raw_segments = _split_segments(message)
+    segments: list[str] = []
+    for segment in raw_segments:
+        segments.extend(_split_and_items(segment))
     if len(segments) < 2:
         return None
     header_present = any(
@@ -617,6 +832,20 @@ def _ask_date_reply(session_id: str, draft: CaptureDraft) -> CoachResponse:
     )
 
 
+def _ask_amount_reply(session_id: str, draft: CaptureDraft) -> CoachResponse:
+    if draft.when is None:
+        when_text = ""
+    elif draft.when == _today():
+        when_text = " today"
+    else:
+        when_text = f" on {draft.when.strftime('%d %b')}"
+    return _local_reply(
+        session_id,
+        f"Got it — the {draft.description.lower()}{when_text}. "
+        "How much did it cost? You can say for example 'about 25' or '$25'.",
+    )
+
+
 def handle_transaction_capture(session: Session, request: CoachRequest) -> CoachResponse | None:
     user_id = request.user_id
     session_id = request.session_id
@@ -655,13 +884,9 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             part = part + " " + note.strip()
         return part
 
-    def finalize(parts: list[str]) -> str:
-        body = "; ".join(parts)
-        return f"Saved: {body}" + ("" if body.endswith((".", "!")) else ".")
-
     def save_list(drafts: list[CaptureDraft], dates: list[date]) -> str:
         parts = [save_one(draft, when) for draft, when in zip(drafts, dates, strict=True)]
-        return finalize(parts)
+        return _finalize(parts)
 
     pending = pending_capture_store.peek_all(user_id)
     if pending:
@@ -676,6 +901,39 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 f"OK, I've dropped {len(dropped)} pending transactions. Nothing was saved.",
             )
         allow_future = any(draft.booking for draft in pending)
+        if pending[0].need_amount:
+            resolved_date = parse_date_expression(message, allow_future=allow_future)
+            if resolved_date is not None:
+                drafts = pending_capture_store.peek_all(user_id)
+                drafts[0].when = resolved_date
+                pending_capture_store.replace(user_id, drafts)
+                return _ask_amount_reply(session_id, drafts[0])
+            amount = parse_amount_followup(message)
+            if amount is None:
+                replacement = parse_spending_statement(message) or parse_spending_details(message)
+                if replacement is not None:
+                    pending_capture_store.drop(user_id)
+                    return _start_capture(session_id, user_id, message, replacement, save_one)
+                pending_capture_store.drop(user_id)
+                return None
+            drafts = pending_capture_store.drop(user_id)
+            target = drafts[0]
+            remainder = drafts[1:]
+            target.amount = amount
+            target.need_amount = False
+            if target.when is None:
+                pending_capture_store.put_queue(user_id, drafts)
+                return _ask_date_reply(session_id, target)
+            saved_part = save_one(target, target.when)
+            if saved_part.startswith("Sorry"):
+                pending_capture_store.put_queue(user_id, drafts)
+                return _local_reply(session_id, saved_part)
+            if remainder:
+                pending_capture_store.put_queue(user_id, remainder)
+                if remainder[0].need_amount:
+                    return _ask_amount_reply(session_id, remainder[0])
+                return _ask_queue_reply(session_id, remainder[0], [saved_part])
+            return _local_reply(session_id, _finalize([saved_part]))
         resolved = parse_date_expression(message, allow_future=allow_future)
         if resolved is not None:
             drafts = pending_capture_store.drop(user_id)
@@ -689,7 +947,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             if remainder:
                 pending_capture_store.put_queue(user_id, remainder)
                 return _ask_queue_reply(session_id, remainder[0], [saved_part])
-            return _local_reply(session_id, finalize([saved_part]))
+            return _local_reply(session_id, _finalize([saved_part]))
         if mentions_future_date(message) and not allow_future:
             return _local_reply(
                 session_id,
@@ -705,7 +963,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             inline = extract_date_from_text(message, allow_future=replacement.booking)
             if inline is not None:
                 saved_part = save_one(replacement, inline)
-                answer = saved_part if saved_part.startswith("Sorry") else finalize([saved_part])
+                answer = saved_part if saved_part.startswith("Sorry") else _finalize([saved_part])
                 return _local_reply(session_id, answer)
             pending_capture_store.put(user_id, replacement)
             return _ask_date_reply(session_id, replacement)
@@ -718,11 +976,32 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
 
     draft = parse_spending_statement(message)
     if draft is None:
+        draft = parse_spending_details(message)
+    if draft is None:
         return None
-    inline = extract_date_from_text(message, allow_future=draft.booking)
-    if inline is not None:
-        saved_part = save_one(draft, inline)
-        answer = saved_part if saved_part.startswith("Sorry") else finalize([saved_part])
+    return _start_capture(session_id, user_id, message, draft, save_one)
+
+
+def _finalize(parts: list[str]) -> str:
+    body = "; ".join(parts)
+    return f"Saved: {body}" + ("" if body.endswith((".", "!")) else ".")
+
+
+def _start_capture(
+    session_id: str,
+    user_id: str,
+    message: str,
+    draft: CaptureDraft,
+    save_one,
+) -> CoachResponse:
+    if draft.need_amount:
+        pending_capture_store.put(user_id, draft)
+        return _ask_amount_reply(session_id, draft)
+    if draft.when is None:
+        draft.when = extract_date_from_text(message, allow_future=draft.booking)
+    if draft.when is not None:
+        saved_part = save_one(draft, draft.when)
+        answer = saved_part if saved_part.startswith("Sorry") else _finalize([saved_part])
         return _local_reply(session_id, answer)
     pending_capture_store.put(user_id, draft)
     return _ask_date_reply(session_id, draft)

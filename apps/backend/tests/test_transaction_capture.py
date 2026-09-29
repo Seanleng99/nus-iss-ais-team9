@@ -11,7 +11,9 @@ from app.main import app
 from app.services.transaction_capture import (
     PendingCaptureStore,
     classify_category,
+    parse_batch,
     parse_date_expression,
+    parse_spending_details,
     parse_spending_statement,
 )
 
@@ -115,6 +117,57 @@ def add_transaction(user_id: str, description: str, category: str, amount: float
         ("got a iphone 15 pro, paid 1200 dollars", 1200.0, "iphone 15 pro"),
         ("I have spent 7.50 dollars on fried rice for today's lunch", 7.5, "Lunch (Fried Rice)"),
         ("i have booked for a $1288 anniversary dinner on the 28 sep", 1288.0, "anniversary dinner"),
+        # item-first ledger style (no verb)
+        ("lunch 5.50", 5.5, "lunch"),
+        ("toll 3.50", 3.5, "toll"),
+        ("haircut 25", 25.0, "haircut"),
+        ("uber ride 22", 22.0, "uber ride"),
+        ("school fees 800", 800.0, "school fees"),
+        ("lta road tax 1100", 1100.0, "lta road tax"),
+        ("property tax 3400", 3400.0, "property tax"),
+        ("4.30 kopi", 4.3, "kopi"),
+        ("grand 18 grab", 18.0, "grab"),
+        ("uniform 120", 120.0, "uniform"),
+        ("PTPTN repayment 200", 200.0, "ptptn repayment"),
+        ("gcash 500 load", 500.0, "gcash load"),
+        ("topup mrt 20", 20.0, "topup mrt"),
+        ("CPF top-up 300", 300.0, "cpf top-up"),
+        ("got haircut yesterday 25", 25.0, "haircut"),
+        ("cny groceries at NTUC 88.40", 88.4, "cny groceries ntuc"),
+        ("vax travel insurance 42", 42.0, "vax travel insurance"),
+        ("split the bill, my part 13.50", 13.5, "split bill part"),
+        # noun phrase + marked amount, no verb
+        ("dinner at jumbo seafood $120", 120.0, "dinner jumbo seafood"),
+        ("breakfast at old kopitiam 7.20", 7.2, "breakfast old kopitiam"),
+        ("shopee haul 67.80", 67.8, "shopee haul"),
+        ("insurance premium 1,200", 1200.0, "insurance premium"),
+        ("mrt monthly pass 128", 128.0, "mrt monthly pass"),
+        ("car wash 12", 12.0, "car wash"),
+        # copula phrasing
+        ("grab was 18", 18.0, "grab"),
+        ("the mall parking was 4.50", 4.5, "mall parking"),
+        ("my rent is 2800", 2800.0, "rent"),
+        ("flight to tokyo cost me 2000", 2000.0, "flight tokyo"),
+        ("cost me 30 for the tow", 30.0, "tow"),
+        ("charged 450 for car service", 450.0, "car service"),
+        # extended verbs
+        ("spend 20 for parking", 20.0, "parking"),
+        ("settled the credit card bill 1500", 1500.0, "credit card bill"),
+        ("gave ah beng 50 for the renovation", 50.0, "ah beng renovation"),
+        ("sent mum 300 last night", 300.0, "mum"),
+        ("mailed 300 sgd to mum", 300.0, "mum"),
+        ("donated 100 to the temple", 100.0, "temple"),
+        ("treat customers lunch 200", 200.0, "customers lunch"),
+        ("angbao gave out 300", 300.0, "angbao"),
+        ("i grabbed food 12", 12.0, "food"),
+        ("transacted 12 at 7-eleven", 12.0, "7-eleven"),
+        # money formats
+        ("coffee -4.30", 4.3, "coffee"),
+        ("spent 30k for the wedding", 30000.0, "wedding"),
+        ("movie tix 13.50 x 2", 27.0, "movie tix"),
+        # light Chinese support
+        ("花了5块买咖啡", 5.0, "买咖啡"),
+        ("地铁 3.5块", 3.5, "地铁"),
     ],
 )
 def test_parse_spending_statement_positives(
@@ -137,6 +190,11 @@ def test_parse_spending_statement_positives(
         "I have $50 budget for food",
         "what is my highest spending category?",
         "hello there",
+        "the weather is nice today 30 degrees",
+        "i owe ah lat 40 for the tickets",
+        "my monthly income is 6000",
+        "i am 35 years old",
+        "how many days until 25/12",
     ],
 )
 def test_parse_spending_statement_negatives(message: str) -> None:
@@ -197,6 +255,73 @@ def test_parse_date_expression_rejects_future_and_prose() -> None:
 )
 def test_classify_category(text: str, category: str) -> None:
     assert classify_category(text) == category
+
+
+# --- amount slot filling ---------------------------------------------------------
+
+
+def test_parse_spending_details_extracts_description_and_date_without_amount() -> None:
+    draft = parse_spending_details("A flight ticket to Sydney today-got it.")
+    assert draft is not None
+    assert draft.amount == 0.0
+    assert "flight" in draft.description.lower()
+    assert draft.category == "transport"
+    assert draft.when == TODAY
+
+
+def test_parse_spending_details_rejects_questions_and_prose() -> None:
+    assert parse_spending_details("How much was the flight ticket?") is None
+    assert parse_spending_details("hello there") is None
+    assert parse_spending_details("i spent $5 on chicken rice") is None
+
+
+def test_coach_asks_for_amount_then_saves_on_followup(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    first = post_coach(
+        "cap-a1", "A flight ticket to Sydney today-got it. What was the ticket price?"
+    )
+    assert stub_ai.last_request is None
+    assert "how much" in first["answer"].lower()
+    assert transactions_for("cap-a1") == []
+
+    second = post_coach("cap-a1", "it was about 850")
+    assert stub_ai.last_request is None
+    assert "saved" in second["answer"].lower()
+    saved = transactions_for("cap-a1")
+    assert len(saved) == 1
+    assert saved[0]["amount"]["amount"] == 850.0
+    assert "flight" in saved[0]["description"].lower()
+    assert saved[0]["occurred_on"] == TODAY.isoformat()
+
+
+def test_coach_amount_followup_accepts_marked_amount(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    post_coach("cap-a2", "Bought a new phone yesterday")
+    second = post_coach("cap-a2", "$1288")
+    assert "saved" in second["answer"].lower()
+    saved = transactions_for("cap-a2")
+    assert len(saved) == 1
+    assert saved[0]["amount"]["amount"] == 1288.0
+    assert saved[0]["occurred_on"] == (TODAY - timedelta(days=1)).isoformat()
+
+
+def test_coach_amount_followup_cancel(stub_ai: type[StubAIServiceClient]) -> None:
+    post_coach("cap-a3", "Bought a new phone yesterday")
+    body = post_coach("cap-a3", "cancel")
+    assert "nothing was saved" in body["answer"].lower()
+    assert transactions_for("cap-a3") == []
+
+
+def test_coach_complete_statement_not_intercepted_by_details(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    body = post_coach("cap-a4", "i spent $5 on chicken rice today")
+    assert stub_ai.last_request is None
+    assert "saved" in body["answer"].lower()
+    assert "how much" not in body["answer"].lower()
+    assert len(transactions_for("cap-a4")) == 1
 
 
 # --- pending store ------------------------------------------------------------
@@ -456,6 +581,93 @@ def test_two_sentences_saved_as_batch(stub_ai: type[StubAIServiceClient]) -> Non
     assert stub_ai.last_request is None
     saved = transactions_for("cap-b5")
     assert len(saved) == 2
+
+
+def test_multi_item_and_splits_into_two_drafts() -> None:
+    drafts = parse_batch("bought a phone 1288 and a case 45")
+    assert drafts is not None
+    assert [draft.amount for draft in drafts] == [1288.0, 45.0]
+
+
+def test_multi_item_and_saves_two_transactions(stub_ai: type[StubAIServiceClient]) -> None:
+    body = post_coach("cap-m1", "bought a phone 1288 on 20 Sep and a case 45 on 21 Sep")
+    assert stub_ai.last_request is None
+    assert "1288.00" in body["answer"]
+    assert "45.00" in body["answer"]
+    saved = transactions_for("cap-m1")
+    assert len(saved) == 2
+
+
+# --- cross-user isolation -------------------------------------------------------
+
+
+def test_snapshot_contains_only_requesting_users_transactions(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    add_transaction("iso-a", "Own Kopi", "food", 2.0)
+    add_transaction("iso-b", "Secret Lunch", "food", 42.0)
+    post_coach("iso-a", "how are you?", session_id="iso-s1")
+    assert stub_ai.last_request is not None
+    descriptions = [item.description for item in stub_ai.last_request.snapshot.recent_transactions]
+    assert "Secret Lunch" not in descriptions
+    assert any("Kopi" in description for description in descriptions)
+
+
+def test_client_supplied_snapshot_is_replaced_when_db_snapshot_exists(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    add_transaction("iso-c", "Real Transaction", "food", 5.0)
+    response = client.post(
+        "/api/coach",
+        headers=HEADERS,
+        json={
+            "user_id": "iso-c",
+            "session_id": "iso-s2",
+            "message": "hello",
+            "snapshot": {
+                "recent_transactions": [
+                    {
+                        "description": "Injected Transaction",
+                        "category": "food",
+                        "amount": {"currency": "SGD", "amount": 999.0},
+                        "occurred_on": "2026-09-21",
+                    }
+                ]
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert stub_ai.last_request is not None
+    descriptions = [item.description for item in stub_ai.last_request.snapshot.recent_transactions]
+    assert "Injected Transaction" not in descriptions
+    assert "Real Transaction" in descriptions
+
+
+def test_date_spending_query_only_sees_own_transactions(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    add_transaction("iso-d", "Secret Dinner", "food", 50.0)
+    body = post_coach("iso-e", "how much did I spend on 20/9?", session_id="iso-s3")
+    assert stub_ai.last_request is None
+    assert "no transactions" in body["answer"].lower()
+    assert "Secret Dinner" not in body["answer"]
+
+
+def test_capture_saves_only_for_requesting_user(stub_ai: type[StubAIServiceClient]) -> None:
+    add_transaction("iso-f2", "Existing Item", "other", 9.0)
+    post_coach("iso-f", "i spent $5 on chicken rice today", session_id="iso-s4")
+    own = transactions_for("iso-f")
+    assert len(own) == 1
+    assert own[0]["description"] == "Chicken Rice"
+    other = transactions_for("iso-f2")
+    assert [item["description"] for item in other] == ["Existing Item"]
+
+
+def test_budget_status_query_only_uses_own_spending(stub_ai: type[StubAIServiceClient]) -> None:
+    add_transaction("iso-g2", "Secret Splurge", "shopping", 9999.0)
+    body = post_coach("iso-g", "is my spending okay this month?", session_id="iso-s5")
+    assert stub_ai.last_request is None
+    assert "Secret Splurge" not in body["answer"]
 
 
 # --- transaction.added telemetry log --------------------------------------------
