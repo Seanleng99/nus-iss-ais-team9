@@ -62,6 +62,7 @@ class InternalCoachRequest(CoachRequest):
     # Only the backend constructs this; the public request has no history field.
     conversation_context: list[dict[str, str]] = Field(default_factory=list, max_length=8)
     pending_budget: dict[str, Any] | None = None
+    budget_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentResult(BaseModel):

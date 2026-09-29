@@ -177,6 +177,7 @@ def _budget_response(
         total_spent=total_spent,
         total_remaining=total_limit - total_spent,
         categories=categories,
+        planning=record.planning,
     )
 
 

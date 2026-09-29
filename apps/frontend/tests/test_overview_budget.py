@@ -92,3 +92,15 @@ def test_overview_shortcut_opens_registered_budget_page():
     app.button[0].click().run()
     assert not app.exception
     assert app.multiselect[0].label == "Budget categories"
+
+def test_planned_budget_summary_keeps_savings_separate_from_spending():
+    app = render({
+        "currency": "SGD", "total_limit": 3000, "total_spent": 500,
+        "categories": [{"category": "housing", "limit_amount": 3000, "spent_amount": 500}],
+        "planning": {"take_home_income": 4000, "savings_target": 800},
+    })
+    assert not app.exception
+    metrics = {item.label: item.value for item in app.metric}
+    assert metrics["Planned"] == "SGD 3,000.00"
+    assert metrics["Savings allocation"] == "SGD 800.00"
+    assert metrics["Unallocated income"] == "SGD 200.00"

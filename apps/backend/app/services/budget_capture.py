@@ -6,13 +6,15 @@ Draft and confirmation state are committed atomically with the chat exchange.
 
 import re
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.financial_schemas import BudgetCategoryInput, BudgetUpsert
+from app.api.financial_schemas import BudgetCategoryInput, BudgetPlanSettings, BudgetUpsert
 from app.domain.schemas import CoachRequest, CoachResponse
 from app.infrastructure.repositories import SQLAlchemyBudgetRepository, SQLAlchemyChatRepository
+from app.services.budget_planning import PlanningInputs, describe_affordability
 
 CONFIRM = re.compile(
     r"^(?:yes|yes please|confirm|confirm budget|save budget|yes[, ]+save(?: it| the budget)?|确认|确认保存)[.!。!\s]*$",
@@ -25,11 +27,14 @@ class DraftCategory(BaseModel):
     model_config = ConfigDict(extra="forbid")
     category: str | None = Field(default=None, max_length=64)
     limit_amount: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    source: Literal["user", "recorded_spending"] = "user"
+    reference_period: date | None = None
 
 
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
+    planning: PlanningInputs | None = None
     period_start: date | None = None
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     categories: list[DraftCategory] = Field(default_factory=list, max_length=50)
@@ -40,7 +45,9 @@ class BudgetDraft(BaseModel):
         if self.period_start is None or self.period_start.day != 1:
             questions.append("Which month and year is this budget for (for example, October 2026)?")
         if self.currency != "SGD":
-            questions.append("Please specify the currency and provide the limits in SGD; this budget tracks SGD spending.")
+            questions.append(
+                "Please specify the currency and provide the limits in SGD; this budget tracks SGD spending."
+            )
         if not self.categories:
             questions.append("Which categories and monthly limits would you like to save?")
         names = []
@@ -76,6 +83,7 @@ class BudgetDraft(BaseModel):
 def _snapshot(record) -> dict:
     return {
         "currency": record.currency if record else "SGD",
+        "planning": record.planning if record else None,
         "categories": {item.category: float(item.limit_amount) for item in record.categories}
         if record
         else {},
@@ -85,7 +93,9 @@ def _snapshot(record) -> dict:
 def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, dict | None]:
     missing = draft.missing()
     if missing:
-        return "Nothing has been saved. " + " ".join(missing), None
+        if draft.planning:
+            missing += draft.planning.questions()
+        return "Nothing has been saved. " + " ".join(dict.fromkeys(missing)), None
     payload = draft.payload()
     record = SQLAlchemyBudgetRepository(session).get(user_id, payload.period_start, for_update=True)
     baseline = _snapshot(record)
@@ -94,22 +104,68 @@ def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, d
             "The existing budget uses a different currency. Please update it in the Budget page first.",
             None,
         )
-    if len(set(baseline["categories"]) | {item.category for item in payload.categories}) > 50:
+    merged = {
+        **baseline["categories"],
+        **{item.category: item.limit_amount for item in payload.categories},
+    }
+    if len(merged) > 50:
         return (
             "This would exceed 50 categories. Please remove categories in the Budget page first.",
             None,
         )
-    lines = [f"Please confirm these budget changes for {payload.period_start:%B %Y} (SGD):"]
-    for item in payload.categories:
-        old = baseline["categories"].get(item.category)
-        change = f" (was SGD {old:,.2f})" if old is not None else " (new category)"
-        # Categories are user text. Escape Markdown punctuation for the preview.
-        name = re.sub(r"([\\`*_{}\[\]<>])", r"\\\1", item.category)
-        lines.append(f"- {name}: SGD {item.limit_amount:,.2f}{change}")
-    lines.append(
-        "Other categories will be kept. Nothing has been saved yet. Reply 'confirm budget' to save, 'cancel' to discard, or send corrections."
+    planning = draft.planning or (
+        BudgetPlanSettings.model_validate(baseline["planning"]) if baseline["planning"] else None
     )
-    return "\n\n".join([lines[0], "\n".join(lines[1:-1]), lines[-1]]), baseline
+    questions = draft.planning.questions() if draft.planning else []
+    if draft.planning and any(
+        name in {"savings", "emergency fund", "investments"} for name in merged
+    ):
+        questions.append(
+            "Separate savings transfers from expense limits before confirming; use the savings allocation and remove any duplicate savings category in Budget."
+        )
+    lines = [
+        f"Budget {'proposal' if planning else 'changes'} for {payload.period_start:%B %Y} (SGD):"
+    ]
+    for item, original in zip(payload.categories, draft.categories, strict=True):
+        old = baseline["categories"].get(item.category)
+        change = f"was SGD {old:,.2f}" if old is not None else "new category"
+        source = "user-provided"
+        if original.source == "recorded_spending":
+            source = f"suggested from recorded spending for {original.reference_period or 'an unspecified month'}"
+        name = re.sub(r"([\\`*_{}\[\]<>])", r"\\\1", item.category)
+        lines.append(f"- {name}: SGD {item.limit_amount:,.2f} ({change}; {source})")
+    preserved = {
+        key: value
+        for key, value in baseline["categories"].items()
+        if key not in {item.category for item in payload.categories}
+    }
+    if preserved:
+        lines.append(
+            "Existing category limits kept: "
+            + "; ".join(f"{key}: SGD {value:,.2f}" for key, value in preserved.items())
+        )
+    if any(item.source == "recorded_spending" for item in draft.categories):
+        lines.append(
+            "Recorded spending may be incomplete. These are suggested limits, not verified essential costs. Recurring transactions have not been counted twice."
+        )
+    fits = True
+    if (
+        planning
+        and planning.take_home_income is not None
+        and planning.savings_target is not None
+        and planning.income_basis == "take_home"
+    ):
+        explanation, fits = describe_affordability(merged, planning)
+        lines.append(explanation)
+    if questions:
+        lines.append("Nothing has been saved. " + " ".join(questions))
+    elif fits:
+        lines.append(
+            "Other categories will be kept. Nothing has been saved yet. Reply 'confirm budget' to save, 'cancel' to discard, or send corrections."
+        )
+    if questions or not fits:
+        return "\n\n".join(lines), None
+    return "\n\n".join(lines), baseline
 
 
 def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse) -> None:
@@ -135,6 +191,10 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         return
     if not draft.is_budget_request:
         return
+    previous_planning = (chat.pending_budget or {}).get("draft", {}).get("planning")
+    if previous_planning and draft.planning is None:
+        response.answer = "Nothing has been saved. Please continue or cancel the pending budget plan; its income, savings and affordability checks cannot be skipped."
+        return
     answer, baseline = _preview(session, user_id, draft)
     chat.pending_budget = {
         "draft": draft.model_dump(mode="json"),
@@ -143,6 +203,8 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
     }
     response.answer = answer
+    if draft.planning:
+        response.audit["budget_planner_version"] = "budget-planning-v1"
     response.audit["budget_capture"] = (
         "awaiting_confirmation" if baseline is not None else "needs_input"
     )
@@ -158,6 +220,13 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
         if request.message.strip().lower() not in {"confirm budget", "save budget"}:
             return None
         answer = "There is no pending budget to confirm in this conversation. Tell me the month, categories and SGD limits first."
+    elif (
+        chat.pending_budget.get("draft", {}).get("planning")
+        and chat.pending_budget.get("baseline") is None
+        and request.message.strip().lower() in {"yes", "yes please", "no"}
+    ):
+        # A yes/no answer to a clarification is not a save or cancellation instruction.
+        return None
     elif CANCEL.fullmatch(request.message.strip()):
         chat.pending_budget = None
         answer = "Budget draft cancelled. Nothing was saved."
@@ -182,10 +251,15 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                 **baseline["categories"],
                 **{item.category: item.limit_amount for item in payload.categories},
             }
-            payload.categories = [
-                BudgetCategoryInput(category=key, limit_amount=value)
-                for key, value in merged.items()
-            ]
+            payload = BudgetUpsert(
+                period_start=payload.period_start,
+                currency=payload.currency,
+                categories=[
+                    BudgetCategoryInput(category=key, limit_amount=value)
+                    for key, value in merged.items()
+                ],
+                planning=draft.planning.settings() if draft.planning else baseline["planning"],
+            )
             SQLAlchemyBudgetRepository(session).upsert(request.user_id, payload)
             chat.pending_budget = None
             answer = f"Saved your confirmed budget changes for {payload.period_start:%B %Y}. You can review them on the Budget page."

@@ -47,7 +47,9 @@ def test_capture_all_categories_without_requiring_income():
     )
     result = next(item for item in response.agent_results if item.agent.value == "budget")
     assert not response.blocked
-    assert result.data["budget_draft"]["categories"] == draft["categories"]
+    assert [{"category": item["category"], "limit_amount": item["limit_amount"]}
+            for item in result.data["budget_draft"]["categories"]] == draft["categories"]
+    assert all(item["source"] == "user" for item in result.data["budget_draft"]["categories"])
     assert "unsaved" in result.summary
 
 

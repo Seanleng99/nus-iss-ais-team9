@@ -300,6 +300,7 @@ class SQLAlchemyUserRepository:
                 {
                     "period_start": record.period_start.isoformat(),
                     "currency": record.currency,
+                    "planning": record.planning,
                     "categories": [
                         {
                             "category": category.category,
@@ -808,6 +809,7 @@ class SQLAlchemyBudgetRepository:
         else:
             record.currency = budget.currency
 
+        record.planning = budget.planning.model_dump(mode="json") if budget.planning else None
         existing = {item.category: item for item in record.categories}
         requested = {item.category for item in budget.categories}
         for category, category_record in existing.items():
@@ -829,7 +831,7 @@ class SQLAlchemyBudgetRepository:
         self.session.flush()
         return record
 
-    def spending_by_category(self, user_id: str, period_start: date) -> dict[str, float]:
+    def spending_by_category(self, user_id: str, period_start: date, *, currency: str | None = None) -> dict[str, float]:
         query = (
             select(TransactionRecord.category, func.sum(TransactionRecord.amount))
             .where(
@@ -839,6 +841,8 @@ class SQLAlchemyBudgetRepository:
             )
             .group_by(TransactionRecord.category)
         )
+        if currency is not None:
+            query = query.where(TransactionRecord.currency == currency)
         return {category: float(amount) for category, amount in self.session.execute(query)}
 
     def transaction_count(self, user_id: str, period_start: date) -> int:

@@ -26,6 +26,22 @@ def fixture_budget_draft(payload):
     draft.setdefault("categories", [])
     draft["questions"] = []
     draft["is_budget_request"] = True
+    if payload.get("planning_requested") or draft.get("planning"):
+        planning = dict(draft.get("planning") or {})
+        for key, pattern in (
+            ("take_home_income", r"(?:take.home(?: income)?|net income)\s*[:=]?\s*(?:SGD\s*)?(\d+(?:\.\d{1,2})?)"),
+            ("savings_target", r"savings(?: target)?\s*[:=]?\s*(?:SGD\s*)?(\d+(?:\.\d{1,2})?)"),
+        ):
+            matched = re.search(pattern, text, re.IGNORECASE)
+            if matched:
+                planning[key] = float(matched[1])
+                if key == "take_home_income":
+                    planning["income_basis"] = "take_home"
+        if "all expenses included" in text.lower():
+            planning["expenses_confirmed"] = True
+        if "use recorded spending" in text.lower():
+            planning["use_recorded_spending"] = True
+        draft["planning"] = planning
     date_match = re.search(r"\b(20\d{2})-(0[1-9]|1[0-2])(?:-01)?\b", text)
     if date_match:
         draft["period_start"] = f"{date_match[1]}-{date_match[2]}-01"
@@ -44,12 +60,15 @@ def fixture_budget_draft(payload):
         text,
         re.IGNORECASE,
     ):
-        entries.append({"category": match[1].strip().lower(), "limit_amount": float(match[2])})
+        category = match[1].strip().lower()
+        if draft.get("planning") and category in {"savings", "savings target", "take home", "take home income", "net income"}:
+            continue
+        entries.append({"category": category, "limit_amount": float(match[2])})
     if entries:
         existing = {item["category"]: item for item in draft["categories"]}
         existing.update({item["category"]: item for item in entries})
         draft["categories"] = list(existing.values())
-    elif not draft["categories"]:
+    elif not draft["categories"] and not draft.get("planning"):
         draft["questions"] = [
             "For offline mode, provide limits as 'food: 500, transport: 150', plus month, year and SGD currency."
         ]

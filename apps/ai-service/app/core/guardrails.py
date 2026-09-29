@@ -126,7 +126,7 @@ def sanitize_rag_document(text: str) -> GuardrailDecision:
 
 TOOL_ALLOWLIST: dict[AgentName, set[str]] = {
     AgentName.SPENDING: {"transaction_summarizer"},
-    AgentName.BUDGET: {"budget_calculator", "education_retriever"},
+    AgentName.BUDGET: {"budget_calculator", "budget_planner", "education_retriever"},
     AgentName.GOAL_STRATEGY: {"goal_projection", "emergency_fund_summary", "education_retriever"},
     AgentName.INVESTMENT_EDUCATION: {"education_retriever"},
     AgentName.RISK_COMPLIANCE: {"policy_checker", "policy_retriever"},

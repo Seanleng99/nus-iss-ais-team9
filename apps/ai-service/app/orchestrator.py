@@ -185,6 +185,7 @@ class OrchestratorState(TypedDict, total=False):
     routing_rationale: list[str]
     education_topics: list[str]
     budget_capture: bool
+    budget_planning: bool
     tasks: dict[str, AgentTask]
     task_results: dict[str, AgentResult]
     agent_results: list[AgentResult]
@@ -410,7 +411,10 @@ class AgentOrchestrator:
                     + "\nSet budget_capture=true and include budget for requests to set, add, "
                     "record or change category budget limits, including custom categories, "
                     "or user replies supplying details for pending_budget. Capture all categories. "
-                    "Budget advice or analysis alone is not a save request. A pending draft does "
+                    "Set budget_planning=true for requests to build a realistic/category-level/monthly "
+                    "plan, propose spending limits, or check a proposed plan against income and savings. "
+                    "Planning requires budget_capture=true and budget. General explanations of rules "
+                    "alone are not planning requests. A pending draft does "
                     "not make an unrelated new question a budget-setting request."
                     + "\nWrite every rationale sentence in "
                     + response_language
@@ -464,6 +468,15 @@ class AgentOrchestrator:
                     else "The recognized education topic requires a specialist with approved source access."
                 )
         # Pending drafts are backend-owned context, never public client confirmation.
+        decision.budget_planning = decision.budget_planning or bool(
+            (request.pending_budget or {}).get("planning")
+        )
+        if requested_agents and AgentName.BUDGET in requested_agents and re.search(
+            r"\b(realistic|category-level)\b", state["sanitized_message"], re.IGNORECASE
+        ):
+            decision.budget_planning = True
+        if decision.budget_planning:
+            decision.budget_capture = True
         if request.pending_budget is not None:
             decision.budget_capture = True
         if decision.budget_capture and AgentName.BUDGET not in decision.selected_agents:
@@ -487,6 +500,7 @@ class AgentOrchestrator:
             "routing_rationale": decision.rationale,
             "education_topics": decision.education_topics,
             "budget_capture": decision.budget_capture,
+            "budget_planning": decision.budget_planning,
             "audit_events": [*state.get("audit_events", []), event],
         }
 
@@ -1648,12 +1662,15 @@ class AgentOrchestrator:
             input_data = {"risk_tolerance": snapshot.risk_tolerance}
         else:
             raise ModelGatewayError("The orchestrator cannot create that specialist task.")
+        if agent == AgentName.BUDGET and state.get("budget_planning"):
+            input_data["planning_context"] = state["request"].budget_context
         return AgentTask(
             agent=agent,
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
             context_features={
                 "budget_capture": state.get("budget_capture", False) and agent == AgentName.BUDGET,
+                "budget_planning": state.get("budget_planning", False) and agent == AgentName.BUDGET,
                 "pending_budget": state["request"].pending_budget if agent == AgentName.BUDGET else None,
                 "has_monthly_income": snapshot.monthly_income is not None,
                 "recurring_expense_count": len(snapshot.recurring_expenses),

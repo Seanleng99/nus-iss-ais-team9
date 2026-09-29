@@ -193,6 +193,7 @@ class MonthlyBudgetRecord(TimestampMixin, Base):
     )
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="SGD", nullable=False)
+    planning: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     user: Mapped[UserRecord] = relationship(back_populates="budgets")
     categories: Mapped[list["BudgetCategoryRecord"]] = relationship(
         back_populates="budget", cascade="all, delete-orphan"

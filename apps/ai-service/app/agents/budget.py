@@ -1,5 +1,5 @@
 from app.agents.base import BaseAgent
-from app.agents.budget_capture import extract_budget_draft
+from app.agents.budget_capture import PlanningInputs, extract_budget_draft
 from app.agents.education_access import should_request_education_context
 from app.core.guardrails import inspect_prompt
 from app.core.schemas import (
@@ -14,6 +14,7 @@ from app.core.schemas import (
     UserFinancialSnapshot,
 )
 from app.core.telemetry import trace_method
+from app.tools.budget_planner import describe_plan, propose_budget
 from app.tools.registry import call_tool
 
 
@@ -26,17 +27,30 @@ class BudgetAgent(BaseAgent):
         if task.context_features.get("budget_capture") and inspect_prompt(task.sanitized_message).allowed:
             draft = extract_budget_draft(self, task)
             if draft.is_budget_request:
+                analysis = None
+                if task.context_features.get("budget_planning") or draft.planning is not None:
+                    if draft.planning is None:
+                        draft.planning = PlanningInputs.model_validate(
+                            (task.context_features.get("pending_budget") or {}).get("planning") or {}
+                        )
+                    analysis = propose_budget(
+                        draft, task.input_data.get("planning_context", {}),
+                        task.context_features.get("pending_budget"),
+                    )
                 return CompletedInvocation(
                     result=AgentResult(
                         agent=self.name,
-                        summary=(
+                        summary=describe_plan(draft, analysis) if analysis is not None else (
                             "Budget details have been captured as an unsaved draft. "
                             "Missing details must be supplied and the exact changes confirmed "
                             "before the backend can save them."
                         ),
                         rationale=["Only explicit user-provided limits are eligible for confirmation."],
                         confidence=1.0,
-                        data={"budget_draft": draft.model_dump(mode="json")},
+                        data={
+                            "budget_draft": draft.model_dump(mode="json"),
+                            **({"planning_analysis": analysis} if analysis is not None else {}),
+                        },
                     )
                 )
         return super().run_task(task)

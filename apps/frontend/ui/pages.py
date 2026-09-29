@@ -471,6 +471,22 @@ def dashboard_page() -> None:
         )
 
 
+def _render_budget_plan_summary(budget: dict) -> None:
+    planning = budget.get("planning")
+    if not planning:
+        return
+    currency = budget.get("currency", "SGD")
+    expenses = sum(float(item["limit_amount"]) for item in budget.get("categories", []))
+    unallocated = round(planning["take_home_income"] - expenses - planning["savings_target"], 2)
+    st.markdown("**Plan affordability**")
+    columns = st.columns(3)
+    columns[0].metric("Take-home income", money(planning["take_home_income"], currency))
+    columns[1].metric("Savings allocation", money(planning["savings_target"], currency))
+    columns[2].metric("Unallocated income", money(unallocated, currency))
+    st.caption("Savings are a planned allocation, separate from expense limits—not a recorded savings balance or transfer. "
+               "Affordability depends on the income and expense coverage you confirmed.")
+
+
 def _render_overview_budget(budget: dict | None, currency: str) -> None:
     st.subheader(":material/account_balance_wallet: Budget", anchor=False)
     st.caption("Your monthly plan and the categories that need attention.")
@@ -485,6 +501,7 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
         import plotly.graph_objects as go
 
         currency = budget.get("currency", currency)
+        _render_budget_plan_summary(budget)
         planned = float(budget["total_limit"])
         spent = float(budget["total_spent"])
         remaining = planned - spent
@@ -846,7 +863,10 @@ def budget_page() -> None:
         for item in (budget or {}).get("categories", [])
     }
     currency = (budget or {}).get("currency", "SGD")
-    revision = sha256(json.dumps(existing, sort_keys=True).encode()).hexdigest()[:12]
+    planning = (budget or {}).get("planning")
+    revision = sha256(json.dumps([existing, planning], sort_keys=True).encode()).hexdigest()[:12]
+    if planning:
+        _render_budget_plan_summary(budget)
     scope = f"budget-{user_id}-{period_start.isoformat()}-{revision}"
 
     if existing:
@@ -913,6 +933,23 @@ def budget_page() -> None:
     if invalid:
         st.warning("Category names must contain 1 to 64 characters.")
     with st.form(f"{scope}-form"):
+        plan_confirmed = True
+        edited_planning = None
+        if planning:
+            income_column, savings_column = st.columns(2)
+            plan_income = income_column.number_input(
+                "Monthly take-home income (SGD)", min_value=0.0,
+                value=float(planning["take_home_income"]), step=100.0, key=f"{scope}-plan-income",
+            )
+            plan_savings = savings_column.number_input(
+                "Monthly savings allocation (SGD)", min_value=0.0,
+                value=float(planning["savings_target"]), step=50.0, key=f"{scope}-plan-savings",
+            )
+            plan_confirmed = st.checkbox(
+                "These expense limits include my commitments, debt payments and irregular costs.",
+                key=f"{scope}-plan-confirmed",
+            )
+            edited_planning = {**planning, "take_home_income": plan_income, "savings_target": plan_savings}
         values: dict[str, float] = {}
         columns = st.columns(3)
         for index, category in enumerate(categories):
@@ -925,8 +962,17 @@ def budget_page() -> None:
             "Save budget", type="primary", icon=":material/save:", disabled=invalid,
         )
     if budget_submitted:
+        if not plan_confirmed:
+            st.warning("Confirm that the expense limits include your monthly commitments before saving.")
+            return
+        if edited_planning:
+            gap = round(sum(values.values()) + edited_planning["savings_target"] - edited_planning["take_home_income"], 2)
+            if gap > 0:
+                st.warning(f"The plan has a funding gap of {money(gap)}. Revise the amounts before saving.")
+                return
         payload = {
             "period_start": period_start.isoformat(), "currency": currency,
+            "planning": edited_planning,
             "categories": [{"category": category, "limit_amount": amount}
                            for category, amount in values.items()],
         }

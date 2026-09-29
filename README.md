@@ -54,6 +54,8 @@ Drafts belong to the authenticated profile and conversation. Confirmation update
 
 Apply migration `20260928_0010` with `alembic upgrade head` before running the updated backend (Compose already runs migrations). The offline model fixture accepts explicit `category: amount` syntax, for example: "Set budget for October 2026 in SGD; food: 500, pet care: 120". Production model extraction supports natural-language requests. Coach currently saves monthly SGD budgets; ambiguous dates, other currencies, and non-monthly periods require clarification.
 
+Coach now supports a first-stage **category budget planner**: ask “Help me create a realistic monthly budget,” provide take-home income and a savings allocation, and supply category limits or request recorded-spending suggestions. Coach clarifies missing details, asks whether all commitments are included, and checks the complete plan for funding gaps before confirmation. Savings stay separate from expense limits and appear in Budget and Overview after saving. See [Budget planning](docs/budget-planning.md) for the workflow, contracts, migration `20260929_0011`, examples, tests, and deferred features.
+
 ## Agents
 
 - Spending Agent: spending summaries, patterns, and anomaly explanations.

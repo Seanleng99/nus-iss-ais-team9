@@ -586,3 +586,38 @@ def test_budget_charts_custom_category_and_save_round_trip() -> None:
         {"category": "pet care", "limit_amount": 100},
         {"category": "hobbies", "limit_amount": 75},
     ]
+
+def test_budget_plan_edit_checks_commitments_and_funding_gap():
+    class PlannedClient(WorkspaceDefaultsClient):
+        saved = None
+
+        def get_budget(self, user_id, period):
+            return {"currency": "SGD", "categories": [{
+                "category": "housing", "limit_amount": 3000,
+                "spent_amount": 500, "remaining_amount": 2500,
+            }], "planning": {"take_home_income": 4000, "savings_target": 800,
+                              "income_basis": "take_home", "expenses_confirmed": True,
+                              "version": "budget-planning-v1"}}
+
+        def save_budget(self, user_id, payload):
+            self.saved = payload
+
+    client = PlannedClient()
+    app = AppTest.from_string("from ui.pages import budget_page\nbudget_page()")
+    app.session_state["backend_client"] = client
+    app.session_state["active_user_id"] = "workspace-user"
+    app.session_state["active_period"] = date(2026, 10, 1)
+    app.run(timeout=30)
+    assert not app.exception
+    app.button[0].click().run()
+    assert client.saved is None
+    assert "Confirm that the expense limits" in app.warning[0].value
+    app.checkbox[0].check()
+    next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3500)
+    app.button[0].click().run()
+    assert client.saved is None
+    assert "funding gap of SGD 300.00" in app.warning[0].value
+    next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3200)
+    app.button[0].click().run()
+    assert client.saved["planning"]["savings_target"] == 800
+    assert client.saved["categories"][0]["limit_amount"] == 3200

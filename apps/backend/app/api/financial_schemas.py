@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
@@ -252,10 +253,19 @@ class BudgetCategoryInput(BaseModel):
         return value
 
 
+class BudgetPlanSettings(BaseModel):
+    take_home_income: float = Field(ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
+    savings_target: float = Field(ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
+    income_basis: Literal["take_home"] = "take_home"
+    expenses_confirmed: Literal[True] = True
+    version: Literal["budget-planning-v1"] = "budget-planning-v1"
+
+
 class BudgetUpsert(BaseModel):
     period_start: date
     currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
     categories: list[BudgetCategoryInput] = Field(default_factory=list, max_length=50)
+    planning: BudgetPlanSettings | None = None
 
     @model_validator(mode="after")
     def validate_period_and_categories(self) -> "BudgetUpsert":
@@ -266,6 +276,12 @@ class BudgetUpsert(BaseModel):
             raise ValueError("Budget categories must be unique")
         for item, category in zip(self.categories, normalized, strict=True):
             item.category = category
+        if self.planning is not None:
+            expenses = sum((Decimal(str(item.limit_amount)) for item in self.categories), Decimal(0))
+            if self.currency != "SGD":
+                raise ValueError("Budget planning currently supports SGD only")
+            if expenses + Decimal(str(self.planning.savings_target)) > Decimal(str(self.planning.take_home_income)):
+                raise ValueError("Planned expenses plus savings exceed confirmed take-home income")
         return self
 
 
@@ -281,6 +297,7 @@ class BudgetResponse(BaseModel):
     total_spent: float
     total_remaining: float
     categories: list[BudgetCategoryResponse]
+    planning: BudgetPlanSettings | None = None
 
 
 class GoalProgressResponse(BaseModel):

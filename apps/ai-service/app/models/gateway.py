@@ -338,6 +338,11 @@ class LocalFixtureModelGateway:
         return {
             "selected_agents": selected or ["budget"],
             "rationale": ["Offline fixture selected agents for repeatable integration testing."],
+            "budget_planning": bool((payload.get("pending_budget") or {}).get("planning")) or (
+                "budget" in str(payload["message"]).lower()
+                and any(word in str(payload["message"]).lower()
+                        for word in ("realistic", "category-level", "propose spending limits", "check my budget plan"))
+            ),
             "budget_capture": bool(payload.get("pending_budget")) or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower().split()
