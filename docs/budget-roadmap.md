@@ -15,6 +15,6 @@ Commits delivered in order:
 - `a00938a` — shared confirmed-plan calculations.
 - `5eb748b` — typed ledger and cash-flow workspace.
 - `39c4f42` — confirmed commitments and funded alternatives.
-- Final continuity/review increment — included with this documentation update.
+- `8294f6c` — confirmed multi-month plans and opt-in reviews.
 
-The bounded implementations and remaining limitations are described in [budget-planning.md](budget-planning.md). Apply database migrations through `20260930_0012` before deployment. These commits contain no live migration or deployment.
+The bounded implementations and remaining limitations are described in [budget-planning.md](budget-planning.md). Apply database migrations through `20260930_0012` before deployment. The 2026-09-29 AWS release subsequently applied and verified migrations. Deployment and focused live acceptance passed at application revision `f821887`; see the linked planner document for retained evidence.

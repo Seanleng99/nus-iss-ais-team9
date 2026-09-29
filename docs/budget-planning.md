@@ -1,6 +1,6 @@
 # Budget planning: plans, methods, scenarios and spending reviews
 
-Status: implemented locally; deterministic/unit and API/UI integration tests are the verification baseline. Live-model acceptance and deployment are separate activities.
+Status: deployed to the AWS demo on 2026-09-29 at `f821887a62e8b8d94aa77975f34d6770042e6312`. CI, migrations and release smoke passed. The focused GPT-6 Luna Budget acceptance suite passed 14/14 executions; see the deployed verification record below.
 
 ## User workflow
 
@@ -215,15 +215,22 @@ Owned endpoints:
 - `GET /api/users/{user_id}/budget/reviews/due`
 - `POST /api/users/{user_id}/budget/reviews/acknowledge` with the displayed evidence fingerprint and explicit confirmation
 
-All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. Existing deployments must apply migrations through that revision before running this code. No live database migration or deployment was performed as part of local implementation.
+All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. Existing deployments must apply migrations through that revision before running this code. The subsequent 2026-09-29 release applied and verified these migrations before updating the backend.
 
 ## Roadmap verification
 
 The extended extraction/planning contract is `budget-planning-v4`; saved planning settings from v1–v3 remain readable.
 
-Regression coverage includes confirmed-plan cross-agent sourcing, explicit typed cash flows, pre-payday shortages, settled occurrences, protected category and goal/debt minimums, infeasible alternatives, read-only Coach comparisons, preview expiration and ownership, stale evidence, duplicate confirmation, all-or-nothing monthly writes, opt-in review dates, and UI confirmation gates. Local fixtures exercise the model contract; live-provider extraction and deployed acceptance remain separate checks. The Windows environment cannot run the existing symlink-dependent AI test without symlink privilege; the rest of the AI suite is run with that test excluded.
+Regression coverage includes confirmed-plan cross-agent sourcing, explicit typed cash flows, pre-payday shortages, settled occurrences, protected category and goal/debt minimums, infeasible alternatives, read-only Coach comparisons, preview expiration and ownership, stale evidence, duplicate confirmation, all-or-nothing monthly writes, opt-in review dates, and UI confirmation gates. Local fixtures exercise the model contract; the focused deployed acceptance result is recorded below. The Windows environment cannot run the existing symlink-dependent AI test without symlink privilege; the rest of the AI suite is run with that test excluded.
 
 
 ## Deployed Budget acceptance
 
 After a successful release, dispatch **Budget Live Acceptance** (`budget-live-acceptance.yml`) on the deployed main revision. It runs seven focused cases twice by default against the deployed Coach, checking real OpenAI model/prompt provenance, custom-category extraction, ambiguous dates/currency, gross-income clarification, an unaffordable plan, confirmed-commitment alternatives, the multi-month workspace handoff, and Chinese category extraction. It sends no save confirmation and removes its synthetic chat sessions. The checks require every case to pass; a 30-second P95 ceiling bounds this multi-agent planning path. The inherited token-cost estimate is diagnostic and is not billing evidence. Privacy-safe check results and correlation IDs are retained as an Actions artifact for 90 days. This focused suite supplements the release smoke and existing general live evaluation; it is not comprehensive acceptance of every UI flow.
+
+
+### Deployed verification, 2026-09-29
+
+Application revision `f821887a62e8b8d94aa77975f34d6770042e6312` passed [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566192931) and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566489405), including all three services, database migration verification and post-deployment health/AI safety smoke. [Budget Live Acceptance](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36568248515) passed all seven cases twice (14/14), using GPT-6 Luna and prompt set v6, with P50 11.67 seconds and P95 17.42 seconds. All synthetic chat sessions were cleaned up. Artifact `budget-live-acceptance-36568248515` expires on 2026-12-28.
+
+Earlier live runs exposed Chinese capture routing, hidden funding-gap feedback during clarification, and safety-review ambiguity around read-only workflow handoffs. These were corrected and verified with the same cases and unchanged acceptance thresholds. The passing result validates this bounded suite; it does not establish comprehensive production or all-UI acceptance.

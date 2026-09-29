@@ -2,6 +2,14 @@
 
 This register contains privacy-safe evidence for the synthetic-data AWS demo. It does not approve real personal financial data or production users.
 
+## Budget planner deployment and live acceptance — 2026-09-29
+
+The four Budget roadmap increments, merged with the newer Coach transaction/privacy fixes, are deployed at application revision `f821887a62e8b8d94aa77975f34d6770042e6312`. [CI 36566192931](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566192931) and [release 36566489405](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566489405) passed. The release verified migrations through `20260930_0012`, deployed all three services, and passed health and AI safety smoke tests.
+
+[Budget live acceptance 36568248515](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36568248515) passed 14/14 executions: seven focused cases repeated twice against GPT-6 Luna, prompt set v6. P50 was 11,670.29 ms and P95 was 17,418.61 ms, below the declared 30-second Budget gate. Model provenance, custom and Chinese category extraction, missing-input/gross-income clarification, unaffordable-plan feedback, read-only alternatives and the continuity handoff all passed. Synthetic-session cleanup succeeded for every execution. Artifact `budget-live-acceptance-36568248515` is retained until 2026-12-28. Token-cost output uses inherited diagnostic rates and is not billing evidence.
+
+The earlier runs [36562754209](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36562754209) (9/14) and [36565391432](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36565391432) (12/14) exposed capture/clarification and safety-handoff issues. Code and prompt-context corrections produced the final pass without relaxing cases or thresholds. This is bounded synthetic Budget acceptance, not validation of every interaction, production users or real financial data.
+
 ## Verified Baseline
 
 - Baseline date: 2026-08-31
