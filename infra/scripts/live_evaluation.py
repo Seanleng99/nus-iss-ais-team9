@@ -428,6 +428,21 @@ def run_live_evaluation(
                     expected_model_id=expected_model_id,
                     expected_prompt_version=expected_prompt_version,
                 )
+                if "budget_draft" in case.get("expected", {}):
+                    data = _agent_data(response, "budget")
+                    draft = data.get("budget_draft") or {}
+                    terms = ("income", "currency", "month", "year", "category", "categories", "expenses", "method", "savings", "confirm")
+                    questions = " ".join(str(q) for q in draft.get("questions", [])).lower()
+                    record["budget_diagnostics"] = {
+                        "draft_present": bool(draft),
+                        "action": draft.get("action"),
+                        "income_basis": (draft.get("planning") or {}).get("income_basis"),
+                        "needs_input": data.get("needs_input"),
+                        "question_count": len(draft.get("questions", [])),
+                        "question_topics": [term for term in terms if term in questions],
+                        "answer_checks": {term: term.casefold() in response.get("answer", "").casefold() for term in case["expected"].get("answer_contains", [])},
+                        "blocked_agents": [r.get("agent") for r in response.get("agent_results", []) if r.get("blocked")],
+                    }
                 audit = response.get("audit", {})
                 input_tokens = int(audit.get("model_input_tokens") or 0)
                 output_tokens = int(audit.get("model_output_tokens") or 0)

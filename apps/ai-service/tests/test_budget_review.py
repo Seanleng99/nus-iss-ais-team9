@@ -64,3 +64,11 @@ def test_multi_month_request_routes_to_confirmation_workspace():
     budget = next(item for item in result.agent_results if item.agent.value == "budget")
     assert budget.data["budget_draft"]["action"] == "continuity"
     assert "planning_analysis" not in budget.data
+
+
+def test_chinese_explicit_budget_setting_enters_capture_path():
+    result = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture")).handle(
+        CoachRequest(user_id="u", session_id="s", message="请设置2026年10月的每月预算：宠物护理120新加坡元。保存之前请先让我确认。", requested_agents=["budget"]))
+    budget = next(item for item in result.agent_results if item.agent.value == "budget")
+    assert "budget_draft" in budget.data
+    assert budget.data.get("needs_input") is not True

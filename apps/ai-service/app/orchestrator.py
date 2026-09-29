@@ -485,7 +485,7 @@ class AgentOrchestrator:
             decision.selected_agents.append(AgentName.BUDGET)
         if requested_agents and AgentName.BUDGET in requested_agents:
             decision.budget_capture = decision.budget_capture or bool(re.search(
-                r"\b(save|set|add|update|change|record|limit|allocate)\b",
+                r"\b(save|set|add|update|change|record|limit|allocate)\b|(?:设置|设定|调整|修改|新增|添加|保存).{0,20}预算|预算.{0,20}(?:设置|设定|调整|修改|新增|添加|保存)",
                 state["sanitized_message"], re.IGNORECASE,
             ))
         event = self._event(

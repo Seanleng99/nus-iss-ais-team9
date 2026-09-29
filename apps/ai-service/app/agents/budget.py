@@ -40,7 +40,7 @@ class BudgetAgent(BaseAgent):
                 return CompletedInvocation(
                     result=AgentResult(
                         agent=self.name,
-                        summary="A read-only budget review was requested; the backend will verify the period and compute results from owned records." if draft.action == "review" else describe_plan(draft, analysis) if analysis is not None else (
+                        summary="The user requested multi-month planning or periodic reviews. These features are available in the Budget workspace with explicit confirmation; the backend will provide navigation and no budget is saved from this message." if draft.action == "continuity" else "A read-only budget review was requested; the backend will verify the period and compute results from owned records." if draft.action == "review" else describe_plan(draft, analysis) if analysis is not None else (
                             "Budget details have been captured as an unsaved draft. "
                             "Missing details must be supplied and the exact changes confirmed "
                             "before the backend can save them."

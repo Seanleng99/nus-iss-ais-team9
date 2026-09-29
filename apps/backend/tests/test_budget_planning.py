@@ -266,3 +266,12 @@ def test_http_planning_clarification_shortfall_revision_confirmation_and_budget_
         assert invalid.status_code == 422
     finally:
         app.dependency_overrides.pop(get_ai_service_client, None)
+
+
+def test_known_funding_gap_remains_visible_while_clarifying_other_questions(db_session_factory):
+    with db_session_factory() as session:
+        draft = planning_draft(questions=["Would you like to choose a budgeting method?"])
+        response = stage(session, draft)
+        assert "Funding gap: SGD 200.00" in response.answer
+        assert "choose a budgeting method" in response.answer
+        assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None

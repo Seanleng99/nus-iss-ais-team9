@@ -110,7 +110,8 @@ def _snapshot(record) -> dict:
 
 
 def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, dict | None]:
-    missing = draft.missing()
+    # Compute known totals even while non-structural questions remain unresolved.
+    missing = draft.model_copy(update={"questions": []}).missing()
     if missing:
         if draft.planning:
             missing += draft.planning.questions()
@@ -135,7 +136,7 @@ def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, d
     planning = draft.planning or (
         BudgetPlanSettings.model_validate(baseline["planning"]) if baseline["planning"] else None
     )
-    questions = draft.planning.questions() if draft.planning else []
+    questions = [*draft.questions, *(draft.planning.questions() if draft.planning else [])]
     if draft.planning and any(
         name in {"savings", "emergency fund", "investments"} for name in merged
     ):
