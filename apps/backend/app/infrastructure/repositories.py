@@ -845,6 +845,23 @@ class SQLAlchemyBudgetRepository:
             query = query.where(TransactionRecord.currency == currency)
         return {category: float(amount) for category, amount in self.session.execute(query)}
 
+    def review_spending(self, user_id: str, period_start: date, through: date) -> list[dict]:
+        """Owned SGD aggregates through a fixed cutoff; no transaction descriptions leave storage."""
+        query = select(
+            TransactionRecord.category, TransactionRecord.recurring,
+            func.sum(TransactionRecord.amount), func.count(TransactionRecord.id),
+            func.count(func.distinct(TransactionRecord.occurred_on)),
+        ).where(
+            TransactionRecord.user_id == user_id,
+            TransactionRecord.currency == "SGD",
+            TransactionRecord.occurred_on >= period_start,
+            TransactionRecord.occurred_on < next_month(period_start),
+            TransactionRecord.occurred_on <= through,
+        ).group_by(TransactionRecord.category, TransactionRecord.recurring)
+        return [{"category": category, "recurring": recurring, "amount": str(amount),
+                 "count": count, "activity_days": days}
+                for category, recurring, amount, count, days in self.session.execute(query)]
+
     def transaction_count(self, user_id: str, period_start: date) -> int:
         query = select(func.count(TransactionRecord.id)).where(
             TransactionRecord.user_id == user_id,

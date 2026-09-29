@@ -1,4 +1,4 @@
-# Budget planning: category plans, methods and scenarios
+# Budget planning: plans, methods, scenarios and spending reviews
 
 Status: implemented locally; deterministic/unit and API/UI integration tests are the verification baseline. Live-model acceptance and deployment are separate activities.
 
@@ -37,7 +37,7 @@ Example: SGD 4,000 income, SGD 3,400 expenses and SGD 800 savings produce a SGD 
 
 ## Architecture and contracts
 
-- `apps/ai-service/app/agents/budget_capture.py`: typed extraction contract for user inputs and corrections, versioned as `budget-planning-v2`. The model interprets language; it cannot write budgets.
+- `apps/ai-service/app/agents/budget_capture.py`: typed extraction contract for user inputs and corrections, versioned as `budget-planning-v3`. The model interprets language; it cannot write budgets.
 - `apps/ai-service/app/tools/budget_planner.py`: allowlisted deterministic category proposals, provenance, expense totals and funding gaps. It does not use 50/30/20 to generate a category plan.
 - `apps/ai-service/app/orchestrator.py`: `budget_planning` intent, continuity for pending planning drafts, and role-scoped aggregate context. Only planning Budget tasks receive `planning_context`; no raw transaction descriptions are added to this context.
 - `apps/backend/app/services/budget_planning.py`: owned SGD aggregate construction, required planning inputs, authoritative affordability arithmetic and explanation.
@@ -84,11 +84,44 @@ In the UI, users can compare the current editor values against one alternative, 
 - `services/budget_scenarios.py`: independent copies, override validation, comparisons and deterministic explanations. No persistence calls.
 - `POST /api/users/{user_id}/budget/compare`: authenticated, owner-scoped, read-only calculation from an explicitly supplied draft. It returns no stored owner data and does not write budgets, profiles or conversations. Unlike Coach, which merges saved categories, the UI supplies the whole editor plan. Response includes `results`, `questions`, and `saved: false`.
 - Saving still uses the existing budget API or Coach confirmation path. `BudgetPlanSettings.method` persists the selected method. Direct saves enforce classifications, valid percentages, affordability and the zero-based equality constraint.
-- The expanded extraction/planner contract is `budget-planning-v2`. Readers accept both v1 and v2 settings. The legacy general prompt-set version and baseline calculation are unchanged.
+- Stage two introduced `budget-planning-v2`; stage three expands the extraction contract to v3. Readers accept v1, v2 and v3 settings. The legacy general prompt-set version and baseline calculation are unchanged.
 
 Offline fixture example, following the stage-one plan example: `scenario More saving: savings=1000`, then `use scenario More saving`. The fixture grammar supports one explicit scenario override at a time; the production extraction schema supports three. Live-model tests must separately verify multi-option language, gross versus take-home hypotheticals, method corrections and explicit adoption.
 
 The prior illustrative calculator remains available for baseline guidance and `monthly_savings_capacity` dependencies. It retains the legacy 50/30/20 calculation **after recorded recurring expenses**; it is not the standard take-home-income interpretation of that rule. The new category-planning path does not use that baseline or publish its result as an observed savings balance.
+
+## Stage three: spending reviews and adjustment proposals
+
+Request **“Review my budget for September 2026”** in Coach, or open **Budget → Review recorded spending → Refresh spending review**. Coach asks for the month/year when missing; a read-only review does not require new income or savings inputs. Overview points to the Budget review panel. Reviews run on demand, without scheduled notifications or background jobs.
+
+The backend reads only the authenticated profile's SGD expense aggregates. The cutoff is the earlier of Singapore today and the selected month's final day; future-dated entries are excluded. It includes unbudgeted categories and zero limits, and excludes recorded categories named `savings`, `emergency fund`, and `investments` from expense totals. Custom transfer aliases are not automatically recognized. Recurring rows are counted once. Transaction descriptions are not included in the review context. Foreign-currency budgets are reported as unsupported rather than converted.
+
+Each category shows recorded expenses, saved limit, remaining amount, and status (over, approaching at 80%, within the recorded limit, or unbudgeted). A positive remaining amount does not establish an available cash balance or prove that commitments are paid. Records can be incomplete, including in a closed month. No saved budget is a valid review result; the user is asked to create a plan before adopting an adjustment.
+
+### Pace calculation
+
+Pace is an **illustration**, not a spending prediction or a variable-income forecast. It is available only for an in-progress month after at least seven calendar days have elapsed and when that category has non-recurring expense records on at least three distinct days:
+
+```text
+category month-end pace = recorded recurring expenses
+                         + recorded non-recurring expenses / elapsed calendar days * days in month
+remaining per day = max(category limit - recorded expenses, 0) / remaining calendar days
+```
+
+Recurring amounts are held constant to avoid multiplying a rent payment across the month. This does not infer unpaid bills. Non-recurring one-off purchases can still distort the illustration. Sparse, future and closed-month categories have no pace estimate. Remaining-per-day is omitted when there are no days left. Month lengths and leap years use calendar dates. An overall pace is shown only when every reviewed category has an estimate; missing values are never treated as zero. The UI shows recorded amounts and pace in separate chart series and labels unavailable estimates.
+
+### Review → adjustment → confirmation
+
+An overspent or unbudgeted category can produce a **Cover recorded spending** option: raise its limit to the recorded amount and preserve every other saved limit, method and savings allocation. This covers already-recorded expenses only; it does not guess an allowance for the rest of the month. A pace overrun alone prompts the user to inspect the spending pattern and does not generate an automatic numeric increase. The normal affordability and method checks identify funding gaps; the system never automatically cuts another category, essential commitment or savings target to fund an increase.
+
+- Coach stores the option as a scenario comparison. `Use scenario Cover recorded spending` adopts an unsaved draft. Actual take-home income, expense coverage, missing inputs, and the final budget changes must still be confirmed. A review or generic `confirm budget` cannot directly authorize an adjustment.
+- An existing pending plan/comparison is retained during a review and its old save confirmation is disarmed. Finish or cancel that draft before adopting the review's adjustment.
+- The UI displays the proposed category limits and any funding gap. `Review adjustment in editor` opens an unsaved proposal. Legacy manual budgets without planning income/savings require those inputs through Coach or the method explorer first.
+- A review evidence fingerprint covers the cutoff date, aggregate records and saved budget. Changed records, a new review date or changed saved limits require a fresh review before adoption. Evidence is retained through Coach clarification and checked again before saving. The UI sends `review_evidence` with a reviewed adjustment; a stale direct save returns HTTP 409. The user can still deliberately create or edit a separate manual budget through the existing API.
+
+Stage-three modules are `services/budget_review.py`, repository `review_spending`, and `ui/budget_review.py`. `GET /api/users/{user_id}/budget/review?period_start=YYYY-MM-01` is authenticated, owner-scoped, and read-only. Its response includes the cutoff, coverage caveats, actual amounts, optional pace, suggestions, a non-persisting scenario comparison, `evidence_fingerprint`, and `saved: false`. `BudgetUpsert.review_evidence` is an optional transient precondition, not a database field. Model-provided numbers are not used to compute a review. Backend audit records `budget-review-v1`; extraction uses `budget-planning-v3` with `action=review`. Readers retain compatibility with v1/v2 planning settings. No additional database migration is required.
+
+Tests cover ownership, currency, cutoff dates, transfers, zero limits, leap months, sparse data, recurring rows, independent comparison arithmetic, funding gaps, stale evidence, preservation of existing drafts, Coach adoption/clarification/confirmation and the UI review-to-editor flow. Live-model review phrasing and multilingual requests still need acceptance testing before release.
 
 ## Deployment
 
@@ -101,16 +134,16 @@ C:\ai-financial-wellness-coach\.venv\Scripts\python.exe -m alembic upgrade head
 
 Migration `20260929_0011` adds the nullable monthly budget planning column after `20260928_0010` (conversation drafts). Compose already runs migrations. Existing category limits need no backfill. Downgrading `0011` removes the planning metadata column; category limits remain.
 
-The planning contract is independently versioned as `budget-planning-v2` in model extraction, deterministic output, saved settings, and backend response audit. Changes to this contract require a version update and refreshed planning tests. The general prompt-set version and its existing workflows remain unchanged.
+The planning contract is independently versioned as `budget-planning-v3` in model extraction, deterministic output, saved settings, and backend response audit. Changes to this contract require a version update and refreshed planning tests. The general prompt-set version and its existing workflows remain unchanged.
 
 ## Verification and offline demonstration
 
 Run these suites from their respective application directories:
 
 ```text
-AI:       python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_methods.py tests/test_budget_planner.py tests/test_budget_capture.py
-Backend:  python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_methods.py tests/test_budget_planning.py tests/test_budget_capture.py
-Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_methods.py tests/test_app.py tests/test_overview_budget.py
+AI:       python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_budget_planner.py tests/test_budget_capture.py
+Backend:  python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_budget_planning.py tests/test_budget_capture.py
+Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_app.py tests/test_overview_budget.py
 ```
 
 The tests cover explicit versus suggested amounts, one-month history selection, missing inputs, gross-income rejection, preserved commitments, funding gaps, no automatic cuts, owned/currency-scoped aggregates, prevention of recurring-expense double counting, HTTP confirmation and readback, and UI affordability checks.
@@ -126,4 +159,4 @@ Test live-model extraction separately with paraphrases, ambiguous currencies/dat
 
 ## Deliberately deferred
 
-The first two stages do not implement automatic spending reviews, multi-month plans, rollover, annual/weekly conversions, variable-income forecasting, goal prioritization, or category deletion through Coach. Savings are a user-selected monthly total; no automatic goal contribution or debt payoff schedule is inferred. Non-SGD amounts and uncertain monthly amounts require clarification.
+The first three stages do not implement scheduled/background reviews or notifications, multi-month plans, rollover, annual/weekly conversions, variable-income forecasting, goal prioritization, or category deletion through Coach. Savings are a user-selected monthly total; no automatic goal contribution or debt payoff schedule is inferred. Non-SGD amounts and uncertain monthly amounts require clarification.

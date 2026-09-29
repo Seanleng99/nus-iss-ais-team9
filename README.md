@@ -58,6 +58,8 @@ Coach now supports a first-stage **category budget planner**: ask “Help me cre
 
 Stage two adds selectable flexible, 50/30/20, 80/20, zero-based, savings-first and custom-percentage methods, plus read-only what-if comparisons in Coach and Budget. Adopting an option creates an unsaved draft; income, expense coverage and final saving require confirmation. Overview shows the saved method. Percentage targets use full take-home income and never silently overwrite savings or category limits.
 
+Stage three adds on-demand recorded-spending reviews, clearly labeled month-end pace illustrations when records are sufficient, and adjustment proposals for overspent or unbudgeted categories. Reviews use owned SGD records through today, preserve savings and other commitments, and require fresh evidence plus user confirmation before an adjustment is saved. Ask “Review my budget for September 2026” or use Budget’s review panel.
+
 ## Agents
 
 - Spending Agent: spending summaries, patterns, and anomaly explanations.

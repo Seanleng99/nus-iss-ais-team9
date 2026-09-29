@@ -28,7 +28,7 @@ class BudgetAgent(BaseAgent):
             draft = extract_budget_draft(self, task)
             if draft.is_budget_request:
                 analysis = None
-                if task.context_features.get("budget_planning") or draft.planning is not None:
+                if draft.action != "review" and (task.context_features.get("budget_planning") or draft.planning is not None):
                     if draft.planning is None:
                         draft.planning = PlanningInputs.model_validate(
                             (task.context_features.get("pending_budget") or {}).get("planning") or {}
@@ -40,7 +40,7 @@ class BudgetAgent(BaseAgent):
                 return CompletedInvocation(
                     result=AgentResult(
                         agent=self.name,
-                        summary=describe_plan(draft, analysis) if analysis is not None else (
+                        summary="A read-only budget review was requested; the backend will verify the period and compute results from owned records." if draft.action == "review" else describe_plan(draft, analysis) if analysis is not None else (
                             "Budget details have been captured as an unsaved draft. "
                             "Missing details must be supplied and the exact changes confirmed "
                             "before the backend can save them."

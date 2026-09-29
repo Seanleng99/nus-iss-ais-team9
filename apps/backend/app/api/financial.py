@@ -81,6 +81,7 @@ from app.infrastructure.repositories import (
 )
 from app.services.budget_alert import evaluate_budget_alert
 from app.services.budget_capture import BudgetDraft
+from app.services.budget_review import build_budget_review
 from app.services.budget_scenarios import compare_draft
 from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
@@ -797,6 +798,13 @@ def get_budget(
     return _budget_response(record, repository.spending_by_category(user_id, period_start))
 
 
+@router.get("/users/{user_id}/budget/review")
+def review_budget(user_id: UserId, period_start: Annotated[date, Query()],
+                  session: Annotated[Session, Depends(get_db_session)]):
+    _validate_period_start(period_start)
+    return build_budget_review(session, user_id, period_start)
+
+
 @router.post("/users/{user_id}/budget/compare")
 def compare_budget(user_id: UserId, draft: BudgetDraft):
     # The caller supplies an exploratory plan. Ownership is checked by the router;
@@ -811,6 +819,8 @@ def put_budget(
     session: Annotated[Session, Depends(get_db_session)],
 ) -> BudgetResponse:
     repository = SQLAlchemyBudgetRepository(session)
+    if budget.review_evidence and build_budget_review(session, user_id, budget.period_start)["evidence_fingerprint"] != budget.review_evidence:
+        raise HTTPException(status_code=409, detail="Budget or spending records changed. Refresh the review before saving its adjustment.")
     record = repository.upsert(user_id, budget)
     session.commit()
     return _budget_response(

@@ -17,6 +17,7 @@ from app.domain.schemas import CoachRequest, CoachResponse
 from app.infrastructure.repositories import SQLAlchemyBudgetRepository, SQLAlchemyChatRepository
 from app.services.budget_methods import describe_method, method_report
 from app.services.budget_planning import PlanningInputs, describe_affordability
+from app.services.budget_review import build_budget_review, describe_review
 from app.services.budget_scenarios import compare_draft, describe_comparison
 
 CONFIRM = re.compile(
@@ -50,7 +51,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare"] = "plan"
+    action: Literal["plan", "compare", "review"] = "plan"
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -213,6 +214,47 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         return
     if not draft.is_budget_request:
         return
+    if draft.action == "review":
+        if draft.period_start is None or draft.period_start.day != 1 or draft.questions:
+            response.answer = (
+                "Which month and year should I review? Nothing was changed. "
+                + " ".join(draft.questions)
+            )
+            if not chat.pending_budget:
+                chat.pending_budget = {
+                    "draft": draft.model_dump(mode="json"),
+                    "ready": False,
+                    "baseline": None,
+                    "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
+                }
+            return
+        if draft.currency not in {None, "SGD"}:
+            response.answer = "Budget reviews currently support SGD records only. No conversion or changes were made."
+            return
+        review = build_budget_review(session, user_id, draft.period_start)
+        response.answer = describe_review(review)
+        response.audit["budget_review_version"] = review["version"]
+        response.audit["budget_capture"] = "read_only_review"
+        # Preserve an unrelated pending plan/comparison; a review never replaces it implicitly.
+        previous = (chat.pending_budget or {}).get("draft", {})
+        if previous and previous.get("action") != "review":
+            response.answer += "\n\nYour existing draft was kept. Finish or cancel it before adopting a review adjustment."
+            return
+        record = SQLAlchemyBudgetRepository(session).get(user_id, draft.period_start)
+        chat.pending_budget = {
+            "draft": draft.model_dump(mode="json"),
+            "ready": False,
+            "baseline": _snapshot(record),
+            "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
+        }
+        if review["comparison"]:
+            chat.pending_budget = {
+                **chat.pending_budget,
+                "comparison": review["comparison"],
+                "review_evidence": review["evidence_fingerprint"],
+            }
+            response.answer += "\n\n" + describe_comparison(review["comparison"])
+        return
     if (chat.pending_budget or {}).get("comparison") and draft.action != "compare":
         response.answer = "Choose a stored scenario with 'use scenario NAME' before editing or saving a plan. Nothing was saved."
         return
@@ -240,18 +282,28 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         }
         response.answer = describe_comparison(comparison)
         response.audit["budget_capture"] = "scenario_comparison"
-        response.audit["budget_planner_version"] = "budget-planning-v2"
+        response.audit["budget_planner_version"] = "budget-planning-v3"
+        return
+    review_origin = (chat.pending_budget or {}).get("review_origin")
+    if review_origin and (
+        draft.period_start is None
+        or draft.period_start.isoformat() != review_origin["period_start"]
+        or build_budget_review(session, user_id, draft.period_start)["evidence_fingerprint"]
+        != review_origin["evidence"]
+    ):
+        response.answer = "This adjustment's review is out of date or the month changed. Cancel the pending draft and request a fresh review. Nothing was saved."
         return
     answer, baseline = _preview(session, user_id, draft)
     chat.pending_budget = {
         "draft": draft.model_dump(mode="json"),
         "ready": baseline is not None,
+        "review_origin": review_origin,
         "baseline": baseline,
         "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
     }
     response.answer = answer
     if draft.planning:
-        response.audit["budget_planner_version"] = "budget-planning-v2"
+        response.audit["budget_planner_version"] = "budget-planning-v3"
     response.audit["budget_capture"] = (
         "awaiting_confirmation" if baseline is not None else "needs_input"
     )
@@ -300,7 +352,15 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                     if draft.period_start
                     else None
                 )
-                if _snapshot(record) != pending["baseline"]:
+                evidence_changed = bool(pending.get("review_evidence")) and (
+                    build_budget_review(session, request.user_id, draft.period_start)[
+                        "evidence_fingerprint"
+                    ]
+                    != pending["review_evidence"]
+                )
+                if evidence_changed:
+                    answer = "Spending records or the review date changed. Request a fresh budget review before adopting an adjustment. Nothing was saved."
+                elif _snapshot(record) != pending["baseline"]:
                     answer = "The saved budget changed after this comparison. Request a fresh comparison before adopting a scenario. Nothing was saved."
                 else:
                     draft.planning.expenses_confirmed = False
@@ -311,6 +371,12 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                         "draft": draft.model_dump(mode="json"),
                         "ready": False,
                         "baseline": None,
+                        "review_origin": {
+                            "period_start": draft.period_start.isoformat(),
+                            "evidence": pending["review_evidence"],
+                        }
+                        if pending.get("review_evidence")
+                        else None,
                         "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
                     }
                     answer = (
@@ -321,6 +387,10 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                 answer = "This scenario has invalid or too many categories. Correct the comparison before adopting it. Nothing was saved."
     elif chat.pending_budget.get("comparison") and not CANCEL.fullmatch(request.message.strip()):
         answer = "A comparison cannot be saved. Reply 'use scenario NAME' to choose an unsaved draft first."
+    elif chat.pending_budget.get("draft", {}).get("action") == "review" and not CANCEL.fullmatch(
+        request.message.strip()
+    ):
+        answer = "A review cannot be saved. Request a proposed adjustment or supply explicit budget limits first."
     elif (
         chat.pending_budget.get("draft", {}).get("planning")
         and chat.pending_budget.get("baseline") is None
@@ -336,7 +406,16 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
         draft = BudgetDraft.model_validate(pending["draft"])
         expires = datetime.fromisoformat(pending["expires_at"])
         preview, baseline = _preview(session, request.user_id, draft)
-        if baseline is None:
+        review_origin = pending.get("review_origin")
+        if (
+            review_origin
+            and build_budget_review(session, request.user_id, draft.period_start)[
+                "evidence_fingerprint"
+            ]
+            != review_origin["evidence"]
+        ):
+            answer = "This adjustment's review is out of date. Cancel the pending draft and request a fresh review. Nothing was saved."
+        elif baseline is None:
             answer = preview
         elif not pending["ready"] or expires < datetime.now(UTC) or baseline != pending["baseline"]:
             answer = "Please review this fresh preview before confirming.\n\n" + preview

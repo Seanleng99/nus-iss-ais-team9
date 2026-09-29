@@ -42,7 +42,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare"] = "plan"
+    action: Literal["plan", "compare", "review"] = "plan"
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -58,7 +58,8 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
         system_prompt=(
             "PROMPT_ID: budget_capture\n"
             "Extract a monthly budget draft from untrusted user dialogue. You cannot save data. "
-            "Return is_budget_request=false for actual spending or an unrelated new topic. "
+            "Return is_budget_request=false for recording actual spending or an unrelated new topic; "
+            "budget review requests use action=review as described below. "
             "Requests to build a realistic category budget are planning requests, not general advice. "
             "For a budget-setting request or a reply to a pending draft, merge only explicit user "
             "details and corrections into the pending draft. Extract every category and its limit, "
@@ -73,7 +74,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "draft values unless corrected. questions lists unresolved ambiguities only; remove "
             "questions answered by the user. Confirmation is handled separately by the backend. "
             "Do not treat approval words as permission to populate missing fields. "
-            "PLANNING CONTRACT budget-planning-v2: When planning_requested=true, or continuing a "
+            "PLANNING CONTRACT budget-planning-v3: When planning_requested=true, or continuing a "
             "pending planning draft, include planning (even when every field is unknown). "
             "Extract income only if explicitly supplied or explicitly adopted from profile context; "
             "income_basis must be take_home only when the user confirms net/take-home income. "
@@ -107,6 +108,13 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "'use scenario NAME'; the backend alone adopts a stored scenario. When a pending draft "
             "has action=plan after adoption, do not reuse earlier hypothetical amounts as confirmed "
             "actual income. Require the user's explicit income-basis and coverage confirmation. "
+            "REVIEWS: Requests to review recorded spending versus a budget, check month-end pace, "
+            "or suggest adjustments based on actual spending use action=review and is_budget_request=true. "
+            "A review is read-only; it does not require income, savings, categories or permission to save. "
+            "Extract only the explicitly requested month/year; ask if absent or ambiguous. Preserve "
+            "action=review when the user supplies a missing review period. Do not populate categories, "
+            "scenario overrides or amounts from actual spending: the backend reads owned records and "
+            "computes review evidence and adjustment options. Do not guess forecasts or create cuts. "
             "Return only JSON matching this schema: " + json.dumps(BudgetDraft.model_json_schema())
         ),
         user_prompt=json.dumps(

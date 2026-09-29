@@ -12,6 +12,7 @@ import streamlit as st
 
 from client import build_request
 from ui.budget_methods import METHODS, render_method_explorer
+from ui.budget_review import render_budget_review
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
@@ -491,7 +492,7 @@ def _render_budget_plan_summary(budget: dict) -> None:
 
 def _render_overview_budget(budget: dict | None, currency: str) -> None:
     st.subheader(":material/account_balance_wallet: Budget", anchor=False)
-    st.caption("Your monthly plan and the categories that need attention.")
+    st.caption("Your monthly plan and the categories that need attention. Open Budget for recorded-spending reviews and pace illustrations.")
     rows = (budget or {}).get("categories", [])
     if not rows:
         st.info(
@@ -871,7 +872,7 @@ def budget_page() -> None:
     if edit_draft:
         st.info("Unsaved scenario in the editor. Review the amounts, confirm actual take-home income and expense coverage, then save.")
         existing = {item["category"]: float(item["limit_amount"]) for item in edit_draft["categories"]}
-        planning = {**edit_draft["planning"], "version": "budget-planning-v2"}
+        planning = {**edit_draft["planning"], "version": "budget-planning-v3"}
     revision = sha256(json.dumps([existing, planning], sort_keys=True).encode()).hexdigest()[:12]
     if budget and budget.get("planning"):
         _render_budget_plan_summary(budget)
@@ -987,6 +988,7 @@ def budget_page() -> None:
                 st.warning(f"The plan has a funding gap of {money(gap)}. Revise the amounts before saving.")
                 return
         payload = {
+            "review_evidence": edit_draft.get("review_evidence") if edit_draft else None,
             "period_start": period_start.isoformat(), "currency": currency,
             "planning": edited_planning,
             "categories": [{"category": category, "limit_amount": amount}
@@ -1000,6 +1002,7 @@ def budget_page() -> None:
 
     if currency == "SGD":
         render_method_explorer(client, user_id, period_start, values, planning, scope, draft_key)
+        render_budget_review(client, user_id, period_start, scope, draft_key)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):
         st.session_state.pop(draft_key, None)
         st.rerun()

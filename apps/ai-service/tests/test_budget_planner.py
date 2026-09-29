@@ -111,7 +111,7 @@ def test_planning_route_without_income_asks_details_instead_of_percentage_baseli
     result = next(item for item in response.agent_results if item.agent.value == "budget")
     assert not response.blocked
     assert result.data["budget_draft"]["planning"]["take_home_income"] is None
-    assert result.data["planning_analysis"]["version"] == "budget-planning-v2"
+    assert result.data["planning_analysis"]["version"] == "budget-planning-v3"
     assert "take-home" in result.summary
     assert "needs" not in result.data
 

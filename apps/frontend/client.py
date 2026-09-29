@@ -257,6 +257,10 @@ class BackendClient:
         )
 
     @_trace_operation
+    def review_budget(self, user_id: str, period_start: date) -> dict[str, Any]:
+        return self._request("GET", f"/api/users/{user_id}/budget/review", params={"period_start": period_start.isoformat()})
+
+    @_trace_operation
     def compare_budget(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/api/users/{user_id}/budget/compare", json=payload)
 
