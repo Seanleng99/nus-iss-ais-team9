@@ -412,7 +412,8 @@ class AgentOrchestrator:
                     "record or change category budget limits, including custom categories, "
                     "or user replies supplying details for pending_budget. Capture all categories. "
                     "Set budget_planning=true for requests to build a realistic/category-level/monthly "
-                    "plan, propose spending limits, or check a proposed plan against income and savings. "
+                    "plan, propose spending limits, select/change a budgeting method, compare budget methods "
+                    "or what-if scenarios, or check a proposed plan against income and savings. "
                     "Planning requires budget_capture=true and budget. General explanations of rules "
                     "alone are not planning requests. A pending draft does "
                     "not make an unrelated new question a budget-setting request."
@@ -472,7 +473,7 @@ class AgentOrchestrator:
             (request.pending_budget or {}).get("planning")
         )
         if requested_agents and AgentName.BUDGET in requested_agents and re.search(
-            r"\b(realistic|category-level)\b", state["sanitized_message"], re.IGNORECASE
+            r"\b(realistic|category-level|50/30/20|80/20|zero-based|savings first|custom percentages|what.if|compare.*budget|budget.*scenario)\b", state["sanitized_message"], re.IGNORECASE
         ):
             decision.budget_planning = True
         if decision.budget_planning:

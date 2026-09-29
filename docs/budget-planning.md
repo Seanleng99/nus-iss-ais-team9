@@ -1,4 +1,4 @@
-# Budget planning: first-stage implementation
+# Budget planning: category plans, methods and scenarios
 
 Status: implemented locally; deterministic/unit and API/UI integration tests are the verification baseline. Live-model acceptance and deployment are separate activities.
 
@@ -37,7 +37,7 @@ Example: SGD 4,000 income, SGD 3,400 expenses and SGD 800 savings produce a SGD 
 
 ## Architecture and contracts
 
-- `apps/ai-service/app/agents/budget_capture.py`: typed extraction contract for user inputs and corrections, versioned as `budget-planning-v1`. The model interprets language; it cannot write budgets.
+- `apps/ai-service/app/agents/budget_capture.py`: typed extraction contract for user inputs and corrections, versioned as `budget-planning-v2`. The model interprets language; it cannot write budgets.
 - `apps/ai-service/app/tools/budget_planner.py`: allowlisted deterministic category proposals, provenance, expense totals and funding gaps. It does not use 50/30/20 to generate a category plan.
 - `apps/ai-service/app/orchestrator.py`: `budget_planning` intent, continuity for pending planning drafts, and role-scoped aggregate context. Only planning Budget tasks receive `planning_context`; no raw transaction descriptions are added to this context.
 - `apps/backend/app/services/budget_planning.py`: owned SGD aggregate construction, required planning inputs, authoritative affordability arithmetic and explanation.
@@ -48,6 +48,45 @@ Example: SGD 4,000 income, SGD 3,400 expenses and SGD 800 savings produce a SGD 
 Pending drafts use the existing conversation-scoped JSON field. Preview expiry (30 minutes), changed-budget detection, re-confirmation after intervening turns, and atomic budget/draft/chat commits remain in force. Saved plan settings participate in conflict detection. Public Coach requests cannot supply trusted pending drafts or aggregate context.
 
 The Budget and Overview pages show take-home income, the separate savings allocation, and unallocated income for saved plans. The Budget form preserves these settings, requires confirmation of expense coverage when editing, and prevents saving a funding gap. Direct API clients editing a planned budget should round-trip its `planning` settings; this optional field distinguishes a planned budget from a legacy manual category budget.
+
+## Stage two: method selection and scenario comparisons
+
+Users can select a method in Coach or in **Budget → Explore budgeting methods and scenarios**. The method is saved alongside income and savings; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
+
+| Method | Behavior |
+| --- | --- |
+| Flexible category plan | Explicit expense limits and savings; unallocated income is allowed. |
+| 50/30/20 | Guidance targets for needs/wants/savings are 50/30/20 percent of **full take-home income**. The user classifies every category. |
+| 80/20 | Guidance targets for total expenses/savings are 80/20 percent of full take-home income. |
+| Zero-based | Expenses plus savings must equal take-home income exactly before saving. No automatic distribution of unallocated income. |
+| Savings first | Reserve the user's chosen savings amount, then compare expenses against the remainder. No default savings percentage. |
+| Custom percentages | User supplies needs/wants/savings percentages totaling exactly 100 and classifies every category. |
+
+Percentage targets are advisory: deviations are shown, but an otherwise complete, affordable plan can be saved. The chosen monthly savings amount is never silently replaced by a calculated target. Custom percentages and category classification must be complete before saving. Existing category limits participate in the calculation and classification requirements. All debt payments remain explicit expense categories in this application's simplified model; they are not counted again as savings. This differs from versions of percentage rules that combine savings and additional debt payments. The [CFPB budgeting activity](https://files.consumerfinance.gov/f/documents/cfpb_building_block_activities_analyzing-budgets_guide.pdf) provides the take-home-income needs/wants/savings teaching convention; the other options above describe application behavior, not personalized recommendations.
+
+A **comparison** evaluates the current proposal and up to three named alternatives. An alternative can override monthly take-home income, monthly savings, category amounts, or the method. Missing override fields inherit the base; an explicit zero is retained. Each option is evaluated independently and cannot mutate the base or another option. Results show expenses, savings, unallocated income, funding gaps, changes in unallocated income, method guidance, and unresolved questions. Hypothetical funding gaps are allowed in comparisons and prevent saving a resulting plan. Comparisons do not predict future transactions, returns, or goal completion dates.
+
+Coach examples (production language extraction):
+
+- “Use 50/30/20 for this budget. Housing is a need and hobbies are a want.”
+- “Compare my plan with an option called Lower income where monthly take-home income is SGD 3,500, and an option called More saving where savings are SGD 1,000.”
+- “Use scenario More saving.”
+
+The last instruction is matched to a stored scenario by the backend, not interpreted as a write by the model. It creates an **unsaved draft**, resets income-basis and expense-coverage confirmation, and requires review and final `confirm budget`. Generic confirmation cannot save a comparison. A model response cannot bypass the explicit scenario adoption step. Expired comparisons and comparisons whose saved budget changed require a fresh comparison. Names must be unique ASCII letters/numbers/spaces/hyphens/underscores (up to 40 characters); `Current plan` is reserved. Category deletion remains a Budget-page operation.
+
+In the UI, users can compare the current editor values against one alternative, change the method, and see a table and stacked allocation chart. `Use option in editor` copies an option to a local unsaved editor draft. Saving requires confirmation of actual take-home income and expense coverage. Editing comparison inputs hides obsolete results until the user compares again. `Discard unsaved scenario` returns to saved values. The comparison panel supports SGD only.
+
+### Stage-two contracts
+
+- `BudgetMethod` is mirrored in the AI extraction and backend domain contracts. Supported method names, custom percentages and user-supplied category groups are validated at both boundaries.
+- `BudgetDraft.action`: `plan` (default) or `compare`; `scenarios` contains up to three explicitly requested alternatives. Comparison metadata remains in conversation-scoped pending state with the existing 30-minute expiry.
+- `services/budget_methods.py`: authoritative guidance calculation using Decimal arithmetic. Rounded targets sum to income, with the remaining cents assigned to savings.
+- `services/budget_scenarios.py`: independent copies, override validation, comparisons and deterministic explanations. No persistence calls.
+- `POST /api/users/{user_id}/budget/compare`: authenticated, owner-scoped, read-only calculation from an explicitly supplied draft. It returns no stored owner data and does not write budgets, profiles or conversations. Unlike Coach, which merges saved categories, the UI supplies the whole editor plan. Response includes `results`, `questions`, and `saved: false`.
+- Saving still uses the existing budget API or Coach confirmation path. `BudgetPlanSettings.method` persists the selected method. Direct saves enforce classifications, valid percentages, affordability and the zero-based equality constraint.
+- The expanded extraction/planner contract is `budget-planning-v2`. Readers accept both v1 and v2 settings. The legacy general prompt-set version and baseline calculation are unchanged.
+
+Offline fixture example, following the stage-one plan example: `scenario More saving: savings=1000`, then `use scenario More saving`. The fixture grammar supports one explicit scenario override at a time; the production extraction schema supports three. Live-model tests must separately verify multi-option language, gross versus take-home hypotheticals, method corrections and explicit adoption.
 
 The prior illustrative calculator remains available for baseline guidance and `monthly_savings_capacity` dependencies. It retains the legacy 50/30/20 calculation **after recorded recurring expenses**; it is not the standard take-home-income interpretation of that rule. The new category-planning path does not use that baseline or publish its result as an observed savings balance.
 
@@ -62,16 +101,16 @@ C:\ai-financial-wellness-coach\.venv\Scripts\python.exe -m alembic upgrade head
 
 Migration `20260929_0011` adds the nullable monthly budget planning column after `20260928_0010` (conversation drafts). Compose already runs migrations. Existing category limits need no backfill. Downgrading `0011` removes the planning metadata column; category limits remain.
 
-The planning contract is independently versioned as `budget-planning-v1` in model extraction, deterministic output, saved settings, and backend response audit. Changes to this contract require a version update and refreshed planning tests. The general prompt-set version and its existing workflows remain unchanged.
+The planning contract is independently versioned as `budget-planning-v2` in model extraction, deterministic output, saved settings, and backend response audit. Changes to this contract require a version update and refreshed planning tests. The general prompt-set version and its existing workflows remain unchanged.
 
 ## Verification and offline demonstration
 
 Run these suites from their respective application directories:
 
 ```text
-AI:       python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_planner.py tests/test_budget_capture.py
-Backend:  python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_planning.py tests/test_budget_capture.py
-Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_app.py tests/test_overview_budget.py
+AI:       python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_methods.py tests/test_budget_planner.py tests/test_budget_capture.py
+Backend:  python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_methods.py tests/test_budget_planning.py tests/test_budget_capture.py
+Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_methods.py tests/test_app.py tests/test_overview_budget.py
 ```
 
 The tests cover explicit versus suggested amounts, one-month history selection, missing inputs, gross-income rejection, preserved commitments, funding gaps, no automatic cuts, owned/currency-scoped aggregates, prevention of recurring-expense double counting, HTTP confirmation and readback, and UI affordability checks.
@@ -87,4 +126,4 @@ Test live-model extraction separately with paraphrases, ambiguous currencies/dat
 
 ## Deliberately deferred
 
-This stage does not implement method selection, custom percentage strategies, scenario comparison, automatic spending reviews, multi-month plans, rollover, annual/weekly conversions, variable-income forecasting, goal prioritization, or category deletion through Coach. Savings are a user-selected monthly total; no automatic goal contribution or debt payoff schedule is inferred. Non-SGD amounts and uncertain monthly amounts require clarification.
+The first two stages do not implement automatic spending reviews, multi-month plans, rollover, annual/weekly conversions, variable-income forecasting, goal prioritization, or category deletion through Coach. Savings are a user-selected monthly total; no automatic goal contribution or debt payoff schedule is inferred. Non-SGD amounts and uncertain monthly amounts require clarification.

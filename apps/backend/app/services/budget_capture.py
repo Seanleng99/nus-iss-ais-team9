@@ -12,9 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import BudgetCategoryInput, BudgetPlanSettings, BudgetUpsert
+from app.domain.budget_methods import BudgetMethod
 from app.domain.schemas import CoachRequest, CoachResponse
 from app.infrastructure.repositories import SQLAlchemyBudgetRepository, SQLAlchemyChatRepository
+from app.services.budget_methods import describe_method, method_report
 from app.services.budget_planning import PlanningInputs, describe_affordability
+from app.services.budget_scenarios import compare_draft, describe_comparison
 
 CONFIRM = re.compile(
     r"^(?:yes|yes please|confirm|confirm budget|save budget|yes[, ]+save(?: it| the budget)?|确认|确认保存)[.!。!\s]*$",
@@ -31,9 +34,24 @@ class DraftCategory(BaseModel):
     reference_period: date | None = None
 
 
+class BudgetScenario(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9 _-]*$")
+    take_home_income: float | None = Field(
+        default=None, ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False
+    )
+    savings_target: float | None = Field(
+        default=None, ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False
+    )
+    categories: list[DraftCategory] = Field(default_factory=list, max_length=50)
+    method: BudgetMethod | None = None
+
+
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
+    action: Literal["plan", "compare"] = "plan"
+    scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
@@ -148,6 +166,10 @@ def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, d
         lines.append(
             "Recorded spending may be incomplete. These are suggested limits, not verified essential costs. Recurring transactions have not been counted twice."
         )
+    if planning:
+        report = method_report(merged, planning)
+        lines.append(describe_method(report))
+        questions.extend(report["questions"])
     fits = True
     if (
         planning
@@ -191,9 +213,34 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         return
     if not draft.is_budget_request:
         return
+    if (chat.pending_budget or {}).get("comparison") and draft.action != "compare":
+        response.answer = "Choose a stored scenario with 'use scenario NAME' before editing or saving a plan. Nothing was saved."
+        return
     previous_planning = (chat.pending_budget or {}).get("draft", {}).get("planning")
     if previous_planning and draft.planning is None:
         response.answer = "Nothing has been saved. Please continue or cancel the pending budget plan; its income, savings and affordability checks cannot be skipped."
+        return
+    if draft.action == "compare":
+        record = (
+            SQLAlchemyBudgetRepository(session).get(user_id, draft.period_start)
+            if draft.period_start
+            else None
+        )
+        baseline = _snapshot(record)
+        if record and record.currency != draft.currency:
+            response.answer = "Please confirm the saved budget currency before comparing scenarios. Nothing was saved."
+            return
+        comparison = compare_draft(draft, baseline["categories"])
+        chat.pending_budget = {
+            "draft": draft.model_dump(mode="json"),
+            "ready": False,
+            "baseline": baseline,
+            "comparison": comparison,
+            "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
+        }
+        response.answer = describe_comparison(comparison)
+        response.audit["budget_capture"] = "scenario_comparison"
+        response.audit["budget_planner_version"] = "budget-planning-v2"
         return
     answer, baseline = _preview(session, user_id, draft)
     chat.pending_budget = {
@@ -204,22 +251,76 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
     }
     response.answer = answer
     if draft.planning:
-        response.audit["budget_planner_version"] = "budget-planning-v1"
+        response.audit["budget_planner_version"] = "budget-planning-v2"
     response.audit["budget_capture"] = (
         "awaiting_confirmation" if baseline is not None else "needs_input"
     )
 
 
 def handle_budget_confirmation(session: Session, request: CoachRequest) -> CoachResponse | None:
+    adoption = re.fullmatch(
+        r"use scenario ([A-Za-z0-9][A-Za-z0-9 _-]{0,39})", request.message.strip(), re.IGNORECASE
+    )
     if not (
-        CONFIRM.fullmatch(request.message.strip()) or CANCEL.fullmatch(request.message.strip())
+        adoption
+        or CONFIRM.fullmatch(request.message.strip())
+        or CANCEL.fullmatch(request.message.strip())
     ):
         return None
     chat = SQLAlchemyChatRepository(session).get_for_update(request.user_id, request.session_id)
     if chat is None or not chat.pending_budget:
-        if request.message.strip().lower() not in {"confirm budget", "save budget"}:
+        if not adoption and request.message.strip().lower() not in {
+            "confirm budget",
+            "save budget",
+        }:
             return None
         answer = "There is no pending budget to confirm in this conversation. Tell me the month, categories and SGD limits first."
+    elif adoption:
+        pending = chat.pending_budget
+        comparison = pending.get("comparison") or {}
+        selected = next(
+            (
+                item
+                for item in comparison.get("results", [])
+                if item["name"].casefold() == adoption[1].casefold()
+            ),
+            None,
+        )
+        if not selected:
+            answer = "That scenario is not available. Compare scenarios first and use an exact scenario name. Nothing was saved."
+        elif datetime.fromisoformat(pending["expires_at"]) < datetime.now(UTC):
+            answer = "This comparison has expired. Request a fresh comparison before adopting a scenario. Nothing was saved."
+        else:
+            try:
+                draft = BudgetDraft.model_validate(selected["draft"])
+                record = (
+                    SQLAlchemyBudgetRepository(session).get(
+                        request.user_id, draft.period_start, for_update=True
+                    )
+                    if draft.period_start
+                    else None
+                )
+                if _snapshot(record) != pending["baseline"]:
+                    answer = "The saved budget changed after this comparison. Request a fresh comparison before adopting a scenario. Nothing was saved."
+                else:
+                    draft.planning.expenses_confirmed = False
+                    # Hypothetical income needs explicit reconfirmation before it becomes a real plan.
+                    draft.planning.income_basis = "unknown"
+                    preview, _ = _preview(session, request.user_id, draft)
+                    chat.pending_budget = {
+                        "draft": draft.model_dump(mode="json"),
+                        "ready": False,
+                        "baseline": None,
+                        "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
+                    }
+                    answer = (
+                        "Scenario adopted as an unsaved draft. Confirm that its income is your actual take-home amount and review expense coverage.\n\n"
+                        + preview
+                    )
+            except ValidationError:
+                answer = "This scenario has invalid or too many categories. Correct the comparison before adopting it. Nothing was saved."
+    elif chat.pending_budget.get("comparison") and not CANCEL.fullmatch(request.message.strip()):
+        answer = "A comparison cannot be saved. Reply 'use scenario NAME' to choose an unsaved draft first."
     elif (
         chat.pending_budget.get("draft", {}).get("planning")
         and chat.pending_budget.get("baseline") is None

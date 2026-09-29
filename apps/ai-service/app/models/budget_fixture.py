@@ -20,6 +20,9 @@ MONTHS = (
 
 def fixture_budget_draft(payload):
     text = payload["message"].strip()
+    scenario = re.search(r"scenario ([A-Za-z0-9 _-]+): (income|savings|[a-z ]+)=(\d+(?:\.\d{1,2})?)", text, re.IGNORECASE)
+    if scenario:
+        text = text[:scenario.start()] + text[scenario.end():]
     draft = dict(payload.get("pending_draft") or {})
     draft.setdefault("period_start", None)
     draft.setdefault("currency", None)
@@ -41,6 +44,9 @@ def fixture_budget_draft(payload):
             planning["expenses_confirmed"] = True
         if "use recorded spending" in text.lower():
             planning["use_recorded_spending"] = True
+        for phrase, method in (("50/30/20", "50_30_20"), ("80/20", "80_20"), ("zero-based", "zero_based"), ("savings first", "pay_yourself_first"), ("flexible method", "flexible")):
+            if phrase in text.lower():
+                planning["method"] = {"name": method}
         draft["planning"] = planning
     date_match = re.search(r"\b(20\d{2})-(0[1-9]|1[0-2])(?:-01)?\b", text)
     if date_match:
@@ -53,6 +59,17 @@ def fixture_budget_draft(payload):
             text = text.replace(match[0], "")
     if re.search(r"\bSGD\b|S\$", text, re.IGNORECASE):
         draft["currency"] = "SGD"
+    if draft.get("planning") and any(word in text.lower() for word in ("compare", "what if")):
+        draft["action"] = "compare"
+    if scenario and draft.get("planning"):
+        name, field, value = scenario.groups()
+        item = {"name": name.strip()}
+        if field.lower() in {"income", "savings"}:
+            item["take_home_income" if field.lower() == "income" else "savings_target"] = float(value)
+        else:
+            item["categories"] = [{"category": field.strip().lower(), "limit_amount": float(value)}]
+        draft["action"] = "compare"
+        draft["scenarios"] = [item]
     entries = []
     # Deliberately require 'category: amount' in the offline fixture.
     for match in re.finditer(

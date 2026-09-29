@@ -56,6 +56,8 @@ Apply migration `20260928_0010` with `alembic upgrade head` before running the u
 
 Coach now supports a first-stage **category budget planner**: ask “Help me create a realistic monthly budget,” provide take-home income and a savings allocation, and supply category limits or request recorded-spending suggestions. Coach clarifies missing details, asks whether all commitments are included, and checks the complete plan for funding gaps before confirmation. Savings stay separate from expense limits and appear in Budget and Overview after saving. See [Budget planning](docs/budget-planning.md) for the workflow, contracts, migration `20260929_0011`, examples, tests, and deferred features.
 
+Stage two adds selectable flexible, 50/30/20, 80/20, zero-based, savings-first and custom-percentage methods, plus read-only what-if comparisons in Coach and Budget. Adopting an option creates an unsaved draft; income, expense coverage and final saving require confirmation. Overview shows the saved method. Percentage targets use full take-home income and never silently overwrite savings or category limits.
+
 ## Agents
 
 - Spending Agent: spending summaries, patterns, and anomaly explanations.

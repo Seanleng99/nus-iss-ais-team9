@@ -257,6 +257,10 @@ class BackendClient:
         )
 
     @_trace_operation
+    def compare_budget(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", f"/api/users/{user_id}/budget/compare", json=payload)
+
+    @_trace_operation
     def save_budget(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/api/users/{user_id}/budget", json=payload)
 

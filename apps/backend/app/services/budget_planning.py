@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.financial_schemas import BudgetPlanSettings
+from app.domain.budget_methods import BudgetMethod
 from app.infrastructure.repositories import SQLAlchemyBudgetRepository, SQLAlchemyUserRepository
 
 
@@ -22,6 +23,7 @@ class PlanningInputs(BaseModel):
     )
     expenses_confirmed: bool = False
     use_recorded_spending: bool = False
+    method: BudgetMethod = Field(default_factory=BudgetMethod)
 
     def questions(self):
         result = []
@@ -45,6 +47,7 @@ class PlanningInputs(BaseModel):
             savings_target=self.savings_target,
             income_basis=self.income_basis,
             expenses_confirmed=self.expenses_confirmed,
+            method=self.method,
         )
 
 

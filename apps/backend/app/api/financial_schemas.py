@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.telemetry import trace_method
+from app.domain.budget_methods import BudgetMethod
 from app.domain.schemas import (
     AgentName,
     MoneyAmount,
@@ -258,7 +259,8 @@ class BudgetPlanSettings(BaseModel):
     savings_target: float = Field(ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
     income_basis: Literal["take_home"] = "take_home"
     expenses_confirmed: Literal[True] = True
-    version: Literal["budget-planning-v1"] = "budget-planning-v1"
+    version: Literal["budget-planning-v1", "budget-planning-v2"] = "budget-planning-v2"
+    method: BudgetMethod = Field(default_factory=BudgetMethod)
 
 
 class BudgetUpsert(BaseModel):
@@ -282,6 +284,11 @@ class BudgetUpsert(BaseModel):
                 raise ValueError("Budget planning currently supports SGD only")
             if expenses + Decimal(str(self.planning.savings_target)) > Decimal(str(self.planning.take_home_income)):
                 raise ValueError("Planned expenses plus savings exceed confirmed take-home income")
+            questions = self.planning.method.questions(normalized)
+            if questions:
+                raise ValueError(" ".join(questions))
+            if self.planning.method.name == "zero_based" and expenses + Decimal(str(self.planning.savings_target)) != Decimal(str(self.planning.take_home_income)):
+                raise ValueError("Zero-based plans must assign all take-home income; revise allocations or select another method")
         return self
 
 

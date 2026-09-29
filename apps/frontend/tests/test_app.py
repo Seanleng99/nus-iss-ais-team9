@@ -328,7 +328,9 @@ def test_budget_defaults_to_zero_except_saved_values() -> None:
     assert not app.exception
     values = {item.label: item.value for item in app.number_input}
     assert values["Housing (SGD)"] == 1800.0
-    assert all(value == 0.0 for label, value in values.items() if label != "Housing (SGD)")
+    assert values["Scenario monthly take-home income (SGD)"] is None
+    app.multiselect[0].set_value(["housing", "food"]).run()
+    assert next(item.value for item in app.number_input if item.label == "Food (SGD)") == 0.0
 
 
 def test_goal_inputs_start_empty_or_zero() -> None:

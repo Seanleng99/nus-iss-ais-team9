@@ -80,6 +80,8 @@ from app.infrastructure.repositories import (
     SQLAlchemyUserRepository,
 )
 from app.services.budget_alert import evaluate_budget_alert
+from app.services.budget_capture import BudgetDraft
+from app.services.budget_scenarios import compare_draft
 from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
 router = APIRouter(dependencies=[Depends(require_owned_path_user)])
@@ -793,6 +795,13 @@ def get_budget(
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
     return _budget_response(record, repository.spending_by_category(user_id, period_start))
+
+
+@router.post("/users/{user_id}/budget/compare")
+def compare_budget(user_id: UserId, draft: BudgetDraft):
+    # The caller supplies an exploratory plan. Ownership is checked by the router;
+    # no saved budget, profile or conversation state is written here.
+    return compare_draft(draft)
 
 
 @router.put("/users/{user_id}/budget", response_model=BudgetResponse)

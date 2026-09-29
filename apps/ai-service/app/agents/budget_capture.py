@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.budget_methods import BudgetMethod
 from app.models.structured import generate_structured_response
 
 
@@ -14,6 +15,7 @@ class PlanningInputs(BaseModel):
     savings_target: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     expenses_confirmed: bool = False
     use_recorded_spending: bool = False
+    method: BudgetMethod = Field(default_factory=BudgetMethod)
 
 
 class BudgetDraftCategory(BaseModel):
@@ -24,9 +26,24 @@ class BudgetDraftCategory(BaseModel):
     reference_period: date | None = None
 
 
+class BudgetScenario(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9 _-]*$")
+    take_home_income: float | None = Field(
+        default=None, ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False
+    )
+    savings_target: float | None = Field(
+        default=None, ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False
+    )
+    categories: list[BudgetDraftCategory] = Field(default_factory=list, max_length=50)
+    method: BudgetMethod | None = None
+
+
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
+    action: Literal["plan", "compare"] = "plan"
+    scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
@@ -56,7 +73,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "draft values unless corrected. questions lists unresolved ambiguities only; remove "
             "questions answered by the user. Confirmation is handled separately by the backend. "
             "Do not treat approval words as permission to populate missing fields. "
-            "PLANNING CONTRACT budget-planning-v1: When planning_requested=true, or continuing a "
+            "PLANNING CONTRACT budget-planning-v2: When planning_requested=true, or continuing a "
             "pending planning draft, include planning (even when every field is unknown). "
             "Extract income only if explicitly supplied or explicitly adopted from profile context; "
             "income_basis must be take_home only when the user confirms net/take-home income. "
@@ -73,6 +90,23 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "For corrections, update only specified amounts, mark their source=user, and preserve "
             "other draft values. If a user supplies a category without an amount, keep its amount "
             "null so it can be clarified. Never remove a planning object to bypass a funding gap. "
+            "METHODS AND SCENARIOS: planning.method is the explicitly chosen method: flexible, "
+            "50_30_20, 80_20, zero_based, pay_yourself_first, or custom. Preserve the pending method "
+            "unless changed. Never infer a method or classify a category as needs/wants yourself. "
+            "For custom, extract explicit needs/wants/savings percentages; ask if missing or not 100%. "
+            "Percentage targets are guidance based on FULL take-home income, never income after bills. "
+            "Do not replace savings_target with a percentage-derived amount; ask the user to choose "
+            "their monthly savings amount. For zero_based every dollar must be allocated explicitly. "
+            "For what-if or comparison requests set action=compare and capture up to three named "
+            "scenarios. Each scenario contains ONLY requested overrides to take_home_income, "
+            "savings_target, category limits or method. Keep the base draft unchanged. Use short "
+            "distinct alphanumeric scenario names. Missing overrides inherit the base; explicit zero "
+            "does not mean missing. Hypothetical income must be described as monthly take-home; ask "
+            "if its basis is unclear. Use action=compare while continuing a comparison. "
+            "Never adopt a scenario implicitly, even if it seems better. Tell the user to reply "
+            "'use scenario NAME'; the backend alone adopts a stored scenario. When a pending draft "
+            "has action=plan after adoption, do not reuse earlier hypothetical amounts as confirmed "
+            "actual income. Require the user's explicit income-basis and coverage confirmation. "
             "Return only JSON matching this schema: " + json.dumps(BudgetDraft.model_json_schema())
         ),
         user_prompt=json.dumps(

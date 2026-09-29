@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from client import build_request
+from ui.budget_methods import METHODS, render_method_explorer
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
@@ -479,6 +480,7 @@ def _render_budget_plan_summary(budget: dict) -> None:
     expenses = sum(float(item["limit_amount"]) for item in budget.get("categories", []))
     unallocated = round(planning["take_home_income"] - expenses - planning["savings_target"], 2)
     st.markdown("**Plan affordability**")
+    st.caption("Budgeting method: " + METHODS.get(planning.get("method", {}).get("name", "flexible"), "Flexible category plan"))
     columns = st.columns(3)
     columns[0].metric("Take-home income", money(planning["take_home_income"], currency))
     columns[1].metric("Savings allocation", money(planning["savings_target"], currency))
@@ -864,12 +866,18 @@ def budget_page() -> None:
     }
     currency = (budget or {}).get("currency", "SGD")
     planning = (budget or {}).get("planning")
+    draft_key = f"budget-edit-draft-{user_id}-{period_start.isoformat()}"
+    edit_draft = st.session_state.get(draft_key)
+    if edit_draft:
+        st.info("Unsaved scenario in the editor. Review the amounts, confirm actual take-home income and expense coverage, then save.")
+        existing = {item["category"]: float(item["limit_amount"]) for item in edit_draft["categories"]}
+        planning = {**edit_draft["planning"], "version": "budget-planning-v2"}
     revision = sha256(json.dumps([existing, planning], sort_keys=True).encode()).hexdigest()[:12]
-    if planning:
+    if budget and budget.get("planning"):
         _render_budget_plan_summary(budget)
     scope = f"budget-{user_id}-{period_start.isoformat()}-{revision}"
 
-    if existing:
+    if (budget or {}).get("categories"):
         import plotly.graph_objects as go
 
         rows = budget["categories"]
@@ -935,7 +943,9 @@ def budget_page() -> None:
     with st.form(f"{scope}-form"):
         plan_confirmed = True
         edited_planning = None
+        actual_income_confirmed = True
         if planning:
+            st.caption("Selected method: " + METHODS.get(planning.get("method", {}).get("name", "flexible"), "Flexible category plan"))
             income_column, savings_column = st.columns(2)
             plan_income = income_column.number_input(
                 "Monthly take-home income (SGD)", min_value=0.0,
@@ -945,11 +955,14 @@ def budget_page() -> None:
                 "Monthly savings allocation (SGD)", min_value=0.0,
                 value=float(planning["savings_target"]), step=50.0, key=f"{scope}-plan-savings",
             )
+            if edit_draft:
+                actual_income_confirmed = st.checkbox("This is my actual monthly take-home income, not a hypothetical amount.", key=f"{scope}-actual-income")
             plan_confirmed = st.checkbox(
                 "These expense limits include my commitments, debt payments and irregular costs.",
                 key=f"{scope}-plan-confirmed",
             )
-            edited_planning = {**planning, "take_home_income": plan_income, "savings_target": plan_savings}
+            edited_planning = {key: value for key, value in planning.items() if key != "use_recorded_spending"}
+            edited_planning.update(take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
         values: dict[str, float] = {}
         columns = st.columns(3)
         for index, category in enumerate(categories):
@@ -962,6 +975,9 @@ def budget_page() -> None:
             "Save budget", type="primary", icon=":material/save:", disabled=invalid,
         )
     if budget_submitted:
+        if not actual_income_confirmed:
+            st.warning("Confirm your actual take-home income before saving this scenario.")
+            return
         if not plan_confirmed:
             st.warning("Confirm that the expense limits include your monthly commitments before saving.")
             return
@@ -978,10 +994,17 @@ def budget_page() -> None:
         }
         result = backend_call(lambda: client.save_budget(user_id, payload))
         if result:
+            st.session_state.pop(draft_key, None)
             st.success("Budget saved.")
             st.rerun()
 
-    if existing:
+    if currency == "SGD":
+        render_method_explorer(client, user_id, period_start, values, planning, scope, draft_key)
+    if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):
+        st.session_state.pop(draft_key, None)
+        st.rerun()
+
+    if (budget or {}).get("categories"):
         with st.expander("Category details", icon=":material/table_chart:"):
             comparison = pd.DataFrame([
                 {"Category": _category_label(item["category"]), "Planned": item["limit_amount"],

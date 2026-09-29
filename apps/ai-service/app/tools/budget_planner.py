@@ -11,7 +11,7 @@ from app.core.guardrails import validate_tool_permission
 from app.core.schemas import AgentName
 from app.core.telemetry import trace_method
 
-PLANNER_VERSION = "budget-planning-v1"
+PLANNER_VERSION = "budget-planning-v2"
 
 
 def amount(value) -> Decimal:
