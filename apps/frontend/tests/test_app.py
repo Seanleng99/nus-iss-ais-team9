@@ -545,3 +545,44 @@ def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
     assert "POISONED_MODEL_RATIONALE" not in rendered_warnings
     assert warning in rendered_warnings
     assert "Reference ID: trace-blocked · Prompt set: v9" in rendered_captions
+
+def test_budget_charts_custom_category_and_save_round_trip() -> None:
+    class CustomBudgetClient(WorkspaceDefaultsClient):
+        def __init__(self):
+            self.saved = None
+
+        def get_budget(self, user_id, period_start):
+            if self.saved:
+                return {**self.saved, "categories": [
+                    {**item, "spent_amount": 0, "remaining_amount": item["limit_amount"]}
+                    for item in self.saved["categories"]
+                ]}
+            return {"currency": "SGD", "categories": [
+                {"category": "pet care", "limit_amount": 100,
+                 "spent_amount": 125, "remaining_amount": -25},
+            ]}
+
+        def save_budget(self, user_id, payload):
+            self.saved = payload
+            return self.get_budget(user_id, None)
+
+    client = CustomBudgetClient()
+    app = AppTest.from_string("from ui.pages import budget_page\nbudget_page()")
+    app.session_state["backend_client"] = client
+    app.session_state["active_user_id"] = "workspace-user"
+    app.session_state["active_period"] = date(2026, 10, 1)
+    app.run(timeout=30)
+    assert not app.exception
+    assert len(app.get("plotly_chart")) == 2
+    assert "Over limit: Pet Care" in app.warning[0].value
+    assert app.multiselect[0].value == ["pet care"]
+    app.multiselect[0].set_value(["pet care", "Hobbies"]).run()
+    assert not app.exception
+    inputs = {item.label: item for item in app.number_input}
+    inputs["Hobbies (SGD)"].set_value(75)
+    app.button[0].click().run()
+    assert not app.exception
+    assert client.saved["categories"] == [
+        {"category": "pet care", "limit_amount": 100},
+        {"category": "hobbies", "limit_amount": 75},
+    ]

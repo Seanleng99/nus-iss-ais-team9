@@ -88,6 +88,7 @@ class CoachRequest(BaseModel):
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
     conversation_context: list[ConversationMessage] = Field(default_factory=list, max_length=8)
+    pending_budget: dict[str, Any] | None = None
 
     @field_validator("message")
     @classmethod
@@ -284,6 +285,7 @@ class RouterDecision(BaseModel):
     selected_agents: list[AgentName] = Field(min_length=1, max_length=4)
     rationale: list[str] = Field(min_length=1)
     education_topics: list[str] = Field(default_factory=list, max_length=12)
+    budget_capture: bool = False
 
     @field_validator("selected_agents")
     @classmethod

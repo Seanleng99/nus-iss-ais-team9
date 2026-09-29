@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextvars import copy_context
@@ -183,6 +184,7 @@ class OrchestratorState(TypedDict, total=False):
     selected_agents: list[AgentName]
     routing_rationale: list[str]
     education_topics: list[str]
+    budget_capture: bool
     tasks: dict[str, AgentTask]
     task_results: dict[str, AgentResult]
     agent_results: list[AgentResult]
@@ -381,6 +383,7 @@ class AgentOrchestrator:
                 "message": state["sanitized_message"],
                 "conversation_context": [item.model_dump() for item in request.conversation_context],
                 "requested_agents": None,
+                "pending_budget": request.pending_budget,
                 "snapshot_features": {
                     "has_monthly_income": request.snapshot.monthly_income is not None,
                     "recurring_expense_count": len(request.snapshot.recurring_expenses),
@@ -404,6 +407,11 @@ class AgentOrchestrator:
                 response_type=RouterDecision,
                 system_prompt=(
                     self.prompts.get("router")
+                    + "\nSet budget_capture=true and include budget for requests to set, add, "
+                    "record or change category budget limits, including custom categories, "
+                    "or user replies supplying details for pending_budget. Capture all categories. "
+                    "Budget advice or analysis alone is not a save request. A pending draft does "
+                    "not make an unrelated new question a budget-setting request."
                     + "\nWrite every rationale sentence in "
                     + response_language
                     + ". Keep machine agent names in selected_agents unchanged."
@@ -455,6 +463,16 @@ class AgentOrchestrator:
                     if response_language == "Chinese"
                     else "The recognized education topic requires a specialist with approved source access."
                 )
+        # Pending drafts are backend-owned context, never public client confirmation.
+        if request.pending_budget is not None:
+            decision.budget_capture = True
+        if decision.budget_capture and AgentName.BUDGET not in decision.selected_agents:
+            decision.selected_agents.append(AgentName.BUDGET)
+        if requested_agents and AgentName.BUDGET in requested_agents:
+            decision.budget_capture = decision.budget_capture or bool(re.search(
+                r"\b(save|set|add|update|change|record|limit|allocate)\b",
+                state["sanitized_message"], re.IGNORECASE,
+            ))
         event = self._event(
             state,
             "routing.completed",
@@ -468,6 +486,7 @@ class AgentOrchestrator:
             "selected_agents": decision.selected_agents,
             "routing_rationale": decision.rationale,
             "education_topics": decision.education_topics,
+            "budget_capture": decision.budget_capture,
             "audit_events": [*state.get("audit_events", []), event],
         }
 
@@ -1634,6 +1653,8 @@ class AgentOrchestrator:
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
             context_features={
+                "budget_capture": state.get("budget_capture", False) and agent == AgentName.BUDGET,
+                "pending_budget": state["request"].pending_budget if agent == AgentName.BUDGET else None,
                 "has_monthly_income": snapshot.monthly_income is not None,
                 "recurring_expense_count": len(snapshot.recurring_expenses),
                 "recent_transaction_count": len(snapshot.recent_transactions),

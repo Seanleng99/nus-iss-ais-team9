@@ -207,7 +207,7 @@ class TransactionCreate(BaseModel):
     @model_validator(mode="after")
     def normalize_text(self) -> "TransactionCreate":
         self.description = self.description.strip()
-        self.category = self.category.strip().lower()
+        self.category = " ".join(self.category.split()).lower()
         if not self.description or not self.category:
             raise ValueError("Transaction description and category are required")
         return self
@@ -241,7 +241,15 @@ class SnapshotResponse(UserFinancialSnapshot):
 
 class BudgetCategoryInput(BaseModel):
     category: str = Field(min_length=1, max_length=64)
-    limit_amount: float = Field(ge=0)
+    limit_amount: float = Field(ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value: str) -> str:
+        value = " ".join(value.split()).lower()
+        if not value:
+            raise ValueError("Budget category is required")
+        return value
 
 
 class BudgetUpsert(BaseModel):

@@ -236,6 +236,9 @@ class LocalFixtureModelGateway:
         del temperature, max_tokens
         payload = json.loads(user_prompt)
         prompt_id = system_prompt.splitlines()[0].strip()
+        if prompt_id == "PROMPT_ID: budget_capture":
+            from app.models.budget_fixture import fixture_budget_draft
+            return json.dumps(fixture_budget_draft(payload))
         if prompt_id == "PROMPT_ID: router":
             return json.dumps(self._route(payload))
         if prompt_id == "PROMPT_ID: dependency_planner":
@@ -335,6 +338,11 @@ class LocalFixtureModelGateway:
         return {
             "selected_agents": selected or ["budget"],
             "rationale": ["Offline fixture selected agents for repeatable integration testing."],
+            "budget_capture": bool(payload.get("pending_budget")) or (
+                "budget" in str(payload["message"]).lower()
+                and any(word in str(payload["message"]).lower().split()
+                        for word in ("set", "save", "add", "update", "record", "change"))
+            ),
         }
 
     @staticmethod

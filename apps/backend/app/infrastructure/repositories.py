@@ -776,7 +776,12 @@ class SQLAlchemyBudgetRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def get(self, user_id: str, period_start: date) -> MonthlyBudgetRecord | None:
+    def get(
+        self, user_id: str, period_start: date, *, for_update: bool = False
+    ) -> MonthlyBudgetRecord | None:
+        if for_update:
+            # Serialize absent-row creation as well as edits with the same lock as upsert.
+            _lock_user_lifecycle(self.session, user_id)
         query = (
             select(MonthlyBudgetRecord)
             .options(selectinload(MonthlyBudgetRecord.categories))
@@ -785,11 +790,13 @@ class SQLAlchemyBudgetRepository:
                 MonthlyBudgetRecord.period_start == period_start,
             )
         )
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
         return self.session.scalar(query)
 
     def upsert(self, user_id: str, budget: BudgetUpsert) -> MonthlyBudgetRecord:
         _ensure_user(self.session, user_id)
-        record = self.get(user_id, budget.period_start)
+        record = self.get(user_id, budget.period_start, for_update=True)
         if record is None:
             record = MonthlyBudgetRecord(
                 user_id=user_id,
@@ -913,6 +920,8 @@ class SQLAlchemyChatRepository:
     def get_for_update(
         self, user_id: str, session_id: str
     ) -> ChatSessionRecord | None:
+        # Keep lock order consistent with budget writes and profile deletion.
+        _lock_user_lifecycle(self.session, user_id)
         query = (
             select(ChatSessionRecord)
             .options(selectinload(ChatSessionRecord.messages))

@@ -1,11 +1,14 @@
 from app.agents.base import BaseAgent
+from app.agents.budget_capture import extract_budget_draft
 from app.agents.education_access import should_request_education_context
+from app.core.guardrails import inspect_prompt
 from app.core.schemas import (
     AgentName,
     AgentResult,
     AgentTask,
     CapabilityName,
     CapabilityResult,
+    CompletedInvocation,
     DependencyRequest,
     DependencyRequestDraft,
     UserFinancialSnapshot,
@@ -18,6 +21,25 @@ class BudgetAgent(BaseAgent):
     name = AgentName.BUDGET
     prompt_id = "agent_budget"
     dependency_planning_enabled = True
+
+    def run_task(self, task: AgentTask):
+        if task.context_features.get("budget_capture") and inspect_prompt(task.sanitized_message).allowed:
+            draft = extract_budget_draft(self, task)
+            if draft.is_budget_request:
+                return CompletedInvocation(
+                    result=AgentResult(
+                        agent=self.name,
+                        summary=(
+                            "Budget details have been captured as an unsaved draft. "
+                            "Missing details must be supplied and the exact changes confirmed "
+                            "before the backend can save them."
+                        ),
+                        rationale=["Only explicit user-provided limits are eligible for confirmation."],
+                        confidence=1.0,
+                        data={"budget_draft": draft.model_dump(mode="json")},
+                    )
+                )
+        return super().run_task(task)
 
     def _dependency_requests(self, task: AgentTask) -> list[DependencyRequest]:
         message = task.sanitized_message.casefold()

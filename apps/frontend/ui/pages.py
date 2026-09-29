@@ -3,6 +3,7 @@ import json
 import re
 from contextlib import nullcontext
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from urllib.parse import quote
 
 import httpx
@@ -25,6 +26,20 @@ CATEGORIES = [
     "education",
     "entertainment",
     "shopping",
+    "groceries",
+    "dining out",
+    "insurance",
+    "subscriptions",
+    "personal care",
+    "fitness",
+    "childcare",
+    "family support",
+    "pets",
+    "travel",
+    "gifts",
+    "charity",
+    "debt repayments",
+    "savings",
     "other",
 ]
 RISK_OPTIONS = ["conservative", "moderate", "growth"]
@@ -440,20 +455,7 @@ def dashboard_page() -> None:
             "you'll see your spending patterns visualized here with helpful insights."
         )
 
-    budget = dashboard.get("budget")
-    st.subheader("Budget")
-    if budget:
-        budget_columns = st.columns(3)
-        budget_columns[0].metric("Planned", money(budget["total_limit"], currency))
-        budget_columns[1].metric("Used", money(budget["total_spent"], currency))
-        budget_columns[2].metric("Remaining", money(budget["total_remaining"], currency))
-        if budget["total_limit"] > 0:
-            st.progress(
-                clamp_progress(budget["total_spent"] / budget["total_limit"]),
-                text="Monthly budget used",
-            )
-    else:
-        st.caption("No budget set for this month.")
+    _render_overview_budget(dashboard.get("budget"), currency)
 
     st.subheader("Goals")
     goals = dashboard.get("goals", [])
@@ -467,6 +469,127 @@ def dashboard_page() -> None:
             clamp_progress(goal["progress_percent"] / 100),
             text=f"{goal['progress_percent']:.0f}% of {money(goal['target_amount'], currency)}",
         )
+
+
+def _render_overview_budget(budget: dict | None, currency: str) -> None:
+    st.subheader(":material/account_balance_wallet: Budget", anchor=False)
+    st.caption("Your monthly plan and the categories that need attention.")
+    rows = (budget or {}).get("categories", [])
+    if not rows:
+        st.info(
+            "No category limits set for this month. Add suggested or custom categories in Budget, "
+            "or ask Coach to prepare a plan for your confirmation.",
+            icon=":material/pie_chart:",
+        )
+    else:
+        import plotly.graph_objects as go
+
+        currency = budget.get("currency", currency)
+        planned = float(budget["total_limit"])
+        spent = float(budget["total_spent"])
+        remaining = planned - spent
+        over = [item for item in rows if item["spent_amount"] > item["limit_amount"]]
+        with st.container(border=True):
+            metrics = st.columns(3)
+            metrics[0].metric("Planned", money(planned, currency))
+            metrics[1].metric("Spent", money(spent, currency))
+            metrics[2].metric(
+                "Over budget" if remaining < 0 else "Remaining", money(abs(remaining), currency)
+            )
+            unbudgeted = max(0.0, round(spent - sum(float(item["spent_amount"]) for item in rows), 2))
+            st.caption("Totals include all spending for the selected month.")
+            if unbudgeted > 0:
+                st.info(
+                    f"{money(unbudgeted, currency)} was spent in categories without budget limits. "
+                    "Add limits in Budget to track these categories.",
+                    icon=":material/info:",
+                )
+            chart_column, category_column = st.columns([1, 2])
+            with chart_column:
+                if planned > 0:
+                    usage = spent / planned
+                    chart = go.Figure(
+                        go.Pie(
+                            labels=["Within plan", "Remaining", "Over budget"],
+                            values=[min(spent, planned), max(remaining, 0), max(-remaining, 0)],
+                            hole=0.76,
+                            sort=False,
+                            direction="clockwise",
+                            marker={"colors": ["#0d9488", "#e2e8f0", "#dc2626"]},
+                            textinfo="none",
+                            hovertemplate=f"%{{label}}: {currency} %{{value:,.2f}}<extra></extra>",
+                        )
+                    )
+                    chart.update_layout(
+                        height=250,
+                        margin={"l": 10, "r": 10, "t": 15, "b": 10},
+                        showlegend=False,
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        annotations=[
+                            {
+                                "text": f"<b>{usage:.0%}</b><br>of plan spent",
+                                "x": 0.5,
+                                "y": 0.5,
+                                "showarrow": False,
+                                "font": {
+                                    "size": 20,
+                                    "color": "#dc2626" if usage > 1 else "#17211d",
+                                },
+                            }
+                        ],
+                    )
+                    st.plotly_chart(chart, use_container_width=True, key="overview-budget-usage")
+                    if usage > 1:
+                        st.caption(f"Over the monthly plan by {money(-remaining, currency)}.")
+                    elif usage == 1:
+                        st.caption("The monthly plan is fully used.")
+                    else:
+                        st.caption(f"{money(remaining, currency)} left in the monthly plan.")
+                else:
+                    st.info(
+                        "All category limits are zero. Set positive limits to see budget usage."
+                    )
+            with category_column:
+                st.markdown("**Category limits**")
+                if over:
+                    st.warning(
+                        f"{len(over)} {'category is' if len(over) == 1 else 'categories are'} over the limit.",
+                        icon=":material/warning:",
+                    )
+                st.caption("Highest usage first · up to 5 categories")
+
+                def usage_rank(item):
+                    limit = float(item["limit_amount"])
+                    actual = float(item["spent_amount"])
+                    return actual / limit if limit > 0 else (float("inf") if actual > 0 else 0)
+
+                ranked = sorted(rows, key=usage_rank, reverse=True)
+                for item in ranked[:5]:
+                    limit = float(item["limit_amount"])
+                    actual = float(item["spent_amount"])
+                    difference = limit - actual
+                    status = (
+                        f"Over by {money(-difference, currency)}"
+                        if difference < 0
+                        else "At limit"
+                        if difference == 0
+                        else f"{money(difference, currency)} left"
+                    )
+                    st.text(f"{_category_label(item['category'])} · {status}")
+                    st.progress(
+                        clamp_progress(actual / limit)
+                        if limit > 0
+                        else (1.0 if actual > 0 else 0.0),
+                        text=f"{money(actual, currency)} spent / {money(limit, currency)} planned",
+                    )
+                if len(rows) > 5:
+                    st.caption(f"View all {len(rows)} categories in Budget.")
+    if st.button(
+        "Manage budget" if rows else "Set up budget",
+        icon=":material/edit:",
+        key="overview-manage-budget",
+    ):
+        st.switch_page(st.Page(budget_page, title="Budget", url_path="budget"))
 
 
 def transactions_page() -> None:
@@ -491,6 +614,7 @@ def transactions_page() -> None:
                 index=None,
                 format_func=_category_label,
                 key=f"add-transaction-{user_id}-category-v2",
+                accept_new_options=True,
             )
             amount = second.number_input(
                 "Amount (SGD)",
@@ -609,9 +733,8 @@ def transactions_page() -> None:
         )
         if selected_id is not None:
             selected = next(item for item in display_transactions if item["id"] == selected_id)
-            selected_category = (
-                selected["category"] if selected["category"] in CATEGORIES else "other"
-            )
+            selected_category = selected["category"]
+            edit_categories = list(dict.fromkeys([*CATEGORIES, selected_category]))
             selected_occurred = date.fromisoformat(selected["occurred_on"])
             actual_month_start = datetime.now(UTC).date().replace(day=1)
             editable = (
@@ -659,10 +782,11 @@ def transactions_page() -> None:
                 first, second = st.columns(2)
                 edit_category = first.selectbox(
                     "Category",
-                    CATEGORIES,
-                    index=CATEGORIES.index(selected_category),
+                    edit_categories,
+                    index=edit_categories.index(selected_category),
                     format_func=_category_label,
                     key=f"manage-transaction-{selected_id}-category",
+                    accept_new_options=True,
                 )
                 edit_amount = second.number_input(
                     "Amount (SGD)",
@@ -721,58 +845,107 @@ def budget_page() -> None:
         item["category"]: float(item["limit_amount"])
         for item in (budget or {}).get("categories", [])
     }
+    currency = (budget or {}).get("currency", "SGD")
+    revision = sha256(json.dumps(existing, sort_keys=True).encode()).hexdigest()[:12]
+    scope = f"budget-{user_id}-{period_start.isoformat()}-{revision}"
 
-    with st.form("monthly-budget"):
+    if existing:
+        import plotly.graph_objects as go
+
+        rows = budget["categories"]
+        planned = sum(float(item["limit_amount"]) for item in rows)
+        spent = sum(float(item["spent_amount"]) for item in rows)
+        remaining = planned - spent
+        metrics = st.columns(3)
+        metrics[0].metric(":material/account_balance_wallet: Planned", money(planned, currency))
+        metrics[1].metric(":material/payments: Spent in budgeted categories", money(spent, currency))
+        metrics[2].metric(":material/savings: Remaining", money(remaining, currency))
+        st.caption("Spending shown here covers your budgeted categories for the selected month.")
+        if planned > 0:
+            st.progress(clamp_progress(spent / planned), text=f"{spent / planned:.0%} of budget used")
+        over = [item for item in rows if float(item["spent_amount"]) > float(item["limit_amount"])]
+        if over:
+            st.warning("Over limit: " + ", ".join(_category_label(item["category"]) for item in over),
+                       icon=":material/warning:")
+        left, right = st.columns(2)
+        with left:
+            st.subheader("Budget allocation", anchor=False)
+            positive = [item for item in rows if float(item["limit_amount"]) > 0]
+            if positive:
+                chart = _create_pie_chart(
+                    [_category_label(item["category"]) for item in positive],
+                    [float(item["limit_amount"]) for item in positive], currency,
+                )
+                chart.update_traces(hole=0.62)
+                st.plotly_chart(chart, use_container_width=True, key=f"{scope}-allocation")
+            else:
+                st.info("Set a positive limit to see your budget allocation.")
+        with right:
+            st.subheader("Spending against limits", anchor=False)
+            labels = [_category_label(item["category"]) for item in rows]
+            chart = go.Figure()
+            chart.add_bar(name="Planned", y=labels,
+                          x=[item["limit_amount"] for item in rows], orientation="h",
+                          marker_color="#cbd5e1")
+            chart.add_bar(name="Spent", y=labels,
+                          x=[item["spent_amount"] for item in rows], orientation="h",
+                          marker_color=["#dc2626" if item in over else "#0d9488" for item in rows])
+            chart.update_layout(barmode="group", height=max(320, len(rows) * 55),
+                                margin={"l": 0, "r": 10, "t": 10, "b": 0},
+                                xaxis_title=currency, legend={"orientation": "h"})
+            chart.update_yaxes(autorange="reversed")
+            st.plotly_chart(chart, use_container_width=True, key=f"{scope}-comparison")
+    else:
+        st.info("Build your monthly plan. Choose categories below or ask Coach to prepare a budget.",
+                icon=":material/account_balance_wallet:")
+
+    st.subheader("Plan your categories", anchor=False)
+    st.caption("Choose suggested categories or type a custom name and press Enter. "
+               "Removing a category removes its limit when you save. Zero is a valid limit.")
+    selected = st.multiselect(
+        "Budget categories", options=list(dict.fromkeys([*CATEGORIES, *existing])),
+        default=list(existing) if existing else ["housing", "food", "transport", "utilities"],
+        format_func=_category_label, accept_new_options=True, max_selections=50,
+        key=f"{scope}-categories",
+    )
+    categories = list(dict.fromkeys(" ".join(item.split()).lower() for item in selected))
+    invalid = any(not item or len(item) > 64 for item in categories)
+    if invalid:
+        st.warning("Category names must contain 1 to 64 characters.")
+    with st.form(f"{scope}-form"):
         values: dict[str, float] = {}
         columns = st.columns(3)
-        for index, category in enumerate(CATEGORIES):
+        for index, category in enumerate(categories):
             values[category] = columns[index % 3].number_input(
-                f"{_category_label(category)} (SGD)",
-                min_value=0.0,
-                value=existing.get(category, 0.0),
-                step=25.0,
-                key=f"budget-{user_id}-{period_start.isoformat()}-{category}-v2",
+                f"{_category_label(category)} ({currency})", min_value=0.0,
+                value=existing.get(category, 0.0), step=25.0,
+                key=f"{scope}-{category}-v3",
             )
         budget_submitted = st.form_submit_button(
-            "Save budget", type="primary", icon=":material/save:"
+            "Save budget", type="primary", icon=":material/save:", disabled=invalid,
         )
     if budget_submitted:
         payload = {
-            "period_start": period_start.isoformat(),
-            "currency": "SGD",
-            "categories": [
-                {"category": category, "limit_amount": amount}
-                for category, amount in values.items()
-                if amount > 0
-            ],
+            "period_start": period_start.isoformat(), "currency": currency,
+            "categories": [{"category": category, "limit_amount": amount}
+                           for category, amount in values.items()],
         }
         result = backend_call(lambda: client.save_budget(user_id, payload))
         if result:
             st.success("Budget saved.")
             st.rerun()
 
-    if budget:
-        st.subheader("Actual versus planned")
-        comparison = pd.DataFrame(
-            [
-                {
-                    "Category": _category_label(item["category"]),
-                    "Planned": item["limit_amount"],
-                    "Actual": item["spent_amount"],
-                    "Remaining": item["remaining_amount"],
-                }
+    if existing:
+        with st.expander("Category details", icon=":material/table_chart:"):
+            comparison = pd.DataFrame([
+                {"Category": _category_label(item["category"]), "Planned": item["limit_amount"],
+                 "Actual": item["spent_amount"], "Remaining": item["remaining_amount"]}
                 for item in budget["categories"]
-            ]
-        )
-        st.dataframe(
-            comparison,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                name: st.column_config.NumberColumn(name, format="SGD %.2f")
-                for name in ("Planned", "Actual", "Remaining")
-            },
-        )
+            ])
+            st.dataframe(comparison, hide_index=True, use_container_width=True,
+                         column_config={name: st.column_config.NumberColumn(
+                             name, format=f"{currency} %.2f")
+                             for name in ("Planned", "Actual", "Remaining")})
 
 
 def goals_page() -> None:

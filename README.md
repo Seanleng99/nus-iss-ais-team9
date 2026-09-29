@@ -46,10 +46,18 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 
 After authentication activation, Streamlit completes Cognito authorization-code login with PKCE and sends the server-side ID token to the backend. The backend validates the JWT and authorizes each profile by immutable issuer and subject. A separately scoped automation key remains only for synthetic CI/operational users, and the backend-to-AI key remains an independent service secret. All three services can scale and roll back independently.
 
+## Budget planning and confirmation
+
+In Coach, ask for category limits such as: "Set my October 2026 budget to SGD 500 for food and SGD 120 for pet care." Coach collects missing month/year, category, amount, and currency details, then previews the exact changes. Reply `confirm budget` to save, `cancel` to discard, or provide corrections. Income is not required to record an explicit category limit. Currency and dates are never defaulted from the current month or a dollar symbol.
+
+Drafts belong to the authenticated profile and conversation. Confirmation updates only the listed categories and preserves other limits. A changed budget, an intervening turn, or a preview older than 30 minutes requires a fresh preview and confirmation. Draft consumption, budget updates, and the chat exchange commit together. The Budget page provides allocation and spending charts, over-limit indicators, and suggested or custom category names; transactions also accept custom categories so their spending can be tracked against the same limits.
+
+Apply migration `20260928_0010` with `alembic upgrade head` before running the updated backend (Compose already runs migrations). The offline model fixture accepts explicit `category: amount` syntax, for example: "Set budget for October 2026 in SGD; food: 500, pet care: 120". Production model extraction supports natural-language requests. Coach currently saves monthly SGD budgets; ambiguous dates, other currencies, and non-monthly periods require clarification.
+
 ## Agents
 
 - Spending Agent: spending summaries, patterns, and anomaly explanations.
-- Budget Agent: rule-constrained monthly budget recommendations.
+- Budget Agent: illustrative monthly budget calculations and category-limit drafts that require user confirmation before persistence.
 - Goal Strategy Agent: savings goal decomposition and progress adjustments.
 - Investment Education Agent: reads Education RAG first, supplements missing stable concepts with clearly labeled model knowledge, then passes the combined answer through independent safety review; not financial advice.
 - Risk & Compliance Agent: reviews specialist evidence and applies independent policy validation; it does not query the Education RAG collection and uses a separate Policy RAG boundary.

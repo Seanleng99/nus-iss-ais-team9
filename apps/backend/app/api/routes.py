@@ -34,6 +34,7 @@ from app.infrastructure.repositories import (
 )
 from app.infrastructure.run_trace import DurableRun
 from app.services.budget_alert import build_status_reply, parse_budget_status_query
+from app.services.budget_capture import handle_budget_confirmation, stage_budget_draft
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
 
@@ -81,14 +82,23 @@ async def coach(
         )
     except PermissionError as error:
         raise HTTPException(status_code=404, detail="Conversation not found") from error
-    captured = handle_transaction_capture(session, request)
+    confirmed = handle_budget_confirmation(session, request)
+    if confirmed is not None:
+        return _finalize_coach_response(_persist_local_coach(session, request, confirmed))
+    existing_chat = chat_repository.get(request.user_id, request.session_id)
+    pending_budget = existing_chat.pending_budget if existing_chat else None
+    # Budget drafts take precedence over transaction/date parsing for follow-up details.
+    captured = (
+        None if pending_budget or "budget" in request.message.casefold()
+        else handle_transaction_capture(session, request)
+    )
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
     query_date = parse_date_spending_query(request.message)
-    if query_date is not None:
+    if query_date is not None and not pending_budget:
         queried = handle_date_spending_query(session, request, query_date)
         return _finalize_coach_response(_persist_local_coach(session, request, queried))
-    if parse_budget_status_query(request.message):
+    if not pending_budget and parse_budget_status_query(request.message):
         alert_reply = _budget_alert_reply(session, request)
         return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
     user_repository = SQLAlchemyUserRepository(session)
@@ -96,7 +106,10 @@ async def coach(
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
-    request = InternalCoachRequest(**request.model_dump(), conversation_context=context)
+    request = InternalCoachRequest(
+        **request.model_dump(), conversation_context=context,
+        pending_budget=pending_budget["draft"] if pending_budget else None,
+    )
     log_event("coach.history.loaded", history_count=len(context))
     session.rollback()
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
@@ -112,6 +125,8 @@ async def coach(
             raise HTTPException(status_code=409, detail="Conversation changed; please retry.") from error
     elif len(chat_session.messages) != revision:
         raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
+    if chat_session.pending_budget:
+        chat_session.pending_budget = {**chat_session.pending_budget, "ready": False}
     # DurableRun commits metadata and releases the conversation lock before AI.
     run = DurableRun(session, chat_session.id, settings.ai_service_timeout_seconds)
     token = active_run.set(run)
@@ -133,6 +148,7 @@ async def coach(
             raise HTTPException(status_code=404, detail="Conversation not found")
         if len(chat_session.messages) != revision:
             raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
+        stage_budget_draft(session, request.user_id, chat_session, response)
         chat_repository.append_message(chat_session, "user", request.message)
         assistant_message = chat_repository.append_message(
             chat_session,
