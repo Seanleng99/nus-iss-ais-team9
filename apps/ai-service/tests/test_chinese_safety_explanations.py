@@ -379,7 +379,8 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
             "name": "Emergency fund", "remaining": 9600.0, "target_months": 12,
             "monthly_required": 800.0,
         }]
-        assert goal.data["monthly_savings_capacity"] == {
+        assert goal.data["monthly_savings_capacity"]["source"] == "illustrative_fallback"
+        assert {key: goal.data["monthly_savings_capacity"][key] for key in ("currency", "disposable_income", "estimated_savings_capacity", "calculation_method")} == {
             "currency": "SGD", "disposable_income": 3500.0,
             "estimated_savings_capacity": 700.0,
             "calculation_method": "50/30/20 baseline after recurring expenses",

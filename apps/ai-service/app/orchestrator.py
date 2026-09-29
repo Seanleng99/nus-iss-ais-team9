@@ -1664,6 +1664,8 @@ class AgentOrchestrator:
             input_data = {"risk_tolerance": snapshot.risk_tolerance}
         else:
             raise ModelGatewayError("The orchestrator cannot create that specialist task.")
+        if agent == AgentName.BUDGET and state["request"].saved_budget_capacity:
+            input_data["saved_budget_capacity"] = state["request"].saved_budget_capacity
         if agent == AgentName.BUDGET and state.get("budget_planning"):
             input_data["planning_context"] = state["request"].budget_context
         return AgentTask(
@@ -1674,7 +1676,7 @@ class AgentOrchestrator:
                 "budget_capture": state.get("budget_capture", False) and agent == AgentName.BUDGET,
                 "budget_planning": state.get("budget_planning", False) and agent == AgentName.BUDGET,
                 "pending_budget": state["request"].pending_budget if agent == AgentName.BUDGET else None,
-                "has_monthly_income": snapshot.monthly_income is not None,
+                "has_monthly_income": snapshot.monthly_income is not None or state["request"].saved_budget_capacity.get("source") == "confirmed_plan",
                 "recurring_expense_count": len(snapshot.recurring_expenses),
                 "recent_transaction_count": len(snapshot.recent_transactions),
                 "goal_count": len(snapshot.goals),
@@ -1759,6 +1761,8 @@ class AgentOrchestrator:
                 raise ModelGatewayError(
                     "A capability definition referenced an unavailable required input."
                 )
+        if definition.capability == CapabilityName.MONTHLY_SAVINGS_CAPACITY:
+            values["saved_budget_capacity"] = state["request"].saved_budget_capacity
         encoded = json.dumps(values, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
         return sha256(encoded.encode("utf-8")).hexdigest()[:16]
 

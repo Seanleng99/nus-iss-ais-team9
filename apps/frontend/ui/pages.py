@@ -1205,6 +1205,7 @@ def coach_page() -> None:
     
     with st.container(key="coach-page-header"):
         page_header("Coach", "Financial education", marker_class="coach-shell")
+        st.caption(f"Budget capacity uses the selected month: {get_period_start():%B %Y}.")
     
     # If we have a pending question and navigation was triggered, auto-submit it
     if pending_question and should_navigate:
@@ -1403,7 +1404,7 @@ def coach_page() -> None:
             ), st.spinner("Thinking"):
                 response = backend_call(
                     lambda: client.ask_coach(
-                        build_request(user_id, pending_question, active_session_id)
+                        {**build_request(user_id, pending_question, active_session_id), "budget_period_start": get_period_start().isoformat()}
                     )
                 )
             if response:

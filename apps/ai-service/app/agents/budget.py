@@ -51,7 +51,8 @@ class BudgetAgent(BaseAgent):
                             "budget_draft": draft.model_dump(mode="json"),
                             **({"planning_analysis": analysis} if analysis is not None else {}),
                         },
-                    )
+                    ),
+                    capabilities=self._capabilities(task, self._capacity_grounding(task), None) if task.context_features.get("has_monthly_income") else [],
                 )
         return super().run_task(task)
 
@@ -133,15 +134,34 @@ class BudgetAgent(BaseAgent):
         return options
 
     def _missing_input_questions(self, task: AgentTask) -> list[str]:
+        if task.input_data.get("saved_budget_capacity", {}).get("source") != "confirmed_plan" and (
+            (task.input_data.get("monthly_income") or {}).get("currency", "SGD") != "SGD" or any(item.get("amount", {}).get("currency", "SGD") != "SGD" for item in task.input_data.get("recurring_expenses", []))
+        ):
+            return ["Please provide income and recurring expenses in SGD before calculating savings capacity; no currency conversion is assumed."]
         if not task.context_features.get("has_monthly_income"):
             return ["What is your monthly income before creating this budget?"]
         return []
 
+    def _capacity_grounding(self, task):
+        saved = task.input_data.get("saved_budget_capacity", {})
+        if saved.get("source") == "confirmed_plan":
+            return {"capacity": saved, "income": saved["take_home_income"],
+                    "planned_expenses": saved["planned_expenses"], "savings": saved["estimated_savings_capacity"],
+                    "unallocated_income": saved["unallocated_income"], "method": saved["calculation_method"],
+                    "capacity_source": "confirmed_plan"}
+        baseline = call_tool(self.name, "budget_calculator", UserFinancialSnapshot.model_validate(task.input_data))
+        baseline["capacity_source"] = "illustrative_fallback"
+        baseline["capacity"] = {"source": "illustrative_fallback", "currency": "SGD",
+                                "period_start": saved.get("period_start"), "fallback_reason": saved.get("reason", "No confirmed plan supplied."),
+                                "estimated_savings_capacity": baseline["savings"], "disposable_income": baseline["disposable_income"],
+                                "calculation_method": baseline["method"],
+                                "caveat": "Illustrative estimate from profile income and recorded recurring expenses; income basis and expense coverage are unconfirmed. Not a saved plan or observed savings."}
+        return baseline
+
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
-        snapshot = UserFinancialSnapshot.model_validate(task.input_data)
-        grounding = call_tool(self.name, "budget_calculator", snapshot)
+        grounding = self._capacity_grounding(task)
         spending = task.resolved_dependencies.get(
             CapabilityName.TRANSACTION_CATEGORY_TOTALS
         )
@@ -203,12 +223,7 @@ class BudgetAgent(BaseAgent):
                 capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,
                 provider=self.name.value,
                 provider_task_id=task.task_id,
-                data={
-                    "currency": "SGD",
-                    "disposable_income": grounding["disposable_income"],
-                    "estimated_savings_capacity": grounding["savings"],
-                    "calculation_method": grounding["method"],
-                },
-                evidence_refs=[f"tool:{task.task_id}:budget_calculator"],
+                data=grounding["capacity"],
+                evidence_refs=[f"saved-budget:{grounding['capacity']['period_start']}" if grounding["capacity_source"] == "confirmed_plan" else f"tool:{task.task_id}:budget_calculator"],
             )
         ]

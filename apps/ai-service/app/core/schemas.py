@@ -90,6 +90,7 @@ class CoachRequest(BaseModel):
     conversation_context: list[ConversationMessage] = Field(default_factory=list, max_length=8)
     pending_budget: dict[str, Any] | None = None
     budget_context: dict[str, Any] = Field(default_factory=dict)
+    saved_budget_capacity: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("message")
     @classmethod
@@ -160,7 +161,7 @@ class AgentTask(StrictContractModel):
     def validate_role_scope(self):
         allowed_fields = {
             AgentName.SPENDING: {"recent_transactions"},
-            AgentName.BUDGET: {"monthly_income", "recurring_expenses", "planning_context"},
+            AgentName.BUDGET: {"monthly_income", "recurring_expenses", "planning_context", "saved_budget_capacity"},
             AgentName.GOAL_STRATEGY: {"goals", "emergency_fund"},
             AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
         }

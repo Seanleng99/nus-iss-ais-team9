@@ -95,7 +95,7 @@ class BaseAgent(ABC):
             SourceCitation.model_validate(source) for source in grounding.get("sources", [])
         ]
         system_prompt += citation_contract(narrative_sources)
-        if self.name == AgentName.BUDGET:
+        if self.name == AgentName.BUDGET and grounding.get("capacity_source") != "confirmed_plan":
             system_prompt += (
                 "\nDescribe the supplied budget as an illustrative calculation: "
                 "say 'the baseline allocates', not 'you should allocate'. "
@@ -108,6 +108,16 @@ class BaseAgent(ABC):
                 "that recorded recurring expenses total zero but actual expenses "
                 "are unknown and may reduce disposable income and these illustrative amounts. "
                 "Never claim that there are no expenses or no pending expenses."
+            )
+
+        if self.name in {AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
+            system_prompt += (
+                "\nState the capacity source and budget month. A confirmed_plan uses its saved savings allocation, "
+                "not a percentage baseline; unallocated income remains separate and is not assigned to goals. "
+                "An illustrative_fallback must be labeled as an estimate without a confirmed plan. "
+                "Never describe either as cash available or observed savings. Goals share one monthly pool; "
+                "use combined_feasibility for concurrent goals and never promise each the whole pool. "
+                "Future goal feasibility is conditional on sustaining the stated monthly amount."
             )
 
         def validate_narrative(narrative: AgentNarrative) -> AgentNarrative:

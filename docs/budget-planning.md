@@ -88,7 +88,7 @@ In the UI, users can compare the current editor values against one alternative, 
 
 Offline fixture example, following the stage-one plan example: `scenario More saving: savings=1000`, then `use scenario More saving`. The fixture grammar supports one explicit scenario override at a time; the production extraction schema supports three. Live-model tests must separately verify multi-option language, gross versus take-home hypotheticals, method corrections and explicit adoption.
 
-The prior illustrative calculator remains available for baseline guidance and `monthly_savings_capacity` dependencies. It retains the legacy 50/30/20 calculation **after recorded recurring expenses**; it is not the standard take-home-income interpretation of that rule. The new category-planning path does not use that baseline or publish its result as an observed savings balance.
+The confirmed plan now supplies `monthly_savings_capacity` to Budget and Goal Strategy. Its chosen savings allocation is the shared pool; unallocated income remains separate. The prior illustrative calculator is used only when no valid confirmed planning settings exist for the selected month, with an explicit fallback label. It retains the legacy 50/30/20 calculation **after recorded recurring expenses**; it is not the standard take-home-income interpretation of that rule. The new category-planning path does not use that baseline or publish its result as an observed savings balance.
 
 ## Stage three: spending reviews and adjustment proposals
 
@@ -160,3 +160,12 @@ Test live-model extraction separately with paraphrases, ambiguous currencies/dat
 ## Deliberately deferred
 
 The first three stages do not implement scheduled/background reviews or notifications, multi-month plans, rollover, annual/weekly conversions, variable-income forecasting, goal prioritization, or category deletion through Coach. Savings are a user-selected monthly total; no automatic goal contribution or debt payoff schedule is inferred. Non-SGD amounts and uncertain monthly amounts require clarification.
+
+
+## Shared capacity source
+
+The backend constructs owned `saved_budget_capacity` context using the requested `budget_period_start` (first day of a month), or Singapore's current month when omitted. Coach submits the workspace's selected month and displays that basis. Public clients cannot supply trusted capacity context. Manual budgets without confirmed planning settings, unsupported currencies and invalid saved plans cannot establish confirmed capacity.
+
+Budget uses the saved monthly savings allocation and does not subtract recurring expenses again or redistribute unallocated income. Goal Strategy consumes that same capability, checks the combined monthly requirement of concurrently funded goals against one pool, and treats future feasibility as conditional on sustaining the amount. It does not reserve contributions or infer account balances. Capability fingerprints include the owned capacity context. Drafts, hypothetical scenarios and unconfirmed corrections never replace the saved source.
+
+The read contract is backward compatible. No migration is required. Currency mismatches require clarification. The fallback still uses the legacy percentage calculation; its unconfirmed income basis and expense coverage are disclosed. Source-sensitive writer instructions apply to Budget and Goal Strategy; live-model acceptance remains separate from fixture and integration tests.

@@ -102,6 +102,8 @@ class GoalStrategyAgent(BaseAgent):
             questions.append(
                 "What is your monthly income so the goal feasibility can be assessed?"
             )
+        if any(goal.get("target_amount", {}).get("currency", "SGD") != "SGD" or goal.get("current_amount", {}).get("currency", "SGD") != "SGD" for goal in task.input_data.get("goals", [])):
+            questions.append("Please provide goal targets and current amounts in SGD before comparing them with SGD budget capacity; no conversion is assumed.")
         return questions
 
     @trace_method
@@ -140,6 +142,13 @@ class GoalStrategyAgent(BaseAgent):
                 }
                 for projection in projections
             ]
+            total_required = round(sum(float(item["monthly_required"]) for item in projections), 2)
+            grounding["combined_feasibility"] = {
+                "monthly_required": total_required, "monthly_capacity": monthly_capacity,
+                "monthly_shortfall": round(max(total_required - monthly_capacity, 0), 2),
+                "status": "feasible" if total_required <= monthly_capacity else "shortfall",
+                "scope": "All listed goals funded concurrently; one shared monthly pool, no per-goal money reserved.",
+            }
             grounding.update(
                 {
                     "monthly_savings_capacity": capacity.data,

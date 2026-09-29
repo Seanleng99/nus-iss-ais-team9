@@ -34,6 +34,7 @@ from app.infrastructure.repositories import (
 )
 from app.infrastructure.run_trace import DurableRun
 from app.services.budget_alert import build_status_reply, parse_budget_status_query
+from app.services.budget_capacity import build_capacity_context
 from app.services.budget_capture import handle_budget_confirmation, stage_budget_draft
 from app.services.budget_planning import build_planning_context
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
@@ -111,6 +112,7 @@ async def coach(
         **request.model_dump(), conversation_context=context,
         pending_budget=pending_budget["draft"] if pending_budget else None,
         budget_context=build_planning_context(session, request.user_id),
+        saved_budget_capacity=build_capacity_context(session, request.user_id, request.budget_period_start),
     )
     log_event("coach.history.loaded", history_count=len(context))
     session.rollback()

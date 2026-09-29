@@ -361,12 +361,15 @@ class LocalFixtureModelGateway:
             else:
                 summary = "No recent transactions were provided."
         elif prompt_id.endswith("budget"):
-            if grounding.get("income", 0) == 0:
+            if grounding.get("capacity_source") == "confirmed_plan":
+                capacity = grounding["capacity"]
+                summary = f"Your confirmed {capacity['period_start']} budget sets aside SGD {capacity['estimated_savings_capacity']:.2f} monthly savings, with SGD {capacity['unallocated_income']:.2f} unallocated. This is a planned allocation, not a savings balance."
+            elif grounding.get("income", 0) == 0:
                 summary = "Add monthly income and recurring expenses to generate a personalized budget."
             else:
                 summary = (
                     "After recurring expenses, estimated disposable income is SGD "
-                    f"{grounding['disposable_income']:.2f}."
+                    f"{grounding['disposable_income']:.2f}. This is an illustrative fallback without a confirmed plan."
                 )
         elif prompt_id.endswith("goal_strategy"):
             projections = grounding.get("projections", [])
@@ -387,6 +390,12 @@ class LocalFixtureModelGateway:
                         )
                     else:
                         summary += " The estimated monthly savings capacity covers this amount."
+            capacity = grounding.get("monthly_savings_capacity", {})
+            if capacity:
+                summary += f" Capacity source: {capacity.get('source', 'illustrative_fallback')}; budget month: {capacity.get('period_start') or 'unspecified'}."
+                combined = grounding.get("combined_feasibility", {})
+                if combined:
+                    summary += f" For all listed goals together, the monthly shortfall is SGD {combined['monthly_shortfall']:.2f}; they share one pool."
         else:
             contexts = grounding.get("contexts", [])
             summary = (

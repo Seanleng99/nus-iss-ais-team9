@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -49,8 +49,16 @@ class CoachRequest(BaseModel):
     user_id: str
     session_id: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=5000)
+    budget_period_start: date | None = None
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
+
+    @field_validator("budget_period_start")
+    @classmethod
+    def validate_budget_period(cls, value):
+        if value is not None and value.day != 1:
+            raise ValueError("Budget period must be the first day of a month")
+        return value
 
     @field_validator("message")
     @classmethod
@@ -63,6 +71,7 @@ class InternalCoachRequest(CoachRequest):
     conversation_context: list[dict[str, str]] = Field(default_factory=list, max_length=8)
     pending_budget: dict[str, Any] | None = None
     budget_context: dict[str, Any] = Field(default_factory=dict)
+    saved_budget_capacity: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentResult(BaseModel):
