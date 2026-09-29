@@ -33,9 +33,12 @@ def test_cleanup_treats_missing_synthetic_session_as_clean(monkeypatch) -> None:
 
     monkeypatch.setattr(live_evaluation.urllib.request, "urlopen", missing)
 
-    assert cleanup_session(
-        "https://example.test/api/coach", "secret", "user", "session", 1
-    ) is True
+    assert (
+        cleanup_session(
+            "https://example.test/api/coach", "secret", "user", "session", 1
+        )
+        is True
+    )
 
 
 def test_evaluate_response_checks_dependencies_model_and_prompt() -> None:
@@ -223,9 +226,13 @@ def deterministic_safety_case():
     response = {
         "blocked": True,
         "selected_agents": ["investment_education"],
-        "agent_results": [{
-            "agent": "risk_compliance", "data": {}, "policy_notes": [finding],
-        }],
+        "agent_results": [
+            {
+                "agent": "risk_compliance",
+                "data": {},
+                "policy_notes": [finding],
+            }
+        ],
         "disclaimers": ["Educational use only"],
         "sources": [],
         "audit": {
@@ -247,7 +254,8 @@ def deterministic_safety_case():
 
 def evaluate_safety_case(response, expected):
     passed, checks = evaluate_response(
-        response, expected,
+        response,
+        expected,
         expected_model_provider="bedrock",
         expected_model_id="apac.amazon.nova-lite-v1:0",
         expected_prompt_version="v6",
@@ -268,15 +276,26 @@ def test_explicit_deterministic_safety_evidence_can_replace_model_execution(
     assert passed is True
     assert checks[EXECUTION_CHECK] is True
     assert "model_calls_recorded" not in checks
-    assert checks["model_provider"] and checks["model_id"] and checks["prompt_set_version"]
+    assert (
+        checks["model_provider"] and checks["model_id"] and checks["prompt_set_version"]
+    )
     assert response["audit"]["model_calls"] == []
     assert response["audit"]["model_call_count"] == 0
 
 
-@pytest.mark.parametrize("field", [
-    "model_calls", "model_call_count", "model_provider", "model_id", "prompt_set_version",
-])
-def test_deterministic_safety_rejects_missing_telemetry(deterministic_safety_case, field):
+@pytest.mark.parametrize(
+    "field",
+    [
+        "model_calls",
+        "model_call_count",
+        "model_provider",
+        "model_id",
+        "prompt_set_version",
+    ],
+)
+def test_deterministic_safety_rejects_missing_telemetry(
+    deterministic_safety_case, field
+):
     response, expected = deterministic_safety_case
     response["audit"].pop(field)
 
@@ -290,7 +309,9 @@ def test_deterministic_safety_rejects_missing_telemetry(deterministic_safety_cas
 
 
 @pytest.mark.parametrize("count", [None, False, 0.0, "0", -1, 1])
-def test_deterministic_safety_requires_explicit_integer_zero(deterministic_safety_case, count):
+def test_deterministic_safety_requires_explicit_integer_zero(
+    deterministic_safety_case, count
+):
     response, expected = deterministic_safety_case
     response["audit"]["model_call_count"] = count
 
@@ -301,7 +322,9 @@ def test_deterministic_safety_requires_explicit_integer_zero(deterministic_safet
 
 
 @pytest.mark.parametrize("calls", [None, {}, (), ""])
-def test_deterministic_safety_requires_explicit_empty_call_list(deterministic_safety_case, calls):
+def test_deterministic_safety_requires_explicit_empty_call_list(
+    deterministic_safety_case, calls
+):
     response, expected = deterministic_safety_case
     response["audit"]["model_calls"] = calls
 
@@ -311,15 +334,27 @@ def test_deterministic_safety_requires_explicit_empty_call_list(deterministic_sa
     assert checks[EXECUTION_CHECK] is False
 
 
-@pytest.mark.parametrize("prefixes,findings", [
-    ([], ["regulated_advice:forbidden"]),
-    (["regulated_advice:"], []),
-    (["regulated_advice:"], ["unrelated_finding"]),
-    (["regulated_advice:", "policy_evidence:"], ["regulated_advice:forbidden"]),
-    ([""], ["unrelated_finding"]),
-], ids=["empty-rubric", "missing-finding", "wrong-finding", "partial-match", "empty-prefix"])
+@pytest.mark.parametrize(
+    "prefixes,findings",
+    [
+        ([], ["regulated_advice:forbidden"]),
+        (["regulated_advice:"], []),
+        (["regulated_advice:"], ["unrelated_finding"]),
+        (["regulated_advice:", "policy_evidence:"], ["regulated_advice:forbidden"]),
+        ([""], ["unrelated_finding"]),
+    ],
+    ids=[
+        "empty-rubric",
+        "missing-finding",
+        "wrong-finding",
+        "partial-match",
+        "empty-prefix",
+    ],
+)
 def test_deterministic_safety_requires_all_nonempty_policy_prefixes(
-    deterministic_safety_case, prefixes, findings,
+    deterministic_safety_case,
+    prefixes,
+    findings,
 ):
     response, expected = deterministic_safety_case
     expected["policy_finding_prefixes"] = prefixes
@@ -331,7 +366,9 @@ def test_deterministic_safety_requires_all_nonempty_policy_prefixes(
     assert checks[EXECUTION_CHECK] is False
 
 
-def test_deterministic_safety_rejects_absent_expected_policy_findings(deterministic_safety_case):
+def test_deterministic_safety_rejects_absent_expected_policy_findings(
+    deterministic_safety_case,
+):
     response, expected = deterministic_safety_case
     expected.pop("policy_finding_prefixes")
 
@@ -341,11 +378,27 @@ def test_deterministic_safety_rejects_absent_expected_policy_findings(determinis
     assert checks[EXECUTION_CHECK] is False
 
 
-@pytest.mark.parametrize("expected_blocked,actual_blocked", [
-    (False, False), (False, True), (True, False), (1, True), (True, 1),
-], ids=["normal-answer", "unexpected-block", "not-blocked", "expected-not-boolean", "actual-not-boolean"])
+@pytest.mark.parametrize(
+    "expected_blocked,actual_blocked",
+    [
+        (False, False),
+        (False, True),
+        (True, False),
+        (1, True),
+        (True, 1),
+    ],
+    ids=[
+        "normal-answer",
+        "unexpected-block",
+        "not-blocked",
+        "expected-not-boolean",
+        "actual-not-boolean",
+    ],
+)
 def test_zero_calls_require_explicit_expected_and_actual_safety_block(
-    deterministic_safety_case, expected_blocked, actual_blocked,
+    deterministic_safety_case,
+    expected_blocked,
+    actual_blocked,
 ):
     response, expected = deterministic_safety_case
     expected["blocked"] = expected_blocked
@@ -357,7 +410,9 @@ def test_zero_calls_require_explicit_expected_and_actual_safety_block(
     assert checks[EXECUTION_CHECK] is False
 
 
-def test_zero_calls_do_not_pass_without_expected_block_status(deterministic_safety_case):
+def test_zero_calls_do_not_pass_without_expected_block_status(
+    deterministic_safety_case,
+):
     response, expected = deterministic_safety_case
     expected.pop("blocked")
 
@@ -369,7 +424,8 @@ def test_zero_calls_do_not_pass_without_expected_block_status(deterministic_safe
 
 @pytest.mark.parametrize("field", ["model_provider", "model_id", "prompt_set_version"])
 def test_deterministic_safety_does_not_relax_model_or_prompt_identity(
-    deterministic_safety_case, field,
+    deterministic_safety_case,
+    field,
 ):
     response, expected = deterministic_safety_case
     response["audit"][field] = "unexpected-value"
@@ -382,7 +438,9 @@ def test_deterministic_safety_does_not_relax_model_or_prompt_identity(
 
 
 @pytest.mark.parametrize("failed_check", ["minimum_disclaimers", "minimum_model_calls"])
-def test_deterministic_safety_keeps_other_expectations(deterministic_safety_case, failed_check):
+def test_deterministic_safety_keeps_other_expectations(
+    deterministic_safety_case, failed_check
+):
     response, expected = deterministic_safety_case
     if failed_check == "minimum_disclaimers":
         response["disclaimers"] = []
@@ -403,7 +461,9 @@ def test_recorded_model_execution_still_passes_without_deterministic_block_evide
     expected["blocked"] = response["blocked"] = False
     expected.pop("policy_finding_prefixes")
     response["agent_results"][0]["policy_notes"] = []
-    response["audit"].update(model_calls=[{"component": "synthesizer"}], model_call_count=1)
+    response["audit"].update(
+        model_calls=[{"component": "synthesizer"}], model_call_count=1
+    )
 
     passed, checks = evaluate_safety_case(response, expected)
 
@@ -528,3 +588,35 @@ def test_live_report_retains_bounded_http_failure_diagnostics(monkeypatch) -> No
     assert record["correlation_id"] == "correlation-503"
     assert "Private synthetic prompt" not in str(report)
     assert "secret" not in str(report)
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "category", "gross", "date"])
+def test_budget_acceptance_checks_extraction_and_missing_inputs(fault):
+    draft = {
+        "period_start": None,
+        "planning": {"income_basis": "gross"},
+        "categories": [{"category": "Pet Care", "limit_amount": 120}],
+    }
+    if fault == "category":
+        draft["categories"][0]["limit_amount"] = 150
+    if fault == "gross":
+        draft["planning"]["income_basis"] = "take_home"
+    if fault == "date":
+        draft["period_start"] = "2026-10-01"
+    response = {
+        "agent_results": []
+        if fault == "missing"
+        else [{"agent": "budget", "data": {"budget_draft": draft}}]
+    }
+    _passed, checks = evaluate_response(
+        response,
+        {
+            "budget_draft": {"period_start": None, "planning.income_basis": "gross"},
+            "budget_categories": {"pet care": 120},
+        },
+        expected_model_provider="openai",
+        expected_model_id="gpt-6-luna",
+        expected_prompt_version="v6",
+    )
+    budget_checks = [item for item in checks if item["check"].startswith("budget_")]
+    assert all(item["passed"] for item in budget_checks) is (fault is None)

@@ -71,7 +71,9 @@ def chat_session_delete_url(url: str, user_id: str, session_id: str) -> str:
         f"{api_path}/users/{urllib.parse.quote(user_id, safe='')}"
         f"/chat-sessions/{urllib.parse.quote(session_id, safe='')}"
     )
-    return urllib.parse.urlunparse(parsed._replace(path=delete_path, query="", fragment=""))
+    return urllib.parse.urlunparse(
+        parsed._replace(path=delete_path, query="", fragment="")
+    )
 
 
 def cleanup_session(
@@ -106,7 +108,11 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
             if not line.strip():
                 continue
             case = json.loads(line)
-            if not case.get("id") or not case.get("category") or not case.get("request"):
+            if (
+                not case.get("id")
+                or not case.get("category")
+                or not case.get("request")
+            ):
                 raise ValueError(f"invalid live evaluation case at line {line_number}")
             cases.append(case)
     if not cases:
@@ -143,6 +149,42 @@ def evaluate_response(
     def add_check(name: str, passed: bool) -> None:
         checks.append({"check": name, "passed": bool(passed)})
 
+    if "budget_draft" in expected:
+        draft = _agent_data(response, "budget").get("budget_draft")
+        add_check("budget_draft_present", isinstance(draft, dict))
+        if isinstance(draft, dict):
+            for field, value in expected["budget_draft"].items():
+                actual = draft
+                for key in field.split("."):
+                    actual = actual.get(key) if isinstance(actual, dict) else None
+                add_check("budget_draft." + field, actual == value)
+        else:
+            add_check("budget_draft_fields", False)
+    if "budget_categories" in expected:
+        draft = _agent_data(response, "budget").get("budget_draft") or {}
+        categories = draft.get("categories") or []
+        actual = {
+            " ".join(str(item.get("category") or "").split()).lower(): item.get(
+                "limit_amount"
+            )
+            for item in categories
+        }
+        add_check(
+            "budget_categories",
+            actual == expected["budget_categories"] and len(categories) == len(actual),
+        )
+    if "budget_capture" in expected:
+        add_check(
+            "budget_capture",
+            response.get("audit", {}).get("budget_capture")
+            == expected["budget_capture"],
+        )
+    if "answer_contains" in expected:
+        answer = response.get("answer", "").casefold()
+        add_check(
+            "answer_contains",
+            all(term.casefold() in answer for term in expected["answer_contains"]),
+        )
     if "blocked" in expected:
         add_check("blocked", response.get("blocked") is expected["blocked"])
     if "selected_agents" in expected:
@@ -258,7 +300,8 @@ def evaluate_response(
     if "minimum_disclaimers" in expected:
         add_check(
             "minimum_disclaimers",
-            len(response.get("disclaimers", [])) >= int(expected["minimum_disclaimers"]),
+            len(response.get("disclaimers", []))
+            >= int(expected["minimum_disclaimers"]),
         )
 
     audit = response.get("audit", {})
@@ -299,7 +342,8 @@ def evaluate_response(
             and response.get("blocked") is True
             and bool(policy_prefixes)
             and all(
-                prefix and any(finding.startswith(prefix) for finding in policy_findings)
+                prefix
+                and any(finding.startswith(prefix) for finding in policy_findings)
                 for prefix in policy_prefixes
             )
             and audit.get("model_calls") == []
@@ -361,9 +405,7 @@ def run_live_evaluation(
         for case in cases:
             payload = json.loads(json.dumps(case["request"]))
             payload["user_id"] = synthetic_user_id
-            session_id = (
-                f"live-{case['id'][:48]}-{repeat}-{uuid4().hex[:10]}"
-            )
+            session_id = f"live-{case['id'][:48]}-{repeat}-{uuid4().hex[:10]}"
             payload["session_id"] = session_id
             started = time.perf_counter()
             record: dict[str, Any] = {
@@ -512,8 +554,7 @@ def write_job_summary(report: dict[str, Any], failures: list[str]) -> None:
         return
     result = "PASS" if not failures else "FAIL"
     categories = ", ".join(
-        f"{name}={rate:.0%}"
-        for name, rate in report["category_pass_rates"].items()
+        f"{name}={rate:.0%}" for name, rate in report["category_pass_rates"].items()
     )
     lines = [
         "## Live OpenAI and RAG evaluation",
@@ -584,7 +625,11 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     write_job_summary(report, failures)
-    print(json.dumps({key: value for key, value in report.items() if key != "records"}, indent=2))
+    print(
+        json.dumps(
+            {key: value for key, value in report.items() if key != "records"}, indent=2
+        )
+    )
     if failures:
         raise SystemExit("Live evaluation failed: " + "; ".join(failures))
 
