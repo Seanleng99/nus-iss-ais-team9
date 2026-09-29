@@ -47,6 +47,7 @@ def handle_date_spending_query(
     records = SQLAlchemyTransactionRepository(session).list_records(
         request.user_id, period_start=month_start
     )
+    records = [record for record in records if record.transaction_type == "expense"]
     day_records = [record for record in records if record.occurred_on == when]
     label = _formatted_date(when)
     if not day_records:

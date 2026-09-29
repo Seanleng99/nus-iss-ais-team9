@@ -13,6 +13,7 @@ import streamlit as st
 from client import build_request
 from ui.budget_methods import METHODS, render_method_explorer
 from ui.budget_review import render_budget_review
+from ui.cashflow import render_cashflow
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
@@ -627,6 +628,7 @@ def transactions_page() -> None:
                 max_chars=255,
                 key=f"add-transaction-{user_id}-description-v2",
             )
+            transaction_type = st.selectbox("Transaction type", ["expense", "income", "transfer", "refund"], key=f"add-transaction-{user_id}-type")
             first, second = st.columns(2)
             category = first.selectbox(
                 "Category",
@@ -666,9 +668,7 @@ def transactions_page() -> None:
                 result = backend_call(
                     lambda: client.create_transaction(
                         user_id,
-                        _transaction_payload(
-                            description, category, amount, occurred_on, recurring
-                        ),
+                        {**_transaction_payload(description, category, amount, occurred_on, recurring), "transaction_type": transaction_type},
                     )
                 )
                 if result:
@@ -684,6 +684,7 @@ def transactions_page() -> None:
                 {
                     "Date": item["occurred_on"],
                     "Description": item["description"],
+                    "Type": item.get("transaction_type", "expense"),
                     "Category": _category_label(item["category"]),
                     "Amount": item["amount"]["amount"],
                     "Recurring": item["recurring"],
@@ -825,6 +826,7 @@ def transactions_page() -> None:
                     value=selected["recurring"],
                     key=f"manage-transaction-{selected_id}-recurring",
                 )
+                edit_type = st.selectbox("Transaction type", ["expense", "income", "transfer", "refund"], index=["expense", "income", "transfer", "refund"].index(selected.get("transaction_type", "expense")), key=f"manage-transaction-{selected_id}-type")
                 save, delete = st.columns(2)
                 save_submitted = save.form_submit_button(
                     "Save changes", type="primary", icon=":material/save:"
@@ -837,13 +839,7 @@ def transactions_page() -> None:
                     lambda: client.update_transaction(
                         user_id,
                         selected_id,
-                        _transaction_payload(
-                            edit_description,
-                            edit_category,
-                            edit_amount,
-                            edit_date,
-                            edit_recurring,
-                        ),
+                        {**_transaction_payload(edit_description, edit_category, edit_amount, edit_date, edit_recurring), "transaction_type": edit_type},
                     )
                 )
                 if result:
@@ -1003,6 +999,7 @@ def budget_page() -> None:
     if currency == "SGD":
         render_method_explorer(client, user_id, period_start, values, planning, scope, draft_key)
         render_budget_review(client, user_id, period_start, scope, draft_key)
+        render_cashflow(client, user_id)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):
         st.session_state.pop(draft_key, None)
         st.rerun()

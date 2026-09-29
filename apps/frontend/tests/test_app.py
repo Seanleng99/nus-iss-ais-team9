@@ -314,6 +314,7 @@ def test_transaction_inputs_start_empty_or_zero() -> None:
     assert [(item.label, item.value) for item in app.text_input] == [("Description", "")]
     assert {item.label: item.value for item in app.selectbox} == {
         "Category": None,
+        "Transaction type": "expense",
         "Filter by month": "2026-08",
         "Transaction": None,
     }

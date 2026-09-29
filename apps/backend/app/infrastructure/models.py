@@ -48,6 +48,7 @@ class UserRecord(TimestampMixin, Base):
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
+    planning_preferences: Mapped["PlanningPreferencesRecord | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     profile: Mapped["FinancialProfileRecord | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
@@ -150,6 +151,7 @@ class TransactionRecord(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), default="SGD", nullable=False)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    transaction_type: Mapped[str] = mapped_column(String(16), default="expense", server_default="expense", nullable=False)
     user: Mapped[UserRecord] = relationship(back_populates="transactions")
 
 
@@ -304,3 +306,10 @@ class OrchestrationTraceRecord(Base):
     assistant_message: Mapped[ChatMessageRecord | None] = relationship(
         back_populates="orchestration_trace"
     )
+
+
+class PlanningPreferencesRecord(TimestampMixin, Base):
+    __tablename__ = "planning_preferences"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    user: Mapped[UserRecord] = relationship(back_populates="planning_preferences")

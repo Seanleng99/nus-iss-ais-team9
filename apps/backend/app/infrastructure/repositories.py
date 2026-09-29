@@ -35,6 +35,7 @@ from app.infrastructure.models import (
     FinancialProfileRecord,
     MonthlyBudgetRecord,
     OrchestrationTraceRecord,
+    PlanningPreferencesRecord,
     ProfileConsentRecord,
     ProfileDemographicRecord,
     TransactionRecord,
@@ -266,6 +267,7 @@ class SQLAlchemyUserRepository:
                 }
                 for record in consents
             ],
+            "planning_preferences": (self.session.get(PlanningPreferencesRecord, user_id).data if self.session.get(PlanningPreferencesRecord, user_id) else {}),
             "transactions": [
                 {
                     "id": str(record.id),
@@ -277,6 +279,7 @@ class SQLAlchemyUserRepository:
                     },
                     "occurred_on": record.occurred_on.isoformat(),
                     "recurring": record.recurring,
+                    "transaction_type": record.transaction_type,
                 }
                 for record in transactions
             ],
@@ -454,7 +457,7 @@ class SQLAlchemyUserRepository:
         if user is None:
             return False
         owned_models = (
-            FinancialProfileRecord,
+            PlanningPreferencesRecord,            FinancialProfileRecord,
             ProfileDemographicRecord,
             ProfileConsentRecord,
             TransactionRecord,
@@ -637,7 +640,7 @@ class SQLAlchemyTransactionRepository:
                 occurred_on=record.occurred_on.isoformat(),
                 recurring=record.recurring,
             )
-            for record in self.list_records(user_id)
+            for record in self.list_records(user_id) if record.transaction_type == "expense"
         ]
 
     def create(self, user_id: str, transaction: TransactionCreate) -> TransactionRecord:
@@ -650,6 +653,7 @@ class SQLAlchemyTransactionRepository:
             currency=transaction.amount.currency,
             occurred_on=transaction.occurred_on,
             recurring=transaction.recurring,
+            transaction_type=transaction.transaction_type,
         )
         self.session.add(record)
         self.session.flush()
@@ -672,6 +676,7 @@ class SQLAlchemyTransactionRepository:
         record.currency = transaction.amount.currency
         record.occurred_on = transaction.occurred_on
         record.recurring = transaction.recurring
+        record.transaction_type = transaction.transaction_type
         _touch_user(self.session, user_id)
         self.session.flush()
         return record
@@ -837,6 +842,7 @@ class SQLAlchemyBudgetRepository:
             .where(
                 TransactionRecord.user_id == user_id,
                 TransactionRecord.occurred_on >= period_start,
+                TransactionRecord.transaction_type == "expense",
                 TransactionRecord.occurred_on < next_month(period_start),
             )
             .group_by(TransactionRecord.category)
@@ -855,6 +861,7 @@ class SQLAlchemyBudgetRepository:
             TransactionRecord.user_id == user_id,
             TransactionRecord.currency == "SGD",
             TransactionRecord.occurred_on >= period_start,
+                TransactionRecord.transaction_type == "expense",
             TransactionRecord.occurred_on < next_month(period_start),
             TransactionRecord.occurred_on <= through,
         ).group_by(TransactionRecord.category, TransactionRecord.recurring)
@@ -866,6 +873,7 @@ class SQLAlchemyBudgetRepository:
         query = select(func.count(TransactionRecord.id)).where(
             TransactionRecord.user_id == user_id,
             TransactionRecord.occurred_on >= period_start,
+                TransactionRecord.transaction_type == "expense",
             TransactionRecord.occurred_on < next_month(period_start),
         )
         return int(self.session.scalar(query) or 0)
@@ -877,6 +885,7 @@ class SQLAlchemyBudgetRepository:
         query = select(TransactionRecord).where(
             TransactionRecord.user_id == user_id,
             TransactionRecord.occurred_on >= start_date,
+                TransactionRecord.transaction_type == "expense",
             TransactionRecord.occurred_on <= end_date,
         ).order_by(TransactionRecord.occurred_on)
         return list(self.session.scalars(query))

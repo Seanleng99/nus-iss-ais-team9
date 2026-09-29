@@ -83,6 +83,8 @@ from app.services.budget_alert import evaluate_budget_alert
 from app.services.budget_capture import BudgetDraft
 from app.services.budget_review import build_budget_review
 from app.services.budget_scenarios import compare_draft
+from app.services.cashflow import CashflowSettings, occurs, project_cashflow
+from app.services.financial_workspace import read_section, write_section
 from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
 router = APIRouter(dependencies=[Depends(require_owned_path_user)])
@@ -146,6 +148,7 @@ def _transaction_response(record: TransactionRecord) -> TransactionResponse:
         amount=MoneyAmount(currency=record.currency, amount=float(record.amount)),
         occurred_on=record.occurred_on,
         recurring=record.recurring,
+        transaction_type=record.transaction_type,
     )
 
 
@@ -927,3 +930,40 @@ def get_dashboard(
             spending,
         ),
     )
+
+
+@router.get("/users/{user_id}/cashflow/settings")
+def get_cashflow_settings(user_id: UserId, session: Annotated[Session, Depends(get_db_session)]):
+    return read_section(session, user_id, "cashflow")
+
+
+@router.put("/users/{user_id}/cashflow/settings")
+def put_cashflow_settings(user_id: UserId, payload: CashflowSettings, session: Annotated[Session, Depends(get_db_session)]):
+    result = write_section(session, user_id, "cashflow", payload.model_dump(mode="json"))
+    session.commit()
+    return result
+
+
+@router.get("/users/{user_id}/cashflow")
+def get_cashflow(user_id: UserId, through: date, session: Annotated[Session, Depends(get_db_session)]):
+    try:
+        return project_cashflow(session, user_id, through)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/users/{user_id}/cashflow/settle")
+def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, session: Annotated[Session, Depends(get_db_session)]):
+    raw = read_section(session, user_id, "cashflow")
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Cash-flow settings not found")
+    config = CashflowSettings.model_validate(raw)
+    schedule = next((item for item in config.schedules if item.id == schedule_id), None)
+    if schedule is None or not occurs(schedule, due_on):
+        raise HTTPException(status_code=422, detail="Select a valid schedule occurrence")
+    if due_on not in schedule.settled_dates:
+        schedule.settled_dates.append(due_on)
+    config = CashflowSettings.model_validate(config.model_dump())
+    result = write_section(session, user_id, "cashflow", config.model_dump(mode="json"))
+    session.commit()
+    return result

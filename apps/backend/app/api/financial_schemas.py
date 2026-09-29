@@ -200,6 +200,7 @@ class UserDataDeletionReceipt(BaseModel):
 
 
 class TransactionCreate(BaseModel):
+    transaction_type: Literal["expense", "income", "transfer", "refund"] = "expense"
     description: str = Field(min_length=1, max_length=255)
     category: str = Field(min_length=1, max_length=64)
     amount: MoneyAmount

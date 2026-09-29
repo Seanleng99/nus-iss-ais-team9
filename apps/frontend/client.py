@@ -257,6 +257,19 @@ class BackendClient:
         )
 
     @_trace_operation
+    def get_cashflow_settings(self, user_id):
+        return self._request("GET", f"/api/users/{user_id}/cashflow/settings")
+
+    def save_cashflow_settings(self, user_id, payload):
+        return self._request("PUT", f"/api/users/{user_id}/cashflow/settings", json=payload)
+
+    def get_cashflow(self, user_id, through):
+        return self._request("GET", f"/api/users/{user_id}/cashflow", params={"through": through.isoformat()})
+
+    def settle_cashflow(self, user_id, schedule_id, due_on):
+        return self._request("POST", f"/api/users/{user_id}/cashflow/settle", params={"schedule_id": schedule_id, "due_on": due_on.isoformat()})
+
+    @_trace_operation
     def review_budget(self, user_id: str, period_start: date) -> dict[str, Any]:
         return self._request("GET", f"/api/users/{user_id}/budget/review", params={"period_start": period_start.isoformat()})
 
