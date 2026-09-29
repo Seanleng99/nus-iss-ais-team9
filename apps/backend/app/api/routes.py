@@ -37,6 +37,7 @@ from app.services.budget_alert import build_status_reply, parse_budget_status_qu
 from app.services.budget_capacity import build_capacity_context
 from app.services.budget_capture import handle_budget_confirmation, stage_budget_draft
 from app.services.budget_planning import build_planning_context
+from app.services.privacy_guard import find_other_user_reference, other_user_data_reply
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
 
@@ -96,6 +97,11 @@ async def coach(
     )
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
+    other_user = find_other_user_reference(request.message, request.user_id)
+    if other_user is not None:
+        return _finalize_coach_response(
+            _persist_local_coach(session, request, other_user_data_reply(request.session_id))
+        )
     query_date = parse_date_spending_query(request.message)
     if query_date is not None and not pending_budget:
         queried = handle_date_spending_query(session, request, query_date)
