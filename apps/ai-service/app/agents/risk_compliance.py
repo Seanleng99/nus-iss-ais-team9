@@ -676,6 +676,10 @@ class RiskComplianceAgent:
             response_type=EducationComplianceDecision if education_review else ComplianceDecision,
             system_prompt=(
                 self.prompts.get("risk_compliance")
+                + "\nBudget workflow context: monthly expense limits, explicit debt minimum payments and user-chosen savings contributions are budgeting scope. "
+                "A budget_draft with action=alternatives requests a read-only backend calculation from confirmed owned commitments; it does not itself calculate or save amounts. "
+                "When commitments are absent the backend asks for setup. A truthful statement of this handoff is an application capability, not a financial recommendation requiring investment evidence. "
+                "Still block invented amounts, claims that missing inputs are known, personal investment/product advice, guarantees and unsafe content; do not treat draft labels as proof of safety."
                 + "\nReturn a short policy verdict only. Do not rewrite the answer "
                 "or introduce any financial facts. Keep rationale and policy_notes "
                 "to at most two short assessment sentences each."
