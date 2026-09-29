@@ -44,4 +44,4 @@ def test_comparison_intent_routes_to_budget_planning():
     budget = next(item for item in result.agent_results if item.agent.value == "budget")
     assert budget.data["budget_draft"]["planning"]["method"]["name"] == "80_20"
     assert budget.data["budget_draft"]["action"] == "compare"
-    assert budget.data["planning_analysis"]["version"] == "budget-planning-v3"
+    assert budget.data["planning_analysis"]["version"] == "budget-planning-v4"

@@ -341,7 +341,7 @@ class LocalFixtureModelGateway:
             "budget_planning": bool((payload.get("pending_budget") or {}).get("planning")) or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower()
-                        for word in ("realistic", "category-level", "propose spending limits", "check my budget plan", "50/30/20", "80/20", "zero-based", "savings first", "custom percentages", "scenario", "what if", "compare", "review", "pace", "adjustment", "funded alternatives"))
+                        for word in ("realistic", "category-level", "propose spending limits", "check my budget plan", "50/30/20", "80/20", "zero-based", "savings first", "custom percentages", "scenario", "what if", "compare", "review", "pace", "adjustment", "funded alternatives", "multi-month", "carry forward", "rollover", "periodic"))
             ),
             "budget_capture": bool(payload.get("pending_budget")) or (
                 "budget" in str(payload["message"]).lower()

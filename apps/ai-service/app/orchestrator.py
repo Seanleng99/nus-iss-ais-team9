@@ -414,7 +414,7 @@ class AgentOrchestrator:
                     "Set budget_planning=true for requests to build a realistic/category-level/monthly "
                     "plan, propose spending limits, select/change a budgeting method, compare budget methods "
                     "or what-if scenarios, review recorded spending against a budget, assess month-end pace, "
-                    "find funded alternatives respecting protected commitments and goal/debt funding, suggest budget adjustments from actual spending, or check a proposed plan against income and savings. "
+                    "plan multiple months, carry forward budget limits, configure periodic budget reviews, find funded alternatives respecting protected commitments and goal/debt funding, suggest budget adjustments from actual spending, or check a proposed plan against income and savings. "
                     "Planning requires budget_capture=true and budget. General explanations of rules "
                     "alone are not planning requests. A pending draft does "
                     "not make an unrelated new question a budget-setting request."
@@ -474,7 +474,7 @@ class AgentOrchestrator:
             (request.pending_budget or {}).get("planning")
         )
         if requested_agents and AgentName.BUDGET in requested_agents and re.search(
-            r"\b(realistic|category-level|50/30/20|80/20|zero-based|savings first|custom percentages|what.if|compare.*budget|budget.*scenario|review.*budget|budget.*review|month.end pace|budget.*adjustment|funded alternatives)\b", state["sanitized_message"], re.IGNORECASE
+            r"\b(realistic|category-level|50/30/20|80/20|zero-based|savings first|custom percentages|what.if|compare.*budget|budget.*scenario|review.*budget|budget.*review|month.end pace|budget.*adjustment|funded alternatives|multi.month|carry.forward|rollover|periodic.*review)\b", state["sanitized_message"], re.IGNORECASE
         ):
             decision.budget_planning = True
         if decision.budget_planning:

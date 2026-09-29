@@ -157,9 +157,9 @@ The offline fixture is deliberately limited and is not evidence of production la
 
 Test live-model extraction separately with paraphrases, ambiguous currencies/dates, gross versus net income, corrections, incomplete spending records and unrelated follow-ups before release. Do not claim the offline fixture results as live-model acceptance.
 
-## Deliberately deferred
+## Remaining boundaries
 
-The first three stages do not implement scheduled/background reviews or notifications, multi-month plans, rollover, annual/weekly conversions, variable-income forecasting, goal prioritization, or category deletion through Coach. Savings are a user-selected monthly total; no automatic goal contribution or debt payoff schedule is inferred. Non-SGD amounts and uncertain monthly amounts require clarification.
+The original three stages have now been extended by the four increments below. Background delivery (email/push), automatic rollover, bank reconciliation, variable-income forecasting, interest-aware debt payoff optimization, and category deletion through Coach remain outside this implementation. Cash-flow schedules support explicit weekly/annual frequencies; category budgets still require explicit monthly amounts. Non-SGD amounts and uncertain inputs require clarification. User-chosen goal contributions are modeled but never transferred automatically.
 
 
 ## Shared capacity source
@@ -193,3 +193,32 @@ In Budget, open **Fund goals and protect commitments** after saving a complete S
 Savings must cover the larger of the chosen savings target, confirmed minimum and combined goal contributions. Goal completion estimates use current recorded remaining amounts and constant chosen contributions, without growth or withdrawals. Debt balances are context; this increment does not calculate interest, payoff order or debt amortization. Alternatives expose any unresolved funding gap instead of overriding protections. A comparison writes no budgets. Adopt an option into the editor or use `use scenario NAME` in Coach, then confirm actual income, expense coverage and the exact budget. Existing method requirements still apply.
 
 Repository saves and Coach previews recheck commitments, so deleting a protected category, omitting planning metadata or saving via another route cannot bypass them. Deleted or incompatible linked goals require updating the policy. Settings use the owned `planning_preferences` record introduced by migration `20260930_0012`, and follow owner export/deletion. Constraints are user-maintained and do not imply that recorded obligations are complete.
+
+
+## Multi-month continuity and opt-in reviews
+
+**Plan upcoming months** uses the selected saved source plan. Users enter a first target month, 1–12 months, the take-home income and savings to repeat in every target month, and a carry rule. Inputs are never filled from gross profile income. The available rules are:
+
+- **Copy limits:** repeat the saved expense limits.
+- **Carry surplus:** add each category's positive source-month remaining amount to the first target month's limit.
+- **Carry net:** add surplus or deduct overspending in the first target month, with a minimum resulting limit of zero.
+
+Carry rules require a completed source month and use gross recorded SGD expenses. Refunds are cash inflows, not negative expenses. Missing records or unbudgeted expenses can overstate apparent surplus; it is not verified cash. Carry is applied once; subsequent target months resume the source category limits, without invented future transactions. Existing target-month commitments are checked, while source-month policies are not copied. Configure each month's commitments separately. Each target's budgeting method, affordability and category validation remain authoritative; a surplus carry may need more funding and is never silently taken out of savings.
+
+`POST /api/users/{user_id}/budget/continuity/preview` stores a single owned, expiring preview (30 minutes); it does not write budgets. It returns exact category limits, repeated income/savings, prior target plans, funding gaps and questions. Existing target plans require explicit `allow_overwrite`. `POST /budget/continuity/confirm` requires that preview ID and `confirmed: true`. All plans save in one transaction, and the preview is consumed once. Changes to source or target plans, relevant spending, target commitments/linked goals, schedules, or the Singapore date invalidate it. Validation or write failure leaves the batch unapplied. The UI separately confirms actual income, expense coverage, exact limits and replacements. Coach multi-month/carry-forward requests direct users to this workspace rather than misinterpreting them as a single-month save.
+
+**Periodic budget reviews** is disabled by default. Users explicitly choose weekly or monthly cadence and a first date, then confirm preferences. Weekly due reviews inspect the current calendar month; monthly due reviews inspect the last completed month. Reminders appear on Overview and in Budget when the app is opened; this is not a background scheduler or external notification service. The due reminder persists until marked reviewed or disabled. Marking reviewed verifies current evidence and advances the next date from the acknowledgment date (seven days or one calendar month). It never adopts suggestions or changes budgets. Missing budgets/data remain visible as review warnings.
+
+Owned endpoints:
+
+- `GET/PUT /api/users/{user_id}/budget/reviews/preferences`
+- `GET /api/users/{user_id}/budget/reviews/due`
+- `POST /api/users/{user_id}/budget/reviews/acknowledge` with the displayed evidence fingerprint and explicit confirmation
+
+All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. Existing deployments must apply migrations through that revision before running this code. No live database migration or deployment was performed as part of local implementation.
+
+## Roadmap verification
+
+The extended extraction/planning contract is `budget-planning-v4`; saved planning settings from v1–v3 remain readable.
+
+Regression coverage includes confirmed-plan cross-agent sourcing, explicit typed cash flows, pre-payday shortages, settled occurrences, protected category and goal/debt minimums, infeasible alternatives, read-only Coach comparisons, preview expiration and ownership, stale evidence, duplicate confirmation, all-or-nothing monthly writes, opt-in review dates, and UI confirmation gates. Local fixtures exercise the model contract; live-provider extraction and deployed acceptance remain separate checks. The Windows environment cannot run the existing symlink-dependent AI test without symlink privilege; the rest of the AI suite is run with that test excluded.

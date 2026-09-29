@@ -260,7 +260,7 @@ class BudgetPlanSettings(BaseModel):
     savings_target: float = Field(ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
     income_basis: Literal["take_home"] = "take_home"
     expenses_confirmed: Literal[True] = True
-    version: Literal["budget-planning-v1", "budget-planning-v2", "budget-planning-v3"] = "budget-planning-v3"
+    version: Literal["budget-planning-v1", "budget-planning-v2", "budget-planning-v3", "budget-planning-v4"] = "budget-planning-v4"
     method: BudgetMethod = Field(default_factory=BudgetMethod)
 
 
@@ -355,6 +355,7 @@ class BudgetAlert(BaseModel):
 
 
 class DashboardResponse(BaseModel):
+    review_reminder: dict | None = None
     period_start: date
     currency: str
     monthly_income: float

@@ -42,7 +42,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review", "alternatives"] = "plan"
+    action: Literal["plan", "compare", "review", "alternatives", "continuity"] = "plan"
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -70,7 +70,8 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "period_start is the first day of the explicitly requested month. Without an explicit "
             "month and year leave it null and ask; relative dates require clarification. "
             "An amount of zero is valid. Only monthly limits are supported; ask about weekly, daily "
-            "or multiple-month requests instead of converting them. Preserve earlier user-supplied "
+            "requests instead of converting them. Multi-month planning, carry-forward/rollover, or recurring review preferences use action=continuity: "
+            "the backend directs users to the confirmed Budget workspace for those features, without saving from chat. Preserve earlier user-supplied "
             "draft values unless corrected. questions lists unresolved ambiguities only; remove "
             "questions answered by the user. Confirmation is handled separately by the backend. "
             "Do not treat approval words as permission to populate missing fields. "
@@ -78,7 +79,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "The backend computes from confirmed monthly commitments. Do not invent floors, debt payments, goal contributions or limits. "
             "Extract explicit month/year and optional hypothetical take-home income or savings only; ask for missing dates. "
             "Commitment setup is in the Budget page and requires user confirmation. "
-            "PLANNING CONTRACT budget-planning-v3: When planning_requested=true, or continuing a "
+            "PLANNING CONTRACT budget-planning-v4: When planning_requested=true, or continuing a "
             "pending planning draft, include planning (even when every field is unknown). "
             "Extract income only if explicitly supplied or explicitly adopted from profile context; "
             "income_basis must be take_home only when the user confirms net/take-home income. "

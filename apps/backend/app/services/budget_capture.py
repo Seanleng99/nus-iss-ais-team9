@@ -51,7 +51,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review", "alternatives"] = "plan"
+    action: Literal["plan", "compare", "review", "alternatives", "continuity"] = "plan"
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -216,6 +216,16 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         return
     if not draft.is_budget_request:
         return
+    if draft.action == "continuity":
+        response.answer = (
+            "For multiple months or carry-forward, open Budget, select the saved source month, and open Plan upcoming months. "
+            "Supply the first target month, number of months, take-home income and savings for each month, and choose a carry-forward rule. "
+            "Review all category limits and any replacements, then explicitly confirm the batch. Carry-forward requires a completed source month. "
+            "For recurring reviews, open Periodic budget reviews and explicitly choose a frequency and first review date. "
+            "These are in-app reminders on Overview and Budget; no external notifications or automatic budget changes. Nothing has been saved from this message."
+        )
+        response.audit["budget_capture"] = "continuity_workspace_handoff"
+        return
     if draft.action == "alternatives":
         from app.services.budget_constraints import AlternativesRequest, build_alternatives
         if draft.period_start is None or draft.period_start.day != 1 or draft.questions:
@@ -226,6 +236,9 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
             return
         if draft.currency not in {None, "SGD"}:
             response.answer = "Funded alternatives support SGD plans only. Nothing was saved."
+            return
+        if draft.planning and draft.planning.take_home_income is not None and draft.planning.income_basis != "take_home":
+            response.answer = "Please confirm the alternative income is take-home income in SGD after payroll deductions. Nothing was saved."
             return
         try:
             comparison = build_alternatives(session, user_id, AlternativesRequest(
@@ -310,7 +323,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         }
         response.answer = describe_comparison(comparison)
         response.audit["budget_capture"] = "scenario_comparison"
-        response.audit["budget_planner_version"] = "budget-planning-v3"
+        response.audit["budget_planner_version"] = "budget-planning-v4"
         return
     review_origin = (chat.pending_budget or {}).get("review_origin")
     if review_origin and (
@@ -331,7 +344,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
     }
     response.answer = answer
     if draft.planning:
-        response.audit["budget_planner_version"] = "budget-planning-v3"
+        response.audit["budget_planner_version"] = "budget-planning-v4"
     response.audit["budget_capture"] = (
         "awaiting_confirmation" if baseline is not None else "needs_input"
     )

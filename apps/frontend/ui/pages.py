@@ -12,6 +12,7 @@ import streamlit as st
 
 from client import build_request
 from ui.budget_constraints import render_commitments
+from ui.budget_continuity import render_continuity, render_review_preferences
 from ui.budget_methods import METHODS, render_method_explorer
 from ui.budget_review import render_budget_review
 from ui.cashflow import render_cashflow
@@ -459,6 +460,8 @@ def dashboard_page() -> None:
             "you'll see your spending patterns visualized here with helpful insights."
         )
 
+    if (dashboard.get("review_reminder") or {}).get("due"):
+        st.info(dashboard["review_reminder"]["message"], icon=":material/event:")
     _render_overview_budget(dashboard.get("budget"), currency)
 
     st.subheader("Goals")
@@ -1002,6 +1005,8 @@ def budget_page() -> None:
         render_budget_review(client, user_id, period_start, scope, draft_key)
         render_cashflow(client, user_id)
         render_commitments(client, user_id, period_start, values, draft_key)
+        render_continuity(client, user_id, period_start)
+        render_review_preferences(client, user_id)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):
         st.session_state.pop(draft_key, None)
         st.rerun()

@@ -257,6 +257,24 @@ class BackendClient:
         )
 
     @_trace_operation
+    def preview_budget_months(self, user_id, payload):
+        return self._request("POST", f"/api/users/{user_id}/budget/continuity/preview", json=payload)
+
+    def confirm_budget_months(self, user_id, preview_id):
+        return self._request("POST", f"/api/users/{user_id}/budget/continuity/confirm", json={"preview_id": preview_id, "confirmed": True})
+
+    def get_review_preferences(self, user_id):
+        return self._request("GET", f"/api/users/{user_id}/budget/reviews/preferences")
+
+    def save_review_preferences(self, user_id, payload):
+        return self._request("PUT", f"/api/users/{user_id}/budget/reviews/preferences", json=payload)
+
+    def get_due_review(self, user_id):
+        return self._request("GET", f"/api/users/{user_id}/budget/reviews/due")
+
+    def acknowledge_budget_review(self, user_id, evidence):
+        return self._request("POST", f"/api/users/{user_id}/budget/reviews/acknowledge", json={"evidence": evidence, "confirmed": True})
+
     def get_budget_commitments(self, user_id, period):
         return self._request("GET", f"/api/users/{user_id}/budget/commitments", params={"period_start": period.isoformat()})
 

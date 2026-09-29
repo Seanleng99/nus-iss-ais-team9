@@ -56,3 +56,11 @@ def test_funded_alternatives_route_to_backend_without_inventing_constraints():
     assert budget.data["budget_draft"]["period_start"] == "2026-10-01"
     assert not budget.data["budget_draft"]["categories"]
     assert "planning_analysis" not in budget.data
+
+
+def test_multi_month_request_routes_to_confirmation_workspace():
+    result = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture")).handle(
+        CoachRequest(user_id="u", session_id="s", message="Make a multi-month budget plan", requested_agents=["budget"]))
+    budget = next(item for item in result.agent_results if item.agent.value == "budget")
+    assert budget.data["budget_draft"]["action"] == "continuity"
+    assert "planning_analysis" not in budget.data

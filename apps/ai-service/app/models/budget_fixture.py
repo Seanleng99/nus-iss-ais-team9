@@ -74,6 +74,8 @@ def fixture_budget_draft(payload):
         draft["action"] = "review"
     if "funded alternatives" in text.lower():
         draft["action"] = "alternatives"
+    if any(phrase in text.lower() for phrase in ("multi-month", "carry forward", "rollover", "periodic budget review")):
+        draft["action"] = "continuity"
     entries = []
     # Deliberately require 'category: amount' in the offline fixture.
     for match in re.finditer(
@@ -89,7 +91,7 @@ def fixture_budget_draft(payload):
         existing = {item["category"]: item for item in draft["categories"]}
         existing.update({item["category"]: item for item in entries})
         draft["categories"] = list(existing.values())
-    elif not draft["categories"] and not draft.get("planning") and draft.get("action") not in {"review", "alternatives"}:
+    elif not draft["categories"] and not draft.get("planning") and draft.get("action") not in {"review", "alternatives", "continuity"}:
         draft["questions"] = [
             "For offline mode, provide limits as 'food: 500, transport: 150', plus month, year and SGD currency."
         ]

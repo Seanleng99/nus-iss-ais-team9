@@ -87,6 +87,7 @@ from app.services.budget_constraints import (
     build_alternatives,
     save_policy,
 )
+from app.services.budget_continuity import review_due
 from app.services.budget_review import build_budget_review
 from app.services.budget_scenarios import compare_draft
 from app.services.cashflow import CashflowSettings, occurs, project_cashflow
@@ -914,6 +915,7 @@ def get_dashboard(
         log_event("dashboard.spending_insights_failed", error=str(insight_error))
     
     return DashboardResponse(
+        review_reminder=review_due(session, user_id),
         period_start=period_start,
         currency=currency,
         monthly_income=monthly_income,
