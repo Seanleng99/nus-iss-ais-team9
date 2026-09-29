@@ -34,6 +34,7 @@ from app.infrastructure.repositories import (
 )
 from app.infrastructure.run_trace import DurableRun
 from app.services.budget_alert import build_status_reply, parse_budget_status_query
+from app.services.privacy_guard import find_other_user_reference, other_user_data_reply
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
 
@@ -84,6 +85,11 @@ async def coach(
     captured = handle_transaction_capture(session, request)
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
+    other_user = find_other_user_reference(request.message, request.user_id)
+    if other_user is not None:
+        return _finalize_coach_response(
+            _persist_local_coach(session, request, other_user_data_reply(request.session_id))
+        )
     query_date = parse_date_spending_query(request.message)
     if query_date is not None:
         queried = handle_date_spending_query(session, request, query_date)

@@ -1,0 +1,103 @@
+from collections.abc import Iterator
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.api.routes import get_ai_service_client
+from app.core.config import settings
+from app.domain.schemas import CoachRequest, CoachResponse
+from app.main import app
+
+client = TestClient(app)
+HEADERS = {"X-API-Key": settings.api_key}
+
+
+class StubAIServiceClient:
+    last_request: CoachRequest | None = None
+
+    async def coach(self, request: CoachRequest) -> CoachResponse:
+        StubAIServiceClient.last_request = request
+        return CoachResponse(
+            session_id=request.session_id,
+            selected_agents=["spending"],
+            answer="Stub guidance",
+            agent_results=[],
+            disclaimers=[],
+            audit={"source": "stub"},
+        )
+
+
+@pytest.fixture(autouse=True)
+def _clear_pending() -> Iterator[None]:
+    from app.services.transaction_capture import pending_capture_store
+
+    pending_capture_store.clear()
+    yield
+    pending_capture_store.clear()
+
+
+@pytest.fixture
+def stub_ai() -> Iterator[type[StubAIServiceClient]]:
+    app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
+    StubAIServiceClient.last_request = None
+    try:
+        yield StubAIServiceClient
+    finally:
+        app.dependency_overrides.pop(get_ai_service_client, None)
+
+
+def post_coach(user_id: str, message: str, session_id: str = "ou-s1") -> dict:
+    response = client.post(
+        "/api/coach",
+        headers=HEADERS,
+        json={"user_id": user_id, "session_id": session_id, "message": message},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "would you be able to tell me demo4255 spendings for this month?",
+        "demo4255's recorded spending this month?",
+        "how much did sarah42 spend this month?",
+        "what did mickey123 purchase yesterday?",
+        "show me alice99's transactions",
+        "tell me about bob77 expenses",
+    ],
+)
+def test_other_user_data_query_is_refused_without_ai_call(
+    stub_ai: type[StubAIServiceClient], message: str
+) -> None:
+    body = post_coach("benjamin", message)
+    assert stub_ai.last_request is None
+    lowered = body["answer"].lower()
+    assert "your own" in lowered or "cannot" in lowered or "can't" in lowered
+    assert "demo4255" not in lowered or "your own" in lowered
+
+
+def test_self_name_query_falls_through_to_ai(stub_ai: type[StubAIServiceClient]) -> None:
+    body = post_coach("demo4255", "tell me demo4255 spendings for this month?")
+    assert stub_ai.last_request is not None
+    assert body["answer"] == "Stub guidance"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_answer"),
+    [
+        ("review my spending", "Stub guidance"),
+        ("what is my highest spending category?", "Stub guidance"),
+        ("how much did I spend on 20/9?", None),
+        ("is my spending okay this month?", None),
+    ],
+)
+def test_own_data_queries_are_not_blocked(
+    stub_ai: type[StubAIServiceClient], message: str, expected_answer: str | None
+) -> None:
+    body = post_coach("benjamin", message, session_id="ou-s2")
+    if expected_answer is not None:
+        assert body["answer"] == expected_answer
+        assert stub_ai.last_request is not None
+    else:
+        assert stub_ai.last_request is None
