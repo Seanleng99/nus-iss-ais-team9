@@ -2,9 +2,9 @@
 
 ## Current Decision
 
-**Status: proposed 2026-09-30, pending approval by Tan Sean Leng.** Do not merge until the named reviewer confirms the exposure analysis below.
+**Status: approved 2026-09-30 by Tan Sean Leng** (drafted by Lee Jet Xuen).
 
-Four exact-version exceptions are proposed for the synthetic-data demo: three new `openssl` findings (to 2026-10-14) and a renewed `zlib` finding (to 2026-10-30). The five 2026-08-31/2026-09-06 exceptions for `sqlite3`, `glibc` and `pcre2` are removed because none matched any finding in the last passing release. The zero-unexcepted-critical and zero-unexcepted-high release gates remain unchanged.
+Four exact-version exceptions are accepted for the synthetic-data demo: three new `openssl` findings (to 2026-10-14) and a renewed `zlib` finding (to 2026-10-30). The five 2026-08-31/2026-09-06 exceptions for `sqlite3`, `glibc` and `pcre2` are removed because none matched any finding in the last passing release. The zero-unexcepted-critical and zero-unexcepted-high release gates remain unchanged.
 
 ## 2026-09-30 Review
 
