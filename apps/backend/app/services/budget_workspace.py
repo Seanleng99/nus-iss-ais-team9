@@ -19,7 +19,7 @@ from app.services.financial_workspace import lock_workspace, read_section, write
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -31,7 +31,7 @@ def context(session, user_id):
         "settings": {
             k: v
             for k, v in (record.data if record else {}).items()
-            if k == "cashflow" or k == "review_preferences" or k.startswith(("constraints:", "timing:"))
+            if k in {"cashflow", "review_preferences", "reserves"} or k.startswith(("constraints:", "timing:"))
         },
         "goals": [
             {"id": str(g.id), "name": g.name, "currency": g.currency}
@@ -121,6 +121,10 @@ def build_change(session, user_id, change):
             {**previous, **supplied, "confirmed": True}
         ).model_dump(mode="json")
         validate_policy(session, user_id, AllocationPolicy.model_validate(target))
+    elif op == "reserves":
+        from app.services.budget_reserves import Reserves
+        target = Reserves.model_validate({**supplied, "confirmed": True}).model_dump(mode="json")
+        previous = read_section(session, user_id, "reserves")
     elif op == "timing":
         from app.services.budget_timing import TimingSettings
         target = TimingSettings.model_validate({**supplied, "confirmed": True}).model_dump(mode="json")
@@ -207,6 +211,9 @@ def confirm_change(session, user_id, pending):
         return save_settings(session, user_id, CashflowSettings.model_validate(target))
     if op == "commitments":
         return save_policy(session, user_id, AllocationPolicy.model_validate(target))
+    if op == "reserves":
+        from app.services.budget_reserves import Reserves
+        return write_section(session, user_id, "reserves", Reserves.model_validate(target).model_dump(mode="json"))
     if op == "timing":
         from app.services.budget_timing import TimingSettings
         settings = TimingSettings.model_validate(target)
@@ -306,6 +313,14 @@ def describe_preview(preview):
         lines.append(
             "These lists replace the previous commitments for this month in full. Budget limits and goal balances will not change."
         )
+    elif op == "reserves":
+        from app.services.budget_continuity import local_today
+        from app.services.budget_reserves import Reserves, reserve_report
+        report = reserve_report(Reserves.model_validate(target), local_today().replace(day=1))
+        lines.append("Replace the saved irregular-expense reserve list with:")
+        for r in report["reserves"]:
+            lines.append(f"{safe(r['name'])}: target {money(r['target_amount'])}, already reserved {money(r['current_reserved'])}, contribute {money(r['monthly_contribution'])}/month from {r['start_period']} through {r['due_on']}; projected unfunded gap {money(r['projected_gap'])}.")
+        lines.append(report["warning"])
     elif op == "timing":
         lines.append(f"For {target['period_start']}, spend remaining expense limits using {target['expense_pattern'].replace('_', ' ')} from {target['start_on']}; reserve the plan's savings on {target['savings_on']}; maintain at least {money(target['minimum_balance'])} available. You confirmed recorded expenses and bill/payday schedules are complete.")
     elif op == "reconcile":

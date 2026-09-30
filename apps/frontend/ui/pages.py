@@ -13,6 +13,7 @@ import streamlit as st
 from client import build_request
 from ui.budget_constraints import render_commitments
 from ui.budget_continuity import render_continuity, render_review_preferences
+from ui.budget_income import render_income_and_reserves
 from ui.budget_methods import METHODS, render_method_explorer
 from ui.budget_review import render_budget_review
 from ui.budget_timing import render_timing, render_timing_summary
@@ -1008,6 +1009,7 @@ def budget_page() -> None:
         render_cashflow(client, user_id)
         render_commitments(client, user_id, period_start, values, draft_key)
         render_timing(client, user_id, period_start)
+        render_income_and_reserves(client, user_id, period_start, draft_key)
         render_continuity(client, user_id, period_start)
         render_review_preferences(client, user_id)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):

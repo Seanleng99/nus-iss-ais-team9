@@ -147,8 +147,10 @@ def save_policy(session, user_id, policy):
 
 def requirements(session, user_id, period):
     stored = read_section(session, user_id, "constraints:" + period.isoformat())
+    from app.services.budget_reserves import reserve_requirement
+    reserve_total = reserve_requirement(session, user_id, period)
     if not stored:
-        return None
+        return {"floors": {}, "savings": reserve_total, "goals": [], "debts": []} if reserve_total else None
     policy = AllocationPolicy.model_validate(stored["policy"])
     goals = linked_goals(session, user_id, policy)
     floors = {name: cents(value) for name, value in policy.category_floors.items()}
@@ -182,7 +184,7 @@ def requirements(session, user_id, period):
     return {
         "floors": floors,
         "savings": max(
-            cents(policy.minimum_savings), sum(cents(g.monthly_amount) for g in policy.goals)
+            cents(policy.minimum_savings), sum(cents(g.monthly_amount) for g in policy.goals) + reserve_total
         ),
         "goals": goals,
         "debts": [d.model_dump() for d in policy.debts],
@@ -219,7 +221,7 @@ def build_alternatives(session, user_id, request):
 
     record = SQLAlchemyBudgetRepository(session).get(user_id, request.period_start)
     required = requirements(session, user_id, request.period_start)
-    if not record or not record.planning or record.currency != "SGD" or not required:
+    if not record or not record.planning or record.currency != "SGD" or not required or not read_section(session, user_id, "constraints:" + str(request.period_start)):
         return {
             "saved": False,
             "results": [],

@@ -284,6 +284,9 @@ class BackendClient:
     def budget_alternatives(self, user_id, payload):
         return self._request("POST", f"/api/users/{user_id}/budget/alternatives", json=payload)
 
+    def compare_income_cases(self, user_id, payload):
+        return self._request("POST", f"/api/users/{user_id}/budget/income-scenarios", json=payload)
+
     def get_budget_timing(self, user_id, period):
         return self._request("GET", f"/api/users/{user_id}/budget/timing", params={"period_start": period.isoformat()})
 

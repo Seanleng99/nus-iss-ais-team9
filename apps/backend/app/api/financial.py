@@ -88,6 +88,7 @@ from app.services.budget_constraints import (
     save_policy,
 )
 from app.services.budget_continuity import BatchConfirmation, review_due
+from app.services.budget_income import IncomeScenarios, compare_income
 from app.services.budget_reconciliation import save_settings
 from app.services.budget_review import build_budget_review
 from app.services.budget_scenarios import compare_draft
@@ -1059,3 +1060,11 @@ def get_budget_timing(user_id: UserId, period_start: date, session: Annotated[Se
     from app.services.budget_timing import saved_timing
     _validate_period_start(period_start)
     return saved_timing(session, user_id, period_start)
+
+
+@router.post("/users/{user_id}/budget/income-scenarios")
+def income_scenarios(user_id: UserId, payload: IncomeScenarios, session: Annotated[Session, Depends(get_db_session)]):
+    try:
+        return compare_income(session, user_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

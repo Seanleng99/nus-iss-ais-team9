@@ -41,7 +41,7 @@ class BudgetScenario(BaseModel):
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -108,8 +108,9 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "Ask which occurrence, amount and refund effect. Payment matches are expense records; refund effects use refund records. "
             "Do not create actual transactions. Show possible owned records to user if no unique choice. "
             "unlink fields: link_id from saved reconciliation links, ask user which match. "
+            "reserves fields: reserves list of id (existing only), name, target_amount, current_reserved, monthly_contribution, start_period YYYY-MM-01, due_on. All amounts/date choices must be explicit, including zero; contributions are part of savings and share it with goals. "
             "continuity fields: source_period, first_period, months (1..12), take_home_income, savings_target, "
-            "carry_rule copy_limits/carry_surplus/carry_net, allow_overwrite false unless explicitly allowed, "
+            "optional month_inputs list {period_start,take_home_income,savings_target,category_limits} for explicit differences per month; shared income/savings may be omitted ONLY if every target month has both. category_limits contains only explicit overrides. carry_rule copy_limits/carry_surplus/carry_net, allow_overwrite false unless explicitly allowed, "
             "coverage_confirmed true only after user confirms actual take-home income/savings and all expenses for EVERY target month. "
             "timing fields: period_start, start_on, minimum_balance, expense_pattern even_daily/start_of_period/end_of_period, savings_on, records_complete. All require explicit user choices; never assume a spending pattern, minimum balance or complete records. This assesses monthly options against paydays/bill dates and reserves savings without moving money. "
             "reviews fields: enabled, cadence weekly/monthly, next_review_on explicit date or null when disabled. "

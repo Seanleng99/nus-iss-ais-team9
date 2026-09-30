@@ -29,13 +29,22 @@ def add_months(day, months):
     return date(year, index + 1, min(day.day, calendar.monthrange(year, index + 1)[1]))
 
 
+class MonthInputs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    period_start: date
+    take_home_income: Money
+    savings_target: Money
+    category_limits: dict[str, Money] = Field(default_factory=dict, max_length=50)
+
+
 class ContinuityRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_period: date
     first_period: date
     months: int = Field(ge=1, le=12)
-    take_home_income: Money
-    savings_target: Money
+    take_home_income: Money | None = None
+    savings_target: Money | None = None
+    month_inputs: list[MonthInputs] = Field(default_factory=list, max_length=12)
     carry_rule: Literal["copy_limits", "carry_surplus", "carry_net"]
     allow_overwrite: bool = False
 
@@ -47,6 +56,12 @@ class ContinuityRequest(BaseModel):
             raise ValueError(
                 "Target months must follow the source month and fit the supported calendar"
             )
+        targets = {add_months(self.first_period, i) for i in range(self.months)}
+        supplied = {m.period_start for m in self.month_inputs}
+        if len(supplied) != len(self.month_inputs) or not supplied <= targets:
+            raise ValueError("Supply unique monthly overrides belonging to the target months")
+        if (self.take_home_income is None or self.savings_target is None) and supplied != targets:
+            raise ValueError("Supply explicit income and savings for every month, or provide shared amounts for months without overrides")
         return self
 
 
@@ -138,10 +153,17 @@ def preview_batch(session, user_id, request, *, today=None, persist=True):
             {"category": name, "limit_amount": (limit + (carry[name] if index == 0 else 0)) / 100}
             for name, limit in sorted(source_limits.items())
         ]
+        override = next((m for m in request.month_inputs if m.period_start == period), None)
+        if override and override.category_limits:
+            limits = {c["category"]: c["limit_amount"] for c in categories}
+            limits.update(override.category_limits)
+            categories = [{"category": k, "limit_amount": v} for k, v in limits.items()]
+        month_income = override.take_home_income if override else request.take_home_income
+        month_savings = override.savings_target if override else request.savings_target
         planning = {
             **source.planning,
-            "take_home_income": request.take_home_income,
-            "savings_target": request.savings_target,
+            "take_home_income": month_income,
+            "savings_target": month_savings,
         }
         raw = {
             "period_start": period.isoformat(),
@@ -170,7 +192,7 @@ def preview_batch(session, user_id, request, *, today=None, persist=True):
             errors.append(str(error))
         expense_total = sum(cents(c["limit_amount"]) for c in categories)
         unallocated = (
-            cents(request.take_home_income) - cents(request.savings_target) - expense_total
+            cents(month_income) - cents(month_savings) - expense_total
         )
         rows.append(
             {
@@ -195,7 +217,7 @@ def preview_batch(session, user_id, request, *, today=None, persist=True):
         "saved": False,
         "evidence": batch_evidence(session, user_id, request, today),
         "warnings": [
-            "Income and savings repeat exactly as supplied for every target month; confirm they are appropriate for each month.",
+            "Each month uses its explicit overrides, or the supplied shared income/savings amounts. Confirm every displayed month.",
             "Carry-forward adjusts only the first target month's limits, using recorded gross expenses. It is not cash in an account; missing expenses and unbudgeted categories can overstate surplus.",
             "Later months copy the source limits without further rollover. Month-specific commitments are not copied; existing target-month commitments are enforced.",
             "Saving replaces each listed target plan in full, including its category list and planning settings. No goals, debts, schedules or transactions are changed.",

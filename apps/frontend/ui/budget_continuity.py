@@ -39,6 +39,9 @@ def render_continuity(client, user_id, period):
                 value=None,
                 key=key + "-savings",
             )
+            st.caption("Optional: supply different income and savings per month. If shared amounts above are blank, include every target month here.")
+            overrides = st.data_editor(pd.DataFrame(columns=["period_start", "take_home_income", "savings_target"]), num_rows="dynamic", hide_index=True, key=key+"-monthly",
+                column_config={"period_start": st.column_config.DateColumn("Month (first day)",required=True), "take_home_income": st.column_config.NumberColumn("Take-home income",min_value=0,required=True), "savings_target": st.column_config.NumberColumn("Savings",min_value=0,required=True)})
             rule = st.selectbox(
                 "Carry-forward rule",
                 list(RULES),
@@ -54,7 +57,7 @@ def render_continuity(client, user_id, period):
             calculate = st.form_submit_button("Preview monthly plans")
         if calculate:
             st.session_state.pop(key + "-preview", None)
-            if first is None or income is None or savings is None or rule is None:
+            if first is None or ((income is None or savings is None) and overrides.empty) or rule is None or overrides.isna().any().any():
                 st.warning("Supply the target month, income, savings and carry-forward rule.")
             else:
                 st.session_state[key + "-preview"] = backend_call(
@@ -68,6 +71,7 @@ def render_continuity(client, user_id, period):
                             "savings_target": savings,
                             "carry_rule": rule,
                             "allow_overwrite": replace,
+                            "month_inputs": [{**r, "period_start": r["period_start"].isoformat()} for r in overrides.to_dict("records")],
                         },
                     )
                 )
