@@ -1,64 +1,49 @@
 {
   "exceptions": [
     {
-      "id": "CVE-2026-11822",
-      "package_name": "sqlite3",
-      "package_version": "3.46.1-7+deb13u1",
+      "id": "CVE-2026-72897",
+      "package_name": "openssl",
+      "package_version": "3.5.7-1~deb13u2",
       "repositories": [
         "nus-iss-ais-team9-ai",
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-08-31",
-      "reviewed_by": "NUS ISS AIS Team 9",
-      "expires_on": "2026-09-30",
-      "reason": "The runtime services use PostgreSQL and neither open attacker-supplied SQLite databases nor expose arbitrary SQL or FTS5. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
-      "source": "https://security-tracker.debian.org/tracker/CVE-2026-11822"
+      "reviewed_on": "2026-09-30",
+      "reviewed_by": "Drafted by Lee Jet Xuen; pending approval by Tan Sean Leng",
+      "expires_on": "2026-10-14",
+      "reason": "OpenSSL rates this Low. It affects only TLS servers that call SSL_set_SSL_CTX() during a handshake with a replacement context supporting more provider signature algorithms. No container terminates TLS: uvicorn and Streamlit serve plain HTTP behind the ALB HTTPS listener, and the services use OpenSSL only as a TLS client. Debian lists the exact Trixie package as vulnerable with no fixed version; upstream fixes it in OpenSSL 3.5.9.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-72897"
     },
     {
-      "id": "CVE-2026-11824",
-      "package_name": "sqlite3",
-      "package_version": "3.46.1-7+deb13u1",
+      "id": "CVE-2026-84784",
+      "package_name": "openssl",
+      "package_version": "3.5.7-1~deb13u2",
       "repositories": [
         "nus-iss-ais-team9-ai",
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-08-31",
-      "reviewed_by": "NUS ISS AIS Team 9",
-      "expires_on": "2026-09-30",
-      "reason": "The runtime services use PostgreSQL and neither open attacker-supplied SQLite databases nor expose arbitrary SQL or FTS5. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
-      "source": "https://security-tracker.debian.org/tracker/CVE-2026-11824"
+      "reviewed_on": "2026-09-30",
+      "reviewed_by": "Drafted by Lee Jet Xuen; pending approval by Tan Sean Leng",
+      "expires_on": "2026-10-14",
+      "reason": "OpenSSL rates this Low. It affects only OpenSSL QUIC endpoints receiving NEW_CONNECTION_ID frames. No service uses QUIC or HTTP/3; outbound HTTPS uses TCP-based TLS clients. Debian lists the exact Trixie package as vulnerable with no fixed version; upstream fixes it in OpenSSL 3.5.9.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-84784"
     },
     {
-      "id": "CVE-2026-5928",
-      "package_name": "glibc",
-      "package_version": "2.41-12+deb13u3",
+      "id": "CVE-2026-84782",
+      "package_name": "openssl",
+      "package_version": "3.5.7-1~deb13u2",
       "repositories": [
         "nus-iss-ais-team9-ai",
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-08-31",
-      "reviewed_by": "NUS ISS AIS Team 9",
-      "expires_on": "2026-09-30",
-      "reason": "The services use standard Unicode encodings and do not expose ungetwc over attacker-selected overlapping encodings. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
-      "source": "https://security-tracker.debian.org/tracker/CVE-2026-5928"
-    },
-    {
-      "id": "CVE-2026-5450",
-      "package_name": "glibc",
-      "package_version": "2.41-12+deb13u3",
-      "repositories": [
-        "nus-iss-ais-team9-ai",
-        "nus-iss-ais-team9-backend",
-        "nus-iss-ais-team9-frontend"
-      ],
-      "reviewed_on": "2026-08-31",
-      "reviewed_by": "NUS ISS AIS Team 9",
-      "expires_on": "2026-09-30",
-      "reason": "The services do not invoke scanf %mc with attacker-controlled width values. Debian still lists the exact Trixie package as vulnerable with no stable fix and classifies it as a minor no-DSA issue.",
-      "source": "https://security-tracker.debian.org/tracker/CVE-2026-5450"
+      "reviewed_on": "2026-09-30",
+      "reviewed_by": "Drafted by Lee Jet Xuen; pending approval by Tan Sean Leng",
+      "expires_on": "2026-10-14",
+      "reason": "OpenSSL rates this High, but it affects only DTLS handshake retransmission. No service uses DTLS or any UDP-based TLS transport; all TLS use is TCP client traffic to OpenAI, AWS and Cognito. Debian lists the exact Trixie package as vulnerable with no fixed version; upstream fixes it in OpenSSL 3.5.9.",
+      "source": "https://openssl-library.org/news/secadv/20260929.txt"
     },
     {
       "id": "CVE-2026-85091",
@@ -69,26 +54,11 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-09-06",
-      "reviewed_by": "NUS ISS AIS Team 9",
-      "expires_on": "2026-09-30",
-      "reason": "The services do not call gzprintf or gzvprintf and do not use non-blocking gzwrite with externally managed buffers. Debian lists the exact Trixie package as vulnerable with no fixed version available.",
+      "reviewed_on": "2026-09-30",
+      "reviewed_by": "Drafted by Lee Jet Xuen; pending approval by Tan Sean Leng",
+      "expires_on": "2026-10-30",
+      "reason": "Renewal of the 2026-09-06 exception. The services do not call gzprintf or gzvprintf and do not use non-blocking gzwrite with externally managed buffers. Debian still lists the exact Trixie package as vulnerable with no fixed version available.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-85091"
-    },
-    {
-      "id": "CVE-2026-86145",
-      "package_name": "pcre2",
-      "package_version": "10.46-1~deb13u1",
-      "repositories": [
-        "nus-iss-ais-team9-ai",
-        "nus-iss-ais-team9-backend",
-        "nus-iss-ais-team9-frontend"
-      ],
-      "reviewed_on": "2026-09-06",
-      "reviewed_by": "NUS ISS AIS Team 9",
-      "expires_on": "2026-09-30",
-      "reason": "The services do not accept attacker-controlled PCRE2 patterns or call pcre2_dfa_match. Upstream confirms that applications using only trusted patterns or other match APIs are not exposed; Debian Trixie has not yet packaged the fixed PCRE2 10.48 release.",
-      "source": "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-3r4p-g7gg-ppmf"
     }
   ]
 }
