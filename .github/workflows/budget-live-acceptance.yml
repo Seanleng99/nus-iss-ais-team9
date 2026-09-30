@@ -38,11 +38,16 @@ jobs:
             --repeats "$REPEATS" --expected-model-id gpt-6-luna \
             --maximum-p95-ms 30000 --maximum-estimated-cost-usd 0.05 \
             --output artifacts/budget-live-acceptance.json
+      - name: Verify multi-turn edits and confirmation against the live model
+        env:
+          COACH_URL: ${{ vars.COACH_SMOKE_URL }}
+          SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+        run: python infra/scripts/budget_multiturn_acceptance.py
       - name: Retain privacy-safe evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: budget-live-acceptance-${{ github.run_id }}
-          path: artifacts/budget-live-acceptance.json
+          path: artifacts/budget-*-acceptance.json
           if-no-files-found: warn
           retention-days: 90

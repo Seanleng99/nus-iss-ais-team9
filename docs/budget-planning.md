@@ -159,7 +159,7 @@ Test live-model extraction separately with paraphrases, ambiguous currencies/dat
 
 ## Remaining boundaries
 
-The original three stages have now been extended by the four increments below. Background delivery (email/push), automatic rollover, bank connections and account-level reconciliation, variable-income forecasting, interest-aware debt payoff optimization, and category deletion through Coach remain outside this implementation. Cash-flow schedules support explicit weekly/annual frequencies; category budgets still require explicit monthly amounts. Non-SGD amounts and uncertain inputs require clarification. User-chosen goal contributions are modeled but never transferred automatically.
+The original three stages were extended by the four increments below and the subsequent roadmap additions described later in this document. Background delivery (email/push), unattended automatic rollover and bank-provider connections remain separate extensions. Variable income uses explicit user-supplied cases rather than statistical forecasting; debt payoff uses user-supplied rates and fees rather than lender integration. Cash-flow schedules support explicit weekly/annual frequencies; category budgets still require explicit monthly amounts. Non-SGD amounts and uncertain inputs require clarification. User-chosen goal contributions are modeled but never transferred automatically.
 
 
 ## Shared capacity source
@@ -215,7 +215,7 @@ Owned endpoints:
 - `GET /api/users/{user_id}/budget/reviews/due`
 - `POST /api/users/{user_id}/budget/reviews/acknowledge` with the displayed evidence fingerprint and explicit confirmation
 
-All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. Existing deployments must apply migrations through that revision before running this code. The subsequent 2026-09-29 release applied and verified these migrations before updating the backend.
+All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. The retained release requires migrations through `20260930_0012`; the proposed relational storage migration was removed before deployment. The subsequent 2026-09-29 release applied and verified these migrations before updating the backend.
 
 ## Roadmap verification
 
@@ -245,11 +245,11 @@ Open **Cash flow, paydays and bills → Open bill matching**. Choose a recorded 
 - **Amount becomes payable again:** cash is refunded, net paid decreases, and the unpaid bill remainder increases.
 - **Bill amount is reduced:** cash is refunded and both the obligation and net paid decrease; the unpaid remainder is unchanged.
 
-Refund allocations cannot exceed payments or precede the payment balance they reverse. A future-dated record cannot settle an occurrence early. Projections count the actual cash flow once and project only the unmatched bill remainder. Monthly budget spending and carry-forward still use gross expenses; reconciliation does not rewrite transactions, net category spending, update debt balances, or transfer money. Opening balances must already reflect transactions before their opening date; occurrences outside the projection's opening/horizon are not included. Scheduled income retains manual settlement; matching currently covers expense bills only.
+Refund allocations cannot exceed payments or precede the payment balance they reverse. A future-dated record cannot settle an occurrence early. Projections count the actual cash flow once and project only the unmatched bill remainder. Monthly budget spending and carry-forward use gross expenses unless the user explicitly chooses reduce_expense for a refund match; that offsets the matched category in the refund record month. Reconciliation does not rewrite transactions, update debt balances or transfer money. Opening balances must already reflect transactions before their opening date; occurrences outside the projection's opening/horizon are not included. Scheduled income supports explicit matching to income records as well as manual settlement.
 
 A matched transaction cannot be edited/deleted until its matches are removed. A matched bill's financial terms cannot change until its matches are removed (renaming is allowed). Refund-dependent payment matches cannot be removed until the dependent refund matches are removed. **Remove manual settlement** makes a legacy manually settled occurrence available for matching. A matched occurrence cannot also be manually settled. These checks apply to both UI and Coach paths.
 
-The selector/Coach context includes the latest 100 owned SGD expense/refund records, with available amounts, and saved links. Users choose records explicitly; no bank feed or automatic fuzzy match is involved. At most 5,000 allocations are supported in one workspace. Links use the existing owned `planning_preferences.reconciliation` JSON section and inherit export/erasure. No new migration is required beyond `20260930_0012`.
+The selector/Coach context includes a page of 100 owned SGD expense/refund/income records, with available amounts, and saved links. The UI supports search and pagination; same-category/date suggestions remain subject to explicit selection. Users choose records explicitly; no bank feed or automatic fuzzy match is involved. At most 5,000 allocations are supported in one workspace. Links use the owned `planning_preferences.reconciliation` JSON section and inherit export/erasure. No new migration is required beyond `20260930_0012`.
 
 ## Conversational planning commands (workspace v1)
 
@@ -260,7 +260,7 @@ Coach can now propose and confirm cash-flow settings, protected categories, floo
 - “Match SGD 600 of my recorded September 5 rent payment to the Rent bill due September 5, 2026.” Ambiguous records, dates, amounts or refund effects require clarification.
 - “Copy September 2026 limits into October through December 2026; take-home income SGD 4000 and savings SGD 800 each month.” Coach asks for coverage confirmation and previews every target before saving.
 
-The model emits only an untrusted `workspace` command draft (`operation` plus JSON-encoded fields). Backend Pydantic schemas reject unknown fields and validate dates, amounts, ownership and references. Existing top-level settings are retained when omitted; explicitly supplied collections replace in full and appear in the preview. Pending fields survive clarification/corrections. The model cannot set the trusted confirmation flag or bypass missing inputs. Saved records are context, never instructions.
+The model emits only an untrusted `workspace` command draft (`operation` plus JSON-encoded fields). Backend Pydantic schemas reject unknown fields and validate dates, amounts, ownership and references. Existing top-level settings are retained when omitted. Precise edits preserve unspecified collection entries; explicit full collections replace in full and appear in the preview. Pending fields survive clarification/corrections. The model cannot set the trusted confirmation flag or bypass missing inputs. Saved records are context, never instructions.
 
 The backend displays exact normalized values and requires a subsequent `confirm budget` (or supported confirmation reply). Corrections and unrelated/blocked replies disarm prior previews; cancellation discards the draft. Previews expire after 30 minutes. Changes to owned planning settings, relevant records, budgets, goal balances or the Singapore date invalidate confirmation. User-scoped locking serializes workspace mutations and linked transaction guards. Coach previews belong to their chat and do not overwrite the Budget page's batch or workspace preview. Confirmed changes are committed with the chat response; batch budgets are atomic. Repeated confirmation cannot replay a consumed preview.
 
@@ -320,3 +320,10 @@ New refund matches require an explicit budget-spending choice: `cash_only` prese
 Coach supports `edits` in cashflow, commitments and reserves payloads. Each edit names a collection, explicit add/update/remove action, an existing ID (or exact unique debt name), and only changed values. Category floors use `{amount}`; protected categories support add/remove. New schedules/reserves receive server-generated IDs. The backend preserves unspecified entries and fields, rejects ambiguous/missing selectors and conflicting replacements, then validates the complete configuration including existing bill/debt links.
 
 Corrections replace the complete pending edit list; edits always run once against saved settings. The exact resulting collection is previewed before confirmation. Cancellation, intervening data changes, expired previews and ownership checks remain enforced. Local multi-turn tests cover clarification, correction, confirmation, cancellation and stale evidence. These deterministic contract tests do not establish live-model extraction quality; live acceptance remains a release gate after all increments are implemented.
+
+
+### Final release scope and multi-turn acceptance
+
+User clarified the final scope on 2026-10-01: the entire seventh increment is excluded. Relational reconciliation storage, account balances, account-to-account transfer workflows and CSV imports are deferred. Their uncommitted code, UI and proposed migration were removed. Reconciliation remains in the owned JSON workspace with its existing limits and validation. The six preceding planner improvements, dated cash-flow balance and typed transaction ledger are retained.
+
+The live acceptance workflow also includes a bounded multi-turn Coach scenario using a unique synthetic profile: missing amount, precise bill edit, correction, confirmation, cancellation and stale-preview rejection. It verifies the unchanged second bill and actual saved values, and erases only its own synthetic profile in cleanup. Retained evidence contains check results and model/latency metadata rather than conversation content. Run it after the complete release; local contract/harness tests do not substitute for this live result.
