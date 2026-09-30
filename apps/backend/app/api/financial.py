@@ -87,11 +87,13 @@ from app.services.budget_constraints import (
     build_alternatives,
     save_policy,
 )
-from app.services.budget_continuity import review_due
+from app.services.budget_continuity import BatchConfirmation, review_due
+from app.services.budget_reconciliation import save_settings
 from app.services.budget_review import build_budget_review
 from app.services.budget_scenarios import compare_draft
+from app.services.budget_workspace import WorkspaceChange, confirm_change, context, preview_change
 from app.services.cashflow import CashflowSettings, occurs, project_cashflow
-from app.services.financial_workspace import read_section, write_section
+from app.services.financial_workspace import lock_workspace, read_section, write_section
 from app.services.spending_analyzer import _generate_insights, analyze_spending_patterns
 
 router = APIRouter(dependencies=[Depends(require_owned_path_user)])
@@ -708,9 +710,12 @@ def update_transaction(
     transaction: TransactionCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> TransactionResponse:
-    record = SQLAlchemyTransactionRepository(session).update(
-        user_id, transaction_id, transaction
-    )
+    try:
+        record = SQLAlchemyTransactionRepository(session).update(
+            user_id, transaction_id, transaction
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     session.commit()
@@ -723,7 +728,11 @@ def delete_transaction(
     transaction_id: UUID,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> Response:
-    if not SQLAlchemyTransactionRepository(session).delete(user_id, transaction_id):
+    try:
+        deleted = SQLAlchemyTransactionRepository(session).delete(user_id, transaction_id)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -950,7 +959,10 @@ def get_cashflow_settings(user_id: UserId, session: Annotated[Session, Depends(g
 
 @router.put("/users/{user_id}/cashflow/settings")
 def put_cashflow_settings(user_id: UserId, payload: CashflowSettings, session: Annotated[Session, Depends(get_db_session)]):
-    result = write_section(session, user_id, "cashflow", payload.model_dump(mode="json"))
+    try:
+        result = save_settings(session, user_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     session.commit()
     return result
 
@@ -964,7 +976,8 @@ def get_cashflow(user_id: UserId, through: date, session: Annotated[Session, Dep
 
 
 @router.post("/users/{user_id}/cashflow/settle")
-def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, session: Annotated[Session, Depends(get_db_session)]):
+def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, session: Annotated[Session, Depends(get_db_session)], settled: bool = True):
+    lock_workspace(session, user_id)
     raw = read_section(session, user_id, "cashflow")
     if raw is None:
         raise HTTPException(status_code=404, detail="Cash-flow settings not found")
@@ -972,10 +985,15 @@ def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, 
     schedule = next((item for item in config.schedules if item.id == schedule_id), None)
     if schedule is None or not occurs(schedule, due_on):
         raise HTTPException(status_code=422, detail="Select a valid schedule occurrence")
-    if due_on not in schedule.settled_dates:
+    if settled and due_on not in schedule.settled_dates:
         schedule.settled_dates.append(due_on)
+    elif not settled:
+        schedule.settled_dates = [day for day in schedule.settled_dates if day != due_on]
     config = CashflowSettings.model_validate(config.model_dump())
-    result = write_section(session, user_id, "cashflow", config.model_dump(mode="json"))
+    try:
+        result = save_settings(session, user_id, config)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     session.commit()
     return result
 
@@ -1001,3 +1019,34 @@ def funded_alternatives(user_id: UserId, request: AlternativesRequest, session: 
         return build_alternatives(session, user_id, request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/users/{user_id}/budget/workspace")
+def get_planning_workspace(user_id: UserId, session: Annotated[Session, Depends(get_db_session)]):
+    return context(session, user_id)
+
+
+@router.post("/users/{user_id}/budget/workspace/preview")
+def preview_planning_change(user_id: UserId, payload: WorkspaceChange, session: Annotated[Session, Depends(get_db_session)]):
+    try:
+        preview = preview_change(session, user_id, payload)
+        write_section(session, user_id, "pending_workspace", preview)
+        session.commit()
+        return preview
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/users/{user_id}/budget/workspace/confirm")
+def confirm_planning_change(user_id: UserId, payload: BatchConfirmation, session: Annotated[Session, Depends(get_db_session)]):
+    lock_workspace(session, user_id)
+    pending = read_section(session, user_id, "pending_workspace")
+    if not pending or pending["preview_id"] != payload.preview_id:
+        raise HTTPException(status_code=409, detail="Preview not found or already consumed")
+    try:
+        result = confirm_change(session, user_id, pending)
+        write_section(session, user_id, "pending_workspace", None)
+        session.commit()
+        return {"saved": True, "result": result}
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error

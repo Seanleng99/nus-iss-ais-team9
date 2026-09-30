@@ -36,6 +36,8 @@ class DebtCommitment(BaseModel):
     category: str = Field(min_length=1, max_length=64)
     balance: Money
     minimum_payment: Money
+    schedule_id: str | None = Field(default=None, max_length=64)
+    separate_obligation: bool = False
 
 
 class AllocationPolicy(BaseModel):
@@ -104,17 +106,41 @@ def linked_goals(session, user_id, policy):
     return results
 
 
-def save_policy(session, user_id, policy):
+def validate_debt_links(session, user_id, policy):
+    raw = read_section(session, user_id, "cashflow")
+    schedules = {s.id: s for s in CashflowSettings.model_validate(raw).schedules} if raw else {}
+    used = set()
+    for debt in policy.debts:
+        if bool(debt.schedule_id) == debt.separate_obligation:
+            raise ValueError(f"For debt {debt.name}, choose a linked bill or explicitly mark it as a separate obligation")
+        if debt.schedule_id:
+            bill = schedules.get(debt.schedule_id)
+            if not bill or bill.kind != "expense" or category(bill.category) != debt.category:
+                raise ValueError("Choose an owned expense schedule in the debt's category")
+            if bill.id in used:
+                raise ValueError("A bill can be linked to only one debt commitment per month")
+            used.add(bill.id)
+
+
+def validate_policy(session, user_id, policy):
     from app.infrastructure.repositories import SQLAlchemyBudgetRepository
 
     record = SQLAlchemyBudgetRepository(session).get(user_id, policy.period_start)
     if not record or record.currency != "SGD" or not record.planning:
         raise ValueError("Save a confirmed SGD monthly plan before setting commitments")
     linked_goals(session, user_id, policy)
+    validate_debt_links(session, user_id, policy)
     reference = {item.category: float(item.limit_amount) for item in record.categories}
     if any(n not in reference for n in policy.protected_categories):
         raise ValueError("Protected categories must exist in the saved plan")
     stored = {"policy": policy.model_dump(mode="json"), "reference_limits": reference}
+    return stored
+
+
+def save_policy(session, user_id, policy):
+    from app.services.financial_workspace import lock_workspace
+    lock_workspace(session, user_id)
+    stored = validate_policy(session, user_id, policy)
     write_section(session, user_id, "constraints:" + policy.period_start.isoformat(), stored)
     return stored
 
@@ -135,10 +161,9 @@ def requirements(session, user_id, period):
         floors[name] = max(
             floors.get(name, 0), cents(value) if name in policy.protected_categories else minimum
         )
-    debts = {}
-    for debt in policy.debts:
-        debts[debt.category] = debts.get(debt.category, 0) + cents(debt.minimum_payment)
+    validate_debt_links(session, user_id, policy)
     bills = {}
+    by_schedule = {}
     cashflow = read_section(session, user_id, "cashflow")
     if cashflow:
         schedules = CashflowSettings.model_validate(cashflow).schedules
@@ -148,8 +173,12 @@ def requirements(session, user_id, period):
                 if schedule.kind == "expense" and occurs(schedule, day):
                     name = category(schedule.category)
                     bills[name] = bills.get(name, 0) + cents(schedule.amount)
-    for name in debts.keys() | bills.keys():
-        floors[name] = max(floors.get(name, 0), debts.get(name, 0), bills.get(name, 0))
+                    by_schedule[schedule.id] = by_schedule.get(schedule.id, 0) + cents(schedule.amount)
+    for debt in policy.debts:
+        extra = max(cents(debt.minimum_payment) - by_schedule.get(debt.schedule_id, 0), 0)
+        bills[debt.category] = bills.get(debt.category, 0) + extra
+    for name, amount in bills.items():
+        floors[name] = max(floors.get(name, 0), amount)
     return {
         "floors": floors,
         "savings": max(
@@ -271,6 +300,6 @@ def build_alternatives(session, user_id, request):
         "savings": required["savings"] / 100,
     }
     result["questions"].append(
-        "Category floors use the largest of your minimum, scheduled bills and debt minimums; review overlapping commitments. Goal estimates assume constant contributions, no growth and no withdrawals. Nothing is saved; confirm actual income and expense coverage before saving an option."
+        "Category floors cover the sum of distinct bills and debts. Only explicitly linked debt/bill obligations overlap; the larger monthly requirement is reserved. Goal estimates assume constant contributions, no growth and no withdrawals. Nothing is saved; confirm actual income and expense coverage before saving an option."
     )
     return result

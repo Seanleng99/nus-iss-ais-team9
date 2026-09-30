@@ -233,7 +233,7 @@ def test_api_requires_confirmation_and_has_owned_preview(db_session_factory, mon
     ).json()["saved"]
 
 
-def test_coach_continuity_handoff_does_not_save(db_session_factory):
+def test_coach_continuity_missing_details_remain_an_unsaved_draft(db_session_factory):
     from app.domain.schemas import CoachResponse
     from app.infrastructure.repositories import SQLAlchemyChatRepository
     from app.services.budget_capture import stage_budget_draft
@@ -244,7 +244,7 @@ def test_coach_continuity_handoff_does_not_save(db_session_factory):
         stage_budget_draft(session, "u", chat, response)
         assert "Plan upcoming months" in response.answer
         assert repo.get("u", FIRST) is None
-        assert chat.pending_budget is None
+        assert not chat.pending_budget["ready"]
 
 
 def test_gross_alternative_income_is_not_assumed_take_home(db_session_factory):

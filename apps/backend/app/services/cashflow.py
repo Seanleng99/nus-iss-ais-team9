@@ -4,7 +4,7 @@ import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -97,6 +97,13 @@ def project_cashflow(session, user_id, through, *, today=None):
         actual_by_day[row.occurred_on] = (
             actual_by_day.get(row.occurred_on, Decimal(0)) + Decimal(str(row.amount)) * sign
         )
+    from app.services.budget_reconciliation import links, occurrence_balance
+    allocations = links(session, user_id)
+    # Reconciliations are effective only once the actual record is in this projection's horizon.
+    effective_ids = set(session.scalars(select(TransactionRecord.id).where(
+        TransactionRecord.user_id == user_id, TransactionRecord.occurred_on <= min(through, today)
+    )))
+    allocations = [r for r in allocations if UUID(r["transaction_id"]) in effective_ids]
     balance = Decimal(str(config.opening_balance))
     days = []
     for offset in range((through - config.opening_on).days + 1):
@@ -105,14 +112,17 @@ def project_cashflow(session, user_id, through, *, today=None):
         change = actual_by_day.get(day, Decimal(0))
         for schedule in config.schedules:
             if occurs(schedule, day) and day not in schedule.settled_dates:
-                signed = Decimal(str(schedule.amount)) * (1 if schedule.kind == "income" else -1)
+                remaining = occurrence_balance(schedule, day, allocations)["remaining"] if schedule.kind == "expense" else schedule.amount
+                if remaining == 0:
+                    continue
+                signed = Decimal(str(remaining)) * (1 if schedule.kind == "income" else -1)
                 change += signed
                 scheduled.append(
                     {
                         "id": schedule.id,
                         "name": schedule.name,
                         "kind": schedule.kind,
-                        "amount": schedule.amount,
+                        "amount": remaining,
                         "status": "overdue_unconfirmed" if day < today else "scheduled",
                     }
                 )
@@ -139,7 +149,7 @@ def project_cashflow(session, user_id, through, *, today=None):
         else next((row["date"] for row in days if row["projected_closing_balance"] < 0), None),
         "warnings": [
             "Opening balance is at the START of its date. Recorded income/refunds add cash; expenses subtract; internal transfers do not change the combined balance.",
-            "Unsettled schedules remain projected, including overdue items. Mark each paid/received occurrence settled to avoid counting it again alongside its recorded transaction.",
+            "Unsettled schedules remain projected, including overdue items. Match recorded bill payments to avoid counting them again; partial matches leave the unpaid remainder projected. Manual settlement remains available for unmatched occurrences.",
             "This is a conditional end-of-day projection, not a bank balance. Missing bills, records and within-day timing can change the outcome.",
         ],
     }

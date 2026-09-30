@@ -28,7 +28,7 @@ class BudgetAgent(BaseAgent):
             draft = extract_budget_draft(self, task)
             if draft.is_budget_request:
                 analysis = None
-                if draft.action not in {"review", "alternatives", "continuity"} and (task.context_features.get("budget_planning") or draft.planning is not None):
+                if draft.action not in {"review", "alternatives", "continuity", "workspace"} and (task.context_features.get("budget_planning") or draft.planning is not None):
                     if draft.planning is None:
                         draft.planning = PlanningInputs.model_validate(
                             (task.context_features.get("pending_budget") or {}).get("planning") or {}
@@ -40,7 +40,7 @@ class BudgetAgent(BaseAgent):
                 return CompletedInvocation(
                     result=AgentResult(
                         agent=self.name,
-                        summary="A read-only comparison of monthly expense limits and savings was requested. The backend will use the user's confirmed commitments or ask them to set those commitments first. No category amounts, goal contributions or debt payments have been inferred, calculated or saved by this extraction step." if draft.action == "alternatives" else "The user requested multi-month planning or periodic reviews. These features are available in the Budget workspace with explicit confirmation; the backend will provide navigation and no budget is saved from this message." if draft.action == "continuity" else "A read-only budget review was requested; the backend will verify the period and compute results from owned records." if draft.action == "review" else describe_plan(draft, analysis) if analysis is not None else (
+                        summary="An unsaved planning settings draft was extracted. The backend will validate owned records, ask for missing details and present an exact preview for separate confirmation. No changes have been saved." if draft.action in {"workspace", "continuity"} else "A read-only comparison of monthly expense limits and savings was requested. The backend will use the user's confirmed commitments or ask them to set those commitments first. No category amounts, goal contributions or debt payments have been inferred, calculated or saved by this extraction step." if draft.action == "alternatives" else "A read-only budget review was requested; the backend will verify the period and compute results from owned records." if draft.action == "review" else describe_plan(draft, analysis) if analysis is not None else (
                             "Budget details have been captured as an unsaved draft. "
                             "Missing details must be supplied and the exact changes confirmed "
                             "before the backend can save them."

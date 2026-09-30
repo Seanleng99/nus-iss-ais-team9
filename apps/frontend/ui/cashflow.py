@@ -18,7 +18,7 @@ def render_cashflow(client, user_id):
             return
         saved = st.session_state[key]
         st.caption(
-            "Opening balance is at the start of its date. Add explicit schedules; mark paid/received occurrences settled after recording them to prevent double counting."
+            "Opening balance is at the start of its date. Add explicit schedules. Match recorded bill payments and refunds below, or manually settle an occurrence. Remove manual settlement before linking recorded payments."
         )
         with st.form(f"{key}-settings"):
             opening_on = st.date_input(
@@ -158,3 +158,13 @@ def render_cashflow(client, user_id):
                     st.session_state[key] = result
                     st.session_state.pop(f"{key}-projection", None)
                     st.success("Occurrence marked settled. Recalculate the projection.")
+
+            if st.button("Remove manual settlement", key=f"{key}-unsettle") and settled_on:
+                result = backend_call(lambda: client.settle_cashflow(user_id, selected, settled_on, settled=False))
+                if result:
+                    st.session_state[key] = result
+                    st.session_state.pop(f"{key}-projection", None)
+                    st.success("Manual settlement removed. You can now match recorded payments.")
+
+        from ui.budget_reconciliation import render_reconciliation
+        render_reconciliation(client, user_id)

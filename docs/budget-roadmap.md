@@ -17,4 +17,9 @@ Commits delivered in order:
 - `39c4f42` — confirmed commitments and funded alternatives.
 - `8294f6c` — confirmed multi-month plans and opt-in reviews.
 
+The next authorized increment implements the first two follow-up priorities: explicit shared bill/debt identities and payment/refund reconciliation, plus conversational settings and multi-month planning with clarification and confirmation. Other proposed priorities (cash-flow-aware alternatives, variable-income planning, deeper goal/debt optimization, and adaptive history) remain deferred. See the workspace v1 sections and new regression tests in the planner document.
+
 The bounded implementations and remaining limitations are described in [budget-planning.md](budget-planning.md). Apply database migrations through `20260930_0012` before deployment. The 2026-09-29 AWS release subsequently applied and verified migrations. Deployment and focused live acceptance passed at application revision `f821887`; see the linked planner document for retained evidence.
+
+
+Workspace v1 local verification (2026-09-30): backend **517 passed**, AI service **1,137 passed / 1 Windows symlink test deselected**, frontend **77 passed**, and live-evaluation harness **48 passed**. Ruff passed across the application code. The expanded nine-case live dataset is prepared but has not been run against a deployment of this change. Previous release/live evidence does not validate the new workspace commands or reconciliation UI.

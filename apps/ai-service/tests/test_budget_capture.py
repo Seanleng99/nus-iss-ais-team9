@@ -82,3 +82,29 @@ def test_offline_fixture_budget_capture():
     result = next(item for item in response.agent_results if item.agent.value == "budget")
     assert result.data["budget_draft"]["period_start"] == "2026-10-01"
     assert len(result.data["budget_draft"]["categories"]) == 2
+
+
+def test_workspace_draft_receives_owned_context_without_income_or_execution():
+    draft = {"action": "workspace", "workspace": {"operation": "commitments",
+        "payload_json": '{"period_start":"2026-10-01","protected_categories":["housing"]}'}}
+    gateway = CaptureGateway(draft)
+    owned = {"workspace": {"settings": {}, "goals": [{"id": "owned-goal", "name": "Reserve"}]}}
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway).handle(
+        CoachRequest(user_id="u1", session_id="s1", message="Protect housing in my October 2026 commitments", budget_context=owned))
+    result = next(r for r in response.agent_results if r.agent.value == "budget")
+    assert not response.blocked
+    assert result.data["budget_draft"]["workspace"] == draft["workspace"]
+    assert gateway.capture_payload["recorded_context"] == owned
+    assert "unsaved" in result.summary.lower()
+    assert "planning_analysis" not in result.data
+
+
+def test_pending_workspace_correction_retains_command_context():
+    draft = {"action": "workspace", "workspace": {"operation": "cashflow", "payload_json": '{"opening_balance":2500}'}}
+    gateway = CaptureGateway(draft)
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway).handle(
+        CoachRequest(user_id="u1", session_id="s1", message="Actually use SGD 2500", pending_budget=draft))
+    assert not response.blocked
+    assert gateway.capture_payload["pending_draft"] == draft
+    result = next(r for r in response.agent_results if r.agent.value == "budget")
+    assert result.data["budget_draft"]["action"] == "workspace"

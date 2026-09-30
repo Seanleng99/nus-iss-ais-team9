@@ -11,6 +11,8 @@ def render_commitments(client, user_id, period, categories, draft_key):
     with st.expander("Fund goals and protect commitments", icon=":material/shield:"):
         if st.button("Open commitments", key=key + "-open"):
             stored = backend_call(lambda: client.get_budget_commitments(user_id, period))
+            schedules = backend_call(lambda: client.get_cashflow_settings(user_id))
+            st.session_state[key + "-schedules"] = (schedules or {}).get("schedules", [])
             goals = backend_call(lambda: client.list_goals(user_id))
             if stored is not None and goals is not None:
                 st.session_state[key] = stored
@@ -49,16 +51,19 @@ def render_commitments(client, user_id, period, categories, draft_key):
                 key=key + "-floors",
             )
             st.caption(
-                "Debt minimums are expense commitments. Put repayments in the same category as any corresponding scheduled bill to avoid counting that bill twice."
+                "For each debt, choose its corresponding bill or explicitly mark it as a separate obligation. Different obligations add together even in the same category."
             )
+            bill_names = {s["id"]: s["name"] for s in st.session_state.get(key + "-schedules", []) if s["kind"] == "expense"}
+            labels = {identifier: name if list(bill_names.values()).count(name) == 1 else f"{name} ({identifier[:8]})" for identifier, name in bill_names.items()}
+            options = {"Separate obligation": None, **{label: identifier for identifier, label in labels.items()}}
+            debt_rows = [{"name": d["name"], "category": d["category"], "balance": d["balance"],
+                          "minimum_payment": d["minimum_payment"],
+                          "bill_link": "Separate obligation" if d.get("separate_obligation") else labels.get(d.get("schedule_id"))}
+                         for d in policy.get("debts", [])]
             debts = st.data_editor(
-                pd.DataFrame(
-                    policy.get("debts", []),
-                    columns=["name", "category", "balance", "minimum_payment"],
-                ),
-                num_rows="dynamic",
-                hide_index=True,
-                key=key + "-debts",
+                pd.DataFrame(debt_rows, columns=["name", "category", "balance", "minimum_payment", "bill_link"]),
+                num_rows="dynamic", hide_index=True, key=key + "-debts",
+                column_config={"bill_link": st.column_config.SelectboxColumn("Corresponding bill or separate obligation", options=list(options), required=True)},
             )
             contributions = []
             prior = {g["goal_id"]: g["monthly_amount"] for g in policy.get("goals", [])}
@@ -110,7 +115,9 @@ def render_commitments(client, user_id, period, categories, draft_key):
                         "protected_categories": protected,
                         "category_floors": {r["category"]: float(r["minimum"]) for r in floor_rows},
                         "goals": contributions,
-                        "debts": debts.to_dict("records"),
+                        "debts": [{k: v for k, v in {**r, "schedule_id": options[r["bill_link"]],
+                                   "separate_obligation": r["bill_link"] == "Separate obligation"}.items() if k != "bill_link"}
+                                  for r in debts.to_dict("records")],
                     }
                     result = backend_call(lambda: client.save_budget_commitments(user_id, payload))
                     if result:

@@ -69,8 +69,10 @@ def build_planning_context(session, user_id: str, *, today: date | None = None) 
                     "coverage": "unconfirmed",
                 }
             )
+    from app.services.budget_workspace import context
     profile = SQLAlchemyUserRepository(session).get_profile(user_id)
     return {
+        "workspace": context(session, user_id),
         "recorded_spending": history,
         "profile_income": {
             "amount": float(profile.monthly_income),

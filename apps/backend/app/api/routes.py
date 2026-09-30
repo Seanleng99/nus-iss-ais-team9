@@ -44,6 +44,13 @@ from app.services.transaction_capture import handle_transaction_capture
 router = APIRouter()
 
 
+def is_workspace_request(message):
+    return bool(re.search(
+        r"\b(schedule\w*|payday|cash.?flow|commitment\w*|protect.{0,20}categor\w*|goal contribution\w*|reconcil\w*|match.{0,30}(payment|refund|bill)|opening balance|carry.forward|rollover)\b",
+        message, re.IGNORECASE,
+    ))
+
+
 def _current_period_start():  # pragma: no cover - trivial
     return datetime.now(UTC).date().replace(day=1)
 
@@ -92,7 +99,7 @@ async def coach(
     pending_budget = existing_chat.pending_budget if existing_chat else None
     # Budget drafts take precedence over transaction/date parsing for follow-up details.
     captured = (
-        None if pending_budget or "budget" in request.message.casefold()
+        None if pending_budget or "budget" in request.message.casefold() or is_workspace_request(request.message)
         else handle_transaction_capture(session, request)
     )
     if captured is not None:

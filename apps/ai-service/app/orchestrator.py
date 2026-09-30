@@ -477,6 +477,8 @@ class AgentOrchestrator:
             r"\b(realistic|category-level|50/30/20|80/20|zero-based|savings first|custom percentages|what.if|compare.*budget|budget.*scenario|review.*budget|budget.*review|month.end pace|budget.*adjustment|funded alternatives|multi.month|carry.forward|rollover|periodic.*review)\b", state["sanitized_message"], re.IGNORECASE
         ):
             decision.budget_planning = True
+        if re.search(r"\b(bill|payday|cash.?flow|commitment|protected categor|goal contribution|reconcil|match.{0,30}(payment|refund)|opening balance)\w*\b", request.message, re.IGNORECASE):
+            decision.budget_capture = True
         if decision.budget_planning:
             decision.budget_capture = True
         if request.pending_budget is not None:
@@ -1666,7 +1668,7 @@ class AgentOrchestrator:
             raise ModelGatewayError("The orchestrator cannot create that specialist task.")
         if agent == AgentName.BUDGET and state["request"].saved_budget_capacity:
             input_data["saved_budget_capacity"] = state["request"].saved_budget_capacity
-        if agent == AgentName.BUDGET and state.get("budget_planning"):
+        if agent == AgentName.BUDGET and state.get("budget_capture"):
             input_data["planning_context"] = state["request"].budget_context
         return AgentTask(
             agent=agent,

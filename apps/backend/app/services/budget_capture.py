@@ -19,6 +19,7 @@ from app.services.budget_methods import describe_method, method_report
 from app.services.budget_planning import PlanningInputs, describe_affordability
 from app.services.budget_review import build_budget_review, describe_review
 from app.services.budget_scenarios import compare_draft, describe_comparison
+from app.services.budget_workspace import WorkspaceChange
 
 CONFIRM = re.compile(
     r"^(?:yes|yes please|confirm|confirm budget|save budget|yes[, ]+save(?: it| the budget)?|确认|确认保存)[.!。!\s]*$",
@@ -51,7 +52,8 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review", "alternatives", "continuity"] = "plan"
+    action: Literal["plan", "compare", "review", "alternatives", "continuity", "workspace"] = "plan"
+    workspace: WorkspaceChange | None = None
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
@@ -217,15 +219,33 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         return
     if not draft.is_budget_request:
         return
-    if draft.action == "continuity":
-        response.answer = (
-            "For multiple months or carry-forward, open Budget, select the saved source month, and open Plan upcoming months. "
-            "Supply the first target month, number of months, take-home income and savings for each month, and choose a carry-forward rule. "
-            "Review all category limits and any replacements, then explicitly confirm the batch. Carry-forward requires a completed source month. "
-            "For recurring reviews, open Periodic budget reviews and explicitly choose a frequency and first review date. "
-            "These are in-app reminders on Overview and Budget; no external notifications or automatic budget changes. Nothing has been saved from this message."
-        )
-        response.audit["budget_capture"] = "continuity_workspace_handoff"
+    if draft.action in {"workspace", "continuity"}:
+        import json
+        previous_workspace = (chat.pending_budget or {}).get("draft", {}).get("workspace")
+        if draft.workspace and previous_workspace and draft.workspace.operation == previous_workspace.get("operation"):
+            try:
+                previous_values = json.loads(previous_workspace["payload_json"])
+                new_values = json.loads(draft.workspace.payload_json)
+                if isinstance(previous_values, dict) and isinstance(new_values, dict):
+                    draft.workspace.payload_json = json.dumps({**previous_values, **new_values})
+            except (ValueError, TypeError):
+                pass  # Invalid structured data remains subject to authoritative validation.
+        from app.services.budget_workspace import describe_preview, preview_change
+        pending = {"draft": draft.model_dump(mode="json"), "ready": False,
+                   "baseline": None, "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat()}
+        try:
+            if draft.questions:
+                raise ValueError(" ".join(draft.questions))
+            if draft.workspace is None:
+                raise ValueError("Supply the planning operation and its details. For multiple months: source month/year, first target month/year, number of months, actual take-home income, savings, expense coverage and carry rule. You can also use Plan upcoming months in Budget.")
+            pending["workspace_preview"] = preview_change(session, user_id, draft.workspace)
+            pending["ready"] = True
+            response.answer = describe_preview(pending["workspace_preview"])
+        except ValueError as error:
+            response.answer = "Nothing has been saved. " + str(error)
+        chat.pending_budget = pending
+        response.audit["budget_capture"] = "workspace_preview" if pending["ready"] else "needs_input"
+        response.audit["budget_workspace_version"] = "budget-workspace-v1"
         return
     if draft.action == "alternatives":
         from app.services.budget_constraints import AlternativesRequest, build_alternatives
@@ -427,6 +447,23 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                     )
             except ValidationError:
                 answer = "This scenario has invalid or too many categories. Correct the comparison before adopting it. Nothing was saved."
+    elif chat.pending_budget.get("draft", {}).get("action") in {"workspace", "continuity"}:
+        from app.services.budget_workspace import confirm_change
+        if CANCEL.fullmatch(request.message.strip()):
+            chat.pending_budget = None
+            answer = "Planning draft cancelled. Nothing was saved."
+        elif not chat.pending_budget.get("ready"):
+            if request.message.strip().lower() in {"yes", "yes please"}:
+                return None
+            answer = "Complete the missing planning details and review a fresh preview before confirming. Nothing was saved."
+        else:
+            try:
+                confirm_change(session, request.user_id, chat.pending_budget["workspace_preview"])
+                chat.pending_budget = None
+                answer = "Saved your confirmed planning changes. Review them on the Budget page."
+            except ValueError as error:
+                chat.pending_budget = {**chat.pending_budget, "ready": False}
+                answer = "Nothing was saved. " + str(error)
     elif chat.pending_budget.get("comparison") and not CANCEL.fullmatch(request.message.strip()):
         answer = "A comparison cannot be saved. Reply 'use scenario NAME' to choose an unsaved draft first."
     elif chat.pending_budget.get("draft", {}).get("action") == "review" and not CANCEL.fullmatch(

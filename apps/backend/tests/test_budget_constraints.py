@@ -80,10 +80,6 @@ def test_infeasible_plan_exposes_gap_and_maximum_cut(db_session_factory):
 
 def test_scheduled_bills_and_debt_floor_are_not_added_twice(db_session_factory):
     with db_session_factory() as session:
-        setup(
-            session,
-            debts=[{"name": "Loan", "category": "fun", "balance": 5000, "minimum_payment": 650}],
-        )
         write_section(
             session,
             "u",
@@ -94,6 +90,7 @@ def test_scheduled_bills_and_debt_floor_are_not_added_twice(db_session_factory):
                 "confirmed": True,
                 "schedules": [
                     {
+                        "id": "loan-bill",
                         "name": "Loan bill",
                         "category": "fun",
                         "kind": "expense",
@@ -104,6 +101,8 @@ def test_scheduled_bills_and_debt_floor_are_not_added_twice(db_session_factory):
                 ],
             },
         )
+        setup(session, debts=[{"name": "Loan", "category": "fun", "balance": 5000,
+                              "minimum_payment": 650, "schedule_id": "loan-bill"}])
         assert requirements(session, "u", PERIOD)["floors"]["fun"] == 65000
 
 

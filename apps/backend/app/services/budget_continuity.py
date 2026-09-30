@@ -103,7 +103,7 @@ def batch_evidence(session, user_id, request, today):
     )
 
 
-def preview_batch(session, user_id, request, *, today=None):
+def preview_batch(session, user_id, request, *, today=None, persist=True):
     today = today or local_today()
     repo = SQLAlchemyBudgetRepository(session)
     source = repo.get(user_id, request.source_period)
@@ -201,11 +201,12 @@ def preview_batch(session, user_id, request, *, today=None):
             "Saving replaces each listed target plan in full, including its category list and planning settings. No goals, debts, schedules or transactions are changed.",
         ],
     }
-    write_section(session, user_id, "pending_batch", preview)
+    if persist:
+        write_section(session, user_id, "pending_batch", preview)
     return preview
 
 
-def confirm_batch(session, user_id, confirmation, *, today=None):
+def confirm_batch(session, user_id, confirmation, *, today=None, chat_preview=None):
     # Serialize confirmation of the same stored preview; consume it in the same transaction as all plans.
     record = session.scalar(
         select(PlanningPreferencesRecord)
@@ -213,7 +214,7 @@ def confirm_batch(session, user_id, confirmation, *, today=None):
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    pending = (record.data or {}).get("pending_batch") if record else None
+    pending = chat_preview if chat_preview is not None else ((record.data or {}).get("pending_batch") if record else None)
     if not pending or pending["preview_id"] != confirmation.preview_id:
         raise ValueError("Preview not found or already consumed; calculate a fresh preview")
     if not pending["ready"] or datetime.fromisoformat(pending["expires_at"]) < datetime.now(UTC):
@@ -238,7 +239,8 @@ def confirm_batch(session, user_id, confirmation, *, today=None):
     with session.begin_nested():
         for payload in payloads:
             SQLAlchemyBudgetRepository(session).upsert(user_id, payload)
-        write_section(session, user_id, "pending_batch", None)
+        if chat_preview is None:
+            write_section(session, user_id, "pending_batch", None)
     return {"saved": True, "periods": [p.period_start.isoformat() for p in payloads]}
 
 

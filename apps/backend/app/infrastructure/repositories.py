@@ -662,6 +662,8 @@ class SQLAlchemyTransactionRepository:
     def update(
         self, user_id: str, transaction_id: UUID, transaction: TransactionCreate
     ) -> TransactionRecord | None:
+        from app.services.budget_reconciliation import guard_transaction
+        guard_transaction(self.session, user_id, transaction_id)
         record = self.session.scalar(
             select(TransactionRecord).where(
                 TransactionRecord.id == transaction_id,
@@ -682,6 +684,8 @@ class SQLAlchemyTransactionRepository:
         return record
 
     def delete(self, user_id: str, transaction_id: object) -> bool:
+        from app.services.budget_reconciliation import guard_transaction
+        guard_transaction(self.session, user_id, transaction_id)
         record = self.session.scalar(
             select(TransactionRecord).where(
                 TransactionRecord.id == transaction_id,

@@ -284,6 +284,18 @@ class BackendClient:
     def budget_alternatives(self, user_id, payload):
         return self._request("POST", f"/api/users/{user_id}/budget/alternatives", json=payload)
 
+    def get_budget_workspace(self, user_id):
+        return self._request("GET", f"/api/users/{user_id}/budget/workspace")
+
+    def preview_workspace_change(self, user_id, operation, payload):
+        import json
+        return self._request("POST", f"/api/users/{user_id}/budget/workspace/preview",
+                             json={"operation": operation, "payload_json": json.dumps(payload)})
+
+    def confirm_workspace_change(self, user_id, preview_id):
+        return self._request("POST", f"/api/users/{user_id}/budget/workspace/confirm",
+                             json={"preview_id": preview_id, "confirmed": True})
+
     def get_cashflow_settings(self, user_id):
         return self._request("GET", f"/api/users/{user_id}/cashflow/settings")
 
@@ -293,8 +305,8 @@ class BackendClient:
     def get_cashflow(self, user_id, through):
         return self._request("GET", f"/api/users/{user_id}/cashflow", params={"through": through.isoformat()})
 
-    def settle_cashflow(self, user_id, schedule_id, due_on):
-        return self._request("POST", f"/api/users/{user_id}/cashflow/settle", params={"schedule_id": schedule_id, "due_on": due_on.isoformat()})
+    def settle_cashflow(self, user_id, schedule_id, due_on, *, settled=True):
+        return self._request("POST", f"/api/users/{user_id}/cashflow/settle", params={"schedule_id": schedule_id, "due_on": due_on.isoformat(), "settled": settled})
 
     @_trace_operation
     def review_budget(self, user_id: str, period_start: date) -> dict[str, Any]:
