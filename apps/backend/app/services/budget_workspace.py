@@ -82,6 +82,7 @@ def evidence(session, user_id):
 def build_change(session, user_id, change):
     from app.services.budget_constraints import AllocationPolicy, validate_policy
     from app.services.budget_continuity import ContinuityRequest, ReviewPreferences, preview_batch
+    from app.services.budget_edits import apply_edits
     from app.services.budget_reconciliation import (
         MatchRequest,
         UnlinkRequest,
@@ -104,13 +105,13 @@ def build_change(session, user_id, change):
     previous = None
     if op == "cashflow":
         previous = read_section(session, user_id, "cashflow") or {}
-        raw = {**previous, **supplied, "confirmed": True}
+        raw = {**apply_edits(op, previous, supplied), "confirmed": True}
         for key in ("opening_on", "opening_balance", "currency", "schedules"):
             if key not in raw:
                 raise ValueError(
                     f"Please supply {key.replace('_', ' ')} for cash-flow planning (SGD only)"
                 )
-        # Schedule lists are complete replacements and displayed as such; IDs preserve existing identities.
+        # Resolve precise edits against owned settings, then validate the complete result.
         target = validate_settings(
             session, user_id, CashflowSettings.model_validate(raw)
         ).model_dump(mode="json")
@@ -120,7 +121,7 @@ def build_change(session, user_id, change):
         stored = read_section(session, user_id, "constraints:" + supplied["period_start"]) or {}
         previous = stored.get("policy", {})
         target = AllocationPolicy.model_validate(
-            {**previous, **supplied, "confirmed": True}
+            {**apply_edits(op, previous, supplied), "confirmed": True}
         ).model_dump(mode="json")
         validate_policy(session, user_id, AllocationPolicy.model_validate(target))
     elif op == "restore":
@@ -140,8 +141,8 @@ def build_change(session, user_id, change):
         return request.model_dump(mode="json"), compare_tradeoffs(session, user_id, request)
     elif op == "reserves":
         from app.services.budget_reserves import Reserves
-        target = Reserves.model_validate({**supplied, "confirmed": True}).model_dump(mode="json")
         previous = read_section(session, user_id, "reserves")
+        target = Reserves.model_validate({**apply_edits(op, previous, supplied), "confirmed": True}).model_dump(mode="json")
     elif op == "timing":
         from app.services.budget_timing import TimingSettings
         target = TimingSettings.model_validate({**supplied, "confirmed": True}).model_dump(mode="json")
@@ -174,7 +175,7 @@ def build_change(session, user_id, change):
     return target, {
         "previous": previous,
         "proposed": target,
-        "note": "Listed collections replace the previous collection in full. Other top-level settings are preserved. No money is moved or transactions created.",
+        "note": "Explicit edits preserve all other entries and fields. Full collection inputs replace that collection. No money is moved or transactions created.",
     }
 
 

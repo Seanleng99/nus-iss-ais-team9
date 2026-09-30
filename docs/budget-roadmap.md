@@ -34,7 +34,7 @@ User requested completing all remaining improvements, committing each improvemen
 3. Explicit goal/debt trade-off projections — implemented; deterministic rate/fee/repayment and shared-pool tests pass (21 backend tests).
 4. Adaptive reviews and confirmed plan version history/restoration — implemented; full backend suite passed (529 tests), including restoration, stale previews and repeated-overrun evidence.
 5. Income reconciliation, searchable records, match suggestions and explicit refund spending treatment — implemented; 36 backend and two focused frontend tests passed.
-6. Precise conversational collection editing and expanded multi-turn verification.
+6. Precise conversational collection editing and expanded multi-turn verification — implemented; explicit item edits preserve unrelated settings, with clarification/correction/confirmation/cancel/stale regression coverage.
 7. Account balances/transfers, duplicate-aware imports and relational reconciliation storage.
 
 Bank-provider integrations, external notification delivery and unattended automatic rollover were identified as separate extensions in the preceding proposal; this sequence implements the listed planner improvements and account/import foundations. No push/release until the sequence and required checks are complete.
