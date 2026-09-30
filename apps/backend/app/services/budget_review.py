@@ -68,6 +68,8 @@ def build_budget_review(session, user_id: str, period_start: date, *, today: dat
         warnings.append(
             "Recorded savings, emergency fund and investment transfers are excluded from expense totals; these are not added to your savings allocation."
         )
+    if any(item.get("refund_offset") for item in raw):
+        warnings.append("Explicitly matched refunds reduce spending in their recorded month; refund offsets are held constant in pace estimates. Cash-only refunds do not reduce budget spending.")
     rows = []
     for category in sorted(set(limits) | set(spending)):
         evidence = spending.get(

@@ -23,7 +23,7 @@ class WorkspaceChange(BaseModel):
     payload_json: str = Field(default="{}", max_length=30000)
 
 
-def context(session, user_id):
+def context(session, user_id, *, search="", offset=0):
     from app.services.budget_reconciliation import reconciliation_context
 
     record = session.get(PlanningPreferencesRecord, user_id)
@@ -41,7 +41,7 @@ def context(session, user_id):
         ],
         "budget_history": [{"period_start": k.removeprefix("history:"), "id": v["id"], "saved_at": v["saved_at"], "reason": v["reason"]}
                            for k, entries in (record.data if record else {}).items() if k.startswith("history:") for v in entries][-100:],
-        "reconciliation": reconciliation_context(session, user_id),
+        "reconciliation": reconciliation_context(session, user_id, search=search, offset=offset),
     }
 
 
@@ -60,7 +60,7 @@ def evidence(session, user_id):
                 )
             },
             "transactions": [
-                (str(t.id), str(t.occurred_on), str(t.amount), t.currency, t.transaction_type)
+                (str(t.id), str(t.occurred_on), str(t.amount), t.currency, t.transaction_type, t.description, t.category, t.recurring)
                 for t in session.scalars(
                     select(TransactionRecord)
                     .where(TransactionRecord.user_id == user_id)
@@ -365,12 +365,15 @@ def describe_preview(preview):
     elif op == "reconcile":
         effects = {
             "payment": "payment",
+            "income": "income receipt",
             "refund_reopens": "refund that makes the amount payable again",
             "refund_reduces_due": "refund that reduces the bill amount",
         }
         lines.append(
             f"Match {money(target['amount'])} from {safe(details['transaction'])} to {safe(details['bill'])}, due {target['due_on']}, as a {effects[target['effect']]}."
         )
+        if target.get("effect", "").startswith("refund"):
+            lines.append("Budget spending treatment: " + ("reduce spending in the refund record month" if target.get("spending_treatment") == "reduce_expense" else "cash only; keep expense totals unchanged"))
         lines.append(
             f"Remaining bill amount: {money(details['before']['remaining'])} → {money(details['after']['remaining'])}. Transaction amount left unmatched: {money(details['transaction_unallocated'])}."
         )

@@ -296,8 +296,11 @@ class BackendClient:
     def get_budget_timing(self, user_id, period):
         return self._request("GET", f"/api/users/{user_id}/budget/timing", params={"period_start": period.isoformat()})
 
-    def get_budget_workspace(self, user_id):
-        return self._request("GET", f"/api/users/{user_id}/budget/workspace")
+    def get_budget_workspace(self, user_id, *, search="", offset=0):
+        return self._request("GET", f"/api/users/{user_id}/budget/workspace", params={"search":search,"offset":offset})
+
+    def get_match_candidates(self, user_id, transaction_id):
+        return self._request("GET", f"/api/users/{user_id}/cashflow/match-candidates", params={"transaction_id":transaction_id})
 
     def preview_workspace_change(self, user_id, operation, payload):
         import json

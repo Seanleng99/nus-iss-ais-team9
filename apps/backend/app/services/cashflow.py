@@ -112,7 +112,7 @@ def project_cashflow(session, user_id, through, *, today=None):
         change = actual_by_day.get(day, Decimal(0))
         for schedule in config.schedules:
             if occurs(schedule, day) and day not in schedule.settled_dates:
-                remaining = occurrence_balance(schedule, day, allocations)["remaining"] if schedule.kind == "expense" else schedule.amount
+                remaining = occurrence_balance(schedule, day, allocations)["remaining"]
                 if remaining == 0:
                     continue
                 signed = Decimal(str(remaining)) * (1 if schedule.kind == "income" else -1)

@@ -4,12 +4,12 @@ Stored in the owned planning workspace, so existing export/erasure covers links 
 All amounts are validated in cents; candidates never become links automatically.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.infrastructure.models import PlanningPreferencesRecord, TransactionRecord
 from app.services.budget_constraints import category, cents
@@ -23,7 +23,8 @@ class MatchRequest(BaseModel):
     schedule_id: str = Field(min_length=1, max_length=64)
     due_on: date
     amount: float = Field(gt=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
-    effect: Literal["payment", "refund_reopens", "refund_reduces_due"]
+    effect: Literal["payment", "income", "refund_reopens", "refund_reduces_due"]
+    spending_treatment: Literal["cash_only", "reduce_expense"] | None = None
 
 
 class UnlinkRequest(BaseModel):
@@ -39,8 +40,8 @@ def occurrence_balance(schedule, due_on, allocations):
     rows = [
         r for r in allocations if r["schedule_id"] == schedule.id and r["due_on"] == str(due_on)
     ]
-    paid = sum(cents(r["amount"]) for r in rows if r["effect"] == "payment")
-    refunds = sum(cents(r["amount"]) for r in rows if r["effect"] != "payment")
+    paid = sum(cents(r["amount"]) for r in rows if r["effect"] in {"payment", "income"})
+    refunds = sum(cents(r["amount"]) for r in rows if r["effect"].startswith("refund"))
     reductions = sum(cents(r["amount"]) for r in rows if r["effect"] == "refund_reduces_due")
     due = cents(schedule.amount) - reductions
     net_paid = paid - refunds
@@ -76,14 +77,19 @@ def validate_match(session, user_id, request):
     schedule = (
         next((s for s in config.schedules if s.id == request.schedule_id), None) if config else None
     )
-    if not schedule or schedule.kind != "expense" or not occurs(schedule, request.due_on):
+    wanted_kind = "income" if request.effect == "income" else "expense"
+    if not schedule or schedule.kind != wanted_kind or not occurs(schedule, request.due_on):
         raise ValueError("Choose an owned bill and a valid occurrence due date")
     if request.due_on in schedule.settled_dates:
         raise ValueError(
             "This occurrence was manually settled. Remove that manual settlement before matching records"
         )
     row = session.get(TransactionRecord, request.transaction_id)
-    expected = "expense" if request.effect == "payment" else "refund"
+    expected = "expense" if request.effect == "payment" else "income" if request.effect == "income" else "refund"
+    if expected == "refund" and request.spending_treatment is None:
+        raise ValueError("Choose whether this refund affects cash only or reduces category spending in the refund's recorded month")
+    if expected != "refund" and request.spending_treatment == "reduce_expense":
+        raise ValueError("Only a recorded refund can reduce budget spending")
     if (
         not row
         or row.user_id != user_id
@@ -91,7 +97,7 @@ def validate_match(session, user_id, request):
         or row.transaction_type != expected
     ):
         raise ValueError(
-            "Select an owned SGD expense for payment, or an owned SGD refund for a refund effect"
+            "Select an owned SGD expense for payment, income for a receipt, or refund for a refund effect"
         )
     if row.occurred_on > local_today():
         raise ValueError("Future-dated records cannot settle a bill before the recorded date")
@@ -186,37 +192,69 @@ def save_settings(session, user_id, config):
     return write_section(session, user_id, "cashflow", config.model_dump(mode="json"))
 
 
-def reconciliation_context(session, user_id):
-    rows = list(
-        session.scalars(
-            select(TransactionRecord)
-            .where(
-                TransactionRecord.user_id == user_id,
-                TransactionRecord.currency == "SGD",
-                TransactionRecord.transaction_type.in_(["expense", "refund"]),
-            )
-            .order_by(TransactionRecord.occurred_on.desc(), TransactionRecord.id)
-            .limit(100)
-        )
-    )
+def reconciliation_context(session, user_id, *, search="", offset=0):
+    query = select(TransactionRecord).where(TransactionRecord.user_id == user_id,
+        TransactionRecord.currency == "SGD", TransactionRecord.transaction_type.in_(["expense", "refund", "income"]))
+    if search:
+        query = query.where(TransactionRecord.description.icontains(search, autoescape=True))
+    total = session.scalar(select(func.count()).select_from(query.subquery()))
+    rows = list(session.scalars(query.order_by(TransactionRecord.occurred_on.desc(), TransactionRecord.id).offset(offset).limit(100)))
     allocated = links(session, user_id)
-    return {
-        "links": allocated,
-        "transactions": [
-            {
-                "id": str(r.id),
-                "description": r.description,
-                "category": r.category,
-                "occurred_on": str(r.occurred_on),
-                "type": r.transaction_type,
-                "amount": float(r.amount),
-                "unallocated": (
-                    cents(r.amount)
-                    - sum(cents(a["amount"]) for a in allocated if a["transaction_id"] == str(r.id))
-                )
-                / 100,
-            }
-            for r in rows
-        ],
-        "coverage": "Latest 100 SGD expense/refund records; select explicitly, never infer a match.",
-    }
+    return {"links": allocated, "offset": offset, "total": total, "has_more": offset + len(rows) < total,
+        "transactions": [{"id":str(r.id), "description":r.description, "category":r.category,
+            "occurred_on":str(r.occurred_on), "type":r.transaction_type, "amount":float(r.amount),
+            "unallocated":(cents(r.amount)-sum(cents(a["amount"]) for a in allocated if a["transaction_id"]==str(r.id)))/100} for r in rows],
+        "coverage":"Owned SGD expense/refund/income records, 100 per page. Search or page for older records. Suggestions require explicit selection and confirmation."}
+
+
+def match_candidates(session, user_id, transaction_id):
+    row=session.get(TransactionRecord,transaction_id)
+    if not row or row.user_id != user_id or row.currency != "SGD" or row.transaction_type not in {"expense","income","refund"}:
+        raise ValueError("Select an owned SGD expense, income or refund record")
+    raw=read_section(session,user_id,"cashflow")
+    if not raw:
+        return {"candidates":[],"read_only":True}
+    config=CashflowSettings.model_validate(raw)
+    allocated=links(session,user_id)
+    available=cents(row.amount)-sum(cents(r["amount"]) for r in allocated if r["transaction_id"]==str(row.id))
+    candidates=[]
+    for schedule in config.schedules:
+        if schedule.kind != ("income" if row.transaction_type=="income" else "expense") or category(schedule.category)!=category(row.category):
+            continue
+        for offset in range(-14,15):
+            try:
+                day=row.occurred_on+timedelta(days=offset)
+            except OverflowError:
+                continue
+            if not occurs(schedule,day) or day in schedule.settled_dates:
+                continue
+            balance=occurrence_balance(schedule,day,allocated)
+            cap=cents(balance["paid"] if row.transaction_type=="refund" else balance["remaining"])
+            amount=min(available,cap)
+            if amount<=0:
+                continue
+            candidates.append({"schedule_id":schedule.id,"name":schedule.name,"due_on":str(day),"suggested_amount":amount/100,
+                               "date_distance":abs(offset),"reason":"Same category and occurrence within 14 days; this is not proof of a match."})
+    candidates.sort(key=lambda c:(c["date_distance"],c["name"],c["due_on"]))
+    return {"candidates":candidates[:100],"read_only":True,"warning":"No match is selected or applied automatically; confirm the exact record, occurrence, amount and refund choices."}
+
+
+def refund_offsets(session, user_id, period, through=None):
+    from app.services.budget_continuity import add_months
+    entries=[r for r in links(session,user_id) if r.get("spending_treatment")=="reduce_expense" and r["effect"].startswith("refund")]
+    if not entries:
+        return {}
+    raw=read_section(session,user_id,"cashflow")
+    schedules={s.id:s for s in CashflowSettings.model_validate(raw).schedules} if raw else {}
+    query=select(TransactionRecord).where(TransactionRecord.user_id==user_id,TransactionRecord.currency=="SGD",
+        TransactionRecord.transaction_type=="refund",TransactionRecord.id.in_([UUID(r["transaction_id"]) for r in entries]),
+        TransactionRecord.occurred_on>=period,TransactionRecord.occurred_on<add_months(period,1))
+    if through is not None:
+        query=query.where(TransactionRecord.occurred_on<=through)
+    eligible={str(r.id) for r in session.scalars(query)}
+    amounts={}
+    for r in entries:
+        if r["transaction_id"] in eligible and r["schedule_id"] in schedules:
+            name=category(schedules[r["schedule_id"]].category)
+            amounts[name]=amounts.get(name,0)+cents(r["amount"])
+    return amounts

@@ -56,6 +56,9 @@ def assess_timing(session, user_id, period, categories, planning, *, today=None)
             used[name] = used.get(name, 0) + cents(t.amount)
         elif t.transaction_type == "income":
             income += cents(t.amount)
+    from app.services.budget_reconciliation import refund_offsets
+    for name, amount in refund_offsets(session, user_id, period, min(today, last)).items():
+        used[name] = used.get(name, 0) - amount
     upcoming = []
     for day in base["days"]:
         if day["date"] < str(period):

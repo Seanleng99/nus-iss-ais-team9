@@ -862,7 +862,12 @@ class SQLAlchemyBudgetRepository:
         )
         if currency is not None:
             query = query.where(TransactionRecord.currency == currency)
-        return {category: float(amount) for category, amount in self.session.execute(query)}
+        totals = {category: float(amount) for category, amount in self.session.execute(query)}
+        if currency in {None, "SGD"}:
+            from app.services.budget_reconciliation import refund_offsets
+            for name, amount in refund_offsets(self.session, user_id, period_start).items():
+                totals[name] = round(totals.get(name, 0) - amount / 100, 2)
+        return totals
 
     def review_spending(self, user_id: str, period_start: date, through: date) -> list[dict]:
         """Owned SGD aggregates through a fixed cutoff; no transaction descriptions leave storage."""
@@ -878,9 +883,13 @@ class SQLAlchemyBudgetRepository:
             TransactionRecord.occurred_on < next_month(period_start),
             TransactionRecord.occurred_on <= through,
         ).group_by(TransactionRecord.category, TransactionRecord.recurring)
-        return [{"category": category, "recurring": recurring, "amount": str(amount),
+        rows = [{"category": category, "recurring": recurring, "amount": str(amount),
                  "count": count, "activity_days": days}
                 for category, recurring, amount, count, days in self.session.execute(query)]
+        from app.services.budget_reconciliation import refund_offsets
+        rows.extend({"category": name, "recurring": True, "amount": str(-amount/100), "count": 0, "activity_days": 0, "refund_offset": True}
+                    for name, amount in refund_offsets(self.session, user_id, period_start, through).items())
+        return rows
 
     def transaction_count(self, user_id: str, period_start: date) -> int:
         query = select(func.count(TransactionRecord.id)).where(

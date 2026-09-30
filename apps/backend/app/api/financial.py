@@ -1026,8 +1026,8 @@ def funded_alternatives(user_id: UserId, request: AlternativesRequest, session: 
 
 
 @router.get("/users/{user_id}/budget/workspace")
-def get_planning_workspace(user_id: UserId, session: Annotated[Session, Depends(get_db_session)]):
-    return context(session, user_id)
+def get_planning_workspace(user_id: UserId, session: Annotated[Session, Depends(get_db_session)], search: str = Query(default="", max_length=100), offset: int = Query(default=0, ge=0)):
+    return context(session, user_id, search=search, offset=offset)
 
 
 @router.post("/users/{user_id}/budget/workspace/preview")
@@ -1081,5 +1081,14 @@ def budget_history(user_id: UserId, period_start: date, session: Annotated[Sessi
 def adaptive_budget_review(user_id: UserId, payload: AdaptiveRequest, session: Annotated[Session, Depends(get_db_session)]):
     try:
         return adaptive_review(session, user_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/users/{user_id}/cashflow/match-candidates")
+def cashflow_match_candidates(user_id: UserId, transaction_id: UUID, session: Annotated[Session, Depends(get_db_session)]):
+    from app.services.budget_reconciliation import match_candidates
+    try:
+        return match_candidates(session, user_id, transaction_id)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

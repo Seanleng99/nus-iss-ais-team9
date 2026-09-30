@@ -69,6 +69,7 @@ def match(row, amount=600, **updates):
         schedule_id="rent",
         due_on="2026-09-05",
         amount=amount,
+        spending_treatment="cash_only",
         effect=updates.pop("effect", "payment"),
         **updates,
     )
