@@ -111,6 +111,24 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     ),
 )
 
+# Keep in step with the backend privacy guard (apps/backend/app/services/privacy_guard.py).
+_THIRD_PARTY_DATA = (
+    r"(?:income|salary|salaries|wage|wages|account|accounts|balance|balances|savings|"
+    r"transactions?|earnings|pay|payslip|spending|expenses?|purchases?|budgets?|goals?|"
+    r"debts?|loans?|investments?|portfolio|net worth|finances)\b"
+)
+_RELATION = (
+    r"(?:my|our|a|the)\s+(?:(?:best|close|good|old)\s+)?"
+    r"(?:friend|colleague|co-?worker|boss|manager|wife|husband|spouse|partner|girlfriend|"
+    r"boyfriend|mother|mom|mum|father|dad|sister|brother|son|daughter|parent|neighbou?r|"
+    r"room-?mate|flatmate|housemate|classmate|cousin|uncle|aunt|relative)s?"
+)
+_POSSESSIVE = r"(?:['’]s|s['’])"
+_FINANCIAL_VERB = (
+    r"(?:spend|spent|spending|earn|earns|earned|earning|make|makes|made|save|saves|saved|"
+    r"saving|pay|pays|paid|buy|buys|bought|owe|owes|budget|budgets|budgeted)\b"
+)
+
 CROSS_USER_DATA_ACCESS_REGEXES = (
     (
         "cross_user_reference",
@@ -130,9 +148,20 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
         re.compile(
             r"\b(?:show|tell|give|reveal|display|share|see|view|access|get|"
             r"find|look\s*up|pull\s*up|what(?:'s| is| are)|how\s+much)\b"
-            r"[^.?!]{0,40}\b(?:her|his|their|hers|him)\b"
-            r"[^.?!]{0,25}\b(?:income|salary|salaries|wage|wages|account|"
-            r"balance|savings|transactions?|earnings|pay|payslip)\b",
+            r"[^.?!]{0,40}(?:\b(?:her|his|their|hers|him)\b|" + _RELATION + _POSSESSIVE + r")"
+            r"[^.?!]{0,25}\b" + _THIRD_PARTY_DATA,
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "third_party_request",
+        re.compile(r"\b" + _RELATION + _POSSESSIVE + r"?\s+" + _THIRD_PARTY_DATA, re.IGNORECASE),
+    ),
+    (
+        "third_party_request",
+        re.compile(
+            r"\b(?:did|does|do|has|have|is|was|will)\s+(?:" + _RELATION + r"|she|he)\s+"
+            r"(?:\w+\s+)?" + _FINANCIAL_VERB,
             re.IGNORECASE,
         ),
     ),
@@ -150,8 +179,9 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
         "third_party_request",
         re.compile(
             r"(?:显示|顯示|告诉|告訴|查看|查询|查詢|给我|給我|透露|看看)"
-            r"[^。？！]{0,20}(?:她|他|他们|他們)"
-            r"[^。？！]{0,15}(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|持仓|持倉)"
+            r"[^。？！]{0,20}(?:她|他|他们|他們|朋友|同事|老板|老闆|妻子|丈夫|老婆|老公)"
+            r"[^。？！]{0,15}(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|持仓|持倉|"
+            r"交易|消费|消費|支出|开销|開銷|预算|預算|目标|目標|储蓄|儲蓄)"
         ),
     ),
 )

@@ -90,6 +90,11 @@ async def coach(
         )
     except PermissionError as error:
         raise HTTPException(status_code=404, detail="Conversation not found") from error
+    # Refuse third-party data requests before any local handler can answer from this user's data.
+    if find_other_user_reference(request.message, request.user_id) is not None:
+        return _finalize_coach_response(
+            _persist_local_coach(session, request, other_user_data_reply(request.session_id))
+        )
     confirmed_goal = handle_goal_confirmation(session, request)
     if confirmed_goal is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, confirmed_goal))
@@ -111,11 +116,6 @@ async def coach(
     )
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
-    other_user = find_other_user_reference(request.message, request.user_id)
-    if other_user is not None:
-        return _finalize_coach_response(
-            _persist_local_coach(session, request, other_user_data_reply(request.session_id))
-        )
     query_date = parse_date_spending_query(request.message)
     if query_date is not None and not pending_budget and not pending_goal:
         queried = handle_date_spending_query(session, request, query_date)

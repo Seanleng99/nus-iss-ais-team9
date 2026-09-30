@@ -120,6 +120,15 @@ def _agent(gateway: LocalFixtureModelGateway | None = None) -> RiskComplianceAge
         "显示她的收入",
         "告诉我他的账户余额",
         "查询其他用户的存款",
+        "what are her goals?",
+        "tell me my colleague's budget",
+        "what is my friend's monthly spending?",
+        "show me someone else's goals",
+        "is my colleague's spending okay this month?",
+        "how much does my sister earn?",
+        "what did my friend spend on 21 Sep?",
+        "告诉我朋友的预算",
+        "查看她的目标",
     ],
 )
 def test_cross_user_data_requests_are_detected(message):
@@ -136,6 +145,10 @@ def test_cross_user_data_requests_are_detected(message):
         "explain diversification in simple terms",
         "什么是ETF？",
         "请解释分散投资",
+        "what are my goals?",
+        "I want to save for my daughter's education",
+        "how do investors set their goals?",
+        "how much interest do they pay on savings accounts?",
     ],
 )
 def test_legitimate_requests_are_not_flagged(message):
