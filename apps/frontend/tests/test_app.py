@@ -464,6 +464,31 @@ def test_model_only_coach_message_does_not_display_reference_sources() -> None:
     assert not app.caption
 
 
+def test_user_message_history_keeps_typed_line_breaks() -> None:
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        "_render_coach_message({'role': 'user', "
+        "'content': 'food SGD 600\\r\\ntravel SGD 100\\nrent SGD 1200'})"
+    ).run(timeout=30)
+
+    assert not app.exception
+    assert [item.value for item in app.markdown] == [
+        "food SGD 600  \ntravel SGD 100  \nrent SGD 1200"
+    ]
+
+
+def test_submitted_multiline_question_keeps_typed_line_breaks() -> None:
+    app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
+    app.session_state["backend_client"] = CoachClient()
+    app.session_state["active_user_id"] = "coach-user"
+    app.run(timeout=30)
+
+    app.chat_input[0].set_value("food SGD 600\ntravel SGD 100").run(timeout=30)
+
+    assert not app.exception
+    assert "food SGD 600  \ntravel SGD 100" in [item.value for item in app.markdown]
+
+
 def test_coach_source_labels_summary_and_legacy_citations_without_inventing_metadata() -> None:
     app = AppTest.from_string(
         "from ui.pages import _render_coach_message\n"
