@@ -38,6 +38,10 @@ from app.services.budget_capacity import build_capacity_context
 from app.services.budget_capture import handle_budget_confirmation, stage_budget_draft
 from app.services.budget_planning import build_planning_context
 from app.services.privacy_guard import find_other_user_reference, other_user_data_reply
+from app.services.recurring_forecast import (
+    handle_recurring_forecast_query,
+    parse_recurring_forecast_query,
+)
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
 
@@ -106,6 +110,9 @@ async def coach(
     if query_date is not None and not pending_budget:
         queried = handle_date_spending_query(session, request, query_date)
         return _finalize_coach_response(_persist_local_coach(session, request, queried))
+    if parse_recurring_forecast_query(request.message):
+        forecast = handle_recurring_forecast_query(session, request.user_id, request.session_id)
+        return _finalize_coach_response(_persist_local_coach(session, request, forecast))
     if not pending_budget and parse_budget_status_query(request.message):
         alert_reply = _budget_alert_reply(session, request)
         return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
