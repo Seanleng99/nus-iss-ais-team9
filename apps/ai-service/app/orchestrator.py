@@ -94,6 +94,7 @@ SAFE_WORKFLOW_DETAIL_KEYS = {
     "attempt",
     "attempts",
     "blocked",
+    "block_reasons",
     "capabilities",
     "capability",
     "corpus_version",
@@ -1435,6 +1436,7 @@ class AgentOrchestrator:
                 AgentName.RISK_COMPLIANCE.value,
                 details={
                     "blocked": result.blocked,
+                    "block_reasons": result.data.get("block_reasons", []),
                     "policy_note_count": len(result.policy_notes),
                     "policy_source_count": len(result.data.get("policy_sources", [])),
                     "policy_corpus_version": result.data.get("policy_corpus_version"),
