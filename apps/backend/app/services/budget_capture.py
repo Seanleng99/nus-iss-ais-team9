@@ -239,7 +239,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
             if draft.workspace is None:
                 raise ValueError("Supply the planning operation and its details. For multiple months: source month/year, first target month/year, number of months, actual take-home income, savings, expense coverage and carry rule. You can also use Plan upcoming months in Budget.")
             pending["workspace_preview"] = preview_change(session, user_id, draft.workspace)
-            pending["ready"] = True
+            pending["ready"] = not pending["workspace_preview"].get("read_only", False)
             response.answer = describe_preview(pending["workspace_preview"])
         except ValueError as error:
             response.answer = "Nothing has been saved. " + str(error)

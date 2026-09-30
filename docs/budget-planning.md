@@ -290,3 +290,12 @@ Multi-month previews accept explicit `month_inputs` with month, take-home income
 **Variable income and irregular costs** compares user-entered low/expected/high take-home amounts with the saved limits and savings, without predicting income probabilities. Each option shows the funding gap and conditional cash timing; adoption only creates a draft requiring actual-income confirmation.
 
 Irregular-cost reserves contain user-entered target, current reserved balance, chosen monthly contribution, start month and due date. The backend reports a rounded-up required monthly amount and any projected gap. Contributions share the savings pool with linked goals and are enforced by budget-save constraints, including months without a separate commitments policy. There is no automatic contribution, inferred account balance, or interest assumption. Deadline estimates include a contribution in the due month before the due date. The reserve list is previewed and confirmed via Coach or Budget; it can be revised without moving money.
+
+
+## Debt and goal trade-off illustrations
+
+Budget and Coach `debt_compare` accept explicit nominal annual interest rates and fixed monthly fees for every saved debt, a 1–360 month horizon, a choice about retaining paid-off minimums in the repayment pool, and up to three allocation cases. Each case specifies savings and extra debt payments; optional owned goal contribution overrides allow comparing goal completion dates. The backend compares highest-interest-first and smallest-balance-first repayment orders after making minimum payments, caps payments at outstanding balances, and reports interest, fees, remaining debt, payoff months and goal timelines.
+
+Every case checks expense limits + savings + extra repayment against confirmed take-home income, and checks goals + irregular-cost reserves against the same savings pool. Unfunded cases are explicitly identified. Changes that conflict with saved commitments are listed. Comparisons cannot be confirmed as writes: revising commitments or a budget requires a separate explicit preview. Actual goal/debt balances are never changed by a projection.
+
+Interest is nominal APR/12 rounded to cents each month, followed by end-month payments; fixed monthly fees apply only to active debts. There are no assumed lender-specific penalties, daily compounding, new borrowing or investment returns. Users must supply terms and choose the illustration assumptions. Within-month cash availability remains a separate timing assessment.

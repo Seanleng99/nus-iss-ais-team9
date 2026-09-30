@@ -17,6 +17,7 @@ from ui.budget_income import render_income_and_reserves
 from ui.budget_methods import METHODS, render_method_explorer
 from ui.budget_review import render_budget_review
 from ui.budget_timing import render_timing, render_timing_summary
+from ui.budget_tradeoffs import render_tradeoffs
 from ui.cashflow import render_cashflow
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
@@ -1010,6 +1011,7 @@ def budget_page() -> None:
         render_commitments(client, user_id, period_start, values, draft_key)
         render_timing(client, user_id, period_start)
         render_income_and_reserves(client, user_id, period_start, draft_key)
+        render_tradeoffs(client, user_id, period_start)
         render_continuity(client, user_id, period_start)
         render_review_preferences(client, user_id)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):

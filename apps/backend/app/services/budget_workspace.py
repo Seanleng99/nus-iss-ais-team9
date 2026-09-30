@@ -19,7 +19,7 @@ from app.services.financial_workspace import lock_workspace, read_section, write
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -121,6 +121,10 @@ def build_change(session, user_id, change):
             {**previous, **supplied, "confirmed": True}
         ).model_dump(mode="json")
         validate_policy(session, user_id, AllocationPolicy.model_validate(target))
+    elif op == "debt_compare":
+        from app.services.budget_tradeoffs import TradeoffRequest, compare_tradeoffs
+        request = TradeoffRequest.model_validate(supplied)
+        return request.model_dump(mode="json"), compare_tradeoffs(session, user_id, request)
     elif op == "reserves":
         from app.services.budget_reserves import Reserves
         target = Reserves.model_validate({**supplied, "confirmed": True}).model_dump(mode="json")
@@ -174,6 +178,7 @@ def preview_change(session, user_id, change):
     return {
         "preview_id": str(uuid4()),
         "operation": change.operation,
+        "read_only": change.operation == "debt_compare",
         "target": target,
         "details": details,
         "labels": context(session, user_id),
@@ -207,6 +212,8 @@ def confirm_change(session, user_id, pending):
             "This preview expired or its financial records/settings changed. Request a fresh preview before confirming"
         )
     op, target = pending["operation"], pending["target"]
+    if op == "debt_compare":
+        raise ValueError("A debt/goal comparison cannot be saved; explicitly revise the relevant commitments and budget through a fresh preview")
     if op == "cashflow":
         return save_settings(session, user_id, CashflowSettings.model_validate(target))
     if op == "commitments":
@@ -248,6 +255,9 @@ def describe_preview(preview):
         return f"SGD {value:,.2f}"
 
     op, target, details = preview["operation"], preview["target"], preview["details"]
+    if op == "debt_compare":
+        from app.services.budget_tradeoffs import describe_tradeoffs
+        return describe_tradeoffs(details)
     owned = preview["labels"]
     bills = {
         s["id"]: s["name"] for s in (owned["settings"].get("cashflow") or {}).get("schedules", [])
