@@ -60,6 +60,20 @@ Stage two adds selectable flexible, 50/30/20, 80/20, zero-based, savings-first a
 
 Stage three adds on-demand recorded-spending reviews, clearly labeled month-end pace illustrations when records are sufficient, and adjustment proposals for overspent or unbudgeted categories. Reviews use owned SGD records through today, preserve savings and other commitments, and require fresh evidence plus user confirmation before an adjustment is saved. Ask “Review my budget for September 2026” or use Budget’s review panel.
 
+## Goal changes in Coach
+
+Coach can create, edit and delete saved goals through the Goal Strategy Agent. For example:
+
+- "Create a goal named Emergency fund, target SGD 12,000, currently saved SGD 1,000, over 12 months."
+- "Update my Emergency fund goal target to SGD 15,000."
+- "Delete my Emergency fund goal."
+
+Coach asks for missing information and previews the exact operation. Edits show before and after values; deletions show the record being removed. Reply `confirm goal` to apply the preview, `cancel goal` to discard it, or provide corrections for a new preview. Generic `yes` does not execute a goal change. Each request handles one goal. Duplicate names require an exact goal ID from the clarification choices. Currency changes require a separate goal rather than an assumed conversion.
+
+Drafts are owned by the profile and conversation. Expired previews (30 minutes), intervening turns and changed goal records require a fresh preview and confirmation. Goal changes and chat persistence commit together. Apply migration `20260930_0013` with `alembic upgrade head` before running the backend. Local Compose runs migrations automatically.
+
+The offline model fixture uses explicit fields, for example: `Create goal; name: Emergency fund; currency: SGD; target_amount: 12000; current_amount: 1000; target_months: 12`. Edit/delete fixtures use `goal_name: Emergency fund` and any changed fields. Natural-language extraction uses the live model and the separately versioned `goal-capture-v1` contract.
+
 ## Agents
 
 - Spending Agent: spending summaries, patterns, and anomaly explanations.

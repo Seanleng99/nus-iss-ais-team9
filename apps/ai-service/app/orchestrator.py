@@ -23,6 +23,7 @@ from app.agents.education_access import (
     education_topics,
     should_request_education_context,
 )
+from app.agents.goal_capture import goal_change_request
 from app.agents.goal_strategy import GoalStrategyAgent
 from app.agents.investment_education import InvestmentEducationAgent
 from app.agents.risk_compliance import (
@@ -94,6 +95,7 @@ SAFE_WORKFLOW_DETAIL_KEYS = {
     "attempt",
     "attempts",
     "blocked",
+    "block_reasons",
     "capabilities",
     "capability",
     "corpus_version",
@@ -184,6 +186,7 @@ class OrchestratorState(TypedDict, total=False):
     selected_agents: list[AgentName]
     routing_rationale: list[str]
     education_topics: list[str]
+    goal_capture: bool
     budget_capture: bool
     budget_planning: bool
     tasks: dict[str, AgentTask]
@@ -384,6 +387,7 @@ class AgentOrchestrator:
                 "message": state["sanitized_message"],
                 "conversation_context": [item.model_dump() for item in request.conversation_context],
                 "requested_agents": None,
+                "pending_goal": request.pending_goal,
                 "pending_budget": request.pending_budget,
                 "snapshot_features": {
                     "has_monthly_income": request.snapshot.monthly_income is not None,
@@ -408,6 +412,7 @@ class AgentOrchestrator:
                 response_type=RouterDecision,
                 system_prompt=(
                     self.prompts.get("router")
+                    + "\nSet goal_capture=true and select goal_strategy for explicit requests to create, edit, rename or delete a saved savings goal, or details continuing pending_goal. Analysis alone is not a goal change. Unrelated questions do not continue drafts."
                     + "\nSet budget_capture=true and include budget for requests to set, add, "
                     "record or change category budget limits, including custom categories, "
                     "or user replies supplying details for pending_budget. Capture all categories. "
@@ -469,6 +474,9 @@ class AgentOrchestrator:
                     if response_language == "Chinese"
                     else "The recognized education topic requires a specialist with approved source access."
                 )
+        decision.goal_capture = decision.goal_capture or goal_change_request(state["sanitized_message"]) or request.pending_goal is not None
+        if decision.goal_capture and AgentName.GOAL_STRATEGY not in decision.selected_agents:
+            decision.selected_agents.append(AgentName.GOAL_STRATEGY)
         # Pending drafts are backend-owned context, never public client confirmation.
         decision.budget_planning = decision.budget_planning or bool(
             (request.pending_budget or {}).get("planning")
@@ -503,6 +511,7 @@ class AgentOrchestrator:
             "selected_agents": decision.selected_agents,
             "routing_rationale": decision.rationale,
             "education_topics": decision.education_topics,
+            "goal_capture": decision.goal_capture,
             "budget_capture": decision.budget_capture,
             "budget_planning": decision.budget_planning,
             "audit_events": [*state.get("audit_events", []), event],
@@ -1437,6 +1446,7 @@ class AgentOrchestrator:
                 AgentName.RISK_COMPLIANCE.value,
                 details={
                     "blocked": result.blocked,
+                    "block_reasons": result.data.get("block_reasons", []),
                     "policy_note_count": len(result.policy_notes),
                     "policy_source_count": len(result.data.get("policy_sources", [])),
                     "policy_corpus_version": result.data.get("policy_corpus_version"),
@@ -1675,6 +1685,8 @@ class AgentOrchestrator:
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
             context_features={
+                "goal_capture": state.get("goal_capture", False) and agent == AgentName.GOAL_STRATEGY,
+                "pending_goal": state["request"].pending_goal if agent == AgentName.GOAL_STRATEGY else None,
                 "budget_capture": state.get("budget_capture", False) and agent == AgentName.BUDGET,
                 "budget_planning": state.get("budget_planning", False) and agent == AgentName.BUDGET,
                 "pending_budget": state["request"].pending_budget if agent == AgentName.BUDGET else None,

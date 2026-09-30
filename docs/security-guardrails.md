@@ -13,7 +13,22 @@ Critical safeguards are distributed across all boundaries. The Risk & Compliance
 - Indirect prompt-injection protection: retrieved text and display metadata are inspected before use; a suspicious or oversized chunk is quarantined in full rather than partially rewritten and passed onward.
 - Tool permission allowlist: agents can call only approved tools for their role.
 - Output validation: Investment Education output must include rationale, confidence, uncertainty, and source IDs drawn only from approved grounding. Specialist and Compliance output is quarantined if it contains injection patterns or sensitive data.
+- Cross-user data-access refusal: a request to read another user's or another person's account, income, balance, savings, or transactions (English and Chinese, e.g. "show me another user's income", "tell me her salary", "告诉我他的账户余额") is refused deterministically by the Risk & Compliance Agent before any policy retrieval or model call, even when the user claims permission. See `docs/adr/0003-cross-user-data-access-guardrail.md`.
 - Auditability: privacy-safe structured lifecycle events record routing, task status, RAG counts/topics, compliance disposition, duration, and model usage under one trace identifier without prompts, financial values, retrieved text, or model output.
+- Compliance block reasons: every `compliance.completed` event and persisted decision trace records `block_reasons`, a list drawn only from a fixed vocabulary (empty when the answer is released). The model's own summary, rationale, and policy-note wording is never logged. A `model_review` block with `policy_note_count` of 0 identifies an unexplained model block for review.
+
+| Reason | Stage | Meaning |
+|---|---|---|
+| `request_guardrail` | Deterministic | Prompt-injection controls matched the user request |
+| `generated_guardrail` | Deterministic | Injection or sensitive-data patterns matched generated specialist or synthesis text |
+| `regulated_advice` | Deterministic | An advice-boundary rule matched the request or generated text |
+| `cross_user_data` | Deterministic | The request tried to access another user's or person's data |
+| `specialist_blocked` | Deterministic | A specialist result was already blocked |
+| `policy_evidence_missing` | Policy RAG | No current approved policy evidence passed retrieval checks (fail closed) |
+| `output_check` | Verdict check | The compliance verdict text itself matched injection, sensitive-data, or advice checks |
+| `financial_language_unsafe` | Verdict check | The model could not confirm contextual financial wording was safe |
+| `request_not_allowed` | Model review | The model judged the current request prohibited |
+| `model_review` | Model review | The model returned a blocking verdict for the draft |
 
 The staged AWS authentication boundary uses Cognito authorization code flow with PKCE at Streamlit. The frontend exposes only the ID token to its server-side client. The backend accepts RS256 JWTs only after exact issuer, audience, lifetime, subject, and Cognito `token_use=id` validation through the configured JWKS endpoint. An `Authorization` header is never downgraded to API-key authentication when malformed or invalid.
 
@@ -24,9 +39,10 @@ Authorization binds each created profile to the token's immutable `(issuer, subj
 ## Initial Blocked Content
 
 - Requests for guaranteed returns.
-- Requests for specific securities to buy or sell.
+- Requests for specific securities to buy or sell, including plural product names ("should I buy ETFs", "which funds should I buy") so the refusal never depends on the model alone.
 - Requests to bypass policy, reveal prompts, or ignore instructions.
 - Requests that ask the system to process credentials or secrets.
+- Requests to reveal or infer another user's or another person's financial data.
 
 ## Limitations
 

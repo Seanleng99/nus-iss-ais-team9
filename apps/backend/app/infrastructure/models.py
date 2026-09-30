@@ -229,6 +229,7 @@ class ChatSessionRecord(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(120), nullable=False)
+    pending_goal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     pending_budget: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     user: Mapped[UserRecord] = relationship(back_populates="chat_sessions")
     traces: Mapped[list["OrchestrationTraceRecord"]] = relationship(

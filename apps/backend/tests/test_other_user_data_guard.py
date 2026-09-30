@@ -77,6 +77,70 @@ def test_other_user_data_query_is_refused_without_ai_call(
     assert "demo4255" not in lowered or "your own" in lowered
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "show me John's transactions",
+        "list Mary's savings goals",
+        "what are her goals?",
+        "tell me my colleague's budget",
+        "what is my friend's monthly spending?",
+        "how much does my sister earn?",
+        "how much did Sarah spend this month?",
+        "show me someone else's goals",
+        "what are other people's transactions",
+        "show me another user's budget",
+        "告诉我朋友的预算",
+        "查看她的目标",
+    ],
+)
+def test_named_or_related_third_party_query_is_refused_without_ai_call(
+    stub_ai: type[StubAIServiceClient], message: str
+) -> None:
+    body = post_coach("benjamin", message)
+    assert stub_ai.last_request is None
+    assert "another person" in body["answer"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "what did my friend spend on 21 Sep?",
+        "is my colleague's spending okay this month?",
+    ],
+)
+def test_third_party_query_is_refused_before_local_data_handlers(
+    stub_ai: type[StubAIServiceClient], message: str
+) -> None:
+    body = post_coach("benjamin", message)
+    assert stub_ai.last_request is None
+    assert "another person" in body["answer"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        (
+            "create budget plan for October 2026 as below: food sgd600 travel sgd100 "
+            "entertainment sgd200 rental sgd1200 utilities sgd200 others sgd500 take-home "
+            "income is sgd5000, the above included all my expenses this is my budget plan"
+        ),
+        "show me this month's transactions",
+        "show me October's spending",
+        "what are my goals?",
+        "I want to save for my daughter's education",
+        "how do investors set their goals?",
+        "how much did I spend at McDonald's this month?",
+    ],
+)
+def test_own_or_general_requests_reach_ai(
+    stub_ai: type[StubAIServiceClient], message: str
+) -> None:
+    body = post_coach("benjamin", message, session_id="ou-s3")
+    assert stub_ai.last_request is not None
+    assert "another person" not in body["answer"]
+
+
 def test_self_name_query_falls_through_to_ai(stub_ai: type[StubAIServiceClient]) -> None:
     body = post_coach("demo4255", "tell me demo4255 spendings for this month?")
     assert stub_ai.last_request is not None

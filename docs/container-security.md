@@ -2,7 +2,26 @@
 
 ## Current Decision
 
-The four exact-version ECR scan exceptions remain temporarily accepted for the synthetic-data demo through 2026-09-30. This is a 30-day renewal from the 2026-08-31 review, not a permanent suppression. The zero-unexcepted-critical and zero-unexcepted-high release gates remain unchanged.
+**Status: approved 2026-09-30 by Tan Sean Leng** (drafted by Lee Jet Xuen).
+
+Four exact-version exceptions are accepted for the synthetic-data demo: three new `openssl` findings (to 2026-10-14) and a renewed `zlib` finding (to 2026-10-30). The five 2026-08-31/2026-09-06 exceptions for `sqlite3`, `glibc` and `pcre2` are removed because none matched any finding in the last passing release. The zero-unexcepted-critical and zero-unexcepted-high release gates remain unchanged.
+
+## 2026-09-30 Review
+
+Release run `36661034068` for commit `8350652` passed CI but failed the Inspector/ECR gate on `nus-iss-ais-team9-ai` with three unexcepted HIGH findings. The previous release (`f821887`, run `36566489405`) shipped the same `openssl 3.5.7-1~deb13u2` and passed; the findings are new because OpenSSL published its advisory on 2026-09-29, not because a package changed. Pinning an older package would not help: `3.5.6-1~deb13u2` is also affected and predates Debian's security update.
+
+| Finding | Package/version | OpenSSL severity | Affected feature | Exposure decision | Expiry |
+|---|---|---|---|---|---|
+| `CVE-2026-72897` | `openssl` `3.5.7-1~deb13u2` | Low | TLS server calling `SSL_set_SSL_CTX()` mid-handshake | Not reachable: no container terminates TLS | 2026-10-14 |
+| `CVE-2026-84784` | `openssl` `3.5.7-1~deb13u2` | Low | QUIC connection-ID handling | Not reachable: no service uses QUIC or HTTP/3 | 2026-10-14 |
+| `CVE-2026-84782` | `openssl` `3.5.7-1~deb13u2` | High | DTLS handshake retransmission | Not reachable: no service uses DTLS or UDP-based TLS | 2026-10-14 |
+| `CVE-2026-85091` | `zlib` `1.3.dfsg+really1.3.1-1` | — | Non-blocking `gzwrite` with stale external buffers | Unchanged from 2026-09-06: not called | 2026-10-30 |
+
+Reachability evidence, checked against this commit: all three Dockerfiles start plain-HTTP servers (`uvicorn` on 8001/8080 without TLS options, Streamlit on 8501); the ALB terminates HTTPS and forwards `Protocol: HTTP` to the target groups; no application code configures an in-process TLS server, QUIC, HTTP/3 or DTLS. The services use OpenSSL only as a TCP TLS client for OpenAI, AWS and Cognito calls, which none of the three OpenSSL findings affect. Debian lists all four exact Trixie packages as vulnerable with no fixed version; OpenSSL fixes the three openssl findings in 3.5.9. Sources: [OpenSSL advisory 2026-09-29](https://openssl-library.org/news/secadv/20260929.txt), [CVE-2026-72897](https://security-tracker.debian.org/tracker/CVE-2026-72897), [CVE-2026-84784](https://security-tracker.debian.org/tracker/CVE-2026-84784), [CVE-2026-84782](https://security-tracker.debian.org/tracker/CVE-2026-84782), [CVE-2026-85091](https://security-tracker.debian.org/tracker/CVE-2026-85091).
+
+Validation: `load_exceptions` accepts the file; replaying the blocked AI-image scan through `excepted_finding` leaves no blocking HIGH or CRITICAL finding; on 2026-10-15 the openssl exceptions lapse automatically. The backend and frontend images were not scanned in the failed run because the gate stopped at the AI image; they share the pinned base image and installed the same `openssl` version in the previous release, but any additional finding there will still block and needs its own review.
+
+The earlier review below is retained as history.
 
 The official `python:3.12-slim-trixie` tag still resolves to the already pinned multi-platform digest `sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217`. All three Dockerfiles pin that digest and run `apt-get upgrade` during the build. A package or base-image version change will not match these exceptions and must pass the normal scan gate or receive a separately reviewed exact-version exception.
 
@@ -37,4 +56,4 @@ Commit `e68333a75e89d3236c6b5215f2b75d0859d2e0f5` passed [CI and LLMSecOps run 3
 
 `infra/scripts/ecr_scan_gate.py` requires an exception to identify the exact CVE, source package, package version, and repository. It also requires a review date, reviewer, rationale, authoritative source, and expiry no more than 30 days after review. Expired exceptions are ignored, so a still-present critical or high finding blocks release automatically.
 
-Recheck Debian stable status and the official Python base-image digest by 2026-09-30. Remove an exception as soon as a fixed Trixie package is available. If no stable fix exists, a new review must repeat the live deployed-image scan, reconfirm reachability assumptions, and use a new maximum-30-day expiry.
+Recheck Debian stable status for `openssl` by 2026-10-14 and for `zlib` by 2026-10-30, and recheck the official Python base-image digest at each review. Remove an exception as soon as a fixed Trixie package is available. If no stable fix exists, a new review must repeat the live deployed-image scan, reconfirm reachability assumptions, and use a new maximum-30-day expiry.

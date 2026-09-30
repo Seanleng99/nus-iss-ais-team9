@@ -58,3 +58,27 @@ of that shared module.
   against actual cross-user data retrieval; this guardrail addresses the
   behavioural refusal, not data isolation. A future enhancement could add a
   boundary-level check and an output-side third-party-leak detector.
+
+## Update (2026-09-30)
+
+Testing showed third-party requests that used names, relationships or goal and
+budget wording ("show me John's transactions", "what are her goals?", "what did
+my friend spend on 21 Sep?") passed both controls. Some were answered by backend
+handlers that read from the database, which never reach Risk & Compliance. Two
+changes followed:
+
+- **Backend boundary.** `apps/backend/app/services/privacy_guard.py` now runs
+  first in `/api/coach`, before confirmations, transaction capture and the local
+  date, budget-status and forecast handlers. It detects usernames, capitalised
+  names, relationships ("my colleague's"), third-party pronouns and "someone
+  else" phrasing next to financial data, in English and Chinese. Currency
+  amounts such as `sgd600` are no longer mistaken for usernames.
+- **Risk & Compliance.** `CROSS_USER_DATA_ACCESS_REGEXES` now also covers
+  relationships, goals, budgets, spending and expenses, and third parties as the
+  subject of spending ("how much does my sister earn").
+
+Both remain pattern-based. Known over-blocks are a merchant possessive with a
+read verb ("show McDonald's transactions") and household requests ("show my
+wife's spending"). These fail safe to a refusal. Instructing the model review
+about third-party data is a separate follow-up, because it changes a prompt and
+needs a new prompt-set version.

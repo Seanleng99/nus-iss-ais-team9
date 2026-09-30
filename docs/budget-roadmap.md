@@ -41,3 +41,7 @@ Bank-provider integrations, external notification delivery and unattended automa
 
 
 Retained-scope local checks (2026-10-01, before integrating newer remote main): backend **535 passed**, frontend **77 passed**, live-evaluation harness **50 passed**, Ruff and Bandit passed. The AI suite passed **1,137 tests** (one Windows symlink test excluded). The broader infrastructure suite passed 177 tests with five skips; one existing Bash-dependent release test could not run successfully on this Windows host and must pass in Linux CI before deployment. No account/import/relational-storage code or migration remains.
+
+Integration note: newer remote main includes migration `20260930_0013_pending_goal.py` for conversational Goals. That existing Goal migration is retained; it is unrelated to the removed Budget storage proposal. Deploy using `alembic upgrade head`.
+
+Integrated local verification (2026-10-01): backend **590 passed**, AI service **1,160 passed / 1 Windows symlink test deselected**, frontend **79 passed**. The routing merge preserves both Goal and Budget workspace request handling. Ruff passed. Linux CI, deployment and current-revision live acceptance remain pending at this checkpoint.

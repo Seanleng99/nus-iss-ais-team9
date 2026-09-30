@@ -236,6 +236,9 @@ class LocalFixtureModelGateway:
         del temperature, max_tokens
         payload = json.loads(user_prompt)
         prompt_id = system_prompt.splitlines()[0].strip()
+        if prompt_id == "PROMPT_ID: goal_capture":
+            from app.models.goal_fixture import fixture_goal_draft
+            return json.dumps(fixture_goal_draft(payload))
         if prompt_id == "PROMPT_ID: budget_capture":
             from app.models.budget_fixture import fixture_budget_draft
             return json.dumps(fixture_budget_draft(payload))

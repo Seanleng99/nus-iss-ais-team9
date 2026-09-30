@@ -1160,6 +1160,11 @@ def goals_page() -> None:
                 st.rerun()
 
 
+def _user_message_markdown(content: str) -> str:
+    # Markdown renders a single newline as a space; keep the user's typed line breaks.
+    return "  \n".join(content.replace("\r\n", "\n").split("\n"))
+
+
 def _render_coach_message(message: dict) -> None:
     with (
         call_span(f"{__name__}._render_coach_message")
@@ -1171,7 +1176,11 @@ def _render_coach_message(message: dict) -> None:
             else ":material/account_balance_wallet:"
         )
         with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
+            st.markdown(
+                _user_message_markdown(message["content"])
+                if message["role"] == "user"
+                else message["content"]
+            )
             sources = message.get("sources", [])
             if sources:
                 if any(source.get("document_filename") for source in sources):
@@ -1407,7 +1416,7 @@ def coach_page() -> None:
 
     if pending_question and active_session_id:
         with st.chat_message("user", avatar=":material/person:"):
-            st.markdown(pending_question)
+            st.markdown(_user_message_markdown(pending_question))
         with trace_context(journey_id=st.session_state.get("journey_id")), call_span(
             f"{__name__}.coach_page"
         ):

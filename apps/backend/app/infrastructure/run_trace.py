@@ -14,6 +14,7 @@ from app.infrastructure.repositories import SQLAlchemyOrchestrationTraceReposito
 
 # Never persist prompt, answer, exception text, or free-form rationale before safety review.
 _CODES_ALLOWED = _CODES | {
+    "block_reasons",
     "capability",
     "capabilities",
     "corpus_version",
