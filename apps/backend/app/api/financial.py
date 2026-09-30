@@ -923,7 +923,9 @@ def get_dashboard(
         # Gracefully degrade - insights are optional
         log_event("dashboard.spending_insights_failed", error=str(insight_error))
     
+    from app.services.budget_timing import saved_timing
     return DashboardResponse(
+        budget_timing=saved_timing(session, user_id, period_start),
         review_reminder=review_due(session, user_id),
         period_start=period_start,
         currency=currency,
@@ -1050,3 +1052,10 @@ def confirm_planning_change(user_id: UserId, payload: BatchConfirmation, session
         return {"saved": True, "result": result}
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/users/{user_id}/budget/timing")
+def get_budget_timing(user_id: UserId, period_start: date, session: Annotated[Session, Depends(get_db_session)]):
+    from app.services.budget_timing import saved_timing
+    _validate_period_start(period_start)
+    return saved_timing(session, user_id, period_start)

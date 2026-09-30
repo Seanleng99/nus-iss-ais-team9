@@ -23,3 +23,18 @@ The bounded implementations and remaining limitations are described in [budget-p
 
 
 Workspace v1 local verification (2026-09-30): backend **517 passed**, AI service **1,137 passed / 1 Windows symlink test deselected**, frontend **77 passed**, and live-evaluation harness **48 passed**. Ruff passed across the application code. The expanded nine-case live dataset is prepared but has not been run against a deployment of this change. Previous release/live evidence does not validate the new workspace commands or reconciliation UI.
+
+
+## Authorized remaining implementation sequence (2026-09-30)
+
+User requested completing all remaining improvements, committing each improvement, and withholding deployment until completion. Sequence:
+
+1. Cash-flow-aware alternatives and Budget/Overview timing views — implemented; 39 backend and 27 frontend targeted tests passed.
+2. Variable monthly income, income scenarios and reserves for irregular expenses.
+3. Explicit goal/debt trade-off projections.
+4. Adaptive reviews and confirmed plan version history/restoration.
+5. Income reconciliation, searchable records, match suggestions and explicit refund spending treatment.
+6. Precise conversational collection editing and expanded multi-turn verification.
+7. Account balances/transfers, duplicate-aware imports and relational reconciliation storage.
+
+Bank-provider integrations, external notification delivery and unattended automatic rollover were identified as separate extensions in the preceding proposal; this sequence implements the listed planner improvements and account/import foundations. No push/release until the sequence and required checks are complete.

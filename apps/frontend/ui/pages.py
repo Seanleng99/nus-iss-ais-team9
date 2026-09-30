@@ -15,6 +15,7 @@ from ui.budget_constraints import render_commitments
 from ui.budget_continuity import render_continuity, render_review_preferences
 from ui.budget_methods import METHODS, render_method_explorer
 from ui.budget_review import render_budget_review
+from ui.budget_timing import render_timing, render_timing_summary
 from ui.cashflow import render_cashflow
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
@@ -463,6 +464,7 @@ def dashboard_page() -> None:
     if (dashboard.get("review_reminder") or {}).get("due"):
         st.info(dashboard["review_reminder"]["message"], icon=":material/event:")
     _render_overview_budget(dashboard.get("budget"), currency)
+    render_timing_summary(dashboard.get("budget_timing"))
 
     st.subheader("Goals")
     goals = dashboard.get("goals", [])
@@ -1005,6 +1007,7 @@ def budget_page() -> None:
         render_budget_review(client, user_id, period_start, scope, draft_key)
         render_cashflow(client, user_id)
         render_commitments(client, user_id, period_start, values, draft_key)
+        render_timing(client, user_id, period_start)
         render_continuity(client, user_id, period_start)
         render_review_preferences(client, user_id)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):

@@ -41,7 +41,7 @@ class BudgetScenario(BaseModel):
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -111,6 +111,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "continuity fields: source_period, first_period, months (1..12), take_home_income, savings_target, "
             "carry_rule copy_limits/carry_surplus/carry_net, allow_overwrite false unless explicitly allowed, "
             "coverage_confirmed true only after user confirms actual take-home income/savings and all expenses for EVERY target month. "
+            "timing fields: period_start, start_on, minimum_balance, expense_pattern even_daily/start_of_period/end_of_period, savings_on, records_complete. All require explicit user choices; never assume a spending pattern, minimum balance or complete records. This assesses monthly options against paydays/bill dates and reserves savings without moving money. "
             "reviews fields: enabled, cadence weekly/monthly, next_review_on explicit date or null when disabled. "
             "Never add confirmed to payload; the backend requires a separate confirmation after its exact preview. "
             "PLANNING CONTRACT budget-planning-v4: When planning_requested=true, or continuing a "

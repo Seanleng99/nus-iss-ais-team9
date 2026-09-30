@@ -272,3 +272,12 @@ Owned API endpoints:
 - Existing settlement endpoint accepts `settled=false` to explicitly remove manual settlement.
 
 The command contract/audit is `budget-workspace-v1`; the monthly allocation contract remains `budget-planning-v4`. Offline model fixtures are intentionally limited. Stubbed orchestration and HTTP integration tests verify contract forwarding and confirmation behavior, not natural-language extraction quality. The expanded nine-case live dataset is prepared for the next deployed acceptance run; the older 14/14 result above applies only to revision `f821887`, not these new capabilities.
+
+
+## Cash-flow-aware alternatives
+
+Budget's **Can this plan last until payday?** panel and Coach `timing` command accept explicit spending timing (evenly each day, start, or month end), planning start date, savings reserve date, minimum spendable balance and record-coverage confirmation. The projection subtracts recorded expenses and unpaid scheduled bills from each category first; only the remaining category limits follow the chosen pattern. Savings are earmarked in full on the chosen date. This models spendable cash, not a bank-account withdrawal or verified balance.
+
+Funded alternatives include the resulting lowest spendable amount, first date below the chosen minimum, gap, unpaid/upcoming bills, questions and a daily chart. Overview shows the same assessment for the saved plan. Monthly affordability and cash timing are separate results: an affordable monthly budget may still run short before payday. No dates are automatically moved and no lending is assumed. An alternative income amount must match explicit recorded/payday income before timing can be described as within the buffer. Overdue unreceived income or spending/bills above a category limit requires clarification.
+
+Settings are confirmed through the existing expiring workspace preview, stored per month. Outdated spending start dates require a fresh choice. Opening balances must be on/before the month and within the 365-day projection horizon. Income settlements and record completeness remain essential; end-of-day projections do not establish within-day liquidity. Targeted tests cover monthly balance with a pre-payday shortage, chosen timing, reductions, changed hypothetical income, record overrun and stale timing.

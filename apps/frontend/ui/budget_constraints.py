@@ -173,6 +173,8 @@ def render_commitments(client, user_id, period, categories, draft_key):
             pd.DataFrame(candidate["draft"]["categories"])[["category", "limit_amount"]],
             hide_index=True,
         )
+        from ui.budget_timing import render_timing_summary
+        render_timing_summary(candidate.get("cashflow"), chart=True)
         for question in candidate.get("questions", []):
             st.warning(question)
         st.caption(

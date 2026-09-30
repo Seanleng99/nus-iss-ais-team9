@@ -355,6 +355,7 @@ class BudgetAlert(BaseModel):
 
 
 class DashboardResponse(BaseModel):
+    budget_timing: dict | None = None
     review_reminder: dict | None = None
     period_start: date
     currency: str

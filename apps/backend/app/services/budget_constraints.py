@@ -285,6 +285,8 @@ def build_alternatives(session, user_id, request):
     result = compare_draft(draft)
     for item in result["results"]:
         candidate = BudgetDraft.model_validate(item["draft"])
+        from app.services.budget_timing import assess_timing
+        item["cashflow"] = assess_timing(session, user_id, request.period_start, {c.category: c.limit_amount for c in candidate.categories}, candidate.planning)
         item["questions"].extend(
             constraint_questions(
                 session,

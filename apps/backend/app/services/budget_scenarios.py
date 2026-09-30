@@ -122,6 +122,12 @@ def describe_comparison(comparison):
             )
         if result["method"]:
             lines.append(describe_method(result["method"]))
+        if result.get("cashflow"):
+            cash = result["cashflow"]
+            lines.extend(cash["questions"])
+            if cash.get("lowest_available") is not None:
+                lines.append(f"Cash-flow status: {cash['status']}; lowest spendable balance after savings SGD {cash['lowest_available']:,.2f}; minimum balance SGD {cash['minimum_balance']:,.2f}; first below minimum: {cash['first_below_buffer_on'] or 'none'}.")
+                lines.extend(cash.get("suggestions", []))
         lines.extend(result["questions"])
     if comparison["results"]:
         lines.append(
