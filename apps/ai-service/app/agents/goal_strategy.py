@@ -2,11 +2,14 @@ from collections.abc import Sequence
 
 from app.agents.base import BaseAgent
 from app.agents.education_access import education_topics, should_request_education_context
+from app.agents.goal_capture import extract_goal_draft
+from app.core.guardrails import inspect_prompt
 from app.core.schemas import (
     AgentName,
     AgentResult,
     AgentTask,
     CapabilityName,
+    CompletedInvocation,
     DependencyRequest,
     DependencyRequestDraft,
     UserFinancialSnapshot,
@@ -19,6 +22,18 @@ class GoalStrategyAgent(BaseAgent):
     name = AgentName.GOAL_STRATEGY
     prompt_id = "agent_goal_strategy"
     dependency_planning_enabled = True
+
+    def run_task(self, task):
+        if task.context_features.get("goal_capture") and inspect_prompt(task.sanitized_message).allowed:
+            draft = extract_goal_draft(self, task)
+            if draft.is_goal_request:
+                return CompletedInvocation(result=AgentResult(
+                    agent=self.name,
+                    summary="An unsaved goal change was proposed. The backend must validate it and show a preview for explicit confirmation before making any change.",
+                    rationale=["Goal changes require a backend preview and user confirmation."],
+                    confidence=1.0, data={"goal_draft": draft.model_dump(mode="json")},
+                ), capabilities=[])
+        return super().run_task(task)
 
     @staticmethod
     def _emergency_fund_request(task: AgentTask) -> bool:
