@@ -8,6 +8,7 @@ from app.api.routes import get_ai_service_client
 from app.core.config import settings
 from app.domain.schemas import CoachRequest, CoachResponse
 from app.main import app
+from app.services.recurring_forecast import parse_recurring_forecast_query
 
 TODAY = date(2026, 9, 25)
 
@@ -77,6 +78,15 @@ def add_transaction(
         },
     )
     assert response.status_code == 201, response.text
+
+
+def test_add_subscription_request_is_not_forecast_intent() -> None:
+    assert not parse_recurring_forecast_query(
+        "can you help me add my Spotify monthly subscription that costs 10.90"
+    )
+    assert parse_recurring_forecast_query(
+        "estimate my upcoming spendings based on my recurring spendings"
+    )
 
 
 def test_recurring_forecast_sums_latest_recurring_per_item(

@@ -83,6 +83,21 @@ DETAILS_OPINION_PATTERN = re.compile(
 
 BOOKING_PATTERN = re.compile(r"\b(?:booked|book|books|reserved|reserve|reservation)\b", re.IGNORECASE)
 
+RECURRING_PATTERN = re.compile(
+    r"\b(?:recurring|monthly|yearly|annual(?:ly)?|weekly|subscription|"
+    r"every\s+(?:month|week|year)|each\s+month|per\s+month)\b",
+    re.IGNORECASE,
+)
+
+POLITE_ADD_PREFIX_PATTERN = re.compile(
+    r"^(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+me\s+)?",
+    re.IGNORECASE,
+)
+CAPTURE_DIRECTIVE_PATTERN = re.compile(
+    r"^(?:please\s+|kindly\s+)?(?:add|record|log|enter|store)\b",
+    re.IGNORECASE,
+)
+
 MARKED_AMOUNT_PATTERN = re.compile(
     r"(?:(?:[$]|s\$)\s*|sgd\s+)(\d{1,7}(?:[.,]\d{1,2})?)"
     r"|(\d{1,7}(?:[.,]\d{1,2})?)\s*(?:(?:sgd|dollars?|s\$)\b|[块元])",
@@ -232,6 +247,7 @@ class CaptureDraft:
     booking: bool = False
     when: date | None = None
     need_amount: bool = False
+    recurring: bool = False
 
 
 class PendingCaptureStore:
@@ -328,6 +344,7 @@ DESCRIPTION_STRIP_TOKENS = frozenset(
         "grabbed", "charged", "charge", "charges", "transacted", "transact", "transacts",
         "grand", "out",
         "add", "added", "record", "recorded", "log", "logged", "enter", "here",
+        "store", "stored", "please", "kindly",
         "booked", "book", "books", "reserved", "reserve", "reservation",
         # pronouns / auxiliaries / fillers
         "i", "we", "you", "they", "he", "she", "it", "me", "him", "them", "us",
@@ -428,6 +445,14 @@ def parse_spending_statement(message: str) -> CaptureDraft | None:
         return None
     if INCOME_GUARD_PATTERN.search(text):
         return None
+    polite = POLITE_ADD_PREFIX_PATTERN.match(text)
+    if polite is not None:
+        remainder = text[polite.end():].strip()
+        if CAPTURE_DIRECTIVE_PATTERN.match(remainder):
+            text = remainder
+    directive = CAPTURE_DIRECTIVE_PATTERN.match(text)
+    if directive is not None and len(text) > directive.end():
+        text = text[directive.end():].strip()
     first_word = text.split(" ", 1)[0].lower().strip(".,!?;:")
     if first_word in QUESTION_PREFIXES:
         return None
@@ -525,6 +550,7 @@ def _draft_from_rest(
         description=description,
         category=classify_category(description),
         booking=BOOKING_PATTERN.search(full_text) is not None,
+        recurring=RECURRING_PATTERN.search(full_text) is not None,
     )
 
 
@@ -877,6 +903,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                     category=draft.category,
                     amount=MoneyAmount(amount=draft.amount),
                     occurred_on=when,
+                    recurring=draft.recurring,
                 ),
             )
             session.commit()

@@ -19,11 +19,16 @@ EDUCATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 POSSESSIVE_PATTERN = re.compile(r"\b(?:my|mine|our|i|me)\b", re.IGNORECASE)
+ADD_DIRECTIVE_PATTERN = re.compile(
+    r"\b(?:add|record|log|enter|store)\b", re.IGNORECASE
+)
 
 
 def parse_recurring_forecast_query(message: str) -> bool:
     text = message.strip()
     if not FORECAST_INTENT_PATTERN.search(text):
+        return False
+    if ADD_DIRECTIVE_PATTERN.search(text):
         return False
     return not (EDUCATION_PATTERN.search(text) and not POSSESSIVE_PATTERN.search(text))
 

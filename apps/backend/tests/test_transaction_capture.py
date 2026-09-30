@@ -133,6 +133,8 @@ def add_transaction(user_id: str, description: str, category: str, amount: float
         ("topup mrt 20", 20.0, "topup mrt"),
         ("CPF top-up 300", 300.0, "cpf top-up"),
         ("got haircut yesterday 25", 25.0, "haircut"),
+        ("can you help me add my Spotify monthly subscription that costs 10.90", 10.9, "Spotify monthly subscription"),
+        ("please log a 4.50 bus fare", 4.5, "bus fare"),
         ("cny groceries at NTUC 88.40", 88.4, "cny groceries ntuc"),
         ("vax travel insurance 42", 42.0, "vax travel insurance"),
         ("split the bill, my part 13.50", 13.5, "split bill part"),
@@ -506,6 +508,22 @@ def test_capture_saves_title_cased_description(stub_ai: type[StubAIServiceClient
     post_coach("cap-u15", "i spent $5 on chicken rice today")
     saved = transactions_for("cap-u15")
     assert saved[0]["description"] == "Chicken Rice"
+
+
+def test_polite_add_request_saves_recurring_subscription(
+    stub_ai: type[StubAIServiceClient],
+) -> None:
+    first = post_coach(
+        "cap-r1", "can you help me add my Spotify monthly subscription that costs 10.90"
+    )
+    assert stub_ai.last_request is None
+    assert "when" in first["answer"].lower() or "date" in first["answer"].lower()
+    body = post_coach("cap-r1", "today")
+    assert "saved" in body["answer"].lower()
+    saved = transactions_for("cap-r1")
+    assert len(saved) == 1
+    assert saved[0]["amount"]["amount"] == 10.9
+    assert saved[0]["recurring"] is True
 
 
 # --- batch capture ---------------------------------------------------------------
