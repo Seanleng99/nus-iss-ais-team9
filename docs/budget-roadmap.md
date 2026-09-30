@@ -32,7 +32,7 @@ User requested completing all remaining improvements, committing each improvemen
 1. Cash-flow-aware alternatives and Budget/Overview timing views — implemented; 39 backend and 27 frontend targeted tests passed.
 2. Variable monthly income, income scenarios and reserves for irregular expenses — implemented; 36 backend and 21 frontend targeted tests passed.
 3. Explicit goal/debt trade-off projections — implemented; deterministic rate/fee/repayment and shared-pool tests pass (21 backend tests).
-4. Adaptive reviews and confirmed plan version history/restoration.
+4. Adaptive reviews and confirmed plan version history/restoration — implemented; full backend suite passed (529 tests), including restoration, stale previews and repeated-overrun evidence.
 5. Income reconciliation, searchable records, match suggestions and explicit refund spending treatment.
 6. Precise conversational collection editing and expanded multi-turn verification.
 7. Account balances/transfers, duplicate-aware imports and relational reconciliation storage.

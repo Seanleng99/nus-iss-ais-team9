@@ -19,7 +19,7 @@ from app.services.financial_workspace import lock_workspace, read_section, write
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare", "restore", "adaptive_review"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -39,6 +39,8 @@ def context(session, user_id):
                 select(FinancialGoalRecord).where(FinancialGoalRecord.user_id == user_id)
             )
         ],
+        "budget_history": [{"period_start": k.removeprefix("history:"), "id": v["id"], "saved_at": v["saved_at"], "reason": v["reason"]}
+                           for k, entries in (record.data if record else {}).items() if k.startswith("history:") for v in entries][-100:],
         "reconciliation": reconciliation_context(session, user_id),
     }
 
@@ -121,6 +123,17 @@ def build_change(session, user_id, change):
             {**previous, **supplied, "confirmed": True}
         ).model_dump(mode="json")
         validate_policy(session, user_id, AllocationPolicy.model_validate(target))
+    elif op == "restore":
+        from app.infrastructure.repositories import SQLAlchemyBudgetRepository
+        from app.services.budget_capture import _snapshot
+        from app.services.budget_history import RestoreRequest, restore_payload
+        request = RestoreRequest.model_validate(supplied)
+        payload = restore_payload(session, user_id, request)
+        return request.model_dump(mode="json"), {"previous": _snapshot(SQLAlchemyBudgetRepository(session).get(user_id, request.period_start)), "proposed": payload.model_dump(mode="json")}
+    elif op == "adaptive_review":
+        from app.services.budget_history import AdaptiveRequest, adaptive_review
+        request = AdaptiveRequest.model_validate(supplied)
+        return request.model_dump(mode="json"), adaptive_review(session, user_id, request)
     elif op == "debt_compare":
         from app.services.budget_tradeoffs import TradeoffRequest, compare_tradeoffs
         request = TradeoffRequest.model_validate(supplied)
@@ -178,7 +191,7 @@ def preview_change(session, user_id, change):
     return {
         "preview_id": str(uuid4()),
         "operation": change.operation,
-        "read_only": change.operation == "debt_compare",
+        "read_only": change.operation in {"debt_compare", "adaptive_review"},
         "target": target,
         "details": details,
         "labels": context(session, user_id),
@@ -212,8 +225,14 @@ def confirm_change(session, user_id, pending):
             "This preview expired or its financial records/settings changed. Request a fresh preview before confirming"
         )
     op, target = pending["operation"], pending["target"]
-    if op == "debt_compare":
-        raise ValueError("A debt/goal comparison cannot be saved; explicitly revise the relevant commitments and budget through a fresh preview")
+    if op in {"debt_compare", "adaptive_review"}:
+        raise ValueError("A read-only comparison/review cannot be saved; explicitly revise the relevant commitments and budget through a fresh preview")
+    if op == "restore":
+        from app.infrastructure.repositories import SQLAlchemyBudgetRepository
+        from app.services.budget_history import RestoreRequest, restore_payload
+        payload = restore_payload(session, user_id, RestoreRequest.model_validate(target))
+        SQLAlchemyBudgetRepository(session).upsert(user_id, payload)
+        return {"restored": target["version_id"], "period_start": target["period_start"]}
     if op == "cashflow":
         return save_settings(session, user_id, CashflowSettings.model_validate(target))
     if op == "commitments":
@@ -258,6 +277,16 @@ def describe_preview(preview):
     if op == "debt_compare":
         from app.services.budget_tradeoffs import describe_tradeoffs
         return describe_tradeoffs(details)
+    if op == "adaptive_review":
+        from app.services.budget_history import describe_adaptive
+        return describe_adaptive(details)
+    if op == "restore":
+        plan = details["proposed"]
+        text = f"Restore budget version {target['version_id']} for {target['period_start']}. This replaces the current category limits and planning settings; current commitments remain enforced.\n\n"
+        text += "\n".join(f"- {safe(c['category'])}: {money(c['limit_amount'])}" for c in plan["categories"])
+        if plan["planning"]:
+            text += f"\nTake-home income {money(plan['planning']['take_home_income'])}; savings {money(plan['planning']['savings_target'])}; method {plan['planning']['method']['name']}."
+        return text + "\n\nReply 'confirm budget' to restore this exact plan, or 'cancel'. Nothing has been saved."
     owned = preview["labels"]
     bills = {
         s["id"]: s["name"] for s in (owned["settings"].get("cashflow") or {}).get("schedules", [])

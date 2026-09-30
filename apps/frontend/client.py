@@ -284,6 +284,12 @@ class BackendClient:
     def budget_alternatives(self, user_id, payload):
         return self._request("POST", f"/api/users/{user_id}/budget/alternatives", json=payload)
 
+    def get_budget_history(self, user_id, period):
+        return self._request("GET", f"/api/users/{user_id}/budget/history", params={"period_start": str(period)})
+
+    def adaptive_budget_review(self, user_id, period, lookback):
+        return self._request("POST", f"/api/users/{user_id}/budget/adaptive-review", json={"period_start":str(period),"lookback_months":lookback})
+
     def compare_income_cases(self, user_id, payload):
         return self._request("POST", f"/api/users/{user_id}/budget/income-scenarios", json=payload)
 

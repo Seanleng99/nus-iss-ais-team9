@@ -88,6 +88,7 @@ from app.services.budget_constraints import (
     save_policy,
 )
 from app.services.budget_continuity import BatchConfirmation, review_due
+from app.services.budget_history import AdaptiveRequest, adaptive_review, history
 from app.services.budget_income import IncomeScenarios, compare_income
 from app.services.budget_reconciliation import save_settings
 from app.services.budget_review import build_budget_review
@@ -1066,5 +1067,19 @@ def get_budget_timing(user_id: UserId, period_start: date, session: Annotated[Se
 def income_scenarios(user_id: UserId, payload: IncomeScenarios, session: Annotated[Session, Depends(get_db_session)]):
     try:
         return compare_income(session, user_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/users/{user_id}/budget/history")
+def budget_history(user_id: UserId, period_start: date, session: Annotated[Session, Depends(get_db_session)]):
+    _validate_period_start(period_start)
+    return history(session, user_id, period_start)
+
+
+@router.post("/users/{user_id}/budget/adaptive-review")
+def adaptive_budget_review(user_id: UserId, payload: AdaptiveRequest, session: Annotated[Session, Depends(get_db_session)]):
+    try:
+        return adaptive_review(session, user_id, payload)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

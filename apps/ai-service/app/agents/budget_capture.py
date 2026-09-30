@@ -41,7 +41,7 @@ class BudgetScenario(BaseModel):
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare", "restore", "adaptive_review"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -108,6 +108,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "Ask which occurrence, amount and refund effect. Payment matches are expense records; refund effects use refund records. "
             "Do not create actual transactions. Show possible owned records to user if no unique choice. "
             "unlink fields: link_id from saved reconciliation links, ask user which match. "
+            "adaptive_review fields: period_start, optional lookback_months 2..12 (default 3). This is a read-only repeated-overrun review. restore fields: period_start and version_id explicitly selected from owned history; ask if unknown. Restoring requires a new backend preview and confirmation. "
             "debt_compare fields: period_start, terms list {commitment_name,annual_rate_percent,monthly_fee} for EVERY saved debt (rates/fees explicitly supplied including zero), cases list up to 3 {name,savings_target,extra_debt_payment,goals optional list {goal_id,monthly_amount}}, horizon_months 1..360, rollover_paid_minimums boolean. Ask all unknown terms; no lender terms are inferred. This is a read-only illustration of nominal APR/12 monthly interest and end-month payments, not an execution request. "
             "reserves fields: reserves list of id (existing only), name, target_amount, current_reserved, monthly_contribution, start_period YYYY-MM-01, due_on. All amounts/date choices must be explicit, including zero; contributions are part of savings and share it with goals. "
             "continuity fields: source_period, first_period, months (1..12), take_home_income, savings_target, "

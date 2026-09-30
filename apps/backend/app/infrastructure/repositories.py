@@ -812,6 +812,9 @@ class SQLAlchemyBudgetRepository:
             raise ValueError(" ".join(questions))
         _ensure_user(self.session, user_id)
         record = self.get(user_id, budget.period_start, for_update=True)
+        from app.services.budget_capture import _snapshot
+        from app.services.budget_history import record_version
+        previous = _snapshot(record) if record else None
         if record is None:
             record = MonthlyBudgetRecord(
                 user_id=user_id,
@@ -843,6 +846,7 @@ class SQLAlchemyBudgetRepository:
             else:
                 category_record.limit_amount = category.limit_amount
         self.session.flush()
+        record_version(self.session, user_id, budget.period_start, previous, _snapshot(record))
         return record
 
     def spending_by_category(self, user_id: str, period_start: date, *, currency: str | None = None) -> dict[str, float]:

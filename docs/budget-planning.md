@@ -299,3 +299,10 @@ Budget and Coach `debt_compare` accept explicit nominal annual interest rates an
 Every case checks expense limits + savings + extra repayment against confirmed take-home income, and checks goals + irregular-cost reserves against the same savings pool. Unfunded cases are explicitly identified. Changes that conflict with saved commitments are listed. Comparisons cannot be confirmed as writes: revising commitments or a budget requires a separate explicit preview. Actual goal/debt balances are never changed by a projection.
 
 Interest is nominal APR/12 rounded to cents each month, followed by end-month payments; fixed monthly fees apply only to active debts. There are no assumed lender-specific penalties, daily compounding, new borrowing or investment returns. Users must supply terms and choose the illustration assumptions. Within-month cash availability remains a separate timing assessment.
+
+
+## Repeated-spending reviews and budget history
+
+Every changed budget save now records an owned snapshot in the same transaction (up to 50 versions per month); identical saves do not add a version. Existing plans are captured when next changed. Budget's **Spending patterns and plan history** panel shows saved versions and previews restoration. Restore requires explicit confirmation, current affordability/commitment validation and unchanged evidence. Restoration becomes a new version; it never rewrites earlier snapshots. History is part of existing owned preferences export/erasure.
+
+A repeated-spending review examines 2–12 completed months with both a saved SGD limit and recorded expenses. At least two overruns are needed to suggest a higher limit. The suggestion uses the observed monthly average, rounded up to cents, without reducing the current limit. Missing months are not zero spending and record completeness is not assumed. Users choose suggestions to inspect in the budget editor, reconfirm actual income/coverage, resolve any funding gap, then save. Coach supports read-only `adaptive_review` and confirmed `restore` commands. No adaptive adjustment is automatic.
