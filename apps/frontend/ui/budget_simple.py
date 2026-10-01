@@ -181,7 +181,7 @@ def render_copy_month(client, user_id, period, budget):
     for item in preview.get("plans", []):
         st.table(
             [
-                {"Category": c["category"], "Amount": money(c["limit_amount"])}
+                {"Category": c["category"].title(), "Amount": money(c["limit_amount"])}
                 for c in item["budget"]["categories"]
             ]
         )
@@ -190,7 +190,7 @@ def render_copy_month(client, user_id, period, budget):
         )
     approved = st.checkbox(
         f"These are my actual income, savings and complete expense limits for {target:%B %Y}.",
-        key=key + "-approved",
+        key=key + "-approved-" + sha256(signature.encode()).hexdigest()[:12],
     )
     if st.button(
         "Confirm next month's plan",

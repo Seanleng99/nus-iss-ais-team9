@@ -105,3 +105,34 @@ def test_planned_budget_summary_keeps_savings_separate_from_spending():
     assert metrics["Planned"] == "SGD 3,000.00"
     assert metrics["Savings allocation"] == "SGD 800.00"
     assert metrics["Unallocated income"] == "SGD 200.00"
+
+
+@pytest.mark.parametrize("spent", [750, 2600, 2600.01, 6000])
+def test_overview_category_overage_does_not_claim_the_total_budget_is_exceeded(spent):
+    app = AppTest.from_string(
+        "import streamlit as st\n"
+        "from ui.pages import dashboard_page\n"
+        "class Client:\n"
+        "    def get_dashboard(self, user, period): return st.session_state['dashboard']\n"
+        "st.session_state['backend_client'] = Client()\n"
+        "dashboard_page()"
+    )
+    app.session_state["dashboard"] = {
+        "currency": "SGD", "monthly_income": 5000, "total_spent": spent,
+        "available_balance": 5000 - spent, "savings_rate_percent": 0,
+        "budget_alert": {
+            "status": "over", "over_income": spent > 5000, "over_budget": True,
+            "total_spent": spent, "monthly_income": 5000, "total_budget_limit": 2600,
+            "amount_over_income": max(0, spent - 5000),
+            "categories_over": [{"category": "food", "spent": 650, "limit_amount": 600}],
+        },
+    }
+    app.run(timeout=30)
+    assert not app.exception
+    total_errors = [item.value for item in app.error if "over your monthly budget" in item.value]
+    assert bool(total_errors) is (spent > 2600)
+    if spent <= 2600:
+        assert any("Food: SGD 50.00 over its limit" in item.value for item in app.warning)
+    else:
+        assert "Food" in total_errors[0]
+    assert any("more than your monthly income" in item.value for item in app.error) is (spent > 5000)

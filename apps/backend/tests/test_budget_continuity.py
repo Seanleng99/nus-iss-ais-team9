@@ -10,6 +10,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyTransactionRepository,
 )
 from app.main import app
+from app.services.budget_constraints import AllocationPolicy, save_policy
 from app.services.budget_continuity import (
     BatchConfirmation,
     ContinuityRequest,
@@ -76,6 +77,8 @@ def test_rollover_preview_does_not_save_and_applies_once(db_session_factory):
         repo = setup(session)
         preview = preview_batch(session, "u", request(), today=TODAY)
         assert preview["ready"]
+        assert any("Carry-forward" in warning for warning in preview["warnings"])
+        assert any("Later months" in warning for warning in preview["warnings"])
         assert repo.get("u", FIRST) is None
         assert preview["carry_amounts"] == {"food": 100, "fun": -100}
         assert preview["plans"][0]["budget"]["categories"] == [
@@ -91,6 +94,49 @@ def test_rollover_preview_does_not_save_and_applies_once(db_session_factory):
         assert repo.get("u", date(2026, 12, 1)).planning["savings_target"] == 500
         with pytest.raises(ValueError, match="consumed"):
             confirm_batch(session, "u", confirm(preview), today=TODAY)
+
+
+def test_simple_copy_has_no_rollover_or_override_warnings_and_discloses_replacement(db_session_factory):
+    with db_session_factory() as session:
+        repo = setup(session)
+        copy = request(months=1, carry_rule="copy_limits")
+        preview = preview_batch(session, "u", copy, today=TODAY)
+        assert preview["ready"] and preview["warnings"] == []
+        assert preview["plans"][0]["budget"]["categories"] == [
+            {"category": "food", "limit_amount": 500},
+            {"category": "fun", "limit_amount": 100},
+        ]
+        assert repo.get("u", FIRST) is None
+        confirm_batch(session, "u", confirm(preview), today=TODAY)
+        replacement = preview_batch(
+            session, "u", request(months=1, carry_rule="copy_limits", allow_overwrite=True),
+            today=TODAY,
+        )
+        assert replacement["ready"] and replacement["plans"][0]["replaces_existing"]
+        assert len(replacement["warnings"]) == 1
+        assert "replaces the existing plans" in replacement["warnings"][0]
+
+
+def test_simple_copy_keeps_relevant_source_commitment_warning_and_target_blockers(db_session_factory):
+    with db_session_factory() as session:
+        repo = setup(session)
+        save_policy(session, "u", AllocationPolicy(
+            period_start=SOURCE, confirmed=True, protected_categories=["food"],
+        ))
+        preview = preview_batch(session, "u", request(months=1, carry_rule="copy_limits"), today=TODAY)
+        assert preview["ready"]
+        assert len(preview["warnings"]) == 1
+        assert "commitments from the source month are not copied" in preview["warnings"][0]
+        assert not any("Carry-forward" in warning for warning in preview["warnings"])
+        repo.upsert("u", BudgetUpsert.model_validate(preview["plans"][0]["budget"]))
+        save_policy(session, "u", AllocationPolicy(
+            period_start=FIRST, confirmed=True, minimum_savings=600,
+        ))
+        blocked = preview_batch(session, "u", request(
+            months=1, carry_rule="copy_limits", allow_overwrite=True,
+        ), today=TODAY)
+        assert not blocked["ready"]
+        assert any("Reserve at least SGD 600.00" in question for question in blocked["questions"])
 
 
 def test_changed_spending_expires_preview_without_partial_writes(db_session_factory):

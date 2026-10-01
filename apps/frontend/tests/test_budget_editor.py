@@ -1,6 +1,10 @@
+import json
+
 import httpx
+import pytest
 from test_budget_method_choice import CONFIRMATION
 from test_budget_simple import Client, control, render
+from test_overview_budget import render as render_overview
 
 
 def table_with(app, column):
@@ -108,3 +112,32 @@ def test_backend_rejection_explains_problem_and_preserves_values_without_saving(
     control(app.button, "Save budget").click().run()
     assert not control(app.checkbox, CONFIRMATION).value
     assert control(app.number_input, "Food (SGD)").value == 400
+
+
+@pytest.mark.parametrize("spent", [850, 2200])
+def test_budget_and_overview_include_unbudgeted_spending_in_the_same_totals(spent):
+    client = Client()
+    client.budget.update(total_limit=2000, total_spent=spent)
+    app = render(client)
+    overview = render_overview(client.budget)
+    assert not app.exception and not overview.exception
+    metrics = {item.label: item.value for item in app.metric}
+    overview_metrics = {item.label: item.value for item in overview.metric}
+    assert metrics[":material/payments: Spent"] == overview_metrics["Spent"] == f"SGD {spent:,.2f}"
+    label = "Over budget" if spent > 2000 else "Remaining"
+    icon = "warning" if spent > 2000 else "savings"
+    assert metrics[f":material/{icon}: {label}"] == overview_metrics[label]
+    assert any(f"SGD {spent - 700:,.2f} in categories without limits" in c.value for c in app.caption)
+    # Editing an unsaved category must not change the saved-plan spending summary.
+    control(app.number_input, "Food (SGD)").set_value(1000).run()
+    assert control(app.metric, ":material/payments: Spent").value == f"SGD {spent:,.2f}"
+
+
+def test_spending_chart_keeps_currency_out_of_the_legend_area():
+    app = render(Client())
+    assert not app.exception
+    chart = json.loads(app.get("plotly_chart")[0].proto.spec)
+    assert not chart["layout"].get("xaxis", {}).get("title")
+    assert chart["layout"]["legend"]["yanchor"] == "bottom"
+    assert chart["layout"]["legend"]["y"] > 1
+    assert any("Category amounts in SGD" in c.value for c in app.caption)

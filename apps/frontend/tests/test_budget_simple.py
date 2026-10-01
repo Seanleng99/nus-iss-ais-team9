@@ -197,6 +197,41 @@ def test_copy_next_month_requires_preview_and_explicit_coverage_confirmation():
     control(app.number_input, "Next month's savings (SGD)").set_value(900).run()
     assert not any(b.label == "Confirm next month's plan" for b in app.button)
     assert client.confirmed is None
+    control(app.button, "Preview next month's plan").click().run()
+    assert not control(
+        app.checkbox,
+        "These are my actual income, savings and complete expense limits for November 2026.",
+    ).value
+    assert control(app.button, "Confirm next month's plan").disabled
+
+
+def test_simple_copy_retains_actionable_preview_questions_and_replacement_warning():
+    class BlockedClient(Client):
+        def get_budget(self, user, period):
+            return self.budget
+
+        def preview_budget_months(self, user, payload):
+            preview = super().preview_budget_months(user, payload)
+            preview.update(
+                ready=False,
+                questions=["November 2026: Reserve at least SGD 900.00 for savings."],
+                warnings=["Saving replaces the existing plans shown here."],
+            )
+            return preview
+
+    client = BlockedClient()
+    app = render(client)
+    control(app.button, "Use this plan next month").click().run()
+    assert not control(app.checkbox, "Replace my existing November 2026 plan").value
+    control(app.button, "Preview next month's plan").click().run()
+    assert client.previewed["allow_overwrite"] is False
+    assert any("Reserve at least SGD 900.00" in item.value for item in app.info)
+    assert any("replaces the existing plans" in item.value for item in app.info)
+    control(
+        app.checkbox,
+        "These are my actual income, savings and complete expense limits for November 2026.",
+    ).check().run()
+    assert control(app.button, "Confirm next month's plan").disabled
 
 
 def test_saved_method_survives_simple_comparison_adoption_and_confirmed_save():

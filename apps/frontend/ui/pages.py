@@ -311,7 +311,10 @@ def dashboard_page() -> None:
                     f"{money(budget_alert['amount_over_income'], currency)} more than your "
                     f"monthly income of {money(budget_alert['monthly_income'], currency)}."
                 )
-            if budget_alert["over_budget"]:
+            if (
+                budget_alert["total_budget_limit"] > 0
+                and budget_alert["total_spent"] > budget_alert["total_budget_limit"]
+            ):
                 detail = (
                     f" Categories over their limit: {', '.join(alert_categories)}."
                     if alert_categories
@@ -321,6 +324,13 @@ def dashboard_page() -> None:
                     f"\U0001F6A8 You are over your monthly budget of "
                     f"{money(budget_alert['total_budget_limit'], currency)}.{detail}"
                 )
+            elif budget_alert["categories_over"]:
+                detail = "; ".join(
+                    f"{_category_label(item['category'])}: "
+                    f"{money(item['spent'] - item['limit_amount'], currency)} over its limit"
+                    for item in budget_alert["categories_over"]
+                )
+                st.warning(f"Category limits exceeded — {detail}.")
         elif budget_alert["status"] == "approaching":
             usage_parts = []
             if budget_alert["income_usage_percent"] is not None:
@@ -977,8 +987,9 @@ def budget_page() -> None:
         import plotly.graph_objects as go
 
         rows = budget["categories"]
-        planned = sum(float(item["limit_amount"]) for item in rows)
-        spent = sum(float(item["spent_amount"]) for item in rows)
+        planned = float(budget.get("total_limit", sum(float(item["limit_amount"]) for item in rows)))
+        category_spent = sum(float(item["spent_amount"]) for item in rows)
+        spent = float(budget.get("total_spent", category_spent))
         remaining = planned - spent
         metrics = st.columns(3)
         metrics[0].metric(":material/account_balance_wallet: Saved limits", money(planned, currency))
@@ -987,7 +998,12 @@ def budget_page() -> None:
             ":material/warning: Over budget" if remaining < 0 else ":material/savings: Remaining",
             money(abs(remaining), currency),
         )
-        st.caption("Spending shown here covers your budgeted categories for the selected month.")
+        unbudgeted = max(0.0, round(spent - category_spent, 2))
+        st.caption(
+            "Totals include all spending for the selected month."
+            + (f" Includes {money(unbudgeted, currency)} in categories without limits."
+               if unbudgeted > 0 else "")
+        )
         if planned > 0:
             st.progress(clamp_progress(spent / planned), text=f"{spent / planned:.0%} of budget used")
         over = [item for item in rows if float(item["spent_amount"]) > float(item["limit_amount"])]
@@ -1003,10 +1019,12 @@ def budget_page() -> None:
                       x=[item["spent_amount"] for item in rows], orientation="h",
                       marker_color=["#dc2626" if item in over else "#0d9488" for item in rows])
         chart.update_layout(barmode="group", height=max(320, len(rows) * 55),
-                            margin={"l": 0, "r": 10, "t": 10, "b": 0},
-                            xaxis_title=currency, legend={"orientation": "h"})
+                            margin={"l": 0, "r": 10, "t": 40, "b": 25},
+                            legend={"orientation": "h", "x": 0, "xanchor": "left",
+                                    "y": 1.02, "yanchor": "bottom"})
         chart.update_yaxes(autorange="reversed")
         st.plotly_chart(chart, use_container_width=True, key=f"{scope}-comparison")
+        st.caption(f"Category amounts in {currency}. The chart compares expenses with saved category limits.")
         if st.checkbox("Show budget allocation", key=scope + "-show-allocation"):
             positive = [item for item in rows if float(item["limit_amount"]) > 0]
             if positive:

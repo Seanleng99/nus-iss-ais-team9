@@ -206,6 +206,25 @@ def preview_batch(session, user_id, request, *, today=None, persist=True):
             }
         )
         questions.extend(f"{period:%B %Y}: {error}" for error in errors)
+    warnings = []
+    if request.months > 1 or request.month_inputs:
+        warnings.append(
+            "Each month uses its displayed income, savings and category limits. Review every month before saving."
+        )
+    if request.carry_rule != "copy_limits":
+        warnings.append(
+            "Carry-forward adjusts only the first target month's limits, using recorded gross expenses. It is not cash in an account; missing expenses and unbudgeted categories can overstate surplus."
+        )
+        if request.months > 1:
+            warnings.append("Later months copy the source limits without further rollover.")
+    if request.months > 1 or read_section(session, user_id, "constraints:" + request.source_period.isoformat()):
+        warnings.append(
+            "Fixed amounts and other commitments from the source month are not copied. Saved commitments for the target month still apply."
+        )
+    if any(row["replaces_existing"] for row in rows):
+        warnings.append(
+            "Saving replaces the existing plans shown here, including their categories and planning settings."
+        )
     preview = {
         "preview_id": str(uuid4()),
         "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
@@ -216,12 +235,7 @@ def preview_batch(session, user_id, request, *, today=None, persist=True):
         "ready": not questions,
         "saved": False,
         "evidence": batch_evidence(session, user_id, request, today),
-        "warnings": [
-            "Each month uses its explicit overrides, or the supplied shared income/savings amounts. Confirm every displayed month.",
-            "Carry-forward adjusts only the first target month's limits, using recorded gross expenses. It is not cash in an account; missing expenses and unbudgeted categories can overstate surplus.",
-            "Later months copy the source limits without further rollover. Month-specific commitments are not copied; existing target-month commitments are enforced.",
-            "Saving replaces each listed target plan in full, including its category list and planning settings. No goals, debts, schedules or transactions are changed.",
-        ],
+        "warnings": warnings,
     }
     if persist:
         write_section(session, user_id, "pending_batch", preview)
