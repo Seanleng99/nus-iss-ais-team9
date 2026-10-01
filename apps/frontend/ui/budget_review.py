@@ -22,67 +22,73 @@ def render_budget_review(client, user_id, period, scope, draft_key, *, automatic
         if not review:
             return
         st.caption(f"Through {review['as_of']} · {review['phase']} month · SGD records only")
-        columns = st.columns(3)
-        columns[0].metric("Recorded expenses", money(review["total_spent"]))
-        columns[1].metric("Unbudgeted expenses", money(review["unbudgeted_spent"]))
-        columns[2].metric(
-            "Month-end pace illustration",
-            money(review["total_pace_estimate"])
-            if review["total_pace_estimate"] is not None
-            else "Unavailable",
-        )
-        for warning in review["warnings"]:
-            st.caption(warning)
-        if not review["has_budget"]:
-            st.info(
-                "No saved budget exists for this month. Create a plan to compare category limits."
-            )
+        if compact:
+            st.caption(f"Recorded expenses: {money(review['total_spent'])} across all categories.")
+            st.caption("Based on recorded expenses; records may be incomplete. Month-end pace is an illustration.")
+            if review["unbudgeted_spent"]:
+                st.info(f"{money(review['unbudgeted_spent'])} of recorded expenses has no category limit. Add a category if you want to track it.")
         details = not compact or st.checkbox("Show category and pace details", key=f"{scope}-review-details")
-        rows = review["categories"] if details else []
-        if rows:
-            import plotly.graph_objects as go
-
-            chart = go.Figure()
-            labels = [row["category"].title() for row in rows]
-            for name, field, color in (
-                ("Saved limit", "limit_amount", "#cbd5e1"),
-                ("Recorded", "spent", "#0d9488"),
-                ("Illustrative pace", "pace_estimate", "#d97706"),
-            ):
-                chart.add_bar(
-                    name=name,
-                    y=labels,
-                    x=[row[field] for row in rows],
-                    orientation="h",
-                    marker_color=color,
+        if details:
+            columns = st.columns(3)
+            columns[0].metric("Recorded expenses", money(review["total_spent"]))
+            columns[1].metric("Unbudgeted expenses", money(review["unbudgeted_spent"]))
+            columns[2].metric(
+                "Month-end pace illustration",
+                money(review["total_pace_estimate"])
+                if review["total_pace_estimate"] is not None
+                else "Unavailable",
+            )
+            for warning in review["warnings"]:
+                st.caption(warning)
+            if not review["has_budget"]:
+                st.info(
+                    "No saved budget exists for this month. Create a plan to compare category limits."
                 )
-            chart.update_layout(
-                barmode="group",
-                height=max(280, len(rows) * 65),
-                xaxis_title="SGD",
-                margin={"t": 10, "b": 10},
-            )
-            chart.update_yaxes(autorange="reversed")
-            st.plotly_chart(chart, use_container_width=True, key=f"{scope}-review-chart")
-            st.dataframe(
-                pd.DataFrame(
-                    [
-                        {
-                            "Category": row["category"],
-                            "Status": row["status"].replace("_", " "),
-                            "Recorded": row["spent"],
-                            "Limit": row["limit_amount"],
-                            "Remaining": row["remaining"],
-                            "Pace illustration": row["pace_estimate"],
-                            "Remaining per day": row["remaining_per_day"],
-                            "Pace explanation": row["pace_note"],
-                        }
-                        for row in rows
-                    ]
-                ),
-                hide_index=True,
-                use_container_width=True,
-            )
+            rows = review["categories"]
+            if rows:
+                import plotly.graph_objects as go
+
+                chart = go.Figure()
+                labels = [row["category"].title() for row in rows]
+                for name, field, color in (
+                    ("Saved limit", "limit_amount", "#cbd5e1"),
+                    ("Recorded", "spent", "#0d9488"),
+                    ("Illustrative pace", "pace_estimate", "#d97706"),
+                ):
+                    chart.add_bar(
+                        name=name,
+                        y=labels,
+                        x=[row[field] for row in rows],
+                        orientation="h",
+                        marker_color=color,
+                    )
+                chart.update_layout(
+                    barmode="group",
+                    height=max(280, len(rows) * 65),
+                    xaxis_title="SGD",
+                    margin={"t": 10, "b": 10},
+                )
+                chart.update_yaxes(autorange="reversed")
+                st.plotly_chart(chart, use_container_width=True, key=f"{scope}-review-chart")
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Category": row["category"],
+                                "Status": row["status"].replace("_", " "),
+                                "Recorded": row["spent"],
+                                "Limit": row["limit_amount"],
+                                "Remaining": row["remaining"],
+                                "Pace illustration": row["pace_estimate"],
+                                "Remaining per day": row["remaining_per_day"],
+                                "Pace explanation": row["pace_note"],
+                            }
+                            for row in rows
+                        ]
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
         for suggestion in review["suggestions"][:3] if compact else review["suggestions"]:
             st.write(f"{suggestion['category'].title()}: {suggestion['reason']}")
         comparison = review.get("comparison")

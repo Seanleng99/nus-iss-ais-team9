@@ -604,13 +604,14 @@ def test_budget_charts_custom_category_and_save_round_trip() -> None:
     app.session_state["active_period"] = date(2026, 10, 1)
     app.run(timeout=30)
     assert not app.exception
-    assert len(app.get("plotly_chart")) == 2
+    assert len(app.get("plotly_chart")) == 1
     assert "Over limit: Pet Care" in app.warning[0].value
     assert app.multiselect[0].value == ["pet care"]
     app.multiselect[0].set_value(["pet care", "Hobbies"]).run()
     assert not app.exception
     inputs = {item.label: item for item in app.number_input}
-    inputs["Hobbies (SGD)"].set_value(75)
+    inputs["Hobbies (SGD)"].set_value(75).run()
+    next(item for item in app.checkbox if item.label == "I have reviewed these category limits for October 2026.").check()
     app.button[0].click().run()
     assert not app.exception
     assert client.saved["categories"] == [
@@ -642,13 +643,14 @@ def test_budget_plan_edit_checks_commitments_and_funding_gap():
     assert not app.exception
     app.button[0].click().run()
     assert client.saved is None
-    assert "Confirm your actual take-home income" in app.warning[0].value
+    assert "Review the changes and confirm" in app.warning[0].value
     next(item for item in app.checkbox if item.label == "This is my actual take-home income and these limits include all my expenses.").check()
     next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3500)
     app.button[0].click().run()
     assert client.saved is None
-    assert any("funding gap of SGD 300.00" in item.value for item in app.warning)
-    next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3200)
+    assert any("exceed income by SGD 300.00" in item.value for item in app.warning)
+    next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3200).run()
+    next(item for item in app.checkbox if item.label == "This is my actual take-home income and these limits include all my expenses.").check()
     app.button[0].click().run()
     assert client.saved["planning"]["savings_target"] == 800
     assert client.saved["categories"][0]["limit_amount"] == 3200

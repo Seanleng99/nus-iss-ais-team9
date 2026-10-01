@@ -4,17 +4,34 @@ The first simplification was deployed on 2026-10-01 at `72846d0` and passed rele
 
 ## Everyday Budget page
 
-The page starts with **Your plan**, followed by **Spending this month** and **Explore a change**.
+The page starts with **Your plan** and a live **Income / Expenses / Savings / Left to allocate** summary, followed by **Spending this month** and **Explore a change**. A negative allocation displays a positive **Shortfall** and a plain-language correction. Missing amounts are labeled as missing rather than treated as zero; the allocation is not a bank balance.
 
 - Category-only tracking remains available without income. New category amounts start blank; zero must be entered explicitly.
 - **Include take-home income and savings** creates a planned budget directly in the main editor. Both amounts start blank for new plans. Existing confirmed settings are preserved, including the chosen method.
 - **Budgeting method** is one inline dropdown: Flexible category plan, 50/30/20, 80/20, Zero-based, Savings first or Custom percentages. Existing plans select their saved method; new plans start Flexible. A brief explanation and income-based guidance appear without changing any entered amounts.
-- Only Custom percentages shows three percentage inputs; they start blank unless saved and must total 100%. Only 50/30/20 and Custom show needs/wants grouping. Users choose each category's group explicitly; missing or duplicate groups prevent saving. Zero-based plans must assign all income to expenses or savings. Changing the method or its details requires a fresh confirmation and hides obsolete comparison results.
-- The editor updates planned expenses, savings and unallocated income/shortfall as amounts change. One confirmation states that the income is actual take-home income and the limits include all expenses. Saving still checks affordability, method requirements and saved restrictions in the backend.
-- Recorded spending reviews load automatically and can be refreshed. Category/pace details and adjustment proposals are optional. Reviews stay read-only; an adjustment fills an unsaved editor draft and needs confirmation before saving. Cached reviews are invalidated when the saved budget/spending response or Singapore date changes.
-- **Explore a change** changes one income, savings or category amount. Users do not need to choose a budgeting method, provide three income cases or name a scenario. Results disclose shortfalls and saved restrictions. Adopting a result changes only the unsaved editor; changing comparison inputs hides obsolete results.
+- Only Custom percentages shows three percentage inputs; they start blank unless saved and must total 100%. Only 50/30/20 and Custom show a Needs/Wants selector beside each category amount. Each category has one explicit type; missing types prevent saving. No duplicate-group selection is possible. Zero-based plans must assign all income to expenses or savings. Any change to income, savings, categories, category types, limits or method details requires fresh confirmation; changed comparison inputs hide obsolete results.
+- The editor uses ordinary editable rows, with full-width amount fields for methods that do not need category types. Custom categories are still added by typing a name in Budget categories and pressing Enter. A short Saved → This plan table highlights changes, additions, removals, types and custom percentages before one confirmation and Save budget. Category-only plans also require review confirmation. Larger change lists expose a full review. Removing a limit preserves transactions and explains that they become unbudgeted spending. Saving still checks affordability, method requirements and saved restrictions in the backend.
+- Recorded spending reviews load automatically and can be refreshed. One spending-versus-limits chart is primary; the allocation chart, review totals and category/pace details are opt-in. Recorded totals and unbudgeted spending remain visible. Adjustment proposals are optional. Reviews stay read-only; an adjustment fills an unsaved editor draft and needs confirmation before saving. Cached reviews are invalidated when the saved budget/spending response or Singapore date changes.
+- **Explore a change** changes one income, savings or category amount. Users do not need to choose a budgeting method, provide three income cases or name a scenario. A compact Current → Proposed table shows income, expenses, savings, left to allocate, shortfall and the selected category amount if relevant. Current means the editor amounts, including unsaved edits. Results disclose shortfalls and saved restrictions. Adopting a result changes only the unsaved editor; changing comparison inputs hides obsolete results.
 - **Use this plan next month** previews a copy of saved limits with explicitly reviewed income and savings. It requires expense-coverage confirmation, detects existing target plans and requires explicit overwrite permission. Changing inputs hides the old preview. Multi-month and surplus/net carry calculations are available through Coach rather than a separate Budget form.
 - **Discuss my saved budget with Coach** opens Coach with the selected month retained. Unsaved editor amounts are not sent as confirmed settings.
+
+## Guidance and save feedback
+
+Percentage methods show a small Suggested / Your plan table using full take-home
+income, including the custom split. Unknown group amounts remain labeled as
+incomplete. **Use suggested savings amount** is an explicit optional action for
+50/30/20, 80/20 and valid custom splits; it fills only the savings field, leaves
+category limits unchanged and requires renewed confirmation before saving.
+Savings first uses the user-chosen amount; Flexible and Zero-based do not invent
+a savings percentage.
+
+Local input errors identify the missing category or financial input and keep the
+rest of the page available. Backend validation errors surface the corrective
+message without echoing rejected payloads; inputs remain in the editor and a
+rejected save requires confirmation again. HTTP/service failures continue to use
+the shared error handling. No method selection, suggested amount or comparison
+adoption saves a budget automatically.
 
 ## Removal of optional planning forms
 
@@ -87,3 +104,15 @@ The full frontend suite for this revision passed **83 tests**, and the backend
 method suite passed **19 tests**. Frontend Ruff and diff whitespace checks passed.
 The inline selector is committed locally and has not been deployed or validated
 with the live model.
+
+The monthly-editor layout, compact charts, guided savings and save-review revision
+is local and not deployed. Its interaction checks cover missing custom amounts,
+confirmation invalidation after edits, explicit category removal, suggested savings,
+comparison values and rejected-save input retention. Automated checks verify
+behavior; they do not establish mobile visual usability or live-model quality.
+
+Verification for the monthly-editor revision: the full frontend suite passed
+**89 tests**, including the six new editor interaction checks. The unchanged
+backend method suite passed **19 tests**. Frontend Ruff and diff whitespace checks
+passed. The headless browser library was unavailable, so no desktop/mobile
+screenshot verification or user usability study is claimed.

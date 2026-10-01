@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from hashlib import sha256
 
+import pandas as pd
 import streamlit as st
 
 from ui.components import backend_call, money
@@ -87,6 +88,24 @@ def render_change(client, user_id, period, categories, planning, scope, draft_ke
     candidate = results[1]
     totals = candidate.get("totals")
     if totals:
+        before = results[0]
+        before_totals = before.get("totals")
+        if before_totals:
+            def amount(result, field):
+                value = result["draft"]["planning"].get(field)
+                return money(value) if value is not None else "Not entered"
+
+            rows = [
+                {"Item": label, "Current": amount(before, field), "Proposed": amount(candidate, field)}
+                for field, label in (("take_home_income", "Income"), ("savings_target", "Savings"))
+            ]
+            for label, field in (("Expenses", "expense_total"), ("Left to allocate", "unallocated"), ("Shortfall", "funding_gap")):
+                rows.append({"Item": label, "Current": money(before_totals[field]), "Proposed": money(totals[field])})
+            if category:
+                proposed = next((c["limit_amount"] for c in candidate["draft"]["categories"] if c["category"] == category), None)
+                rows.insert(0, {"Item": category.title(), "Current": money(current) if current is not None else "Not entered", "Proposed": money(proposed) if proposed is not None else "Not entered"})
+            st.table(pd.DataFrame(rows))
+            st.caption("Current uses the editor amounts. Adopting a change fills the editor; it does not save it.")
         if totals["funding_gap"]:
             st.warning(
                 f"This change leaves a shortfall of {money(totals['funding_gap'])}. Choose an amount to revise before saving."

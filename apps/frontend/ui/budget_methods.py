@@ -2,6 +2,7 @@
 
 from decimal import ROUND_HALF_UP, Decimal
 
+import pandas as pd
 import streamlit as st
 
 from ui.components import money
@@ -25,7 +26,7 @@ DESCRIPTIONS = {
 }
 
 
-def render_method_choice(prior, categories, scope):
+def render_method_choice(prior, scope):
     prior = prior or {}
     choices = list(METHODS)
     chosen = st.selectbox(
@@ -54,31 +55,12 @@ def render_method_choice(prior, categories, scope):
             st.caption(f"Percentage total: {total:g}% of take-home income.")
             if total != 100:
                 questions.append("Adjust the percentages so they total 100%.")
-    if chosen in {"50_30_20", "custom"}:
-        st.caption("Group each category once. Needs are essential costs; wants are optional spending.")
-        columns = st.columns(2)
-        saved = prior.get("category_groups") or {}
-        groups = {
-            group: columns[index].multiselect(
-                "Needs (essential costs)" if group == "needs" else "Wants (optional spending)",
-                categories, default=[c for c in categories if saved.get(c) == group],
-                format_func=lambda value: value.title(), key=f"{scope}-{group}-categories",
-            )
-            for index, group in enumerate(("needs", "wants"))
-        }
-        duplicates = set(groups["needs"]) & set(groups["wants"])
-        if duplicates:
-            questions.append("Choose only one group for: " + ", ".join(sorted(duplicates)) + ".")
-        method["category_groups"] = {c: group for group, names in groups.items() for c in names}
-        missing = [c for c in categories if c not in method["category_groups"]]
-        if missing:
-            questions.append("Choose needs or wants for: " + ", ".join(missing) + ".")
     for question in questions:
         st.caption(question)
     return method, questions
 
 
-def render_method_guide(method, income, savings, categories):
+def render_method_guide(method, income, savings, categories, *, scope=None):
     """Display indicative targets, never fill or save amounts."""
     if income is None:
         return
@@ -98,17 +80,38 @@ def render_method_guide(method, income, savings, categories):
         )
         targets = {"needs": needs, "wants": wants, "savings": income - needs - wants}
         st.caption("Monthly guide: " + " · ".join(f"{g.title()} {money(v)}" for g, v in targets.items()))
-        for group in ("needs", "wants"):
-            if any(c not in method["category_groups"] or value is None for c, value in categories.items()):
-                break
-            actual = sum(Decimal(str(value)) for c, value in categories.items() if method["category_groups"].get(c) == group)
-            if actual > targets[group]:
-                st.caption(f"{group.title()} are {money(actual - targets[group])} above the guide.")
-        if savings is not None and Decimal(str(savings)) < targets["savings"]:
-            st.caption(f"Savings are {money(targets['savings'] - Decimal(str(savings)))} below the guide.")
+        complete = all(c in method["category_groups"] and v is not None for c, v in categories.items())
+        actual = {
+            group: sum(Decimal(str(v)) for c, v in categories.items() if method["category_groups"].get(c) == group) if complete else None
+            for group in ("needs", "wants")
+        }
+        actual["savings"] = savings
+        render_targets(targets, actual)
         st.caption("These targets are guidance. Your entered amounts stay unchanged.")
+        suggest_savings(targets["savings"], scope)
     elif name == "80_20":
         target = (income * Decimal("0.20")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         st.caption(f"Monthly guide: expenses {money(income - target)} · savings {money(target)}. Your entered amounts stay unchanged.")
+        expenses = sum(Decimal(str(v)) for v in categories.values()) if all(v is not None for v in categories.values()) else None
+        render_targets({"expenses": income - target, "savings": target}, {"expenses": expenses, "savings": savings})
+        suggest_savings(target, scope)
     elif name == "pay_yourself_first" and savings is not None:
         st.caption(f"After your savings allocation, {money(income - Decimal(str(savings)))} is available for expenses.")
+
+
+def render_targets(targets, actual):
+    st.table(pd.DataFrame([
+        {"Group": group.title(), "Suggested": money(target), "Your plan": money(actual[group]) if actual[group] is not None else "Needs input"}
+        for group, target in targets.items()
+    ]))
+
+
+def suggest_savings(target, scope):
+    if not scope:
+        return
+
+    def apply():
+        st.session_state[f"{scope}-plan-savings"] = float(target)
+
+    st.button("Use suggested savings amount", key=scope + "-suggest-savings", on_click=apply)
+    st.caption("This fills the savings field only. Review the plan and confirm before saving.")

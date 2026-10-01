@@ -34,8 +34,8 @@ def test_custom_split_requires_explicit_complete_percentages_and_category_groups
     assert control(app.button, "Save budget").disabled
     for label, value in [("Needs (%)", 60), ("Wants (%)", 20), ("Savings (%)", 10)]:
         control(app.number_input, label).set_value(value)
-    control(app.multiselect, "Needs (essential costs)").set_value(["housing"])
-    control(app.multiselect, "Wants (optional spending)").set_value(["food"]).run()
+    control(app.selectbox, "Type for Housing").set_value("needs")
+    control(app.selectbox, "Type for Food").set_value("wants").run()
     assert control(app.button, "Save budget").disabled
     assert not any("Monthly guide:" in c.value for c in app.caption)
     control(app.number_input, "Savings (%)").set_value(20).run()
@@ -53,17 +53,16 @@ def test_custom_split_requires_explicit_complete_percentages_and_category_groups
     assert client.saved["planning"]["savings_target"] == 800  # Guide never overwrites inputs.
 
 
-def test_needs_and_wants_must_be_complete_and_disjoint_without_inferred_groups():
+def test_each_category_requires_one_explicit_type_without_inferred_groups():
     client = Client()
     app = render(client)
     control(app.selectbox, "Budgeting method").set_value("50_30_20").run()
-    assert control(app.multiselect, "Needs (essential costs)").value == []
-    assert control(app.multiselect, "Wants (optional spending)").value == []
+    assert control(app.selectbox, "Type for Housing").value is None
+    assert control(app.selectbox, "Type for Food").value is None
     assert control(app.button, "Save budget").disabled
-    control(app.multiselect, "Needs (essential costs)").set_value(["housing", "food"])
-    control(app.multiselect, "Wants (optional spending)").set_value(["food"]).run()
+    control(app.selectbox, "Type for Housing").set_value("needs").run()
     assert control(app.button, "Save budget").disabled
-    control(app.multiselect, "Needs (essential costs)").set_value(["housing"]).run()
+    control(app.selectbox, "Type for Food").set_value("wants").run()
     assert not control(app.button, "Save budget").disabled
     assert not any("(%)" in widget.label for widget in app.number_input)
     control(app.checkbox, CONFIRMATION).check()

@@ -134,7 +134,7 @@ def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
     assert client.reviews == 1
     control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
     assert client.reviews == 1  # Pure editor changes do not repeatedly fetch records.
-    assert control(app.metric, "Unallocated income").value == "SGD 100.00"
+    assert control(app.metric, "Left to allocate").value == "SGD 100.00"
     control(app.button, "Save budget").click().run()
     assert client.saved is None
     control(
@@ -147,6 +147,9 @@ def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
 def test_legacy_category_tracking_does_not_need_income_and_new_plan_inputs_start_unknown():
     client = Client(planned=False)
     app = render(client)
+    control(app.button, "Save budget").click().run()
+    assert client.saved is None
+    control(app.checkbox, "I have reviewed these category limits for October 2026.").check()
     control(app.button, "Save budget").click().run()
     assert client.saved["planning"] is None
     client.saved = None

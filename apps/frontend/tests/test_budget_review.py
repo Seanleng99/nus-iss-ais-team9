@@ -101,6 +101,9 @@ def test_review_loads_automatically_and_adoption_requires_actual_income_and_cove
     control(app.button, "Refresh spending review").click().run()
     assert not app.exception
     assert client.reviews == 2 and client.saved is None
+    assert not any(m.label == "Month-end pace illustration" for m in app.metric)
+    assert len(app.get("plotly_chart")) == 1
+    control(app.checkbox, "Show category and pace details").check().run()
     assert control(app.metric, "Month-end pace illustration").value == "Unavailable"
     assert len(app.get("plotly_chart")) == 2
     control(app.checkbox, "Show suggested adjustment").check().run()
