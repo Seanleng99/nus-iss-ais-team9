@@ -53,7 +53,7 @@ The Budget and Overview pages show take-home income, the separate savings alloca
 
 ## Stage two: method selection and scenario comparisons
 
-Users can select a method in Coach. Budget shows an existing saved method without a separate method/scenario setup form; its simple **Explore a change** flow compares income, savings or a category amount. The method is saved alongside income and savings; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
+Users can select a method in Coach or the single **Budgeting method** dropdown in **Budget → Your plan**. Custom percentage inputs and explicit needs/wants grouping appear only for methods that require them. Income-based guidance does not overwrite entered amounts. The separate method/scenario workspace remains removed; **Explore a change** compares income, savings or a category amount using the selected method. The method is saved alongside income and savings after confirmation; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
 
 | Method | Behavior |
 | --- | --- |

@@ -206,7 +206,7 @@ def test_saved_method_survives_simple_comparison_adoption_and_confirmed_save():
     client.budget["planning"]["method"] = deepcopy(method)
     app = render(client)
     assert not app.exception
-    assert any("Saved budgeting approach: Custom percentages" in c.value for c in app.caption)
+    assert control(app.selectbox, "Budgeting method").value == "custom"
     control(app.selectbox, "What would you like to change?").set_value("Savings").run()
     control(app.number_input, "New monthly savings (SGD)").set_value(900).run()
     control(app.button, "Check this change").click().run()

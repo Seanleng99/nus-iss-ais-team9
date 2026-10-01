@@ -8,6 +8,8 @@ The page starts with **Your plan**, followed by **Spending this month** and **Ex
 
 - Category-only tracking remains available without income. New category amounts start blank; zero must be entered explicitly.
 - **Include take-home income and savings** creates a planned budget directly in the main editor. Both amounts start blank for new plans. Existing confirmed settings are preserved, including the chosen method.
+- **Budgeting method** is one inline dropdown: Flexible category plan, 50/30/20, 80/20, Zero-based, Savings first or Custom percentages. Existing plans select their saved method; new plans start Flexible. A brief explanation and income-based guidance appear without changing any entered amounts.
+- Only Custom percentages shows three percentage inputs; they start blank unless saved and must total 100%. Only 50/30/20 and Custom show needs/wants grouping. Users choose each category's group explicitly; missing or duplicate groups prevent saving. Zero-based plans must assign all income to expenses or savings. Changing the method or its details requires a fresh confirmation and hides obsolete comparison results.
 - The editor updates planned expenses, savings and unallocated income/shortfall as amounts change. One confirmation states that the income is actual take-home income and the limits include all expenses. Saving still checks affordability, method requirements and saved restrictions in the backend.
 - Recorded spending reviews load automatically and can be refreshed. Category/pace details and adjustment proposals are optional. Reviews stay read-only; an adjustment fills an unsaved editor draft and needs confirmation before saving. Cached reviews are invalidated when the saved budget/spending response or Singapore date changes.
 - **Explore a change** changes one income, savings or category amount. Users do not need to choose a budgeting method, provide three income cases or name a scenario. Results disclose shortfalls and saved restrictions. Adopting a result changes only the unsaved editor; changing comparison inputs hides obsolete results.
@@ -29,7 +31,7 @@ workspace APIs and Coach operations remain available; no data or migrations chan
 | Savings goals | Goal creation and progress already belong on the Goals page. Ask Coach about a monthly contribution if needed; allocation still uses the shared savings pool. |
 | Check until payday | Requires separate cash balances, schedules and reconciliation to provide an honest answer. Coach gathers these inputs only when the user asks a timing question; no routine setup is required. |
 | Upcoming expenses | Ordinary costs can be entered as custom categories. Coach supports explicit reserve planning where a target and deadline matter. |
-| Budgeting methods | The monthly plan works without choosing a rule. Coach can explain, compare and change a method; saved methods remain visible and are preserved during editing. |
+| Separate budgeting-method explorer | Replaced by a single inline method selector in Your plan. Custom inputs appear only when needed; the scenario workspace remains removed. Coach can also explain, compare and change a method. |
 | Spending patterns | The automatic spending review already shows warnings and adjustment proposals. Historical analysis remains an on-demand Coach capability. |
 | Previous versions | Version restoration is not a primary monthly budgeting task. Backend history and confirmed restoration remain available to Coach. |
 | Review reminders | Spending reviews already load when the Budget page opens. There is no reminder-preferences form on Budget. Existing preferences remain stored. |
@@ -75,3 +77,13 @@ Frontend Ruff and diff whitespace checks passed. Tests specific to deleted forms
 were removed with those forms. Backend/AI code and their confirmation contracts
 were not modified by this revision; their earlier test counts above are historical
 evidence rather than newly executed suites.
+
+The inline method selector is a further local revision. Its focused checks passed
+13 tests, including explicit custom percentages/grouping, all six methods,
+no automatic amount changes, zero-based completeness, and fresh confirmation
+after method changes. Deployment and full-suite results are recorded separately.
+
+The full frontend suite for this revision passed **83 tests**, and the backend
+method suite passed **19 tests**. Frontend Ruff and diff whitespace checks passed.
+The inline selector is committed locally and has not been deployed or validated
+with the live model.

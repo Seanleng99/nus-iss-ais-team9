@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from client import build_request
-from ui.budget_methods import METHODS
+from ui.budget_methods import METHODS, render_method_choice, render_method_guide
 from ui.budget_review import render_budget_review
 from ui.budget_simple import render_change, render_copy_month
 from ui.budget_timing import render_timing_summary
@@ -894,6 +894,7 @@ def budget_page() -> None:
     with st.container(border=True):
         plan_confirmed = True
         edited_planning = None
+        method_questions = []
         include_planning = currency == "SGD" and st.checkbox(
             "Include take-home income and savings", value=bool(planning), disabled=bool(planning),
             key=f"{scope}-include-planning",
@@ -909,19 +910,15 @@ def budget_page() -> None:
                 "Monthly savings allocation (SGD)", min_value=0.0,
                 value=float(planning["savings_target"]) if planning.get("savings_target") is not None else None, step=50.0, key=f"{scope}-plan-savings",
             )
+            edited_planning = {key: value for key, value in planning.items() if key != "use_recorded_spending"}
+            method, method_questions = render_method_choice(planning.get("method"), categories, scope)
+            edited_planning["method"] = method
+            edited_planning.update(take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
+            method_revision = sha256(json.dumps(method, sort_keys=True).encode()).hexdigest()[:12]
             plan_confirmed = st.checkbox(
                 "This is my actual take-home income and these limits include all my expenses.",
-                key=f"{scope}-plan-confirmed",
+                key=f"{scope}-plan-confirmed-{method_revision}",
             )
-            edited_planning = {key: value for key, value in planning.items() if key != "use_recorded_spending"}
-            edited_planning.setdefault("method", {"name": "flexible", "category_groups": {}})
-            edited_planning.update(take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
-            method_name = edited_planning["method"]["name"]
-            if method_name != "flexible":
-                st.caption(
-                    "Saved budgeting approach: " + METHODS.get(method_name, method_name)
-                    + ". Ask Coach if you want to change this approach."
-                )
         values: dict[str, float] = {}
         columns = st.columns(3)
         for index, category in enumerate(categories):
@@ -930,6 +927,8 @@ def budget_page() -> None:
                 value=existing.get(category), step=25.0,
                 key=f"{scope}-{category}-v3",
             )
+        if edited_planning:
+            render_method_guide(method, plan_income, plan_savings, values)
         if edited_planning and all(v is not None for v in [*values.values(), plan_income, plan_savings]):
             balance = round(plan_income - sum(values.values()) - plan_savings, 2)
             totals = st.columns(3)
@@ -938,8 +937,11 @@ def budget_page() -> None:
             totals[2].metric("Shortfall" if balance < 0 else "Unallocated income", money(abs(balance)))
             if balance < 0:
                 st.warning("Reduce an amount or revise income before saving this plan.")
+            if method["name"] == "zero_based" and balance != 0:
+                method_questions.append("Assign all income to expenses or savings before saving a zero-based plan.")
+                st.caption(method_questions[-1])
         budget_submitted = st.button(
-            "Save budget", type="primary", icon=":material/save:", disabled=invalid,
+            "Save budget", type="primary", icon=":material/save:", disabled=invalid or bool(method_questions),
         )
     if budget_submitted:
         if any(value is None for value in values.values()):
