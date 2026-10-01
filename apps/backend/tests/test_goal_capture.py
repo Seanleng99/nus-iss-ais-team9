@@ -72,7 +72,7 @@ def test_create_edit_delete_require_preview_and_confirmation(db_session_factory)
 
 
 @pytest.mark.parametrize(
-    "field", ["currency", "current_amount", "target_amount", "target_months", "name"]
+    "field", ["current_amount", "target_amount", "target_months", "name"]
 )
 def test_missing_fields_never_save(db_session_factory, field):
     with db_session_factory() as session:
@@ -81,6 +81,36 @@ def test_missing_fields_never_save(db_session_factory, field):
         _, reply = stage(session, data)
         assert "Please provide" in reply.answer
         assert "Please provide" in confirm(session).answer
+        assert SQLAlchemyGoalRepository(session).list_records("u1") == []
+
+
+@pytest.mark.parametrize("currency", [{}, {"currency": None}])
+def test_goal_currency_defaults_to_sgd_and_edits_preserve_it(db_session_factory, currency):
+    with db_session_factory() as session:
+        data = draft()
+        data.pop("currency")
+        data.update(currency)
+        chat, reply = stage(session, data)
+        assert "Create goal preview" in reply.answer
+        assert "target SGD 12,000.00" in reply.answer
+        assert "Saved" in confirm(session).answer
+        session.commit()
+        goal = SQLAlchemyGoalRepository(session).list_records("u1")[0]
+        assert goal.currency == "SGD"
+        _, reply = stage(session, {"action": "update", "goal_name": goal.name, "current_amount": 2000}, chat)
+        assert "currently saved SGD 2,000.00" in reply.answer
+        assert "Saved" in confirm(session).answer
+        session.commit()
+        assert goal.currency == "SGD" and float(goal.current_amount) == 2000
+
+
+def test_foreign_goal_currency_never_saves(db_session_factory):
+    with db_session_factory() as session:
+        data = draft()
+        data["currency"] = "USD"
+        _, reply = stage(session, data)
+        assert "SGD only" in reply.answer
+        assert "SGD only" in confirm(session).answer
         assert SQLAlchemyGoalRepository(session).list_records("u1") == []
 
 

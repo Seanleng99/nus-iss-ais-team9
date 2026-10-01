@@ -48,7 +48,7 @@ After authentication activation, Streamlit completes Cognito authorization-code 
 
 ## Budget planning and confirmation
 
-In Coach, ask for category limits such as: "Set my October 2026 budget to SGD 500 for food and SGD 120 for pet care." Coach collects missing month/year, category, amount, and currency details, then previews the exact changes. Reply `confirm budget` to save, `cancel` to discard, or provide corrections. Income is not required to record an explicit category limit. Currency and dates are never defaulted from the current month or a dollar symbol.
+In Coach, ask for category limits such as: "Set my October 2026 budget to 500 for food and 120 for pet care." Coach collects missing month/year, category and amount details, then previews the exact changes. All personal financial amounts use SGD, including bare numbers and `$`; Coach and agents do not ask for currency confirmation. Explicit foreign-currency amounts are unsupported and require SGD amounts without automatic conversion. Reply `confirm budget` to save, `cancel` to discard, or provide corrections. Income is not required to record an explicit category limit. Dates are never defaulted from the current month.
 
 Drafts belong to the authenticated profile and conversation. Confirmation updates only the listed categories and preserves other limits. A changed budget, an intervening turn, or a preview older than 30 minutes requires a fresh preview and confirmation. Draft consumption, budget updates, and the chat exchange commit together. The Budget page provides allocation and spending charts, over-limit indicators, and suggested or custom category names; transactions also accept custom categories so their spending can be tracked against the same limits.
 
@@ -68,7 +68,7 @@ Coach can create, edit and delete saved goals through the Goal Strategy Agent. F
 - "Update my Emergency fund goal target to SGD 15,000."
 - "Delete my Emergency fund goal."
 
-Coach asks for missing information and previews the exact operation. Edits show before and after values; deletions show the record being removed. Reply `confirm goal` to apply the preview, `cancel goal` to discard it, or provide corrections for a new preview. Generic `yes` does not execute a goal change. Each request handles one goal. Duplicate names require an exact goal ID from the clarification choices. Currency changes require a separate goal rather than an assumed conversion.
+Coach asks for missing information and previews the exact operation. Goal amounts default to fixed SGD; no currency input is needed. Edits show before and after values; deletions show the record being removed. Reply `confirm goal` to apply the preview, `cancel goal` to discard it, or provide corrections for a new preview. Generic `yes` does not execute a goal change. Each request handles one goal. Duplicate names require an exact goal ID from the clarification choices. Foreign-currency amounts are unsupported; existing currency labels are preserved without conversion.
 
 Drafts are owned by the profile and conversation. Expired previews (30 minutes), intervening turns and changed goal records require a fresh preview and confirmation. Goal changes and chat persistence commit together. Apply migration `20260930_0013` with `alembic upgrade head` before running the backend. Local Compose runs migrations automatically.
 

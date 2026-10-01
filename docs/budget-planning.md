@@ -10,7 +10,7 @@ Ask Coach: **“Help me create a realistic monthly budget.”** The orchestrator
 
 The planner collects:
 
-- The exact month/year and SGD currency.
+- The exact month/year. Currency is fixed to SGD; bare amounts and `$` use SGD without a currency question. Explicit foreign-currency amounts require SGD values without automatic conversion.
 - Monthly **take-home income**, explicitly supplied or adopted and confirmed by the user. A saved profile income has an unknown take-home/gross basis until confirmed.
 - A monthly savings allocation. Zero is valid when explicitly selected; a missing target is not treated as zero.
 - Category expense limits, including custom categories. These include essential commitments, debt payments and monthly amounts for irregular expenses where applicable.
@@ -307,7 +307,7 @@ The selector/Coach context includes a page of 100 owned SGD expense/refund/incom
 Coach can now propose and confirm cash-flow settings, protected categories, floors, goal contributions, linked/separate debts, payment/refund matches, match removal, multi-month plans, and in-app review preferences. Examples:
 
 - “Protect housing in my October 2026 commitments; contribute SGD 300 monthly to my Emergency reserve goal.”
-- “Add a monthly Rent bill of SGD 1500 in housing starting October 5, 2026.” Coach asks for any missing opening date/balance/currency or ambiguous existing bill.
+- “Add a monthly Rent bill of SGD 1500 in housing starting October 5, 2026.” Coach asks for any missing opening date/balance or ambiguous existing bill; currency defaults to fixed SGD.
 - “Match SGD 600 of my recorded September 5 rent payment to the Rent bill due September 5, 2026.” Ambiguous records, dates, amounts or refund effects require clarification.
 - “Copy September 2026 limits into October through December 2026; take-home income SGD 4000 and savings SGD 800 each month.” Coach asks for coverage confirmation and previews every target before saving.
 

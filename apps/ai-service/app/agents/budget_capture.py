@@ -2,9 +2,10 @@ import json
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.budget_methods import BudgetMethod
+from app.core.prompts import CURRENCY_POLICY
 from app.models.structured import generate_structured_response
 
 
@@ -53,9 +54,14 @@ class BudgetDraft(BaseModel):
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
-    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
     categories: list[BudgetDraftCategory] = Field(default_factory=list, max_length=50)
     questions: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def default_currency(cls, value):
+        return "SGD" if value is None else value
 
 
 class CoreBudgetDraft(BudgetDraft):
@@ -77,8 +83,9 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "For a budget-setting request or a reply to a pending draft, merge only explicit user "
             "details and corrections into the pending draft. Extract every category and its limit, "
             "including custom names; normalize case and whitespace but do not substitute categories. "
-            "Use null for missing or ambiguous category, amount, month/year or currency. "
-            "Never invent a year, assume SGD from $, copy income, or turn illustrative assistant "
+            "Use null for missing or ambiguous category, amount or month/year. "
+            "Use SGD for omitted currency, bare amounts and $; preserve explicit foreign currency for backend rejection. "
+            "Never invent a year, copy income, or turn illustrative assistant "
             "advice into budget limits. Never equate income with a spending limit. "
             "period_start is the first day of the explicitly requested month. Without an explicit "
             "month and year leave it null and ask unless recorded_context.selected_period supplies the month explicitly selected in the UI. "
@@ -188,7 +195,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
     return generate_structured_response(
         agent.gateway,
         response_type=response_type,
-        system_prompt=system_prompt,
+        system_prompt=system_prompt + "\n\n" + CURRENCY_POLICY,
         user_prompt=json.dumps(
             {
                 "message": task.sanitized_message,

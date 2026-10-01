@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 
 from app.api.financial_schemas import GoalCreate
@@ -21,7 +21,7 @@ class GoalDraft(BaseModel):
     goal_id: str | None = None
     goal_name: str | None = Field(default=None, max_length=120)
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
     target_amount: float | None = Field(
         default=None, ge=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False
     )
@@ -30,6 +30,11 @@ class GoalDraft(BaseModel):
     )
     target_months: int | None = Field(default=None, gt=0, le=600)
     questions: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def default_currency(cls, value):
+        return "SGD" if value is None else value
 
 
 CONFIRM = re.compile(
@@ -102,7 +107,6 @@ def _preview(session, user_id, draft):
                 values[field] = value
         for field, label in (
             ("name", "goal name"),
-            ("currency", "currency (for example SGD)"),
             ("target_amount", "target amount"),
             ("current_amount", "currently saved amount (including zero)"),
             ("target_months", "duration in months (1–600)"),
@@ -111,6 +115,8 @@ def _preview(session, user_id, draft):
                 questions.append("Please provide the " + label + ".")
         if baseline and values.get("currency") != baseline["currency"]:
             questions.append("Currency changes require a separate goal; no conversion is assumed.")
+        if values.get("currency") != "SGD":
+            questions.append("This app supports SGD only. Please provide goal amounts in SGD; no conversion is assumed.")
     if questions:
         return "Nothing changed. " + " ".join(dict.fromkeys(questions)), baseline, None
     if draft.action == "create":

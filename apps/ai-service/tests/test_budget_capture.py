@@ -55,7 +55,7 @@ def test_capture_all_categories_without_requiring_income():
     assert "unsaved" in result.summary
 
 
-def test_pending_details_reach_budget_agent_and_missing_fields_stay_null():
+def test_pending_details_reach_budget_agent_and_currency_defaults_to_sgd():
     draft = {
         "period_start": None,
         "currency": None,
@@ -69,8 +69,9 @@ def test_pending_details_reach_budget_agent_and_missing_fields_stay_null():
     )
     result = next(item for item in response.agent_results if item.agent.value == "budget")
     assert result.data["budget_draft"]["period_start"] is None
-    assert result.data["budget_draft"]["currency"] is None
+    assert result.data["budget_draft"]["currency"] == "SGD"
     assert gateway.capture_payload["pending_draft"] == draft
+    assert "do not ask users to specify" in gateway.capture_prompt
 
 
 def test_offline_fixture_budget_capture():
@@ -78,12 +79,21 @@ def test_offline_fixture_budget_capture():
         CoachRequest(
             user_id="u1",
             session_id="s1",
-            message="Set budget for October 2026 in SGD; food: 500, pet care: 100",
+            message="Set budget for October 2026; food: $500, pet care: 100",
         )
     )
     result = next(item for item in response.agent_results if item.agent.value == "budget")
     assert result.data["budget_draft"]["period_start"] == "2026-10-01"
     assert len(result.data["budget_draft"]["categories"]) == 2
+    assert result.data["budget_draft"]["currency"] == "SGD"
+
+
+def test_explicit_foreign_currency_is_preserved_for_rejection():
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture")).handle(
+        CoachRequest(user_id="u1", session_id="s1", message="Set budget for October 2026 in USD; food: 500")
+    )
+    result = next(item for item in response.agent_results if item.agent.value == "budget")
+    assert result.data["budget_draft"]["currency"] == "USD"
 
 
 def test_workspace_draft_receives_owned_context_without_income_or_execution():

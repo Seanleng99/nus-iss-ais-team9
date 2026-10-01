@@ -11,11 +11,12 @@ def run(message, **kwargs):
 
 def test_create_goal_without_income_routes_and_extracts():
     reply = run(
-        "Create goal; name: Emergency fund; currency: SGD; target_amount: 12000; current_amount: 1000; target_months: 12"
+        "Create goal; name: Emergency fund; target_amount: 12000; current_amount: 1000; target_months: 12"
     )
     assert not reply.blocked
     result = next(r for r in reply.agent_results if r.agent == "goal_strategy")
     assert result.data["goal_draft"]["target_amount"] == 12000
+    assert result.data["goal_draft"]["currency"] == "SGD"
     assert "unsaved" in result.summary
 
 
@@ -24,10 +25,16 @@ def test_pending_followup_and_delete():
     result = next(r for r in reply.agent_results if r.agent == "goal_strategy")
     assert result.data["goal_draft"]["name"] == "Travel"
     assert result.data["goal_draft"]["current_amount"] == 0
-    assert result.data["goal_draft"]["currency"] is None
+    assert result.data["goal_draft"]["currency"] == "SGD"
     reply = run("Delete goal; goal_name: Travel")
     result = next(r for r in reply.agent_results if r.agent == "goal_strategy")
     assert result.data["goal_draft"]["action"] == "delete"
+
+
+def test_explicit_foreign_goal_currency_is_preserved_for_rejection():
+    reply = run("Create goal; name: Travel; currency: USD; target_amount: 1000; current_amount: 0; target_months: 12")
+    result = next(r for r in reply.agent_results if r.agent == "goal_strategy")
+    assert result.data["goal_draft"]["currency"] == "USD"
 
 
 def test_budget_creation_with_goal_analysis_is_not_goal_mutation():

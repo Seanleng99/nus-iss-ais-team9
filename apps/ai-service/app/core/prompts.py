@@ -3,6 +3,15 @@ from pathlib import Path
 
 from app.core.telemetry import trace_method
 
+CURRENCY_POLICY = (
+    "Application currency policy: Personal financial amounts in this Singapore app use SGD. "
+    "Default omitted currency, bare amounts and $ amounts to SGD; do not ask users to specify "
+    "or confirm currency. Currency is fixed, not a user preference. If a user explicitly supplies "
+    "another currency for a personal financial amount, explain that only SGD is supported and "
+    "request the amount in SGD; never convert or relabel it. Preserve currency labels in existing "
+    "records and educational source material, including explanations of currency risk."
+)
+
 
 class PromptCatalog:
     def __init__(self, version: str = "v6", root: Path | None = None) -> None:
@@ -15,6 +24,6 @@ class PromptCatalog:
     @trace_method
     def get(self, prompt_id: str) -> str:
         try:
-            return self._prompts[prompt_id]
+            return self._prompts[prompt_id] + "\n\n" + CURRENCY_POLICY
         except KeyError as exc:
             raise KeyError(f"Unknown prompt ID in {self.version}: {prompt_id}") from exc

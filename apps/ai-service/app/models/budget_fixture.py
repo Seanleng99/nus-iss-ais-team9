@@ -25,7 +25,8 @@ def fixture_budget_draft(payload):
         text = text[:scenario.start()] + text[scenario.end():]
     draft = dict(payload.get("pending_draft") or {})
     draft.setdefault("period_start", None)
-    draft.setdefault("currency", None)
+    if draft.get("currency") is None:
+        draft["currency"] = "SGD"
     draft.setdefault("categories", [])
     draft["questions"] = []
     draft["is_budget_request"] = True
@@ -57,8 +58,9 @@ def fixture_budget_draft(payload):
         if match:
             draft["period_start"] = f"{match[1]}-{index:02d}-01"
             text = text.replace(match[0], "")
-    if re.search(r"\bSGD\b|S\$", text, re.IGNORECASE):
-        draft["currency"] = "SGD"
+    currency = re.search(r"\b(SGD|USD|EUR|GBP|AUD|MYR|JPY|CNY|HKD)\b|S\$", text, re.IGNORECASE)
+    if currency:
+        draft["currency"] = (currency[1] or "SGD").upper()
     if draft.get("planning") and any(word in text.lower() for word in ("compare", "what if")):
         draft["action"] = "compare"
     if scenario and draft.get("planning"):
@@ -93,6 +95,6 @@ def fixture_budget_draft(payload):
         draft["categories"] = list(existing.values())
     elif not draft["categories"] and not draft.get("planning") and draft.get("action") not in {"review", "alternatives", "continuity"}:
         draft["questions"] = [
-            "For offline mode, provide limits as 'food: 500, transport: 150', plus month, year and SGD currency."
+            "For offline mode, provide limits as 'food: 500, transport: 150', plus month and year. All amounts use SGD."
         ]
     return draft

@@ -122,7 +122,9 @@ def build_change(session, user_id, change):
     if op == "cashflow":
         previous = read_section(session, user_id, "cashflow") or {}
         raw = {**apply_edits(op, previous, supplied), "confirmed": True}
-        for key in ("opening_on", "opening_balance", "currency", "schedules"):
+        if raw.get("currency") is None:
+            raw["currency"] = "SGD"
+        for key in ("opening_on", "opening_balance", "schedules"):
             if key not in raw:
                 raise ValueError(
                     f"Please supply {key.replace('_', ' ')} for cash-flow planning (SGD only)"

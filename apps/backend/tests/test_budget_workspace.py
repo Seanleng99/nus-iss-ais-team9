@@ -194,7 +194,7 @@ def test_preview_is_read_only_and_stale_or_expired_cannot_confirm(db_session_fac
     "op,payload,missing",
     [
         ("cashflow", {"opening_on": "2026-09-01"}, "opening balance"),
-        ("cashflow", {"opening_on": "2026-09-01", "opening_balance": 0}, "currency"),
+        ("cashflow", {"opening_on": "2026-09-01", "opening_balance": 0}, "schedules"),
         ("commitments", {}, "month and year"),
         ("continuity", {}, "every target month"),
         ("reconcile", {}, "transaction_id"),
@@ -205,6 +205,26 @@ def test_missing_details_are_not_assumed(db_session_factory, op, payload, missin
     with db_session_factory() as session:
         with pytest.raises(ValueError, match=missing):
             preview_change(session, "u", change(op, payload))
+        assert read_section(session, "u", "cashflow") is None
+
+
+@pytest.mark.parametrize("currency", [{}, {"currency": None}])
+def test_cashflow_currency_defaults_to_sgd(db_session_factory, currency):
+    with db_session_factory() as session:
+        payload = config()
+        payload.pop("currency")
+        payload.update(currency)
+        proposal = preview_change(session, "u", change("cashflow", payload))
+        assert read_section(session, "u", "cashflow") is None
+        confirm_change(session, "u", proposal)
+        assert read_section(session, "u", "cashflow")["currency"] == "SGD"
+
+
+def test_cashflow_rejects_foreign_currency(db_session_factory):
+    with db_session_factory() as session:
+        payload = {**config(), "currency": "USD"}
+        with pytest.raises(ValueError, match="SGD"):
+            preview_change(session, "u", change("cashflow", payload))
         assert read_section(session, "u", "cashflow") is None
 
 

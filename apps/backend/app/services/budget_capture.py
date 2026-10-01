@@ -8,7 +8,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import BudgetCategoryInput, BudgetPlanSettings, BudgetUpsert
@@ -61,9 +61,14 @@ class BudgetDraft(BaseModel):
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
     period_start: date | None = None
-    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
     categories: list[DraftCategory] = Field(default_factory=list, max_length=50)
     questions: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def default_currency(cls, value):
+        return "SGD" if value is None else value
 
     def missing(self) -> list[str]:
         questions = list(self.questions)
@@ -71,7 +76,7 @@ class BudgetDraft(BaseModel):
             questions.append("Which month and year is this budget for (for example, October 2026)?")
         if self.currency != "SGD":
             questions.append(
-                "Please specify the currency and provide the limits in SGD; this budget tracks SGD spending."
+                "This app supports SGD only. Please provide the limits in SGD; no currency conversion is assumed."
             )
         if not self.categories:
             questions.append("Which categories and monthly limits would you like to save?")
@@ -219,7 +224,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
     try:
         draft = BudgetDraft.model_validate(result.data["budget_draft"])
     except ValidationError:
-        response.answer = "Nothing has been saved. Please provide the month, year, category, SGD amount and currency again."
+        response.answer = "Nothing has been saved. Please provide the month, year, category and amount again (all amounts use SGD)."
         return
     if not draft.is_budget_request:
         return
@@ -328,13 +333,11 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
             else None
         )
         baseline = _snapshot(record)
-        if record and draft.currency is None:
-            draft.currency = record.currency
         if record and record.planning and draft.planning is None:
             draft.planning = PlanningInputs.model_validate({k: v for k, v in record.planning.items() if k != "version"})
             draft.planning.expenses_confirmed = False
         if record and record.currency != draft.currency:
-            response.answer = "Please confirm the saved budget currency before comparing scenarios. Nothing was saved."
+            response.answer = "Budget comparisons support SGD plans only. No conversion or changes were made."
             return
         comparison = apply_saved_constraints(session, user_id, compare_draft(draft, baseline["categories"]))
         chat.pending_budget = {

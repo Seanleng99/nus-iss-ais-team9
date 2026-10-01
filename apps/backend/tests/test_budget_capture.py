@@ -75,7 +75,6 @@ def test_draft_survives_sessions_and_only_confirmation_writes(db_session_factory
     "draft,question",
     [
         (complete_draft(period_start=None), "month and year"),
-        (complete_draft(currency=None), "SGD"),
         (complete_draft(currency="USD"), "SGD"),
         (complete_draft(categories=[]), "categories and monthly limits"),
         (complete_draft(categories=[{"category": None, "limit_amount": 100}]), "category for"),
@@ -101,6 +100,20 @@ def test_missing_or_ambiguous_details_cannot_be_confirmed(db_session_factory, dr
         assert question in reply.answer
         assert question in confirm(session, "yes").answer
         assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
+
+
+@pytest.mark.parametrize("currency", [{}, {"currency": None}])
+def test_currency_defaults_to_sgd_in_preview_and_saved_budget(db_session_factory, currency):
+    with db_session_factory() as session:
+        draft = complete_draft()
+        draft.pop("currency")
+        draft.update(currency)
+        reply = setup_draft(session, draft)
+        assert "Budget changes for October 2026 (SGD)" in reply.answer
+        assert "Please" not in reply.answer
+        assert confirm(session).answer.startswith("Saved")
+        session.commit()
+        assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD).currency == "SGD"
 
 
 def test_cancel_and_conversation_isolation(db_session_factory):
