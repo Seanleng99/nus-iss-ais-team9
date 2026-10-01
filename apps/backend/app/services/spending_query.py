@@ -6,22 +6,26 @@ from sqlalchemy.orm import Session
 
 from app.domain.schemas import CoachRequest, CoachResponse
 from app.infrastructure.repositories import SQLAlchemyTransactionRepository
-from app.services.transaction_capture import extract_date_from_text, mentions_future_date
+from app.services.transaction_capture import extract_date_from_text
 
 SPENDING_INTENT_PATTERN = re.compile(
     r"\b(?:spend\w*|spent|expense\w*)\b", re.IGNORECASE
 )
 
+LISTING_INTENT_PATTERN = re.compile(
+    r"\b(?:show|list|display|print|see|what|which)\b[^?.!]*"
+    r"\b(?:transaction\w*|purchase\w*|entries|records|items|receipts)\b",
+    re.IGNORECASE,
+)
+
 
 def parse_date_spending_query(message: str) -> date | None:
     text = message.strip()
-    if not SPENDING_INTENT_PATTERN.search(text):
+    if not (SPENDING_INTENT_PATTERN.search(text) or LISTING_INTENT_PATTERN.search(text)):
         return None
     if re.search(r"\b(?:budget|budgeting|afford)\b", text, re.IGNORECASE):
         return None
-    if mentions_future_date(text):
-        return None
-    return extract_date_from_text(text)
+    return extract_date_from_text(text, allow_future=True)
 
 
 def _formatted_date(when: date) -> str:
@@ -32,7 +36,7 @@ def _reply(session_id: str, answer: str) -> CoachResponse:
     audit: dict[str, Any] = {"source": "spending_date_query"}
     return CoachResponse(
         session_id=session_id,
-        selected_agents=[],
+        selected_agents=["spending"],
         answer=answer,
         agent_results=[],
         disclaimers=[],

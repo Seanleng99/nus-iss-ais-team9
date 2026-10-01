@@ -242,6 +242,9 @@ class LocalFixtureModelGateway:
         if prompt_id == "PROMPT_ID: budget_capture":
             from app.models.budget_fixture import fixture_budget_draft
             return json.dumps(fixture_budget_draft(payload))
+        if prompt_id == "PROMPT_ID: spending_capture":
+            from app.models.spending_fixture import fixture_spending_draft
+            return json.dumps(fixture_spending_draft(payload))
         if prompt_id == "PROMPT_ID: router":
             return json.dumps(self._route(payload))
         if prompt_id == "PROMPT_ID: dependency_planner":
@@ -338,9 +341,19 @@ class LocalFixtureModelGateway:
                 topics == ["emergency fund readiness"] and "goal_strategy" in selected
             ):
                 selected.append("investment_education")
+        from app.agents.spending_capture import spending_capture_request
+        spending_capture = bool(payload.get("pending_transaction")) or (
+            not bool(payload.get("pending_budget"))
+            and spending_capture_request(str(payload["message"]))
+        )
+        if spending_capture:
+            selected = ["spending"]
+            if any(term in str(payload["message"]).lower() for term in ("budget", "allocate")):
+                selected.append("budget")
         return {
             "selected_agents": selected or ["budget"],
             "rationale": ["Offline fixture selected agents for repeatable integration testing."],
+            "spending_capture": spending_capture,
             "budget_planning": bool((payload.get("pending_budget") or {}).get("planning")) or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower()
@@ -354,15 +367,148 @@ class LocalFixtureModelGateway:
         }
 
     @staticmethod
+    def _spending_summary(payload: Mapping[str, Any], grounding: Mapping[str, Any]) -> str:
+        try:
+            inner = json.loads(str(payload.get("message", "")))
+            question = str(inner.get("user_request", "")) if isinstance(inner, dict) else ""
+        except (ValueError, TypeError):
+            question = str(payload.get("message", ""))
+        asked = question.lower()
+        totals = grounding.get("category_totals", {})
+        anomalies = list(grounding.get("anomalies", []))
+        trends = list(grounding.get("category_trends", []))
+
+        def label(category: str) -> str:
+            return str(category).replace("_", " ").strip()
+
+        def mentioned(category: str) -> bool:
+            word = label(category).lower()
+            return bool(word) and word in asked
+
+        def anomaly_line(anomaly: Mapping[str, Any]) -> str:
+            category = label(anomaly.get("category", "other"))
+            return (
+                f"I found the unusual {category} expense you noticed: SGD "
+                f"{float(anomaly.get('amount', 0)):.2f} on {anomaly.get('occurred_on', 'a recent day')}, "
+                f"about {abs(float(anomaly.get('deviation_percent', 0))):.0f}% above your usual "
+                f"SGD {float(anomaly.get('expected_amount', 0)):.2f}."
+            )
+
+        def trend_line(trend: Mapping[str, Any]) -> str:
+            category = label(trend.get("category", "other"))
+            total = (
+                f" Your {category} total is SGD {float(totals[category]):.2f}."
+                if category in totals
+                else ""
+            )
+            return (
+                f"Your {category} spending is SGD {float(trend.get('current_amount', 0)):.2f} this "
+                f"month versus SGD {float(trend.get('previous_amount', 0)):.2f} last month "
+                f"({float(trend.get('change_percent', 0)):+.1f}%).{total}"
+            )
+
+        def total_line(category: str) -> str:
+            return f"Your {label(category)} total is SGD {float(totals[category]):.2f}."
+
+        def reduction_note() -> str:
+            return (
+                "To reduce surprises like this, check whether it was a one-off booking or a "
+                "new recurring cost, and set a category budget so future spikes get flagged early."
+            )
+
+        def quoted_anomaly() -> tuple[str, str, str] | None:
+            # Insight cards embed the numbers, e.g. "A 5698.50 food expense is
+            # 1601% higher than your historical average of 335.00".
+            match = re.search(
+                r"([\d,]+(?:\.\d{1,2})?)\s+([a-z][a-z _-]{1,30}?)\s+expense is\s*"
+                r"(\d+(?:\.\d+)?)%\s+higher than your historical average of\s*([\d,]+(?:\.\d{1,2})?)",
+                question,
+                re.IGNORECASE,
+            )
+            if match is None:
+                return None
+            amount, category, percent, average = match.groups()
+            return category.strip().lower(), percent, (
+                f"I found the unusual {category.strip().lower()} expense you noticed: SGD "
+                f"{float(amount.replace(',', '')):.2f} recently, about {percent}% above your usual "
+                f"SGD {float(average.replace(',', '')):.2f}."
+            )
+
+        wants_reduction = any(word in asked for word in ("reduce", "cut", "lower", "save", "unexpected"))
+        anomaly_asked = any(word in asked for word in ("unusual", "anomal", "unexpected", "spike"))
+
+        # An insight-card question quotes the detector's exact numbers, so answer
+        # with them for the quoted category; the backend may flag categories the
+        # agent-side grounding does not carry.
+        quoted = quoted_anomaly()
+        if quoted is not None:
+            quoted_category, _, quoted_line = quoted
+            grounded = next(
+                (a for a in anomalies if str(a.get("category")).lower() == quoted_category),
+                None,
+            )
+            # Prefer the anomaly object when it agrees; it has the dated detail.
+            line = anomaly_line(grounded) if grounded is not None else quoted_line
+            return line + (" " + reduction_note() if wants_reduction else "")
+
+        # Prefer the category the user actually named; only fall back to the
+        # largest anomaly when the question does not point at one category.
+        named = [
+            str(a.get("category"))
+            for a in anomalies
+            if mentioned(str(a.get("category", "")))
+        ]
+        if not named:
+            named = [
+                str(t.get("category"))
+                for t in trends
+                if mentioned(str(t.get("category", "")))
+            ]
+        if not named:
+            named = [c for c in totals if mentioned(c)]
+
+        if named:
+            category = named[0]
+            hit = next(
+                (a for a in anomalies if str(a.get("category")) == category),
+                None,
+            )
+            if hit is not None:
+                return anomaly_line(hit) + (" " + reduction_note() if wants_reduction else "")
+            trend = next(
+                (t for t in trends if str(t.get("category")) == category),
+                None,
+            )
+            if trend is not None:
+                return trend_line(trend)
+            if category in totals:
+                return total_line(category)
+            other = anomaly_line(anomalies[0]) if anomalies else ""
+            honest = (
+                f"I don't have a flagged unusual {label(category)} expense to analyze yet."
+                + (f" {other}" if other else "")
+            )
+            return honest + (" " + reduction_note() if wants_reduction else "")
+
+        if anomalies and anomaly_asked:
+            return anomaly_line(anomalies[0]) + (" " + reduction_note() if wants_reduction else "")
+
+        if totals:
+            category = max(totals, key=totals.get)
+            summary = f"Your highest spending category is {category} at SGD {totals[category]:.2f}."
+            if wants_reduction:
+                summary += (
+                    " The biggest lever is usually this category: review its largest transactions "
+                    "and set a monthly limit to keep it in check."
+                )
+            return summary
+        return "No recent transactions were provided."
+
+    @staticmethod
     def _specialist(prompt_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         grounding = payload.get("grounding", {})
         if prompt_id.endswith("spending"):
-            totals = grounding.get("category_totals", {})
-            if totals:
-                category = max(totals, key=totals.get)
-                summary = f"Your highest spending category is {category} at SGD {totals[category]:.2f}."
-            else:
-                summary = "No recent transactions were provided."
+            summary = LocalFixtureModelGateway._spending_summary(payload, grounding)
         elif prompt_id.endswith("budget"):
             if grounding.get("capacity_source") == "confirmed_plan":
                 capacity = grounding["capacity"]
