@@ -89,6 +89,7 @@ def test_pace_holds_recurring_amount_constant_and_never_counts_missing_as_zero(d
         assert rows["food"]["pace_over_limit"] == 230
         assert rows["housing"]["pace_estimate"] is None
         assert review["total_pace_estimate"] is None
+        assert review["suggestions"] == [] and review["comparison"] is None
         assert rows["food"]["remaining_per_day"] == 0
         assert review["remaining_days"] == 15
 
@@ -120,20 +121,50 @@ def test_future_closed_leap_month_and_zero_limit(db_session_factory):
         assert leap["elapsed_days"] == 29
 
 
-def test_adjustment_preserves_commitments_savings_and_reports_gap(db_session_factory):
+def test_review_reports_overages_without_choosing_or_saving_new_limits(db_session_factory):
     with db_session_factory() as session:
         setup_plan(session)
         transaction(session, "food", 700)
+        transaction(session, "pets", 25)
         review = build_budget_review(session, "u1", MONTH, today=TODAY)
-        proposal = review["comparison"]["results"][1]
-        assert proposal["totals"]["funding_gap"] == 200
-        assert proposal["draft"]["planning"]["savings_target"] == 500
-        assert {
-            item["category"]: item["limit_amount"] for item in proposal["draft"]["categories"]
-        } == {"food": 700, "housing": 1000}
-        assert (
-            SQLAlchemyBudgetRepository(session).get("u1", MONTH).planning["savings_target"] == 500
-        )
+        assert review["version"] == "budget-review-v2"
+        assert review["suggestions"] == []
+        assert review["comparison"] is None
+        assert review["total_spent"] == 725
+        assert review["unbudgeted_spent"] == 25
+        assert {row["category"]: row["status"] for row in review["categories"]}["food"] == "over"
+        record = SQLAlchemyBudgetRepository(session).get("u1", MONTH)
+        assert record.planning["savings_target"] == 500
+        assert {row.category: float(row.limit_amount) for row in record.categories} == {
+            "food": 100, "housing": 1000,
+        }
+
+
+def stage_chosen_change(session, *, legacy_review=False):
+    """Explicit alternative, optionally carrying evidence from a persisted v1 review."""
+    record = SQLAlchemyBudgetRepository(session).get("u1", MONTH)
+    payload = {
+        "period_start": MONTH.isoformat(),
+        "currency": "SGD",
+        "categories": [
+            {"category": row.category, "limit_amount": float(row.limit_amount)}
+            for row in record.categories
+        ],
+        "planning": {key: value for key, value in record.planning.items() if key != "version"},
+        "action": "compare",
+        "scenarios": [{
+            "name": "My food change",
+            "categories": [{"category": "food", "limit_amount": 150}],
+        }],
+    }
+    stage(session, payload)
+    if legacy_review:
+        chat = SQLAlchemyChatRepository(session).get("u1", "plan")
+        chat.pending_budget = {
+            **chat.pending_budget,
+            "review_evidence": build_budget_review(session, "u1", MONTH, today=TODAY)["evidence_fingerprint"],
+        }
+        session.commit()
 
 
 def test_review_requires_date_and_does_not_replace_existing_draft(db_session_factory):
@@ -170,9 +201,13 @@ def test_coach_adjustment_requires_adoption_and_reconfirmation(db_session_factor
         setup_plan(session)
         transaction(session, "food", 150)
         review = stage(session, {"action": "review", "period_start": MONTH.isoformat()})
-        assert "Cover recorded spending" in review.answer
+        assert "Cover recorded spending" not in review.answer
+        chat = SQLAlchemyChatRepository(session).get("u1", "plan")
+        assert "comparison" not in chat.pending_budget
+        assert "review_evidence" not in chat.pending_budget
         assert "cannot be saved" in confirm(session).answer
-        assert "unsaved draft" in confirm(session, "use scenario Cover recorded spending").answer
+        stage_chosen_change(session)
+        assert "unsaved draft" in confirm(session, "use scenario My food change").answer
         chat = SQLAlchemyChatRepository(session).get("u1", "plan")
         draft = deepcopy(chat.pending_budget["draft"])
         assert draft["planning"]["income_basis"] == "unknown"
@@ -195,10 +230,10 @@ def test_new_records_invalidate_coach_review_adoption(db_session_factory, monkey
     with db_session_factory() as session:
         setup_plan(session)
         transaction(session, "food", 150)
-        stage(session, {"action": "review", "period_start": MONTH.isoformat()})
+        stage_chosen_change(session, legacy_review=True)
         transaction(session, "food", 20)
         assert (
-            "fresh budget review" in confirm(session, "use scenario Cover recorded spending").answer
+            "fresh budget review" in confirm(session, "use scenario My food change").answer
         )
 
 
@@ -219,6 +254,8 @@ def test_api_review_is_read_only_and_stale_evidence_blocks_save(db_session_facto
     response = client.get("/api/users/u1/budget/review?period_start=2026-09-01", headers=headers)
     assert response.status_code == 200
     assert response.json()["total_spent"] == 150
+    assert response.json()["comparison"] is None
+    assert response.json()["suggestions"] == []
     payload["period_start"] = MONTH.isoformat()
     payload["review_evidence"] = response.json()["evidence_fingerprint"]
     with db_session_factory() as session:
@@ -248,8 +285,8 @@ def test_review_evidence_is_kept_until_final_confirmation(db_session_factory, mo
     with db_session_factory() as session:
         setup_plan(session)
         transaction(session, "food", 150)
-        stage(session, {"action": "review", "period_start": MONTH.isoformat()})
-        confirm(session, "use scenario Cover recorded spending")
+        stage_chosen_change(session, legacy_review=True)
+        confirm(session, "use scenario My food change")
         chat = SQLAlchemyChatRepository(session).get("u1", "plan")
         draft = deepcopy(chat.pending_budget["draft"])
         draft["planning"].update(income_basis="take_home", expenses_confirmed=True)

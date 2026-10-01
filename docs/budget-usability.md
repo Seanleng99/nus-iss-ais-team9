@@ -11,9 +11,8 @@ The page starts with **Your plan** and a live **Income / Expenses / Savings / Le
 - **Budgeting method** is one inline dropdown: Flexible category plan, 50/30/20, 80/20, Zero-based, Savings first or Custom percentages. Existing plans select their saved method; new plans start Flexible. A brief explanation and income-based guidance appear without changing any entered amounts.
 - Only Custom percentages shows three percentage inputs; they start blank unless saved and must total 100%. Only 50/30/20 and Custom show a Needs/Wants selector beside each category amount. Each category has one explicit type; missing types prevent saving. No duplicate-group selection is possible. Zero-based plans must assign all income to expenses or savings. Any change to income, savings, categories, category types, limits or method details requires fresh confirmation; changed comparison inputs hide obsolete results.
 - The editor uses ordinary editable rows, with full-width amount fields for methods that do not need category types. Custom categories are still added by typing a name in Budget categories and pressing Enter. A short Saved → This plan table highlights changes, additions, removals, types and custom percentages before one confirmation and Save budget. Category-only plans also require review confirmation. Larger change lists expose a full review. Removing a limit preserves transactions and explains that they become unbudgeted spending. Saving still checks affordability, method requirements and saved restrictions in the backend.
-- Recorded spending reviews load automatically and can be refreshed. Budget and Overview use the same all-category recorded spending totals, including expenses without limits, for Spent, Remaining/Over budget and overall usage. Category warnings and charts still compare each saved limit with its own expenses. Currency appears in the chart caption and the legend sits above the bars. The allocation chart, review totals and category/pace details are opt-in. Recorded totals and unbudgeted spending remain visible. Adjustment proposals are optional. Reviews stay read-only; an adjustment fills an unsaved editor draft and needs confirmation before saving. Cached reviews are invalidated when the saved budget/spending response or Singapore date changes.
+- Budget and Overview use the same all-category recorded spending totals, including expenses without limits, for Spent, Remaining/Over budget and overall usage. Category warnings and the main chart compare saved limits with their own expenses. Currency appears in the chart caption and the legend sits above the bars. The optional allocation chart remains available. Recorded expenses may be incomplete; remaining budget is not a bank balance. Budget does not fetch a separate review, display pace details or generate adjustment proposals.
 - **Explore a change** changes one income, savings or category amount. Users do not need to choose a budgeting method, provide three income cases or name a scenario. A compact Current → Proposed table shows income, expenses, savings, left to allocate, shortfall and the selected category amount if relevant. Current means the editor amounts, including unsaved edits. Results disclose shortfalls and saved restrictions. Adopting a result changes only the unsaved editor; changing comparison inputs hides obsolete results.
-- **Use this plan next month** previews a copy of saved limits with explicitly reviewed income and savings. It requires expense-coverage confirmation, detects existing target plans and requires explicit overwrite permission. Changing inputs hides the old preview and requires fresh confirmation for the revised amounts. Simple copies omit unrelated rollover and override explanations. Relevant saved-commitment questions and replacement warnings remain visible. Multi-month and surplus/net carry calculations are available through Coach rather than a separate Budget form; their preview explanations appear only when applicable.
 - **Discuss my saved budget with Coach** opens Coach with the selected month retained. Unsaved editor amounts are not sent as confirmed settings.
 
 ## Browser acceptance follow-up — 1 October 2026
@@ -52,6 +51,37 @@ warning, matching spending totals and mobile chart were verified visually. At
 overflow was observed. The fixture did not contact the deployed backend, so this
 does not claim the fixes are live or that the live model has been retested.
 
+## Further simplification — 1 October 2026
+
+Next-month copying, category/pace details and suggested adjustments are removed
+from Budget. The unused review renderer and copy form are deleted. Budget keeps
+the monthly editor, method choices, saved-plan spending summary, category overage
+warnings, main chart, optional allocation chart, explicit one-change comparisons
+and Coach navigation. The earlier copy-preview browser fix above is historical;
+its backend warning correction remains, but the copy UI is no longer offered.
+
+Ordinary Coach reviews still use deterministic, owned SGD spending and optional
+bounded pace calculations. Reviews no longer create a **Cover recorded spending**
+scenario or suggest raising limits to recorded expenses. An overage is evidence
+to discuss, not permission to normalize overspending. Coach can clarify whether
+purchases repeat and ask which amount the user wants to compare before calling
+the existing comparison tools. Adoption produces an unsaved draft and saving
+still requires confirmation of actual income, expense coverage and the changes.
+Explicit requests to reuse a month can still use the backend preview/confirmation
+contract; no recurring copy or automatic rollover is added.
+
+Review responses use `budget-review-v2`; compatibility fields `suggestions` and
+`comparison` are empty/null. Existing saved plans and transactions are unchanged.
+Legacy pending review-derived drafts retain their evidence checks at adoption,
+clarification and final save. No database migration is needed. These changes and
+the earlier browser fixes remain local until explicitly pushed for deployment.
+
+Verification: the full frontend suite passed **95 tests**; focused backend review,
+method, planning, capture and continuity suites passed **74 tests**; focused AI
+review, method, planner and capture suites passed **25 tests**. Ruff and diff
+whitespace checks passed. These are offline checks; the simplified page has not
+yet been deployed or retested against the live model.
+
 ## Guidance and save feedback
 
 Percentage methods show a small Suggested / Your plan table using full take-home
@@ -73,7 +103,7 @@ adoption saves a budget automatically.
 
 The **More planning options** menu and all ten standalone workflows are removed.
 The Budget page focuses on the monthly plan, recorded spending, one-change
-comparisons, next-month copying and the Coach shortcut. The unused frontend
+comparisons and the Coach shortcut. The unused frontend
 renderers and their form-specific tests are removed, including the older cash-flow,
 reconciliation and full-commitments editors. Backend calculations, saved settings,
 workspace APIs and Coach operations remain available; no data or migrations change.
@@ -85,10 +115,10 @@ workspace APIs and Coach operations remain available; no data or migrations chan
 | Check until payday | Requires separate cash balances, schedules and reconciliation to provide an honest answer. Coach gathers these inputs only when the user asks a timing question; no routine setup is required. |
 | Upcoming expenses | Ordinary costs can be entered as custom categories. Coach supports explicit reserve planning where a target and deadline matter. |
 | Separate budgeting-method explorer | Replaced by a single inline method selector in Your plan. Custom inputs appear only when needed; the scenario workspace remains removed. Coach can also explain, compare and change a method. |
-| Spending patterns | The automatic spending review already shows warnings and adjustment proposals. Historical analysis remains an on-demand Coach capability. |
+| Spending patterns | Category overages remain visible in the main spending summary. Detailed reviews, pace illustrations and historical analysis are available through Coach on request. |
 | Previous versions | Version restoration is not a primary monthly budgeting task. Backend history and confirmed restoration remain available to Coach. |
-| Review reminders | Spending reviews already load when the Budget page opens. There is no reminder-preferences form on Budget. Existing preferences remain stored. |
-| Plan several months | One-click next-month copying covers the everyday need. Coach retains explicit multi-month and carry-rule planning. |
+| Review reminders | Recorded spending appears when the Budget page opens; detailed reviews are available through Coach on request. There is no reminder-preferences form on Budget. Existing preferences remain stored. |
+| Plan several months | Budget has no copy or multi-month form. Coach retains explicitly requested month reuse, multi-month and carry-rule planning with preview and confirmation. |
 | Debt repayment comparisons | Rates, fees and repayment policies need guided clarification. Coach retains deterministic comparisons; Budget does not duplicate a debt-planning interface. |
 
 The Coach shortcut retains the selected month and navigates without sending a

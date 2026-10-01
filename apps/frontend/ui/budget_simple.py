@@ -8,7 +8,6 @@ import pandas as pd
 import streamlit as st
 
 from ui.components import backend_call, money
-from ui.state import shift_month
 
 
 def render_change(client, user_id, period, categories, planning, scope, draft_key):
@@ -128,77 +127,3 @@ def render_change(client, user_id, period, categories, planning, scope, draft_ke
         draft["planning"].update(income_basis="unknown", expenses_confirmed=False)
         st.session_state[draft_key] = draft
         st.rerun()
-
-
-def render_copy_month(client, user_id, period, budget):
-    if not budget or not budget.get("planning"):
-        return
-    key = f"copy-month-{user_id}-{period}"
-    target = shift_month(period, 1)
-    if st.button("Use this plan next month", key=key + "-open"):
-        st.session_state[key + "-expanded"] = True
-        st.session_state[key + "-existing"] = backend_call(
-            lambda: client.get_budget(user_id, target)
-        )
-    if not st.session_state.get(key + "-expanded"):
-        return
-    st.write(f"Prepare {target:%B %Y} using the saved category limits for {period:%B %Y}.")
-    income = st.number_input(
-        "Next month's take-home income (SGD)",
-        min_value=0.0,
-        value=float(budget["planning"]["take_home_income"]),
-        key=key + "-income",
-    )
-    savings = st.number_input(
-        "Next month's savings (SGD)",
-        min_value=0.0,
-        value=float(budget["planning"]["savings_target"]),
-        key=key + "-savings",
-    )
-    overwrite = False
-    if st.session_state.get(key + "-existing"):
-        overwrite = st.checkbox(f"Replace my existing {target:%B %Y} plan", key=key + "-replace")
-    payload = {
-        "source_period": str(period),
-        "first_period": str(target),
-        "months": 1,
-        "take_home_income": income,
-        "savings_target": savings,
-        "carry_rule": "copy_limits",
-        "allow_overwrite": overwrite,
-    }
-    signature = json.dumps(payload, sort_keys=True)
-    if st.button("Preview next month's plan", key=key + "-preview"):
-        preview = backend_call(lambda: client.preview_budget_months(user_id, payload))
-        if preview is not None:
-            st.session_state[key + "-pending"] = (signature, preview)
-    pending = st.session_state.get(key + "-pending")
-    if not pending or pending[0] != signature:
-        return
-    preview = pending[1]
-    for question in preview.get("questions", []) + preview.get("warnings", []):
-        st.info(question)
-    for item in preview.get("plans", []):
-        st.table(
-            [
-                {"Category": c["category"].title(), "Amount": money(c["limit_amount"])}
-                for c in item["budget"]["categories"]
-            ]
-        )
-        st.write(
-            f"Expenses {money(item['expenses'])} · savings {money(savings)} · income {money(income)}"
-        )
-    approved = st.checkbox(
-        f"These are my actual income, savings and complete expense limits for {target:%B %Y}.",
-        key=key + "-approved-" + sha256(signature.encode()).hexdigest()[:12],
-    )
-    if st.button(
-        "Confirm next month's plan",
-        key=key + "-confirm",
-        disabled=not preview["ready"] or not approved,
-    ):
-        saved = backend_call(lambda: client.confirm_budget_months(user_id, preview["preview_id"]))
-        if saved:
-            st.session_state.pop(key + "-pending", None)
-            st.session_state.pop(key + "-expanded", None)
-            st.success(f"Saved your {target:%B %Y} plan.")

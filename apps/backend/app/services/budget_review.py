@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from app.infrastructure.repositories import SQLAlchemyBudgetRepository
 
-REVIEW_VERSION = "budget-review-v1"
+REVIEW_VERSION = "budget-review-v2"
 TRANSFER_CATEGORIES = {"savings", "emergency fund", "investments"}
 MIN_ELAPSED_DAYS = 7
 MIN_ACTIVITY_DAYS = 3
@@ -123,66 +123,10 @@ def build_budget_review(session, user_id: str, period_start: date, *, today: dat
         if rows and all(row["pace_estimate"] is not None for row in rows)
         else None
     )
-    suggestions = []
-    for row in rows:
-        if row["status"] in {"over", "unbudgeted"} and row["spent"] > 0:
-            suggestions.append(
-                {
-                    "category": row["category"],
-                    "proposed_limit": row["spent"],
-                    "reason": "Cover recorded spending only. Review unpaid commitments and future purchases before choosing a full-month limit.",
-                }
-            )
-        elif row["pace_over_limit"] and row["pace_over_limit"] > 0:
-            suggestions.append(
-                {
-                    "category": row["category"],
-                    "proposed_limit": None,
-                    "reason": "The pace illustration exceeds the limit. Check whether these purchases repeat before changing the budget.",
-                }
-            )
     if phase == "current":
         warnings.append(
             "Pace is an illustration, not a prediction. One-off purchases, missing transactions and unpaid recurring bills can change the result. Sparse categories have no estimate."
         )
-    comparison = None
-    if supported and record and suggestions and phase != "future":
-        from app.services.budget_capture import BudgetDraft
-        from app.services.budget_scenarios import compare_draft
-
-        overrides = [
-            {
-                "category": row["category"],
-                "limit_amount": row["proposed_limit"],
-                "source": "recorded_spending",
-                "reference_period": period_start.isoformat(),
-            }
-            for row in suggestions
-            if row["proposed_limit"] is not None
-        ]
-        if overrides and len(set(limits) | {row["category"] for row in overrides}) <= 50:
-            planning = {
-                key: value for key, value in (record.planning or {}).items() if key != "version"
-            }
-            planning["expenses_confirmed"] = False
-            draft = BudgetDraft.model_validate(
-                {
-                    "period_start": period_start,
-                    "currency": "SGD",
-                    "action": "compare",
-                    "categories": [
-                        {"category": name, "limit_amount": float(value)}
-                        for name, value in limits.items()
-                    ],
-                    "planning": planning,
-                    "scenarios": [{"name": "Cover recorded spending", "categories": overrides}],
-                }
-            )
-            comparison = compare_draft(draft)
-        elif overrides:
-            warnings.append(
-                "More than 50 categories would be needed. Choose which categories to include before preparing an adjustment."
-            )
     fingerprint = hashlib.sha256(
         json.dumps(
             {
@@ -221,8 +165,8 @@ def build_budget_review(session, user_id: str, period_start: date, *, today: dat
         ),
         "total_pace_estimate": total_estimate,
         "excluded_transfers": money(excluded),
-        "suggestions": suggestions if supported else [],
-        "comparison": comparison,
+        "suggestions": [],  # Retained response fields for older clients; reviews never choose changes.
+        "comparison": None,
         "warnings": warnings,
         "evidence_fingerprint": fingerprint,
         "saved": False,
@@ -248,6 +192,5 @@ def describe_review(review):
                 f"Illustrative month-end pace: SGD {row['pace_estimate']:,.2f}. {row['pace_note']}"
             )
     lines.extend(review["warnings"])
-    for suggestion in review["suggestions"]:
-        lines.append(f"{suggestion['category']}: {suggestion['reason']}")
+    lines.append("To compare a change, tell me the category, income or savings amount you want to try.")
     return "\n\n".join(lines)

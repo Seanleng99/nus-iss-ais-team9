@@ -92,17 +92,35 @@ Offline fixture example, following the stage-one plan example: `scenario More sa
 
 The confirmed plan now supplies `monthly_savings_capacity` to Budget and Goal Strategy. Its chosen savings allocation is the shared pool; unallocated income remains separate. The prior illustrative calculator is used only when no valid confirmed planning settings exist for the selected month, with an explicit fallback label. It retains the legacy 50/30/20 calculation **after recorded recurring expenses**; it is not the standard take-home-income interpretation of that rule. The new category-planning path does not use that baseline or publish its result as an observed savings balance.
 
-## Stage three: spending reviews and adjustment proposals
+## Stage three: on-demand spending reviews
 
-Request **“Review my budget for September 2026”** in Coach, or open **Budget → Review recorded spending → Refresh spending review**. Coach asks for the month/year when missing; a read-only review does not require new income or savings inputs. Overview points to the Budget review panel. Reviews run on demand, without scheduled notifications or background jobs.
+Request **“Review my budget for September 2026”** in Coach. Coach asks for the
+month/year when missing; a read-only review needs no new income or savings inputs.
+Budget itself shows saved-plan totals, category overage warnings and a main
+spending chart, without a separate review panel, pace details, suggested
+adjustments or next-month copy form. Reviews run on demand, without scheduled
+notifications or background jobs.
 
-The backend reads only the authenticated profile's SGD expense aggregates. The cutoff is the earlier of Singapore today and the selected month's final day; future-dated entries are excluded. It includes unbudgeted categories and zero limits, and excludes recorded categories named `savings`, `emergency fund`, and `investments` from expense totals. Custom transfer aliases are not automatically recognized. Recurring rows are counted once. Transaction descriptions are not included in the review context. Foreign-currency budgets are reported as unsupported rather than converted.
+The backend reads only the authenticated profile's SGD expense aggregates. The
+cutoff is the earlier of Singapore today and the month's final day; future-dated
+entries are excluded. It includes unbudgeted categories and zero limits, and
+excludes recorded categories named `savings`, `emergency fund`, and `investments`
+from expense totals. Custom transfer aliases are not automatically recognized.
+Recurring rows are counted once. Transaction descriptions are omitted. Foreign-
+currency budgets are reported as unsupported rather than converted.
 
-Each category shows recorded expenses, saved limit, remaining amount, and status (over, approaching at 80%, within the recorded limit, or unbudgeted). A positive remaining amount does not establish an available cash balance or prove that commitments are paid. Records can be incomplete, including in a closed month. No saved budget is a valid review result; the user is asked to create a plan before adopting an adjustment.
+Each category provides recorded expenses, saved limit, remaining amount, and
+status (over, approaching at 80%, within the recorded limit, or unbudgeted).
+Remaining budget does not establish an available cash balance or prove bills are
+paid. Records can be incomplete, including in a closed month. No saved budget is
+a valid review result; the user supplies category limits before preparing a plan.
 
-### Pace calculation
+### Pace calculation retained for Coach
 
-Pace is an **illustration**, not a spending prediction or a variable-income forecast. It is available only for an in-progress month after at least seven calendar days have elapsed and when that category has non-recurring expense records on at least three distinct days:
+Pace is a deterministic **illustration**, not a spending prediction or a variable-
+income forecast. It is available only for an in-progress month after at least
+seven calendar days have elapsed and when the category has non-recurring expense
+records on at least three distinct days:
 
 ```text
 category month-end pace = recorded recurring expenses
@@ -110,20 +128,49 @@ category month-end pace = recorded recurring expenses
 remaining per day = max(category limit - recorded expenses, 0) / remaining calendar days
 ```
 
-Recurring amounts are held constant to avoid multiplying a rent payment across the month. This does not infer unpaid bills. Non-recurring one-off purchases can still distort the illustration. Sparse, future and closed-month categories have no pace estimate. Remaining-per-day is omitted when there are no days left. Month lengths and leap years use calendar dates. An overall pace is shown only when every reviewed category has an estimate; missing values are never treated as zero. The UI shows recorded amounts and pace in separate chart series and labels unavailable estimates.
+Recurring amounts are held constant; unpaid bills are not inferred. Non-recurring
+one-off purchases can distort the illustration. Sparse, future and closed-month
+categories have no pace estimate. Remaining-per-day is omitted when no days are
+left. Month lengths and leap years use calendar dates. Overall pace is returned
+only when every reviewed category has an estimate; missing values are never zero.
+The Budget page does not call this tool automatically or display pace controls.
 
-### Review → adjustment → confirmation
+### User-directed changes and confirmation
 
-An overspent or unbudgeted category can produce a **Cover recorded spending** option: raise its limit to the recorded amount and preserve every other saved limit, method and savings allocation. This covers already-recorded expenses only; it does not guess an allowance for the rest of the month. A pace overrun alone prompts the user to inspect the spending pattern and does not generate an automatic numeric increase. The normal affordability and method checks identify funding gaps; the system never automatically cuts another category, essential commitment or savings target to fund an increase.
+An ordinary review never generates numeric limit increases or a **Cover recorded
+spending** scenario. Overspending remains visible against the saved limit. Coach
+can discuss one-off purchases, upcoming expenses and tradeoffs, ask for the
+amounts to try, then use the existing deterministic comparison tools. The UI's
+**Explore a change** likewise compares one explicit income, savings or category
+amount. Neither path automatically cuts another category or savings allocation.
 
-- Coach stores the option as a scenario comparison. `Use scenario Cover recorded spending` adopts an unsaved draft. Actual take-home income, expense coverage, missing inputs, and the final budget changes must still be confirmed. A review or generic `confirm budget` cannot directly authorize an adjustment.
-- An existing pending plan/comparison is retained during a review and its old save confirmation is disarmed. Finish or cancel that draft before adopting the review's adjustment.
-- The UI displays the proposed category limits and any funding gap. `Review adjustment in editor` opens an unsaved proposal. Legacy manual budgets without planning income/savings require those inputs through Coach or the method explorer first.
-- A review evidence fingerprint covers the cutoff date, aggregate records and saved budget. Changed records, a new review date or changed saved limits require a fresh review before adoption. Evidence is retained through Coach clarification and checked again before saving. The UI sends `review_evidence` with a reviewed adjustment; a stale direct save returns HTTP 409. The user can still deliberately create or edit a separate manual budget through the existing API.
+- A review cannot be saved. A chosen comparison is adopted as an unsaved draft;
+  actual take-home income, expense coverage, missing inputs and final changes
+  still require confirmation.
+- An existing pending plan/comparison is preserved during review and its old
+  save confirmation is disarmed. Finish or cancel it before starting another change.
+- Persisted legacy review-derived drafts retain their evidence fingerprint, which
+  covers the cutoff, aggregate records and saved budget. Changed evidence blocks
+  adoption or final save. Clarification cannot discard that precondition. A stale
+  direct save carrying `review_evidence` returns HTTP 409.
+- Explicit Coach month-reuse requests retain the backend preview/confirmation
+  APIs; copying is absent from the everyday Budget UI.
 
-Stage-three modules are `services/budget_review.py`, repository `review_spending`, and `ui/budget_review.py`. `GET /api/users/{user_id}/budget/review?period_start=YYYY-MM-01` is authenticated, owner-scoped, and read-only. Its response includes the cutoff, coverage caveats, actual amounts, optional pace, suggestions, a non-persisting scenario comparison, `evidence_fingerprint`, and `saved: false`. `BudgetUpsert.review_evidence` is an optional transient precondition, not a database field. Model-provided numbers are not used to compute a review. Backend audit records `budget-review-v1`; extraction uses `budget-planning-v3` with `action=review`. Readers retain compatibility with v1/v2 planning settings. No additional database migration is required.
+The retained modules are `services/budget_review.py` and repository
+`review_spending`; the unused `ui/budget_review.py` renderer is deleted.
+`GET /api/users/{user_id}/budget/review?period_start=YYYY-MM-01` is authenticated,
+owner-scoped and read-only. It returns cutoff, caveats, actual amounts, optional
+pace, `evidence_fingerprint`, and `saved: false`. Compatibility response fields
+`suggestions` and `comparison` are always empty/null. `BudgetUpsert.review_evidence`
+is an optional transient precondition, not a database field. Model-provided
+numbers do not compute review totals. Backend audit records `budget-review-v2`;
+extraction still uses `budget-planning-v3` with `action=review`. No new migration
+is required.
 
-Tests cover ownership, currency, cutoff dates, transfers, zero limits, leap months, sparse data, recurring rows, independent comparison arithmetic, funding gaps, stale evidence, preservation of existing drafts, Coach adoption/clarification/confirmation and the UI review-to-editor flow. Live-model review phrasing and multilingual requests still need acceptance testing before release.
+Tests cover ownership, currency, cutoff dates, transfers, zero limits, leap months,
+sparse activity, recurring rows, no automatic proposals, preserved drafts,
+user-directed comparison adoption and confirmation, legacy stale evidence, and
+Budget rendering without review/copy calls. Live-model acceptance remains separate.
 
 ## Deployment
 
@@ -145,7 +192,7 @@ Run these suites from their respective application directories:
 ```text
 AI:       python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_budget_planner.py tests/test_budget_capture.py
 Backend:  python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_budget_planning.py tests/test_budget_capture.py
-Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_app.py tests/test_overview_budget.py
+Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_method_choice.py tests/test_budget_editor.py tests/test_budget_simple.py tests/test_overview_budget.py
 ```
 
 The tests cover explicit versus suggested amounts, one-month history selection, missing inputs, gross-income rejection, preserved commitments, funding gaps, no automatic cuts, owned/currency-scoped aggregates, prevention of recurring-expense double counting, HTTP confirmation and readback, and UI affordability checks.

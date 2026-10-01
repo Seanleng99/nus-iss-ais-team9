@@ -10,8 +10,6 @@ class Client:
     def __init__(self, planned=True):
         self.saved = None
         self.compared = None
-        self.previewed = None
-        self.confirmed = None
         self.reviews = 0
         self.budget = {
             "currency": "SGD",
@@ -82,25 +80,6 @@ class Client:
             )
         return {"results": results, "saved": False}
 
-    def preview_budget_months(self, user, payload):
-        self.previewed = deepcopy(payload)
-        return {
-            "preview_id": "copy",
-            "ready": True,
-            "questions": [],
-            "warnings": [],
-            "plans": [
-                {
-                    "budget": self.budget,
-                    "expenses": 2000,
-                }
-            ],
-        }
-
-    def confirm_budget_months(self, user, identifier):
-        self.confirmed = identifier
-        return {"periods": ["2026-11-01"]}
-
 
 
 def control(items, label):
@@ -131,9 +110,9 @@ def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
     assert not any(
         i.label == "Reserve this month's full savings allocation on" for i in app.date_input
     )
-    assert client.reviews == 1
+    assert client.reviews == 0
     control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
-    assert client.reviews == 1  # Pure editor changes do not repeatedly fetch records.
+    assert client.reviews == 0  # Ordinary Budget rendering never calls the Coach review tool.
     assert control(app.metric, "Left to allocate").value == "SGD 100.00"
     control(app.button, "Save budget").click().run()
     assert client.saved is None
@@ -177,61 +156,6 @@ def test_simple_comparison_does_not_save_and_hides_obsolete_results():
     assert control(app.number_input, "Monthly savings allocation (SGD)").value == 900
     control(app.button, "Save budget").click().run()
     assert client.saved is None
-
-
-def test_copy_next_month_requires_preview_and_explicit_coverage_confirmation():
-    client = Client()
-    app = render(client)
-    control(app.button, "Use this plan next month").click().run()
-    control(app.button, "Preview next month's plan").click().run()
-    assert not app.exception
-    assert client.previewed["first_period"] == "2026-11-01"
-    assert client.previewed["carry_rule"] == "copy_limits"
-    assert client.previewed["allow_overwrite"] is False
-    assert control(app.button, "Confirm next month's plan").disabled
-    control(
-        app.checkbox,
-        "These are my actual income, savings and complete expense limits for November 2026.",
-    ).check().run()
-    assert not control(app.button, "Confirm next month's plan").disabled
-    control(app.number_input, "Next month's savings (SGD)").set_value(900).run()
-    assert not any(b.label == "Confirm next month's plan" for b in app.button)
-    assert client.confirmed is None
-    control(app.button, "Preview next month's plan").click().run()
-    assert not control(
-        app.checkbox,
-        "These are my actual income, savings and complete expense limits for November 2026.",
-    ).value
-    assert control(app.button, "Confirm next month's plan").disabled
-
-
-def test_simple_copy_retains_actionable_preview_questions_and_replacement_warning():
-    class BlockedClient(Client):
-        def get_budget(self, user, period):
-            return self.budget
-
-        def preview_budget_months(self, user, payload):
-            preview = super().preview_budget_months(user, payload)
-            preview.update(
-                ready=False,
-                questions=["November 2026: Reserve at least SGD 900.00 for savings."],
-                warnings=["Saving replaces the existing plans shown here."],
-            )
-            return preview
-
-    client = BlockedClient()
-    app = render(client)
-    control(app.button, "Use this plan next month").click().run()
-    assert not control(app.checkbox, "Replace my existing November 2026 plan").value
-    control(app.button, "Preview next month's plan").click().run()
-    assert client.previewed["allow_overwrite"] is False
-    assert any("Reserve at least SGD 900.00" in item.value for item in app.info)
-    assert any("replaces the existing plans" in item.value for item in app.info)
-    control(
-        app.checkbox,
-        "These are my actual income, savings and complete expense limits for November 2026.",
-    ).check().run()
-    assert control(app.button, "Confirm next month's plan").disabled
 
 
 def test_saved_method_survives_simple_comparison_adoption_and_confirmed_save():

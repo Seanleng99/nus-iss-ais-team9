@@ -304,7 +304,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
         # Preserve an unrelated pending plan/comparison; a review never replaces it implicitly.
         previous = (chat.pending_budget or {}).get("draft", {})
         if previous and previous.get("action") != "review":
-            response.answer += "\n\nYour existing draft was kept. Finish or cancel it before adopting a review adjustment."
+            response.answer += "\n\nYour existing draft was kept. Finish or cancel it before starting another budget change."
             return
         record = SQLAlchemyBudgetRepository(session).get(user_id, draft.period_start)
         chat.pending_budget = {
@@ -313,13 +313,6 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
             "baseline": _snapshot(record),
             "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
         }
-        if review["comparison"]:
-            chat.pending_budget = {
-                **chat.pending_budget,
-                "comparison": review["comparison"],
-                "review_evidence": review["evidence_fingerprint"],
-            }
-            response.answer += "\n\n" + describe_comparison(review["comparison"])
         return
     if (chat.pending_budget or {}).get("comparison") and draft.action != "compare":
         response.answer = "Choose a stored scenario with 'use scenario NAME' before editing or saving a plan. Nothing was saved."
@@ -489,7 +482,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
     elif chat.pending_budget.get("draft", {}).get("action") == "review" and not CANCEL.fullmatch(
         request.message.strip()
     ):
-        answer = "A review cannot be saved. Request a proposed adjustment or supply explicit budget limits first."
+        answer = "A review cannot be saved. Tell me the budget amounts you want to change or compare first."
     elif (
         chat.pending_budget.get("draft", {}).get("planning")
         and chat.pending_budget.get("baseline") is None

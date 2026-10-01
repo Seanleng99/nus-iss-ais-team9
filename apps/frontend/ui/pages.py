@@ -18,8 +18,7 @@ from ui.budget_editor import (
     save_budget_with_feedback,
 )
 from ui.budget_methods import METHODS, render_method_choice, render_method_guide
-from ui.budget_review import render_budget_review
-from ui.budget_simple import render_change, render_copy_month
+from ui.budget_simple import render_change
 from ui.budget_timing import render_timing_summary
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
@@ -1041,9 +1040,8 @@ def budget_page() -> None:
                 icon=":material/account_balance_wallet:")
 
     if currency == "SGD":
-        spending_revision = sha256(json.dumps(budget, sort_keys=True).encode()).hexdigest()[:12]
-        from ui.state import today_singapore
-        render_budget_review(client, user_id, period_start, scope + f"-{spending_revision}-{today_singapore()}", draft_key, automatic=True, compact=True)
+        if budget:
+            st.caption("Recorded expenses may be incomplete. Remaining budget is not an available bank balance.")
         render_change(client, user_id, period_start, values, edited_planning, scope, draft_key)
         if st.button("Discuss my saved budget with Coach", key=scope + "-coach"):
             st.switch_page(st.Page(coach_page, title="Coach", url_path="coach"))
@@ -1051,7 +1049,6 @@ def budget_page() -> None:
             "Ask Coach to keep rent fixed, compare savings amounts or plan for an upcoming expense. "
             "Manage savings targets on the Goals page."
         )
-        render_copy_month(client, user_id, period_start, budget)
     if edit_draft and st.button("Discard unsaved change", key=f"{scope}-discard"):
         st.session_state.pop(draft_key, None)
         st.rerun()

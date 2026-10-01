@@ -1,123 +1,48 @@
-from copy import deepcopy
-from datetime import date
-
-from streamlit.testing.v1 import AppTest
+from test_budget_simple import Client, control, render
 
 
-class Client:
+class SpendingClient(Client):
     def __init__(self):
-        self.saved = None
-        self.reviews = 0
-
-    def get_budget(self, user, period):
-        return {
-            "currency": "SGD",
-            "planning": {
-                "take_home_income": 2000,
-                "savings_target": 500,
-                "income_basis": "take_home",
-                "expenses_confirmed": True,
-            },
-            "categories": [
-                {
-                    "category": "food",
-                    "limit_amount": 100,
-                    "spent_amount": 150,
-                    "remaining_amount": -50,
-                }
-            ],
-        }
+        super().__init__()
+        self.budget.update(total_limit=2000, total_spent=800)
+        self.budget["categories"][0].update(spent_amount=50, remaining_amount=1450)
+        self.budget["categories"][1].update(spent_amount=650, remaining_amount=-150)
 
     def review_budget(self, user, period):
-        self.reviews += 1
-        return {
-            "as_of": "2026-09-15",
-            "phase": "current",
-            "total_spent": 150,
-            "total_pace_estimate": None,
-            "unbudgeted_spent": 0,
-            "has_budget": True,
-            "warnings": ["Pace is an illustration. Records may be incomplete."],
-            "categories": [
-                {
-                    "category": "food",
-                    "limit_amount": 100,
-                    "spent": 150,
-                    "remaining": -50,
-                    "status": "over",
-                    "pace_estimate": None,
-                    "pace_note": "Insufficient activity days",
-                    "remaining_per_day": 0,
-                }
-            ],
-            "suggestions": [
-                {
-                    "category": "food",
-                    "proposed_limit": 150,
-                    "reason": "Cover recorded spending only.",
-                }
-            ],
-            "evidence_fingerprint": "a" * 64,
-            "comparison": {
-                "results": [
-                    {
-                        "name": "Cover recorded spending",
-                        "totals": {"funding_gap": 0},
-                        "questions": ["Confirm all expenses are included."],
-                        "draft": {
-                            "period_start": period.isoformat(),
-                            "currency": "SGD",
-                            "action": "plan",
-                            "categories": [{"category": "food", "limit_amount": 150}],
-                            "planning": {
-                                "take_home_income": 2000,
-                                "savings_target": 500,
-                                "income_basis": "take_home",
-                                "expenses_confirmed": False,
-                            },
-                        },
-                    }
-                ]
-            },
-        }
+        raise AssertionError("Budget must not generate a Coach review or adjustment")
 
-    def save_budget(self, user, payload):
-        self.saved = deepcopy(payload)
+    def preview_budget_months(self, user, payload):
+        raise AssertionError("Budget must not prepare a next-month copy")
+
+    def confirm_budget_months(self, user, identifier):
+        raise AssertionError("Budget must not save a next-month copy")
 
 
-def control(items, label):
-    return next(item for item in items if item.label == label)
-
-
-def test_review_loads_automatically_and_adoption_requires_actual_income_and_coverage():
-    client = Client()
-    app = AppTest.from_string("from ui.pages import budget_page\nbudget_page()")
-    app.session_state["backend_client"] = client
-    app.session_state["active_user_id"] = "u1"
-    app.session_state["active_period"] = date(2026, 9, 1)
-    app.run(timeout=30)
+def test_budget_keeps_spending_facts_without_copy_pace_or_automatic_adjustments():
+    client = SpendingClient()
+    app = render(client)
     assert not app.exception
-    assert client.reviews == 1
-    control(app.button, "Refresh spending review").click().run()
-    assert not app.exception
-    assert client.reviews == 2 and client.saved is None
-    assert not any(m.label == "Month-end pace illustration" for m in app.metric)
+    assert next(m.value for m in app.metric if m.label.endswith("Spent")) == "SGD 800.00"
+    assert next(m.value for m in app.metric if m.label.endswith("Remaining")) == "SGD 1,200.00"
+    assert any("Food" in w.value for w in app.warning)
+    assert any("SGD 100.00" in c.value and "without limits" in c.value for c in app.caption)
+    assert any("not an available bank balance" in c.value for c in app.caption)
+    labels = {item.label for items in (app.button, app.checkbox, app.metric) for item in items}
+    assert labels.isdisjoint({
+        "Use this plan next month", "Refresh spending review", "Show category and pace details",
+        "Month-end pace illustration", "Show suggested adjustment", "Review adjustment in editor",
+    })
     assert len(app.get("plotly_chart")) == 1
-    control(app.checkbox, "Show category and pace details").check().run()
-    assert control(app.metric, "Month-end pace illustration").value == "Unavailable"
+    control(app.checkbox, "Show budget allocation").check().run()
+    assert not app.exception
     assert len(app.get("plotly_chart")) == 2
-    control(app.checkbox, "Show suggested adjustment").check().run()
-    control(app.button, "Review adjustment in editor").click().run()
-    assert not app.exception
-    assert control(app.number_input, "Food (SGD)").value == 150
+    assert control(app.number_input, "Food (SGD)").value == 500
     assert client.saved is None
+    control(app.number_input, "Food (SGD)").set_value(550).run()
     control(app.button, "Save budget").click().run()
     assert client.saved is None
-    control(
-        app.checkbox, "This is my actual take-home income and these limits include all my expenses.",
-    ).check()
+    control(app.checkbox, "This is my actual take-home income and these limits include all my expenses.").check()
     control(app.button, "Save budget").click().run()
     assert not app.exception
-    assert client.saved["review_evidence"] == "a" * 64
-    assert client.saved["categories"] == [{"category": "food", "limit_amount": 150}]
-    assert client.saved["planning"]["savings_target"] == 500
+    assert next(c["limit_amount"] for c in client.saved["categories"] if c["category"] == "food") == 550
+    assert client.saved["planning"]["savings_target"] == 800
