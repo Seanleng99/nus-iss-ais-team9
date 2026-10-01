@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import TransactionCreate
 from app.core.telemetry import log_event
-from app.domain.schemas import CoachRequest, CoachResponse, MoneyAmount
+from app.domain.schemas import ApplicationMoneyAmount, CoachRequest, CoachResponse
 from app.infrastructure.repositories import SQLAlchemyTransactionRepository
 
 PENDING_TTL_SECONDS = 600.0
@@ -901,7 +901,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 TransactionCreate(
                     description=draft.description,
                     category=draft.category,
-                    amount=MoneyAmount(amount=draft.amount),
+                    amount=ApplicationMoneyAmount(amount=draft.amount),
                     occurred_on=when,
                     recurring=draft.recurring,
                 ),

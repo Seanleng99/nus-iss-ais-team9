@@ -207,6 +207,7 @@ def test_multipage_app_renders_without_runtime_errors() -> None:
     app.run(timeout=30)
 
     assert not app.exception
+    assert "Currency: SGD (fixed)" in [item.value for item in app.sidebar.caption]
     assert app.sidebar.selectbox[0].label == "Active profile"
     assert app.sidebar.selectbox[0].options == ["Alex Lee · alex", "Sam Tan · sam"]
     assert app.sidebar.selectbox[1].label == "Period"

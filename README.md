@@ -4,6 +4,8 @@ Multi-agent financial education platform for young adults in Singapore. The syst
 
 This repository is an executable synthetic-data demo. A LangGraph workflow uses OpenAI GPT-6 Luna for model-driven routing, specialist interpretation, synthesis, and compliance review. Deterministic tools and hard guardrails remain grounding controls. The user workspace provides persisted profiles, transactions, monthly budgets, savings goals, dashboard summaries, and backend-built coaching snapshots. Cognito OIDC authentication, immutable profile ownership, CloudFront custom-domain TLS, HTTPS origin restriction, and live cross-owner isolation evidence are implemented for the AWS demo. This does not approve real personal financial data or production users.
 
+Application currency is fixed to **SGD**. Profile income, transaction amounts, goal amounts, budgets and cash-flow settings default missing or null currency to SGD and reject explicit other currencies at the API boundary. Forms use SGD and the sidebar shows the fixed currency. Dashboard totals include SGD records only. Historical records retain their original labels in API responses and exports; they are not converted or relabelled.
+
 ## Repository Layout
 
 ```text

@@ -816,7 +816,7 @@ def get_budget(
     record = repository.get(user_id, period_start)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
-    return _budget_response(record, repository.spending_by_category(user_id, period_start))
+    return _budget_response(record, repository.spending_by_category(user_id, period_start, currency=record.currency))
 
 
 @router.get("/users/{user_id}/budget/review")
@@ -848,7 +848,7 @@ def put_budget(
         raise HTTPException(status_code=422, detail=str(error)) from error
     session.commit()
     return _budget_response(
-        record, repository.spending_by_category(user_id, budget.period_start)
+        record, repository.spending_by_category(user_id, budget.period_start, currency=record.currency)
     )
 
 
@@ -865,11 +865,13 @@ def get_dashboard(
 
     profile = user_repository.get_profile(user_id)
     budget_repository = SQLAlchemyBudgetRepository(session)
-    spending = budget_repository.spending_by_category(user_id, period_start)
+    spending = budget_repository.spending_by_category(user_id, period_start, currency="SGD")
     total_spent = sum(spending.values())
-    monthly_income = float(profile.monthly_income) if profile and profile.monthly_income else 0.0
-    currency = profile.currency if profile else "SGD"
+    monthly_income = float(profile.monthly_income) if profile and profile.currency == "SGD" and profile.monthly_income else 0.0
+    currency = "SGD"
     budget_record = budget_repository.get(user_id, period_start)
+    if budget_record and budget_record.currency != currency:
+        budget_record = None
     goals = [
         GoalProgressResponse(
             id=goal.id,
@@ -887,6 +889,7 @@ def get_dashboard(
             ),
         )
         for goal in SQLAlchemyGoalRepository(session).list_records(user_id)
+        if goal.currency == currency
     ]
     available_balance = monthly_income - total_spent
     savings_rate = available_balance / monthly_income * 100 if monthly_income else 0.0
@@ -900,7 +903,7 @@ def get_dashboard(
         # Fetch 6 months of transactions
         six_months_ago = period_start - timedelta(days=180)
         historical_transactions = budget_repository.get_transactions_in_range(
-            user_id, six_months_ago, period_start
+            user_id, six_months_ago, period_start, currency=currency
         )
         
         if len(historical_transactions) >= 10:
@@ -940,7 +943,7 @@ def get_dashboard(
         ),
         category_spending=spending,
         goals=goals,
-        transaction_count=budget_repository.transaction_count(user_id, period_start),
+        transaction_count=budget_repository.transaction_count(user_id, period_start, currency=currency),
         spending_insights=spending_insights,
         spending_data_quality=spending_data_quality,
         spending_months_analyzed=spending_months_analyzed,

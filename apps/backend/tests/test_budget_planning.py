@@ -157,16 +157,18 @@ def test_snapshot_aggregates_only_owned_sgd_closed_months_without_recurring_dupl
             ("u1", "2026-08-15", 888, "USD", False),
             ("u2", "2026-08-15", 777, "SGD", False),
         ]:
-            repository.create(
+            record = repository.create(
                 user,
                 TransactionCreate(
                     description="Example",
                     category="food",
                     occurred_on=when,
-                    amount={"amount": value, "currency": currency},
+                    amount={"amount": value},
                     recurring=recurring,
                 ),
             )
+            record.currency = currency  # Seed historical currencies without accepting new foreign input.
+            session.flush()
         context = build_planning_context(session, "u1", today=date(2026, 9, 29))
         assert context["recorded_spending"] == [
             {

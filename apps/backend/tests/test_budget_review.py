@@ -45,16 +45,19 @@ def setup_plan(session, categories=None):
 def transaction(
     session, category, amount, day=5, recurring=False, user="u1", currency="SGD", month="2026-09"
 ):
-    SQLAlchemyTransactionRepository(session).create(
+    record = SQLAlchemyTransactionRepository(session).create(
         user,
         TransactionCreate(
             description="Private receipt",
             category=category,
             occurred_on=f"{month}-{day:02d}",
             recurring=recurring,
-            amount={"amount": amount, "currency": currency},
+            amount={"amount": amount},
         ),
     )
+    # Seed historical currencies directly; new application inputs accept SGD only.
+    record.currency = currency
+    session.flush()
 
 
 def test_review_scopes_owner_currency_dates_and_excludes_transfers(db_session_factory):
@@ -328,16 +331,17 @@ def test_review_endpoint_enforces_profile_ownership(monkeypatch):
 
 def test_non_sgd_budget_is_not_converted_or_adjusted(db_session_factory):
     with db_session_factory() as session:
-        SQLAlchemyBudgetRepository(session).upsert(
+        record = SQLAlchemyBudgetRepository(session).upsert(
             "u1",
             BudgetUpsert.model_validate(
                 {
                     "period_start": MONTH,
-                    "currency": "USD",
                     "categories": [{"category": "food", "limit_amount": 100}],
                 }
             ),
         )
+        record.currency = "USD"  # Historical data retains its original currency.
+        session.flush()
         transaction(session, "food", 150)
         review = build_budget_review(session, "u1", MONTH, today=TODAY)
         assert review["supported"] is False

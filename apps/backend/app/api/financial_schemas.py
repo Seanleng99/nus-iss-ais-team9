@@ -7,8 +7,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.telemetry import trace_method
 from app.domain.budget_methods import BudgetMethod
+from app.domain.currency import ApplicationCurrency
 from app.domain.schemas import (
     AgentName,
+    ApplicationMoneyAmount,
     MoneyAmount,
     SourceCitation,
     UserFinancialSnapshot,
@@ -73,7 +75,7 @@ ResidentialRegion = Literal[
 
 
 class ProfileUpsert(BaseModel):
-    monthly_income: MoneyAmount | None = None
+    monthly_income: ApplicationMoneyAmount | None = None
     risk_tolerance: str | None = Field(default=None, max_length=32)
     employment_status: EmploymentStatus | None = None
     occupation_category: OccupationCategory | None = None
@@ -108,6 +110,7 @@ class ProfileCreate(ProfileUpsert):
 
 class ProfileResponse(ProfileUpsert):
     user_id: str
+    monthly_income: MoneyAmount | None = None
 
 
 class ProfileSummary(BaseModel):
@@ -203,7 +206,7 @@ class TransactionCreate(BaseModel):
     transaction_type: Literal["expense", "income", "transfer", "refund"] = "expense"
     description: str = Field(min_length=1, max_length=255)
     category: str = Field(min_length=1, max_length=64)
-    amount: MoneyAmount
+    amount: ApplicationMoneyAmount
     occurred_on: date
     recurring: bool = False
 
@@ -218,12 +221,13 @@ class TransactionCreate(BaseModel):
 
 class TransactionResponse(TransactionCreate):
     id: UUID
+    amount: MoneyAmount
 
 
 class GoalCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    target_amount: MoneyAmount
-    current_amount: MoneyAmount = Field(default_factory=lambda: MoneyAmount(amount=0))
+    target_amount: ApplicationMoneyAmount
+    current_amount: ApplicationMoneyAmount = Field(default_factory=lambda: ApplicationMoneyAmount(amount=0))
     target_months: int = Field(gt=0, le=600)
 
     @model_validator(mode="after")
@@ -236,6 +240,8 @@ class GoalCreate(BaseModel):
 
 class GoalResponse(GoalCreate):
     id: UUID
+    target_amount: MoneyAmount
+    current_amount: MoneyAmount = Field(default_factory=lambda: MoneyAmount(amount=0))
 
 
 class SnapshotResponse(UserFinancialSnapshot):
@@ -267,7 +273,7 @@ class BudgetPlanSettings(BaseModel):
 class BudgetUpsert(BaseModel):
     review_evidence: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     period_start: date
-    currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
+    currency: ApplicationCurrency = "SGD"
     categories: list[BudgetCategoryInput] = Field(default_factory=list, max_length=50)
     planning: BudgetPlanSettings | None = None
 
@@ -282,8 +288,6 @@ class BudgetUpsert(BaseModel):
             item.category = category
         if self.planning is not None:
             expenses = sum((Decimal(str(item.limit_amount)) for item in self.categories), Decimal(0))
-            if self.currency != "SGD":
-                raise ValueError("Budget planning currently supports SGD only")
             if expenses + Decimal(str(self.planning.savings_target)) > Decimal(str(self.planning.take_home_income)):
                 raise ValueError("Planned expenses plus savings exceed confirmed take-home income")
             questions = self.planning.method.questions(normalized)
@@ -358,7 +362,7 @@ class DashboardResponse(BaseModel):
     budget_timing: dict | None = None
     review_reminder: dict | None = None
     period_start: date
-    currency: str
+    currency: ApplicationCurrency = "SGD"
     monthly_income: float
     total_spent: float
     available_balance: float

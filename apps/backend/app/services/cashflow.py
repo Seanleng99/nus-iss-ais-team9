@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 
+from app.domain.currency import ApplicationCurrency
 from app.infrastructure.models import TransactionRecord
 from app.services.financial_workspace import read_section
 
@@ -39,7 +40,7 @@ class CashflowSettings(BaseModel):
     opening_balance: float = Field(
         ge=-999999999999.99, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False
     )
-    currency: Literal["SGD"] = "SGD"
+    currency: ApplicationCurrency = "SGD"
     confirmed: Literal[True]
     schedules: list[Schedule] = Field(default_factory=list, max_length=100)
 

@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.telemetry import trace_method
+from app.domain.currency import ApplicationCurrency
 
 
 class AgentName(StrEnum):
@@ -19,6 +20,12 @@ class AgentName(StrEnum):
 class MoneyAmount(BaseModel):
     currency: str = Field(default="SGD", pattern=r"^[A-Z]{3}$")
     amount: float = Field(ge=0)
+
+
+class ApplicationMoneyAmount(MoneyAmount):
+    """New financial inputs are always SGD; foreign amounts are rejected."""
+
+    currency: ApplicationCurrency = "SGD"
 
 
 class Transaction(BaseModel):

@@ -891,17 +891,19 @@ class SQLAlchemyBudgetRepository:
                     for name, amount in refund_offsets(self.session, user_id, period_start, through).items())
         return rows
 
-    def transaction_count(self, user_id: str, period_start: date) -> int:
+    def transaction_count(self, user_id: str, period_start: date, *, currency: str | None = None) -> int:
         query = select(func.count(TransactionRecord.id)).where(
             TransactionRecord.user_id == user_id,
             TransactionRecord.occurred_on >= period_start,
                 TransactionRecord.transaction_type == "expense",
             TransactionRecord.occurred_on < next_month(period_start),
         )
+        if currency is not None:
+            query = query.where(TransactionRecord.currency == currency)
         return int(self.session.scalar(query) or 0)
     
     def get_transactions_in_range(
-        self, user_id: str, start_date: date, end_date: date
+        self, user_id: str, start_date: date, end_date: date, *, currency: str | None = None
     ) -> list[TransactionRecord]:
         """Get all transactions for a user in a date range."""
         query = select(TransactionRecord).where(
@@ -910,6 +912,8 @@ class SQLAlchemyBudgetRepository:
                 TransactionRecord.transaction_type == "expense",
             TransactionRecord.occurred_on <= end_date,
         ).order_by(TransactionRecord.occurred_on)
+        if currency is not None:
+            query = query.where(TransactionRecord.currency == currency)
         return list(self.session.scalars(query))
 
 

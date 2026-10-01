@@ -116,6 +116,7 @@ with st.sidebar:
     st.markdown('<div class="workspace-kicker">FINANCIAL WELLNESS</div>', unsafe_allow_html=True)
     st.markdown('<div class="workspace-brand">Coach workspace</div>', unsafe_allow_html=True)
     st.caption("Synthetic demo")
+    st.caption("Currency: SGD (fixed)")
     if identity_label := signed_in_label():
         st.caption(f"Signed in as {identity_label}")
         if st.button("Sign out", use_container_width=True):
