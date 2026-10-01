@@ -330,10 +330,12 @@ def test_budget_keeps_saved_values_and_leaves_new_amounts_unknown() -> None:
     app = _workspace_page("budget_page")
 
     assert not app.exception
+    next(item for item in app.button if item.label == "Edit budget").click().run()
     values = {item.label: item.value for item in app.number_input}
     assert values["Housing (SGD)"] == 1800.0
     assert "Scenario monthly take-home income (SGD)" not in values
-    app.multiselect[0].set_value(["housing", "food"]).run()
+    next(item for item in app.selectbox if item.label == "Category to add").set_value("food").run()
+    next(item for item in app.button if item.label == "Add category").click().run()
     assert next(item.value for item in app.number_input if item.label == "Food (SGD)") is None
 
 
@@ -604,15 +606,17 @@ def test_budget_charts_custom_category_and_save_round_trip() -> None:
     app.session_state["active_period"] = date(2026, 10, 1)
     app.run(timeout=30)
     assert not app.exception
-    assert len(app.get("plotly_chart")) == 1
+    assert len(app.get("plotly_chart")) == 2
     assert "Over limit: Pet Care" in app.warning[0].value
-    assert app.multiselect[0].value == ["pet care"]
-    app.multiselect[0].set_value(["pet care", "Hobbies"]).run()
+    next(item for item in app.button if item.label == "Edit budget").click().run()
+    next(item for item in app.selectbox if item.label == "Category to add").set_value("Custom category").run()
+    next(item for item in app.text_input if item.label == "Custom category name").set_value("Hobbies")
+    next(item for item in app.button if item.label == "Add category").click().run()
     assert not app.exception
     inputs = {item.label: item for item in app.number_input}
     inputs["Hobbies (SGD)"].set_value(75).run()
     next(item for item in app.checkbox if item.label == "I have reviewed these category limits for October 2026.").check()
-    app.button[0].click().run()
+    next(item for item in app.button if item.label == "Save budget").click().run()
     assert not app.exception
     assert client.saved["categories"] == [
         {"category": "pet care", "limit_amount": 100},
@@ -641,16 +645,18 @@ def test_budget_plan_edit_checks_commitments_and_funding_gap():
     app.session_state["active_period"] = date(2026, 10, 1)
     app.run(timeout=30)
     assert not app.exception
-    app.button[0].click().run()
+    next(item for item in app.button if item.label == "Edit budget").click().run()
+    next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3100).run()
+    next(item for item in app.button if item.label == "Save budget").click().run()
     assert client.saved is None
     assert "Review the changes and confirm" in app.warning[0].value
     next(item for item in app.checkbox if item.label == "This is my actual take-home income and these limits include all my expenses.").check()
     next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3500)
-    app.button[0].click().run()
+    next(item for item in app.button if item.label == "Save budget").click().run()
     assert client.saved is None
     assert any("exceed income by SGD 300.00" in item.value for item in app.warning)
     next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3200).run()
     next(item for item in app.checkbox if item.label == "This is my actual take-home income and these limits include all my expenses.").check()
-    app.button[0].click().run()
+    next(item for item in app.button if item.label == "Save budget").click().run()
     assert client.saved["planning"]["savings_target"] == 800
     assert client.saved["categories"][0]["limit_amount"] == 3200

@@ -53,7 +53,7 @@ The Budget and Overview pages show take-home income, the separate savings alloca
 
 ## Stage two: method selection and scenario comparisons
 
-Users can select a method in Coach or the single **Budgeting method** dropdown in **Budget → Your plan**. Custom percentage inputs and explicit needs/wants grouping appear only for methods that require them. Income-based guidance does not overwrite entered amounts. The separate method/scenario workspace remains removed; **Explore a change** compares income, savings or a category amount using the selected method. The method is saved alongside income and savings after confirmation; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
+Users can select a method in Coach or the single **Budgeting method** dropdown in **Budget → Edit budget**. Custom percentage inputs and explicit needs/wants grouping appear only for methods that require them. Income-based guidance does not overwrite entered amounts. The separate method/scenario workspace and **Explore a change** form are removed. Direct editing shows monthly affordability; Coach retains deterministic comparisons of income, savings, category amounts and budgeting methods. The method is saved alongside income and savings after confirmation; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
 
 | Method | Behavior |
 | --- | --- |
@@ -76,7 +76,7 @@ Coach examples (production language extraction):
 
 The last instruction is matched to a stored scenario by the backend, not interpreted as a write by the model. It creates an **unsaved draft**, resets income-basis and expense-coverage confirmation, and requires review and final `confirm budget`. Generic confirmation cannot save a comparison. A model response cannot bypass the explicit scenario adoption step. Expired comparisons and comparisons whose saved budget changed require a fresh comparison. Names must be unique ASCII letters/numbers/spaces/hyphens/underscores (up to 40 characters); `Current plan` is reserved. Category deletion remains a Budget-page operation.
 
-In the UI, users can compare the current editor values against one alternative, change the method, and see a table and stacked allocation chart. `Use option in editor` copies an option to a local unsaved editor draft. Saving requires confirmation of actual take-home income and expense coverage. Editing comparison inputs hides obsolete results until the user compares again. `Discard unsaved scenario` returns to saved values. The comparison panel supports SGD only.
+The original UI comparison workspace has been removed. Budget offers a method selector and live affordability while editing, then an exact change review and confirmation before saving. Saved spending and allocation charts remain visible. Coach retains SGD scenario comparisons, explicit adoption to an unsaved conversation draft, clarification and final confirmation. Budget can finish or cancel a legacy local editor draft; it no longer creates comparison drafts.
 
 ### Stage-two contracts
 
@@ -96,9 +96,10 @@ The confirmed plan now supplies `monthly_savings_capacity` to Budget and Goal St
 
 Request **“Review my budget for September 2026”** in Coach. Coach asks for the
 month/year when missing; a read-only review needs no new income or savings inputs.
-Budget itself shows saved-plan totals, category overage warnings and a main
-spending chart, without a separate review panel, pace details, suggested
-adjustments or next-month copy form. Reviews run on demand, without scheduled
+Budget itself shows saved-plan totals and category overage warnings, with
+always-visible spending/allocation charts when data exists and an explicit
+editor. There is no separate review panel, pace details, suggested adjustments
+or next-month copy form. Reviews run on demand, without scheduled
 notifications or background jobs.
 
 The backend reads only the authenticated profile's SGD expense aggregates. The
@@ -140,9 +141,10 @@ The Budget page does not call this tool automatically or display pace controls.
 An ordinary review never generates numeric limit increases or a **Cover recorded
 spending** scenario. Overspending remains visible against the saved limit. Coach
 can discuss one-off purchases, upcoming expenses and tradeoffs, ask for the
-amounts to try, then use the existing deterministic comparison tools. The UI's
-**Explore a change** likewise compares one explicit income, savings or category
-amount. Neither path automatically cuts another category or savings allocation.
+amounts to try, then use the existing deterministic comparison tools. Budget's
+editor shows the affordability of entered amounts without a separate
+**Explore a change** form. Neither path automatically cuts another category or
+savings allocation.
 
 - A review cannot be saved. A chosen comparison is adopted as an unsaved draft;
   actual take-home income, expense coverage, missing inputs and final changes
@@ -192,7 +194,7 @@ Run these suites from their respective application directories:
 ```text
 AI:       python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_budget_planner.py tests/test_budget_capture.py
 Backend:  python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_methods.py tests/test_budget_planning.py tests/test_budget_capture.py
-Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_method_choice.py tests/test_budget_editor.py tests/test_budget_simple.py tests/test_overview_budget.py
+Frontend: python -X utf8 -m pytest -p no:cacheprovider tests/test_budget_review.py tests/test_budget_method_choice.py tests/test_budget_editor.py tests/test_budget_simple.py tests/test_budget_monitoring.py tests/test_overview_budget.py
 ```
 
 The tests cover explicit versus suggested amounts, one-month history selection, missing inputs, gross-income rejection, preserved commitments, funding gaps, no automatic cuts, owned/currency-scoped aggregates, prevention of recurring-expense double counting, HTTP confirmation and readback, and UI affordability checks.

@@ -33,7 +33,6 @@ def render_method_choice(prior, scope):
         "Budgeting method", choices, format_func=METHODS.get,
         index=choices.index(prior.get("name", "flexible")), key=scope + "-method",
     )
-    st.caption(DESCRIPTIONS[chosen])
     method = {"name": chosen, "category_groups": {}}
     questions = []
     if chosen == "custom":

@@ -4,16 +4,21 @@ The simplified Budget page, inline method selector and monthly-editor improvemen
 
 ## Everyday Budget page
 
-The page starts with **Your plan** and a live **Income / Expenses / Savings / Left to allocate** summary, followed by **Spending this month** and **Explore a change**. A negative allocation displays a positive **Shortfall** and a plain-language correction. Missing amounts are labeled as missing rather than treated as zero; the allocation is not a bank balance.
+Saved budgets open with **Spending this month**: **Budgeted / Spent / Remaining**
+(or **Over budget**), overall usage and the charts below. **Edit budget** opens the
+monthly editor immediately; saved spending and charts remain visible below it. A month without a saved budget opens setup directly.
+The selected month remains shared with Overview and Coach.
 
-- Category-only tracking remains available without income. New category amounts start blank; zero must be entered explicitly.
-- **Include take-home income and savings** creates a planned budget directly in the main editor. Both amounts start blank for new plans. Existing confirmed settings are preserved, including the chosen method.
-- **Budgeting method** is one inline dropdown: Flexible category plan, 50/30/20, 80/20, Zero-based, Savings first or Custom percentages. Existing plans select their saved method; new plans start Flexible. A brief explanation and income-based guidance appear without changing any entered amounts.
-- Only Custom percentages shows three percentage inputs; they start blank unless saved and must total 100%. Only 50/30/20 and Custom show a Needs/Wants selector beside each category amount. Each category has one explicit type; missing types prevent saving. No duplicate-group selection is possible. Zero-based plans must assign all income to expenses or savings. Any change to income, savings, categories, category types, limits or method details requires fresh confirmation; changed comparison inputs hide obsolete results.
-- The editor uses ordinary editable rows, with full-width amount fields for methods that do not need category types. Custom categories are still added by typing a name in Budget categories and pressing Enter. A short Saved → This plan table highlights changes, additions, removals, types and custom percentages before one confirmation and Save budget. Category-only plans also require review confirmation. Larger change lists expose a full review. Removing a limit preserves transactions and explains that they become unbudgeted spending. Saving still checks affordability, method requirements and saved restrictions in the backend.
-- Budget and Overview use the same all-category recorded spending totals, including expenses without limits, for Spent, Remaining/Over budget and overall usage. Category warnings and the main chart compare saved limits with their own expenses. Currency appears in the chart caption and the legend sits above the bars. The optional allocation chart remains available. Recorded expenses may be incomplete; remaining budget is not a bank balance. Budget does not fetch a separate review, display pace details or generate adjustment proposals.
-- **Explore a change** changes one income, savings or category amount. Users do not need to choose a budgeting method, provide three income cases or name a scenario. A compact Current → Proposed table shows income, expenses, savings, left to allocate, shortfall and the selected category amount if relevant. Current means the editor amounts, including unsaved edits. Results disclose shortfalls and saved restrictions. Adopting a result changes only the unsaved editor; changing comparison inputs hides obsolete results.
-- **Discuss my saved budget with Coach** opens Coach with the selected month retained. Unsaved editor amounts are not sent as confirmed settings.
+- The **Category spending** bar chart compares saved limits with recorded expenses and labels the amounts directly. Over-limit categories appear first in red and their overage amounts are called out above the chart. Spending without limits is shown in amber with no invented budgeted amount. Zero limits are labeled explicitly. Per-category progress cards are removed; the overall budget-used bar remains. Editing a limit does not change saved spending or either chart until saving succeeds.
+- **Category spending** and **Budget allocation** are always visible when their data is available, side by side on desktop and stacked on narrow screens. There are no chart switches or chart expanders. Allocation shows the share of saved expense limits; savings are separate. Empty data gets an explanation instead of a misleading chart. Pace details, automatic adjustments and month-copy controls remain removed.
+- Category-only tracking remains available without income. **Include take-home income and savings** enables planning; missing amounts remain blank and zero must be entered explicitly. Existing confirmed settings, methods and restrictions are preserved.
+- The editor retains six budgeting methods: Flexible category plan, 50/30/20, 80/20, Zero-based, Savings first and Custom percentages. Only Custom shows percentage inputs; they must total 100%. Only 50/30/20 and Custom require one explicit Needs/Wants type per category. **How this method works** contains the explanation, guidance and optional savings-fill action. Guidance never silently changes amounts.
+- **Category to add → Add category** offers suggested categories. Selecting **Custom category** reveals a separate name field; no multiselect or Enter-to-create instruction is needed. Names are normalized, limited to 64 characters and checked for duplicates. New limits start blank. Each row has a **Remove [category]** action. Removing a limit keeps transactions and is included in the save review. The 50-category limit has a visible explanation.
+- An **Unsaved changes** banner distinguishes edited amounts from the saved plan. **Cancel changes** clears editor inputs, added/removed categories, comparison drafts and confirmation, then returns to saved spending. Reopening restores the saved values. For a new month, cancellation resets the blank setup.
+- The editor has a live **Income / Expenses / Savings / Left to allocate** summary. A negative allocation displays **Shortfall** and a correction. Missing amounts remain missing rather than zero. The exact Saved → This plan review covers amounts, category removals, methods, types and percentages before one confirmation and **Save budget**. Any edit changes the confirmation signature and requires fresh approval.
+- Missing limits, income, savings and category types are explained beside their controls. Reasons for an unavailable save also appear near the button: incomplete inputs, an empty category list, invalid method percentages, a shortfall or no changes to save. Backend rejections retain inputs and require renewed confirmation. Success returns to saved spending with month-specific confirmation that remains visible across reruns.
+- **Explore a change** is removed. Direct editing already shows the effect on monthly affordability before saving. Ask Coach for comparisons or tradeoffs; the deterministic comparison tools and their separate adoption/confirmation contract remain available there.
+- **Ask Coach** stays near the page heading and warnings. It opens Coach with the selected month retained and sends no message automatically. Unsaved editor values are not treated as confirmed settings.
 
 ## Browser acceptance follow-up — 1 October 2026
 
@@ -82,6 +87,67 @@ review, method, planner and capture suites passed **25 tests**. Ruff and diff
 whitespace checks passed. These are offline checks; the simplified page has not
 yet been deployed or retested against the live model.
 
+## Monitoring and editor layout — 1 October 2026
+
+This revision separates saved spending from editing. The previous always-visible
+form and category multiselect are replaced by monitoring mode, explicit editing,
+row removal and an Add category action. This earlier revision collapsed chart and method guidance views;
+the always-visible chart revision below supersedes its chart behavior. On narrow screens, monitoring metrics use two columns with Remaining
+on its own row; the editor summary uses a two-by-two layout. Amount inputs and
+category types retain readable labels and ordinary keyboard controls.
+
+The public Budget entry point delegates to `ui/budget_page.py`;
+`ui/budget_spending.py` renders saved facts independently of editor state.
+Backend APIs, deterministic calculations, ownership and confirmation contracts
+are unchanged. No database migration is required. The revision remains local.
+
+The full frontend suite passed **102 tests**, including new checks for monitoring
+mode, cancellation, comparison adoption, duplicate/custom category input,
+explicit zero amounts, category limits, empty categories, persistent save
+feedback and zero-limit/unbudgeted spending. Ruff and diff whitespace checks
+passed. A local Edge fixture rendered the actual page with synthetic data and
+the repository's light theme. Desktop checks confirmed immediate editor placement,
+unsaved status and cancellation; at **390 × 844**, monitoring metrics used two
+columns plus a full-width Remaining card, category statuses stayed readable, and
+the editor summary used two-by-two cards. Both monitoring and editing had a
+390-pixel document width, with no document-level horizontal overflow. Cancellation
+restored the saved savings allocation. The fixture did not contact the deployed
+backend. Production and live-model acceptance remain separate.
+
+## Always-visible charts — 1 October 2026
+
+The optional **Explore a change** form and its unused frontend renderer are
+removed. Coach retains deterministic comparisons and explicit adoption before
+confirmation. Budget editing still calculates live affordability and reviews
+changes before a confirmed save. Legacy local drafts remain reviewable and
+cancellable; whole-number draft limits are converted to the editor's numeric
+format while missing values remain unknown.
+
+Both charts appear automatically with meaningful saved data, including below
+the editor. Per-category progress cards are removed. The overall progress bar,
+headline totals, explicit category overages and spending without limits remain.
+The spending chart labels amounts; its unbudgeted row has no invented limit.
+The allocation donut shows saved expense shares and category names in a legend.
+
+The full frontend suite passed **101 tests**. After removing the overlapping
+chart toolbar, the focused monitoring/editor checks passed **16 tests**. Ruff
+and diff whitespace checks passed. Coverage includes automatic chart rendering,
+saved limits staying unchanged during edits, unbudgeted spending without an
+invented limit, explicit zero limits, no UI comparison/review calls and legacy
+draft cancellation.
+
+A local Edge fixture rendered the actual frontend with synthetic data. Desktop
+charts appeared side by side; at **390 × 844** they stacked at 348-pixel widths,
+with a 390-pixel document width and no page-level horizontal overflow. Category
+names, amounts and allocation legend were checked visually. Editing retained
+both saved charts; cancelling returned to monitoring. Screenshots are stored
+in `artifacts/budget-browser-20261001/charts-desktop.jpg`, `charts-mobile.jpg`
+and `charts-mobile-allocation.jpg`. The fixture did not contact the deployed
+backend or run live-model acceptance.
+
+No backend calculation, write contract or migration changes. This revision
+is validated locally; deployment and live-model acceptance remain pending.
+
 ## Guidance and save feedback
 
 Percentage methods show a small Suggested / Your plan table using full take-home
@@ -102,8 +168,8 @@ adoption saves a budget automatically.
 ## Removal of optional planning forms
 
 The **More planning options** menu and all ten standalone workflows are removed.
-The Budget page focuses on the monthly plan, recorded spending, one-change
-comparisons and the Coach shortcut. The unused frontend
+The Budget page focuses on saved spending, always-visible charts, an explicit
+monthly editor and the Coach shortcut. The unused frontend
 renderers and their form-specific tests are removed, including the older cash-flow,
 reconciliation and full-commitments editors. Backend calculations, saved settings,
 workspace APIs and Coach operations remain available; no data or migrations change.
@@ -114,7 +180,7 @@ workspace APIs and Coach operations remain available; no data or migrations chan
 | Savings goals | Goal creation and progress already belong on the Goals page. Ask Coach about a monthly contribution if needed; allocation still uses the shared savings pool. |
 | Check until payday | Requires separate cash balances, schedules and reconciliation to provide an honest answer. Coach gathers these inputs only when the user asks a timing question; no routine setup is required. |
 | Upcoming expenses | Ordinary costs can be entered as custom categories. Coach supports explicit reserve planning where a target and deadline matter. |
-| Separate budgeting-method explorer | Replaced by a single inline method selector in Your plan. Custom inputs appear only when needed; the scenario workspace remains removed. Coach can also explain, compare and change a method. |
+| Separate budgeting-method explorer | Replaced by a single inline method selector in Edit budget. Custom inputs appear only when needed; the scenario workspace remains removed. Coach can also explain, compare and change a method. |
 | Spending patterns | Category overages remain visible in the main spending summary. Detailed reviews, pace illustrations and historical analysis are available through Coach on request. |
 | Previous versions | Version restoration is not a primary monthly budgeting task. Backend history and confirmed restoration remain available to Coach. |
 | Review reminders | Recorded spending appears when the Budget page opens; detailed reviews are available through Coach on request. There is no reminder-preferences form on Budget. Existing preferences remain stored. |

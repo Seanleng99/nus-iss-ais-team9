@@ -92,7 +92,8 @@ def test_overview_shortcut_opens_registered_budget_page():
     assert not app.exception
     app.button[0].click().run()
     assert not app.exception
-    assert app.multiselect[0].label == "Budget categories"
+    assert any(item.label == "Category to add" for item in app.selectbox)
+    assert any(item.value == "Create your budget" for item in app.subheader)
 
 def test_planned_budget_summary_keeps_savings_separate_from_spending():
     app = render({

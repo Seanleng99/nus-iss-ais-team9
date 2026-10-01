@@ -25,21 +25,24 @@ def test_summary_updates_and_any_plan_amount_change_needs_fresh_confirmation():
     control(app.button, "Save budget").click().run()
     assert client.saved is None
     assert control(app.number_input, "Food (SGD)").value == 600
-    assert len(app.get("plotly_chart")) == 1
+    assert len(app.get("plotly_chart")) == 2
 
 
 def test_custom_category_is_blank_and_validation_keeps_editor_and_spending_visible():
     client = Client()
     app = render(client)
-    control(app.multiselect, "Budget categories").set_value(["housing", "food", "pet care"]).run()
+    control(app.selectbox, "Category to add").set_value("Custom category").run()
+    control(app.text_input, "Custom category name").set_value("pet care")
+    control(app.button, "Add category").click().run()
     assert not app.exception
     assert control(app.number_input, "Pet Care (SGD)").value is None
     assert control(app.metric, "Expenses").value == "Not entered"
     assert control(app.metric, "Left to allocate").value == "Enter missing amounts"
     control(app.button, "Save budget").click().run()
     assert client.saved is None
-    assert any("monthly limit for: Pet Care" in w.value for w in app.warning)
-    assert len(app.get("plotly_chart")) == 1
+    assert control(app.button, "Save budget").disabled
+    assert any("monthly limit for Pet Care" in c.value for c in app.caption)
+    assert len(app.get("plotly_chart")) == 2
     control(app.number_input, "Pet Care (SGD)").set_value(100).run()
     control(app.checkbox, CONFIRMATION).check()
     control(app.button, "Save budget").click().run()
@@ -49,7 +52,7 @@ def test_custom_category_is_blank_and_validation_keeps_editor_and_spending_visib
 def test_removing_category_is_reviewed_before_saving_and_does_not_delete_records():
     client = Client()
     app = render(client)
-    control(app.multiselect, "Budget categories").set_value(["housing"]).run()
+    control(app.button, "Remove Food").click().run()
     review = table_with(app, "Change")
     assert review.to_dict("records") == [{"Change": "Food", "Saved": "SGD 500.00", "This plan": "Remove limit"}]
     assert any("keeps recorded transactions" in c.value for c in app.caption)
@@ -77,19 +80,16 @@ def test_suggested_savings_requires_click_then_review_without_changing_categorie
     assert client.saved is None
 
 
-def test_allocation_is_optional_and_change_comparison_shows_editor_current_amounts():
+def test_visible_charts_use_saved_limits_until_confirmation():
     client = Client()
     app = render(client)
-    assert len(app.get("plotly_chart")) == 1
-    control(app.checkbox, "Show budget allocation").check().run()
     assert len(app.get("plotly_chart")) == 2
-    control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
-    control(app.selectbox, "What would you like to change?").set_value("Savings").run()
-    control(app.number_input, "New monthly savings (SGD)").set_value(1000).run()
-    control(app.button, "Check this change").click().run()
-    comparison = table_with(app, "Current").set_index("Item")
-    assert comparison.loc["Savings"].to_dict() == {"Current": "SGD 900.00", "Proposed": "SGD 1,000.00"}
-    assert comparison.loc["Left to allocate"].to_dict() == {"Current": "SGD 100.00", "Proposed": "SGD 0.00"}
+    original = [json.loads(c.proto.spec)["data"] for c in app.get("plotly_chart")]
+    assert original[0][0]["x"] == [500, 1500]
+    assert original[1][0]["values"] == [1500.0, 500.0]
+    control(app.number_input, "Food (SGD)").set_value(600).run()
+    assert control(app.metric, "Expenses").value == "SGD 2,100.00"
+    assert [json.loads(c.proto.spec)["data"] for c in app.get("plotly_chart")] == original
     assert client.saved is None
 
 
@@ -108,7 +108,7 @@ def test_backend_rejection_explains_problem_and_preserves_values_without_saving(
     assert client.saved is None
     assert any("Food: this amount conflicts with your saved minimum" in w.value for w in app.warning)
     assert control(app.number_input, "Food (SGD)").value == 400
-    assert len(app.get("plotly_chart")) == 1
+    assert len(app.get("plotly_chart")) == 2
     control(app.button, "Save budget").click().run()
     assert not control(app.checkbox, CONFIRMATION).value
     assert control(app.number_input, "Food (SGD)").value == 400
@@ -123,14 +123,13 @@ def test_budget_and_overview_include_unbudgeted_spending_in_the_same_totals(spen
     assert not app.exception and not overview.exception
     metrics = {item.label: item.value for item in app.metric}
     overview_metrics = {item.label: item.value for item in overview.metric}
-    assert metrics[":material/payments: Spent"] == overview_metrics["Spent"] == f"SGD {spent:,.2f}"
+    assert metrics["Spent"] == overview_metrics["Spent"] == f"SGD {spent:,.2f}"
     label = "Over budget" if spent > 2000 else "Remaining"
-    icon = "warning" if spent > 2000 else "savings"
-    assert metrics[f":material/{icon}: {label}"] == overview_metrics[label]
+    assert metrics[label] == overview_metrics[label]
     assert any(f"SGD {spent - 700:,.2f} in categories without limits" in c.value for c in app.caption)
     # Editing an unsaved category must not change the saved-plan spending summary.
     control(app.number_input, "Food (SGD)").set_value(1000).run()
-    assert control(app.metric, ":material/payments: Spent").value == f"SGD {spent:,.2f}"
+    assert control(app.metric, "Spent").value == f"SGD {spent:,.2f}"
 
 
 def test_spending_chart_keeps_currency_out_of_the_legend_area():

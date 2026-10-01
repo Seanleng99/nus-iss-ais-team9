@@ -19,6 +19,8 @@ def test_method_choice_is_inline_and_does_not_change_amounts_or_save(method):
     if method == "zero_based":
         assert control(app.button, "Save budget").disabled
         control(app.number_input, "Monthly savings allocation (SGD)").set_value(1000).run()
+    if method == "flexible":
+        control(app.number_input, "Food (SGD)").set_value(550).run()
     control(app.checkbox, CONFIRMATION).check()
     control(app.button, "Save budget").click().run()
     assert client.saved["planning"]["method"] == {"name": method, "category_groups": {}}
@@ -72,7 +74,7 @@ def test_each_category_requires_one_explicit_type_without_inferred_groups():
     }
 
 
-def test_switching_method_clears_inapplicable_fields_and_invalidates_confirmation_and_comparison():
+def test_switching_method_clears_inapplicable_fields_and_invalidates_confirmation():
     client = Client()
     client.budget["planning"]["method"] = {
         "name": "custom",
@@ -81,14 +83,9 @@ def test_switching_method_clears_inapplicable_fields_and_invalidates_confirmatio
     }
     app = render(client)
     control(app.checkbox, CONFIRMATION).check().run()
-    control(app.selectbox, "What would you like to change?").set_value("Savings").run()
-    control(app.number_input, "New monthly savings (SGD)").set_value(900).run()
-    control(app.button, "Check this change").click().run()
-    assert any(b.label == "Review this change in my plan" for b in app.button)
     control(app.selectbox, "Budgeting method").set_value("flexible").run()
     assert not app.exception
     assert not control(app.checkbox, CONFIRMATION).value
-    assert not any(b.label == "Review this change in my plan" for b in app.button)
     assert not any("(%)" in widget.label for widget in app.number_input)
     control(app.button, "Save budget").click().run()
     assert client.saved is None

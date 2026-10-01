@@ -47,38 +47,7 @@ class Client:
         self.saved = deepcopy(payload)
 
     def compare_budget(self, user, payload):
-        self.compared = deepcopy(payload)
-        # Validate the public extraction contract does not receive saved-record metadata.
-        assert "version" not in payload["planning"]
-        base = deepcopy(payload)
-        candidate = deepcopy(base)
-        changes = candidate.pop("scenarios")[0]
-        for key in ["savings_target", "take_home_income"]:
-            if key in changes:
-                candidate["planning"][key] = changes[key]
-        for changed in changes.get("categories", []):
-            next(c for c in candidate["categories"] if c["category"] == changed["category"])[
-                "limit_amount"
-            ] = changed["limit_amount"]
-        results = []
-        for name, draft in [("Current plan", base), ("Proposed change", candidate)]:
-            total = sum(c["limit_amount"] for c in draft["categories"])
-            balance = (
-                draft["planning"]["take_home_income"] - total - draft["planning"]["savings_target"]
-            )
-            results.append(
-                {
-                    "name": name,
-                    "draft": draft,
-                    "totals": {
-                        "expense_total": total,
-                        "unallocated": max(balance, 0),
-                        "funding_gap": max(-balance, 0),
-                    },
-                    "questions": [],
-                }
-            )
-        return {"results": results, "saved": False}
+        raise AssertionError("Budget comparisons belong in Coach")
 
 
 
@@ -86,12 +55,15 @@ def control(items, label):
     return next(item for item in items if item.label == label)
 
 
-def render(client):
+def render(client, *, edit=True):
     app = AppTest.from_string("from ui.pages import budget_page\nbudget_page()")
     app.session_state["backend_client"] = client
     app.session_state["active_user_id"] = "u"
     app.session_state["active_period"] = PERIOD
-    return app.run(timeout=30)
+    app.run(timeout=30)
+    if edit and any(b.label == "Edit budget" for b in app.button):
+        control(app.button, "Edit budget").click().run()
+    return app
 
 
 def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
@@ -100,9 +72,7 @@ def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
     assert not app.exception
     headings = [s.value for s in app.subheader]
     assert (
-        headings.index("Your plan")
-        < headings.index("Spending this month")
-        < headings.index("Explore a change")
+        headings.index("Edit budget") < headings.index("Spending this month")
     )
     assert not any(item.label == "Planning option" for item in app.selectbox)
     assert not any(item.label == "More planning options" for item in app.expander)
@@ -126,6 +96,7 @@ def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
 def test_legacy_category_tracking_does_not_need_income_and_new_plan_inputs_start_unknown():
     client = Client(planned=False)
     app = render(client)
+    control(app.number_input, "Food (SGD)").set_value(550).run()
     control(app.button, "Save budget").click().run()
     assert client.saved is None
     control(app.checkbox, "I have reviewed these category limits for October 2026.").check()
@@ -139,26 +110,7 @@ def test_legacy_category_tracking_does_not_need_income_and_new_plan_inputs_start
     assert client.saved is None
 
 
-def test_simple_comparison_does_not_save_and_hides_obsolete_results():
-    client = Client()
-    app = render(client)
-    control(app.selectbox, "What would you like to change?").set_value("Savings").run()
-    control(app.number_input, "New monthly savings (SGD)").set_value(1100).run()
-    control(app.button, "Check this change").click().run()
-    assert not app.exception
-    assert any("shortfall of SGD 100.00" in w.value for w in app.warning)
-    assert client.saved is None
-    control(app.number_input, "New monthly savings (SGD)").set_value(900).run()
-    assert not any(b.label == "Review this change in my plan" for b in app.button)
-    control(app.button, "Check this change").click().run()
-    control(app.button, "Review this change in my plan").click().run()
-    assert client.saved is None
-    assert control(app.number_input, "Monthly savings allocation (SGD)").value == 900
-    control(app.button, "Save budget").click().run()
-    assert client.saved is None
-
-
-def test_saved_method_survives_simple_comparison_adoption_and_confirmed_save():
+def test_saved_method_survives_direct_edit_and_confirmed_save():
     client = Client()
     method = {
         "name": "custom",
@@ -169,11 +121,7 @@ def test_saved_method_survives_simple_comparison_adoption_and_confirmed_save():
     app = render(client)
     assert not app.exception
     assert control(app.selectbox, "Budgeting method").value == "custom"
-    control(app.selectbox, "What would you like to change?").set_value("Savings").run()
-    control(app.number_input, "New monthly savings (SGD)").set_value(900).run()
-    control(app.button, "Check this change").click().run()
-    assert client.compared["planning"]["method"] == method
-    control(app.button, "Review this change in my plan").click().run()
+    control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
     assert client.saved is None
     control(app.button, "Save budget").click().run()
     assert client.saved is None
@@ -204,8 +152,9 @@ def test_coach_shortcut_keeps_selected_month_and_does_not_send_or_save_editor_ch
     app.session_state["active_user_id"] = "u"
     app.session_state["active_period"] = PERIOD
     app.run(timeout=30)
+    control(app.button, "Edit budget").click().run()
     control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
-    control(app.button, "Discuss my saved budget with Coach").click().run()
+    control(app.button, "Ask Coach").click().run()
     assert not app.exception
     assert any("Selected month: 2026-10-01" in item.value for item in app.markdown)
     assert client.saved is None

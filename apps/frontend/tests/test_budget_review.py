@@ -32,9 +32,6 @@ def test_budget_keeps_spending_facts_without_copy_pace_or_automatic_adjustments(
         "Use this plan next month", "Refresh spending review", "Show category and pace details",
         "Month-end pace illustration", "Show suggested adjustment", "Review adjustment in editor",
     })
-    assert len(app.get("plotly_chart")) == 1
-    control(app.checkbox, "Show budget allocation").check().run()
-    assert not app.exception
     assert len(app.get("plotly_chart")) == 2
     assert control(app.number_input, "Food (SGD)").value == 500
     assert client.saved is None

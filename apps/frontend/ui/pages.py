@@ -3,7 +3,6 @@ import json
 import re
 from contextlib import nullcontext
 from datetime import UTC, date, datetime
-from hashlib import sha256
 from urllib.parse import quote
 
 import httpx
@@ -11,14 +10,8 @@ import pandas as pd
 import streamlit as st
 
 from client import build_request
-from ui.budget_editor import (
-    render_category_rows,
-    render_plan_summary,
-    render_save_review,
-    save_budget_with_feedback,
-)
-from ui.budget_methods import METHODS, render_method_choice, render_method_guide
-from ui.budget_simple import render_change
+from ui.budget_methods import METHODS
+from ui.budget_page import render_budget_page
 from ui.budget_timing import render_timing_summary
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
@@ -873,197 +866,9 @@ def transactions_page() -> None:
 
 
 def budget_page() -> None:
-    client = get_client()
-    user_id = get_user_id()
-    period_start = get_period_start()
-    page_header("Budget", period_start.strftime("%B %Y"))
-    budget = backend_call(lambda: client.get_budget(user_id, period_start))
-    existing = {
-        item["category"]: float(item["limit_amount"])
-        for item in (budget or {}).get("categories", [])
-    }
-    currency = (budget or {}).get("currency", "SGD")
-    planning = (budget or {}).get("planning")
-    draft_key = f"budget-edit-draft-{user_id}-{period_start.isoformat()}"
-    edit_draft = st.session_state.get(draft_key)
-    if edit_draft:
-        st.info("You have an unsaved change. Review the amounts and confirm the plan before saving.")
-        existing = {item["category"]: float(item["limit_amount"]) for item in edit_draft["categories"]}
-        planning = {**edit_draft["planning"], "version": "budget-planning-v4"} if edit_draft.get("planning") else None
-    revision = sha256(json.dumps([existing, planning], sort_keys=True).encode()).hexdigest()[:12]
-    scope = f"budget-{user_id}-{period_start.isoformat()}-{revision}"
-
-    st.subheader("Your plan", anchor=False)
-    summary = st.container()
-    with st.container(border=True):
-        edited_planning = None
-        method_questions = []
-        include_planning = currency == "SGD" and st.checkbox(
-            "Include take-home income and savings", value=bool(planning), disabled=bool(planning),
-            key=f"{scope}-include-planning",
-        )
-        if include_planning:
-            planning = planning or {}
-            income_column, savings_column = st.columns(2)
-            plan_income = income_column.number_input(
-                "Monthly take-home income (SGD)", min_value=0.0,
-                value=float(planning["take_home_income"]) if planning.get("take_home_income") is not None else None,
-                step=100.0, format="%.2f", key=f"{scope}-plan-income",
-            )
-            plan_savings = savings_column.number_input(
-                "Monthly savings allocation (SGD)", min_value=0.0,
-                value=float(planning["savings_target"]) if planning.get("savings_target") is not None else None,
-                step=50.0, format="%.2f", key=f"{scope}-plan-savings",
-            )
-            edited_planning = {k: v for k, v in planning.items() if k != "use_recorded_spending"}
-            method, method_questions = render_method_choice(planning.get("method"), scope)
-            edited_planning.update(method=method, take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
-        st.markdown("**Category limits**")
-        st.caption("Add or remove categories below. Type a custom name and press Enter to add it. Enter 0 explicitly for a zero limit.")
-        selected = st.multiselect(
-            "Budget categories", options=list(dict.fromkeys([*CATEGORIES, *existing])),
-            default=list(existing) if existing else ["housing", "food", "transport", "utilities"],
-            format_func=_category_label, accept_new_options=True, max_selections=50,
-            key=f"{scope}-categories",
-        )
-        categories = list(dict.fromkeys(" ".join(c.split()).lower() for c in selected))
-        invalid = any(not c or len(c) > 64 for c in categories)
-        if invalid:
-            st.warning("Category names must contain 1 to 64 characters.")
-        values, group_questions = render_category_rows(
-            categories, existing, (planning or {}).get("method"),
-            edited_planning["method"] if edited_planning else None, currency, scope,
-        )
-        method_questions.extend(group_questions)
-        with summary:
-            balance = render_plan_summary(values, edited_planning, currency)
-        if edited_planning:
-            render_method_guide(method, plan_income, plan_savings, values, scope=scope)
-            if method["name"] == "zero_based" and balance is not None and balance != 0:
-                method_questions.append("Assign all income to expenses or savings before saving a zero-based plan.")
-                st.caption(method_questions[-1])
-        payload = {
-            "review_evidence": edit_draft.get("review_evidence") if edit_draft else None,
-            "period_start": period_start.isoformat(), "currency": currency,
-            "planning": edited_planning,
-            "categories": [{"category": c, "limit_amount": v} for c, v in values.items()],
-        }
-        render_save_review(budget, values, edited_planning, currency)
-        confirmation_revision = sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
-        confirmation_key = f"{scope}-plan-confirmed-{confirmation_revision}"
-        if st.session_state.pop(scope + "-rejected-confirmation", None) == confirmation_key:
-            st.session_state[confirmation_key] = False
-        plan_confirmed = st.checkbox(
-            "This is my actual take-home income and these limits include all my expenses."
-            if edited_planning else f"I have reviewed these category limits for {period_start:%B %Y}.",
-            key=confirmation_key,
-        )
-        budget_submitted = st.button(
-            "Save budget", type="primary", icon=":material/save:", disabled=invalid or bool(method_questions),
-        )
-        if budget_submitted:
-            missing = [c.title() for c, v in values.items() if v is None]
-            if missing:
-                st.warning("Enter a monthly limit for: " + ", ".join(missing) + ". Enter 0 if that is your choice.")
-            elif edited_planning and (plan_income is None or plan_savings is None):
-                st.warning("Enter take-home income and savings, including 0 if that is your choice.")
-            elif not plan_confirmed:
-                st.warning("Review the changes and confirm the plan before saving.")
-            elif balance is not None and balance < 0:
-                st.warning(f"The plan has a shortfall of {money(-balance)}. Revise the amounts before saving.")
-            else:
-                result = save_budget_with_feedback(client, user_id, payload)
-                if result:
-                    st.session_state.pop(draft_key, None)
-                    st.success("Budget saved.")
-                    st.rerun()
-                elif result is None:
-                    # Keep inputs, but require a fresh confirmation after a rejected save.
-                    st.session_state[scope + "-rejected-confirmation"] = confirmation_key
-
-    st.subheader("Spending this month", anchor=False)
-    if (budget or {}).get("categories"):
-        import plotly.graph_objects as go
-
-        rows = budget["categories"]
-        planned = float(budget.get("total_limit", sum(float(item["limit_amount"]) for item in rows)))
-        category_spent = sum(float(item["spent_amount"]) for item in rows)
-        spent = float(budget.get("total_spent", category_spent))
-        remaining = planned - spent
-        metrics = st.columns(3)
-        metrics[0].metric(":material/account_balance_wallet: Saved limits", money(planned, currency))
-        metrics[1].metric(":material/payments: Spent", money(spent, currency))
-        metrics[2].metric(
-            ":material/warning: Over budget" if remaining < 0 else ":material/savings: Remaining",
-            money(abs(remaining), currency),
-        )
-        unbudgeted = max(0.0, round(spent - category_spent, 2))
-        st.caption(
-            "Totals include all spending for the selected month."
-            + (f" Includes {money(unbudgeted, currency)} in categories without limits."
-               if unbudgeted > 0 else "")
-        )
-        if planned > 0:
-            st.progress(clamp_progress(spent / planned), text=f"{spent / planned:.0%} of budget used")
-        over = [item for item in rows if float(item["spent_amount"]) > float(item["limit_amount"])]
-        if over:
-            st.warning("Over limit: " + ", ".join(_category_label(item["category"]) for item in over),
-                       icon=":material/warning:")
-        labels = [_category_label(item["category"]) for item in rows]
-        chart = go.Figure()
-        chart.add_bar(name="Planned", y=labels,
-                      x=[item["limit_amount"] for item in rows], orientation="h",
-                      marker_color="#cbd5e1")
-        chart.add_bar(name="Spent", y=labels,
-                      x=[item["spent_amount"] for item in rows], orientation="h",
-                      marker_color=["#dc2626" if item in over else "#0d9488" for item in rows])
-        chart.update_layout(barmode="group", height=max(320, len(rows) * 55),
-                            margin={"l": 0, "r": 10, "t": 40, "b": 25},
-                            legend={"orientation": "h", "x": 0, "xanchor": "left",
-                                    "y": 1.02, "yanchor": "bottom"})
-        chart.update_yaxes(autorange="reversed")
-        st.plotly_chart(chart, use_container_width=True, key=f"{scope}-comparison")
-        st.caption(f"Category amounts in {currency}. The chart compares expenses with saved category limits.")
-        if st.checkbox("Show budget allocation", key=scope + "-show-allocation"):
-            positive = [item for item in rows if float(item["limit_amount"]) > 0]
-            if positive:
-                chart = _create_pie_chart(
-                    [_category_label(item["category"]) for item in positive],
-                    [float(item["limit_amount"]) for item in positive], currency,
-                )
-                chart.update_traces(hole=0.62)
-                st.plotly_chart(chart, use_container_width=True, key=f"{scope}-allocation")
-            else:
-                st.info("Set a positive limit to see your budget allocation.")
-    else:
-        st.info("Build your monthly plan. Choose categories above or ask Coach to prepare a budget.",
-                icon=":material/account_balance_wallet:")
-
-    if currency == "SGD":
-        if budget:
-            st.caption("Recorded expenses may be incomplete. Remaining budget is not an available bank balance.")
-        render_change(client, user_id, period_start, values, edited_planning, scope, draft_key)
-        if st.button("Discuss my saved budget with Coach", key=scope + "-coach"):
-            st.switch_page(st.Page(coach_page, title="Coach", url_path="coach"))
-        st.caption(
-            "Ask Coach to keep rent fixed, compare savings amounts or plan for an upcoming expense. "
-            "Manage savings targets on the Goals page."
-        )
-    if edit_draft and st.button("Discard unsaved change", key=f"{scope}-discard"):
-        st.session_state.pop(draft_key, None)
-        st.rerun()
-
-    if (budget or {}).get("categories"):
-        with st.expander("Category details", icon=":material/table_chart:"):
-            comparison = pd.DataFrame([
-                {"Category": _category_label(item["category"]), "Planned": item["limit_amount"],
-                 "Actual": item["spent_amount"], "Remaining": item["remaining_amount"]}
-                for item in budget["categories"]
-            ])
-            st.dataframe(comparison, hide_index=True, use_container_width=True,
-                         column_config={name: st.column_config.NumberColumn(
-                             name, format=f"{currency} %.2f")
-                             for name in ("Planned", "Actual", "Remaining")})
+    render_budget_page(
+        get_client(), get_user_id(), get_period_start(), CATEGORIES, coach_page, _create_pie_chart,
+    )
 
 
 def goals_page() -> None:

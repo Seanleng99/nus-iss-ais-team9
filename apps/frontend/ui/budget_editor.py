@@ -10,7 +10,7 @@ from ui.budget_methods import METHODS
 from ui.components import backend_call, money
 
 
-def render_category_rows(categories, existing, prior_method, method, currency, scope):
+def render_category_rows(categories, existing, prior_method, method, currency, scope, *, on_remove=None):
     values = {}
     grouping = method and method["name"] in {"50_30_20", "custom"}
     saved_groups = (prior_method or {}).get("category_groups") or {}
@@ -24,6 +24,8 @@ def render_category_rows(categories, existing, prior_method, method, currency, s
                 value=existing.get(category), step=25.0, format="%.2f",
                 key=f"{scope}-{category}-v3",
             )
+            if values[category] is None:
+                columns[0].caption(f"Enter a monthly limit for {category.title()}, including 0 if that is your choice.")
             if grouping:
                 selected = columns[1].selectbox(
                     f"Type for {category.title()}", ["needs", "wants"],
@@ -34,6 +36,12 @@ def render_category_rows(categories, existing, prior_method, method, currency, s
                 )
                 if selected:
                     method["category_groups"][category] = selected
+                else:
+                    columns[1].caption("Choose Needs or Wants for this category.")
+            if on_remove:
+                st.button(f"Remove {category.title()}", key=f"{scope}-{category}-remove",
+                          icon=":material/remove:", on_click=on_remove, args=(category,),
+                          help="Remove this category limit from the unsaved plan. Recorded transactions are kept.")
     missing = [c for c in categories if grouping and c not in method["category_groups"]]
     questions = ["Choose Needs or Wants for: " + ", ".join(c.title() for c in missing) + "."] if missing else []
     for question in questions:
@@ -102,6 +110,7 @@ def render_save_review(budget, values, planning, currency):
         st.caption("The entered amounts and method match your saved plan.")
     if any(c not in values for c in old_categories):
         st.caption("Removing a limit keeps recorded transactions. Those expenses will appear as unbudgeted spending.")
+    return bool(changes)
 
 
 def save_budget_with_feedback(client, user_id, payload):
