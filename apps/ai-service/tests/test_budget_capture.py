@@ -10,6 +10,7 @@ class CaptureGateway(LocalFixtureModelGateway):
     def __init__(self, draft):
         self.draft = draft
         self.capture_payload = None
+        self.capture_prompt = None
 
     def generate(self, **kwargs):
         if kwargs["system_prompt"].startswith("PROMPT_ID: router"):
@@ -22,6 +23,7 @@ class CaptureGateway(LocalFixtureModelGateway):
             )
         if kwargs["system_prompt"].startswith("PROMPT_ID: budget_capture"):
             self.capture_payload = json.loads(kwargs["user_prompt"])
+            self.capture_prompt = kwargs["system_prompt"]
             return json.dumps(self.draft)
         return super().generate(**kwargs)
 
@@ -108,3 +110,35 @@ def test_pending_workspace_correction_retains_command_context():
     assert gateway.capture_payload["pending_draft"] == draft
     result = next(r for r in response.agent_results if r.agent.value == "budget")
     assert result.data["budget_draft"]["action"] == "workspace"
+
+
+def test_simple_comparison_uses_confirmed_plan_and_a_small_contract():
+    draft = {"action": "compare", "period_start": "2026-10-01", "scenarios": [{"name": "Proposed change", "savings_target": 1100}]}
+    gateway = CaptureGateway(draft)
+    owned = {"request_scope": {"operations": []}, "selected_period": "2026-10-01", "selected_budget": {
+        "period_start": "2026-10-01", "currency": "SGD", "categories": {"housing": 1500, "food": 500},
+        "planning": {"take_home_income": 3000, "income_basis": "take_home", "savings_target": 800, "expenses_confirmed": True},
+    }}
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway).handle(
+        CoachRequest(user_id="u1", session_id="s1", message="What if I save SGD 1100 in my October 2026 budget?", budget_context=owned))
+    result = next(r for r in response.agent_results if r.agent.value == "budget")
+    assert not response.blocked
+    assert "refund_reopens" not in gateway.capture_prompt
+    assert "payload_json" not in gateway.capture_prompt
+    assert result.data["planning_analysis"]["expense_total"] == 2000
+    assert result.data["planning_analysis"]["comparisons"][0]["funding_gap"] == 100
+    assert result.data["budget_draft"]["planning"]["expenses_confirmed"] is False
+
+
+def test_explicit_different_month_does_not_borrow_selected_income():
+    draft = {"action": "compare", "period_start": "2026-11-01", "currency": "SGD", "scenarios": [{"name": "Proposed change", "savings_target": 1100}]}
+    gateway = CaptureGateway(draft)
+    owned = {"request_scope": {"operations": []}, "selected_period": "2026-10-01", "selected_budget": {
+        "period_start": "2026-10-01", "currency": "SGD", "categories": {"housing": 1500},
+        "planning": {"take_home_income": 3000, "savings_target": 800, "income_basis": "take_home"},
+    }}
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway).handle(
+        CoachRequest(user_id="u1", session_id="s1", message="What if I save SGD 1100 in my November 2026 budget?", budget_context=owned))
+    result = next(r for r in response.agent_results if r.agent.value == "budget")
+    assert result.data["planning_analysis"]["unallocated"] is None
+    assert result.data["planning_analysis"]["comparisons"] == []

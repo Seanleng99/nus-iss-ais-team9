@@ -11,15 +11,20 @@ import pandas as pd
 import streamlit as st
 
 from client import build_request
-from ui.budget_constraints import render_commitments
 from ui.budget_continuity import render_continuity, render_review_preferences
 from ui.budget_history import render_history
-from ui.budget_income import render_income_and_reserves
 from ui.budget_methods import METHODS, render_method_explorer
 from ui.budget_review import render_budget_review
-from ui.budget_timing import render_timing, render_timing_summary
+from ui.budget_simple import (
+    render_change,
+    render_copy_month,
+    render_fixed_amounts,
+    render_goal_allocation,
+    render_payday,
+    render_upcoming_expense,
+)
+from ui.budget_timing import render_timing_summary
 from ui.budget_tradeoffs import render_tradeoffs
-from ui.cashflow import render_cashflow
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
@@ -467,7 +472,9 @@ def dashboard_page() -> None:
     if (dashboard.get("review_reminder") or {}).get("due"):
         st.info(dashboard["review_reminder"]["message"], icon=":material/event:")
     _render_overview_budget(dashboard.get("budget"), currency)
-    render_timing_summary(dashboard.get("budget_timing"))
+    timing = dashboard.get("budget_timing")
+    if timing and timing.get("status") in {"within_buffer", "shortfall"}:
+        render_timing_summary(timing)
 
     st.subheader("Goals")
     goals = dashboard.get("goals", [])
@@ -877,12 +884,96 @@ def budget_page() -> None:
     if edit_draft:
         st.info("Unsaved scenario in the editor. Review the amounts, confirm actual take-home income and expense coverage, then save.")
         existing = {item["category"]: float(item["limit_amount"]) for item in edit_draft["categories"]}
-        planning = {**edit_draft["planning"], "version": "budget-planning-v3"}
+        planning = {**edit_draft["planning"], "version": "budget-planning-v4"} if edit_draft.get("planning") else None
     revision = sha256(json.dumps([existing, planning], sort_keys=True).encode()).hexdigest()[:12]
-    if budget and budget.get("planning"):
-        _render_budget_plan_summary(budget)
     scope = f"budget-{user_id}-{period_start.isoformat()}-{revision}"
 
+    st.subheader("Your plan", anchor=False)
+    st.caption("Choose suggested categories or type a custom name and press Enter. "
+               "Removing a category removes its limit when you save. Zero is a valid limit.")
+    selected = st.multiselect(
+        "Budget categories", options=list(dict.fromkeys([*CATEGORIES, *existing])),
+        default=list(existing) if existing else ["housing", "food", "transport", "utilities"],
+        format_func=_category_label, accept_new_options=True, max_selections=50,
+        key=f"{scope}-categories",
+    )
+    categories = list(dict.fromkeys(" ".join(item.split()).lower() for item in selected))
+    invalid = any(not item or len(item) > 64 for item in categories)
+    if invalid:
+        st.warning("Category names must contain 1 to 64 characters.")
+    with st.container(border=True):
+        plan_confirmed = True
+        edited_planning = None
+        include_planning = currency == "SGD" and st.checkbox(
+            "Include take-home income and savings", value=bool(planning), disabled=bool(planning),
+            key=f"{scope}-include-planning",
+        )
+        if include_planning:
+            planning = planning or {}
+            income_column, savings_column = st.columns(2)
+            plan_income = income_column.number_input(
+                "Monthly take-home income (SGD)", min_value=0.0,
+                value=float(planning["take_home_income"]) if planning.get("take_home_income") is not None else None, step=100.0, key=f"{scope}-plan-income",
+            )
+            plan_savings = savings_column.number_input(
+                "Monthly savings allocation (SGD)", min_value=0.0,
+                value=float(planning["savings_target"]) if planning.get("savings_target") is not None else None, step=50.0, key=f"{scope}-plan-savings",
+            )
+            plan_confirmed = st.checkbox(
+                "This is my actual take-home income and these limits include all my expenses.",
+                key=f"{scope}-plan-confirmed",
+            )
+            edited_planning = {key: value for key, value in planning.items() if key != "use_recorded_spending"}
+            edited_planning.setdefault("method", {"name": "flexible", "category_groups": {}})
+            edited_planning.update(take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
+        values: dict[str, float] = {}
+        columns = st.columns(3)
+        for index, category in enumerate(categories):
+            values[category] = columns[index % 3].number_input(
+                f"{_category_label(category)} ({currency})", min_value=0.0,
+                value=existing.get(category), step=25.0,
+                key=f"{scope}-{category}-v3",
+            )
+        if edited_planning and all(v is not None for v in [*values.values(), plan_income, plan_savings]):
+            balance = round(plan_income - sum(values.values()) - plan_savings, 2)
+            totals = st.columns(3)
+            totals[0].metric("Planned expenses", money(sum(values.values())))
+            totals[1].metric("Planned savings", money(plan_savings))
+            totals[2].metric("Shortfall" if balance < 0 else "Unallocated income", money(abs(balance)))
+            if balance < 0:
+                st.warning("Reduce an amount or revise income before saving this plan.")
+        budget_submitted = st.button(
+            "Save budget", type="primary", icon=":material/save:", disabled=invalid,
+        )
+    if budget_submitted:
+        if any(value is None for value in values.values()):
+            st.warning("Enter an amount for each selected category, including 0 if that is your choice.")
+            return
+        if edited_planning and (plan_income is None or plan_savings is None):
+            st.warning("Enter take-home income and savings, including 0 if that is your choice.")
+            return
+        if not plan_confirmed:
+            st.warning("Confirm your actual take-home income and complete expense limits before saving.")
+            return
+        if edited_planning:
+            gap = round(sum(values.values()) + edited_planning["savings_target"] - edited_planning["take_home_income"], 2)
+            if gap > 0:
+                st.warning(f"The plan has a funding gap of {money(gap)}. Revise the amounts before saving.")
+                return
+        payload = {
+            "review_evidence": edit_draft.get("review_evidence") if edit_draft else None,
+            "period_start": period_start.isoformat(), "currency": currency,
+            "planning": edited_planning,
+            "categories": [{"category": category, "limit_amount": amount}
+                           for category, amount in values.items()],
+        }
+        result = backend_call(lambda: client.save_budget(user_id, payload))
+        if result:
+            st.session_state.pop(draft_key, None)
+            st.success("Budget saved.")
+            st.rerun()
+
+    st.subheader("Spending this month", anchor=False)
     if (budget or {}).get("categories"):
         import plotly.graph_objects as go
 
@@ -933,89 +1024,34 @@ def budget_page() -> None:
         st.info("Build your monthly plan. Choose categories below or ask Coach to prepare a budget.",
                 icon=":material/account_balance_wallet:")
 
-    st.subheader("Plan your categories", anchor=False)
-    st.caption("Choose suggested categories or type a custom name and press Enter. "
-               "Removing a category removes its limit when you save. Zero is a valid limit.")
-    selected = st.multiselect(
-        "Budget categories", options=list(dict.fromkeys([*CATEGORIES, *existing])),
-        default=list(existing) if existing else ["housing", "food", "transport", "utilities"],
-        format_func=_category_label, accept_new_options=True, max_selections=50,
-        key=f"{scope}-categories",
-    )
-    categories = list(dict.fromkeys(" ".join(item.split()).lower() for item in selected))
-    invalid = any(not item or len(item) > 64 for item in categories)
-    if invalid:
-        st.warning("Category names must contain 1 to 64 characters.")
-    with st.form(f"{scope}-form"):
-        plan_confirmed = True
-        edited_planning = None
-        actual_income_confirmed = True
-        if planning:
-            st.caption("Selected method: " + METHODS.get(planning.get("method", {}).get("name", "flexible"), "Flexible category plan"))
-            income_column, savings_column = st.columns(2)
-            plan_income = income_column.number_input(
-                "Monthly take-home income (SGD)", min_value=0.0,
-                value=float(planning["take_home_income"]), step=100.0, key=f"{scope}-plan-income",
-            )
-            plan_savings = savings_column.number_input(
-                "Monthly savings allocation (SGD)", min_value=0.0,
-                value=float(planning["savings_target"]), step=50.0, key=f"{scope}-plan-savings",
-            )
-            if edit_draft:
-                actual_income_confirmed = st.checkbox("This is my actual monthly take-home income, not a hypothetical amount.", key=f"{scope}-actual-income")
-            plan_confirmed = st.checkbox(
-                "These expense limits include my commitments, debt payments and irregular costs.",
-                key=f"{scope}-plan-confirmed",
-            )
-            edited_planning = {key: value for key, value in planning.items() if key != "use_recorded_spending"}
-            edited_planning.update(take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
-        values: dict[str, float] = {}
-        columns = st.columns(3)
-        for index, category in enumerate(categories):
-            values[category] = columns[index % 3].number_input(
-                f"{_category_label(category)} ({currency})", min_value=0.0,
-                value=existing.get(category, 0.0), step=25.0,
-                key=f"{scope}-{category}-v3",
-            )
-        budget_submitted = st.form_submit_button(
-            "Save budget", type="primary", icon=":material/save:", disabled=invalid,
-        )
-    if budget_submitted:
-        if not actual_income_confirmed:
-            st.warning("Confirm your actual take-home income before saving this scenario.")
-            return
-        if not plan_confirmed:
-            st.warning("Confirm that the expense limits include your monthly commitments before saving.")
-            return
-        if edited_planning:
-            gap = round(sum(values.values()) + edited_planning["savings_target"] - edited_planning["take_home_income"], 2)
-            if gap > 0:
-                st.warning(f"The plan has a funding gap of {money(gap)}. Revise the amounts before saving.")
-                return
-        payload = {
-            "review_evidence": edit_draft.get("review_evidence") if edit_draft else None,
-            "period_start": period_start.isoformat(), "currency": currency,
-            "planning": edited_planning,
-            "categories": [{"category": category, "limit_amount": amount}
-                           for category, amount in values.items()],
-        }
-        result = backend_call(lambda: client.save_budget(user_id, payload))
-        if result:
-            st.session_state.pop(draft_key, None)
-            st.success("Budget saved.")
-            st.rerun()
-
     if currency == "SGD":
-        render_method_explorer(client, user_id, period_start, values, planning, scope, draft_key)
-        render_budget_review(client, user_id, period_start, scope, draft_key)
-        render_cashflow(client, user_id)
-        render_commitments(client, user_id, period_start, values, draft_key)
-        render_timing(client, user_id, period_start)
-        render_income_and_reserves(client, user_id, period_start, draft_key)
-        render_tradeoffs(client, user_id, period_start)
-        render_history(client, user_id, period_start, draft_key)
-        render_continuity(client, user_id, period_start)
-        render_review_preferences(client, user_id)
+        spending_revision = sha256(json.dumps(budget, sort_keys=True).encode()).hexdigest()[:12]
+        from ui.state import today_singapore
+        render_budget_review(client, user_id, period_start, scope + f"-{spending_revision}-{today_singapore()}", draft_key, automatic=True, compact=True)
+        render_change(client, user_id, period_start, values, edited_planning, scope, draft_key)
+        if st.button("Discuss my saved budget with Coach", key=scope + "-coach"):
+            st.switch_page(st.Page(coach_page, title="Coach", url_path="coach"))
+        render_copy_month(client, user_id, period_start, budget)
+        with st.expander("More planning options", icon=":material/tune:"):
+            option = st.selectbox("Planning option", ["Choose an option", "Fixed amounts", "Savings goals", "Check until payday", "Upcoming expenses", "Budgeting methods", "Spending patterns", "Previous versions", "Review reminders", "Plan several months", "Debt repayment comparisons"], key=scope + "-more")
+            if option == "Fixed amounts":
+                render_fixed_amounts(client, user_id, period_start, {c["category"]: c["limit_amount"] for c in (budget or {}).get("categories", [])})
+            elif option == "Savings goals":
+                render_goal_allocation(client, user_id, period_start)
+            elif option == "Check until payday":
+                render_payday(client, user_id, period_start)
+            elif option == "Upcoming expenses":
+                render_upcoming_expense(client, user_id, period_start)
+            elif option == "Budgeting methods":
+                render_method_explorer(client, user_id, period_start, values, edited_planning, scope, draft_key)
+            elif option in {"Spending patterns", "Previous versions"}:
+                render_history(client, user_id, period_start, draft_key, patterns=option == "Spending patterns")
+            elif option == "Review reminders":
+                render_review_preferences(client, user_id)
+            elif option == "Plan several months":
+                render_continuity(client, user_id, period_start)
+            elif option == "Debt repayment comparisons":
+                render_tradeoffs(client, user_id, period_start)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):
         st.session_state.pop(draft_key, None)
         st.rerun()

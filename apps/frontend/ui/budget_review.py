@@ -1,5 +1,6 @@
 """On-demand review UI; adoption fills an unsaved editor and never writes a budget."""
 
+from contextlib import nullcontext
 from copy import deepcopy
 
 import pandas as pd
@@ -8,16 +9,15 @@ import streamlit as st
 from ui.components import backend_call, money
 
 
-def render_budget_review(client, user_id, period, scope, draft_key):
-    with st.expander("Review recorded spending", icon=":material/monitoring:"):
+def render_budget_review(client, user_id, period, scope, draft_key, *, automatic=False, compact=False):
+    with nullcontext() if compact else st.expander("Review recorded spending", icon=":material/monitoring:"):
         st.caption(
             "Compare recorded expenses with saved limits, inspect illustrative month-end pace, and review possible adjustments."
         )
         result_key = f"{scope}-review"
-        if st.button("Refresh spending review", key=f"{scope}-review-refresh"):
+        if st.button("Refresh spending review", key=f"{scope}-review-refresh") or (automatic and result_key not in st.session_state):
             result = backend_call(lambda: client.review_budget(user_id, period))
-            if result:
-                st.session_state[result_key] = result
+            st.session_state[result_key] = result
         review = st.session_state.get(result_key)
         if not review:
             return
@@ -37,7 +37,8 @@ def render_budget_review(client, user_id, period, scope, draft_key):
             st.info(
                 "No saved budget exists for this month. Create a plan to compare category limits."
             )
-        rows = review["categories"]
+        details = not compact or st.checkbox("Show category and pace details", key=f"{scope}-review-details")
+        rows = review["categories"] if details else []
         if rows:
             import plotly.graph_objects as go
 
@@ -82,7 +83,7 @@ def render_budget_review(client, user_id, period, scope, draft_key):
                 hide_index=True,
                 use_container_width=True,
             )
-        for suggestion in review["suggestions"]:
+        for suggestion in review["suggestions"][:3] if compact else review["suggestions"]:
             st.write(f"{suggestion['category'].title()}: {suggestion['reason']}")
         comparison = review.get("comparison")
         if not comparison or not comparison["results"]:
@@ -90,6 +91,8 @@ def render_budget_review(client, user_id, period, scope, draft_key):
         option = next(
             item for item in comparison["results"] if item["name"] == "Cover recorded spending"
         )
+        if compact and not st.checkbox("Show suggested adjustment", key=f"{scope}-review-adjustment"):
+            return
         st.markdown("**Proposed adjustment: cover recorded spending**")
         st.caption(
             "These suggested limits cover expenses already recorded. They do not include an allowance for future purchases or unpaid bills. Review every amount before saving."

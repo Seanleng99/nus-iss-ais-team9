@@ -68,7 +68,9 @@ def compare_draft(draft, existing_categories=None):
     for name, candidate in candidates:
         candidate.action = "plan"
         candidate.scenarios = []
-        questions = list(dict.fromkeys([*candidate.missing(), *candidate.planning.questions()]))
+        save_questions = candidate.planning.questions()
+        coverage_question = "Do these category limits include all your expenses"
+        questions = list(dict.fromkeys([*candidate.missing(), *(q for q in save_questions if not q.startswith(coverage_question))]))
         totals = None
         method = None
         if len(candidate.categories) > 50:
@@ -96,6 +98,7 @@ def compare_draft(draft, existing_categories=None):
                 "totals": totals,
                 "method": method,
                 "questions": list(dict.fromkeys(questions)),
+                "save_questions": save_questions,
                 "fits_income": totals is not None and totals["funding_gap"] == 0,
             }
         )
@@ -109,6 +112,22 @@ def compare_draft(draft, existing_categories=None):
     return {"results": results, "questions": [], "saved": False}
 
 
+def apply_saved_constraints(session, user_id, comparison):
+    """Read-only checks share the same saved restrictions as the write path."""
+    from datetime import date
+
+    from app.services.budget_constraints import constraint_questions
+
+    for result in comparison.get("results", []):
+        draft = result["draft"]
+        if draft.get("period_start") and draft.get("currency") == "SGD" and result.get("totals"):
+            questions = constraint_questions(session, user_id, date.fromisoformat(draft["period_start"]),
+                {c["category"]: c["limit_amount"] for c in draft["categories"]}, PlanningInputs.model_validate(draft["planning"]))
+            result["questions"] = list(dict.fromkeys([*result["questions"], *questions]))
+            result["meets_saved_constraints"] = not questions
+    return comparison
+
+
 def describe_comparison(comparison):
     lines = ["Budget scenario comparison — nothing has been saved or selected."]
     lines.extend(comparison["questions"])
@@ -120,6 +139,11 @@ def describe_comparison(comparison):
             lines.append(
                 f"Take-home SGD {planning['take_home_income']:,.2f}; expenses SGD {totals['expense_total']:,.2f}; savings SGD {planning['savings_target']:,.2f}; unallocated SGD {totals['unallocated']:,.2f}; funding gap SGD {totals['funding_gap']:,.2f}."
             )
+            if result["name"] != "Current plan":
+                if totals["funding_gap"]:
+                    lines.append(f"This option is short by SGD {totals['funding_gap']:,.2f}. Which amount would you like to revise?")
+                else:
+                    lines.append(f"This option fits the supplied monthly income, leaving SGD {totals['unallocated']:,.2f} unallocated. Cash availability before payday has not been established.")
         if result["method"]:
             lines.append(describe_method(result["method"]))
         if result.get("cashflow"):
@@ -130,7 +154,9 @@ def describe_comparison(comparison):
                 lines.extend(cash.get("suggestions", []))
         lines.extend(result["questions"])
     if comparison["results"]:
-        lines.append(
+        options = [item for item in comparison["results"] if item["name"] != "Current plan"]
+        lines.append("Reply 'use this change' to review the option as a draft, then confirm the actual income, expenses and exact changes before saving."
+            if len(options) == 1 else (
             "Reply 'use scenario NAME' to adopt one as an unsaved draft. Then confirm actual income, expense coverage and the exact changes before saving. Hypothetical amounts do not update your profile."
-        )
+        ))
     return "\n\n".join(lines)

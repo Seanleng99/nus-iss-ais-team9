@@ -92,7 +92,7 @@ from app.services.budget_history import AdaptiveRequest, adaptive_review, histor
 from app.services.budget_income import IncomeScenarios, compare_income
 from app.services.budget_reconciliation import save_settings
 from app.services.budget_review import build_budget_review
-from app.services.budget_scenarios import compare_draft
+from app.services.budget_scenarios import apply_saved_constraints, compare_draft
 from app.services.budget_workspace import WorkspaceChange, confirm_change, context, preview_change
 from app.services.cashflow import CashflowSettings, occurs, project_cashflow
 from app.services.financial_workspace import lock_workspace, read_section, write_section
@@ -827,10 +827,10 @@ def review_budget(user_id: UserId, period_start: Annotated[date, Query()],
 
 
 @router.post("/users/{user_id}/budget/compare")
-def compare_budget(user_id: UserId, draft: BudgetDraft):
+def compare_budget(user_id: UserId, draft: BudgetDraft, session: Annotated[Session, Depends(get_db_session)]):
     # The caller supplies an exploratory plan. Ownership is checked by the router;
     # no saved budget, profile or conversation state is written here.
-    return compare_draft(draft)
+    return apply_saved_constraints(session, user_id, compare_draft(draft))
 
 
 @router.put("/users/{user_id}/budget", response_model=BudgetResponse)

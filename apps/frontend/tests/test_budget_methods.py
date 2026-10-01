@@ -9,6 +9,9 @@ class Client:
         self.saved = None
         self.compared = None
 
+    def review_budget(self, user, period):
+        return None
+
     def get_budget(self, user, period):
         return {
             "currency": "SGD",
@@ -66,7 +69,9 @@ def render(client):
     app.session_state["backend_client"] = client
     app.session_state["active_user_id"] = "u"
     app.session_state["active_period"] = date(2026, 10, 1)
-    return app.run(timeout=30)
+    app.run(timeout=30)
+    control(app.selectbox, "Planning option").set_value("Budgeting methods").run()
+    return app
 
 
 def control(items, label):
@@ -92,11 +97,7 @@ def test_compare_then_adopt_keeps_saving_explicit_and_requires_actual_income():
     assert client.saved is None
     assert any("actual take-home" in item.value for item in app.warning)
     control(
-        app.checkbox, "This is my actual monthly take-home income, not a hypothetical amount."
-    ).check()
-    control(
-        app.checkbox,
-        "These expense limits include my commitments, debt payments and irregular costs.",
+        app.checkbox, "This is my actual take-home income and these limits include all my expenses.",
     ).check()
     control(app.button, "Save budget").click().run()
     assert not app.exception

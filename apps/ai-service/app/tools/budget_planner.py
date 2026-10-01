@@ -87,10 +87,14 @@ def propose_budget(draft: BudgetDraft, context: dict, pending: dict | None = Non
             "Recorded-spending suggestions may reflect incomplete records; they are not verified monthly needs. Recurring transaction rows are not added again."
         )
     complete_amounts = all(item.limit_amount is not None for item in draft.categories)
+    saved = context.get("selected_budget", {})
+    preserved = saved.get("categories", {}) if str(draft.period_start) == saved.get("period_start") else {}
+    supplied = {" ".join((item.category or "").split()).lower() for item in draft.categories}
     expense_total = sum(
         (amount(item.limit_amount) for item in draft.categories if item.limit_amount is not None),
         Decimal(0),
     )
+    expense_total += sum((amount(value) for name, value in preserved.items() if name not in supplied), Decimal(0))
     balance = None
     if (
         draft.currency == "SGD"
@@ -100,13 +104,28 @@ def propose_budget(draft: BudgetDraft, context: dict, pending: dict | None = Non
         and complete_amounts
     ):
         balance = amount(inputs.take_home_income) - expense_total - amount(inputs.savings_target)
-    return {
+    result = {
         "version": PLANNER_VERSION,
         "expense_total": float(expense_total),
         "unallocated": float(max(balance, Decimal(0))) if balance is not None else None,
         "funding_gap": float(max(-balance, Decimal(0))) if balance is not None else None,
         "warnings": warnings,
     }
+    if draft.action == "compare":
+        comparisons = []
+        base_limits = {**preserved, **{item.category: item.limit_amount for item in draft.categories}}
+        for scenario in draft.scenarios:
+            limits = {**base_limits, **{item.category: item.limit_amount for item in scenario.categories}}
+            income = scenario.take_home_income if scenario.take_home_income is not None else inputs.take_home_income
+            savings = scenario.savings_target if scenario.savings_target is not None else inputs.savings_target
+            if draft.currency == "SGD" and inputs.income_basis == "take_home" and income is not None and savings is not None and all(name and value is not None for name, value in limits.items()):
+                total = sum((amount(value) for value in limits.values()), Decimal(0))
+                remainder = amount(income) - total - amount(savings)
+                comparisons.append({"name": scenario.name, "expense_total": float(total), "savings": savings,
+                    "unallocated": float(max(remainder, Decimal(0))), "funding_gap": float(max(-remainder, Decimal(0)))})
+        result["comparisons"] = comparisons
+        result["saved"] = False
+    return result
 
 
 def describe_plan(draft: BudgetDraft, analysis: dict) -> str:
@@ -152,6 +171,8 @@ def describe_plan(draft: BudgetDraft, analysis: dict) -> str:
     elif analysis.get("unallocated") is not None:
         lines.append(f"Unallocated income: SGD {analysis['unallocated']:,.2f}.")
     lines.extend(analysis.get("warnings", []))
+    for result in analysis.get("comparisons", []):
+        lines.append(f"{result['name']}: expenses SGD {result['expense_total']:,.2f}, savings SGD {result['savings']:,.2f}, funding gap SGD {result['funding_gap']:,.2f}, unallocated SGD {result['unallocated']:,.2f}. This is a read-only comparison, not a saved change.")
     lines.extend(draft.questions)
     lines.append(
         "The backend must validate the full plan and present exact changes for confirmation before saving."

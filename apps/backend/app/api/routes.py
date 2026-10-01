@@ -142,7 +142,11 @@ async def coach(
         **request.model_dump(), conversation_context=context,
         pending_goal=pending_goal["draft"] if pending_goal else None,
         pending_budget=pending_budget["draft"] if pending_budget else None,
-        budget_context=build_planning_context(session, request.user_id),
+        budget_context=build_planning_context(
+            session, request.user_id, message=request.message,
+            pending=pending_budget["draft"] if pending_budget else None,
+            period=request.budget_period_start,
+        ),
         saved_budget_capacity=build_capacity_context(session, request.user_id, request.budget_period_start),
     )
     log_event("coach.history.loaded", history_count=len(context))

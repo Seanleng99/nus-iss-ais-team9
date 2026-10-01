@@ -27,8 +27,14 @@ class BudgetAgent(BaseAgent):
         if task.context_features.get("budget_capture") and inspect_prompt(task.sanitized_message).allowed:
             draft = extract_budget_draft(self, task)
             if draft.is_budget_request:
+                saved = task.input_data.get("planning_context", {}).get("selected_budget", {})
+                if draft.action == "compare" and draft.planning is None and saved.get("planning") and str(draft.period_start) == saved.get("period_start"):
+                    draft.planning = PlanningInputs.model_validate({k: v for k, v in saved["planning"].items() if k != "version"})
+                    draft.planning.expenses_confirmed = False
+                if draft.action == "compare" and draft.currency is None and str(draft.period_start) == saved.get("period_start"):
+                    draft.currency = saved["currency"]
                 analysis = None
-                if draft.action not in {"review", "alternatives", "continuity", "workspace"} and (task.context_features.get("budget_planning") or draft.planning is not None):
+                if draft.action not in {"review", "alternatives", "continuity", "workspace"} and (task.context_features.get("budget_planning") or draft.planning is not None or draft.action == "compare"):
                     if draft.planning is None:
                         draft.planning = PlanningInputs.model_validate(
                             (task.context_features.get("pending_budget") or {}).get("planning") or {}

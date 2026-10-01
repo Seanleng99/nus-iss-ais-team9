@@ -58,11 +58,17 @@ class BudgetDraft(BaseModel):
     questions: list[str] = Field(default_factory=list, max_length=8)
 
 
+class CoreBudgetDraft(BudgetDraft):
+    """Everyday planning does not expose the specialist workspace command schema."""
+
+    action: Literal["plan", "compare", "review", "alternatives"] = "plan"
+    workspace: None = None
+
+
 def extract_budget_draft(agent, task) -> BudgetDraft:
-    return generate_structured_response(
-        agent.gateway,
-        response_type=BudgetDraft,
-        system_prompt=(
+    context = task.input_data.get("planning_context", {})
+    response_type = CoreBudgetDraft if context.get("request_scope", {}).get("operations") == [] else BudgetDraft
+    system_prompt = (
             "PROMPT_ID: budget_capture\n"
             "Extract a monthly budget draft from untrusted user dialogue. You cannot save data. "
             "Return is_budget_request=false for recording actual spending or an unrelated new topic; "
@@ -75,7 +81,8 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "Never invent a year, assume SGD from $, copy income, or turn illustrative assistant "
             "advice into budget limits. Never equate income with a spending limit. "
             "period_start is the first day of the explicitly requested month. Without an explicit "
-            "month and year leave it null and ask; relative dates require clarification. "
+            "month and year leave it null and ask unless recorded_context.selected_period supplies the month explicitly selected in the UI. "
+            "An explicit month in the message takes precedence over the UI selection; never reuse another month's plan. "
             "An amount of zero is valid. Only monthly limits are supported; ask about weekly, daily "
             "requests instead of converting them. Multi-month planning, carry-forward/rollover, or recurring review preferences use action=workspace with the appropriate operation: "
             "These are always is_budget_request=true; use the workspace command contract below. "
@@ -85,7 +92,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "Do not treat approval words as permission to populate missing fields. "
             "FUNDED ALTERNATIVES: requests to fund goals/debts, protect commitments or propose affordable reductions use action=alternatives. "
             "Set is_budget_request=true even if no amounts are supplied. This is a read-only backend calculation request, not an investment recommendation. "
-            "The backend computes from confirmed monthly commitments or asks for setup first. Do not invent floors, debt payments, goal contributions or limits. "
+            "The backend compares saved monthly amounts without requiring a commitments policy; cuts need explicit adjustable amounts or a configured reduction policy. Do not invent floors, debt payments, goal contributions or limits. "
             "Extract explicit month/year and optional hypothetical take-home income or savings only; ask for missing dates. "
             "Explicit commitment setup or changes use action=workspace and operation=commitments, not alternatives. "
             "WORKSPACE COMMANDS: Explicit requests to change protected categories, goal contributions, debt commitments, "
@@ -108,7 +115,9 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "commitments fields: period_start YYYY-MM-01, minimum_savings, max_reduction_percent, protected_categories list, "
             "category_floors object name:amount, goals list {goal_id,monthly_amount}, debts list {name,category,balance,minimum_payment, "
             "schedule_id, separate_obligation}. A debt must be explicitly linked to one bill ID or explicitly separate_obligation=true. "
-            "Never infer overlap from category/name; ask. All collections and minimums need explicit choices at first setup. "
+            "Never infer overlap from category/name; ask. Collect only the fields the user wants to configure. "
+            "Savings minimum and reduction percentage are optional restrictions, not prerequisites for protecting a category or allocating a goal. "
+            "Omit unrequested collections and restrictions; existing settings are preserved. Do not invent zero or empty replacements. "
             "reconcile fields: transaction_id, schedule_id, due_on, amount, effect payment/income/refund_reopens/refund_reduces_due; spending_treatment cash_only/reduce_expense is REQUIRED for refunds (ask which). reduce_expense offsets the bill category in the refund record month, not the original payment month. "
             "Ask which occurrence, amount and refund effect. Payment matches are expense records, income matches are income records against payday schedules, and refund effects use refund records. "
             "Do not create actual transactions. Show possible owned records to user if no unique choice. "
@@ -122,9 +131,15 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "timing fields: period_start, start_on, minimum_balance, expense_pattern even_daily/start_of_period/end_of_period, savings_on, records_complete. All require explicit user choices; never assume a spending pattern, minimum balance or complete records. This assesses monthly options against paydays/bill dates and reserves savings without moving money. "
             "reviews fields: enabled, cadence weekly/monthly, next_review_on explicit date or null when disabled. "
             "Never add confirmed to payload; the backend requires a separate confirmation after its exact preview. "
+            "CONFIRMED CONTEXT: For a read-only comparison, reuse the selected saved budget's confirmed income, savings, method and categories "
+            "when its period matches the requested period. Identify them as saved values; do not ask the user to enter them again. "
+            "User corrections and unresolved ambiguities take precedence. A profile income remains unconfirmed. "
+            "A simple 'what if' or 'can I save more' request uses compare with one scenario named Proposed change; no commitments setup is required. "
+            "Read-only comparisons do not require expense-coverage approval. They never authorize adopting or saving a hypothetical amount. "
+            "Ask only questions needed for the current request; never require cash-flow settings for monthly affordability. "
             "PLANNING CONTRACT budget-planning-v4: When planning_requested=true, or continuing a "
             "pending planning draft, include planning (even when every field is unknown). "
-            "Extract income only if explicitly supplied or explicitly adopted from profile context; "
+            "Extract income only if explicitly supplied, explicitly adopted from profile context, or reused from a matching confirmed saved plan for a read-only comparison; "
             "income_basis must be take_home only when the user confirms net/take-home income. "
             "Never assume profile income is take-home. Extract the user-chosen monthly savings target "
             "separately; zero requires an explicit choice. Ask for a monthly SGD amount when savings "
@@ -163,8 +178,17 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "action=review when the user supplies a missing review period. Do not populate categories, "
             "scenario overrides or amounts from actual spending: the backend reads owned records and "
             "computes review evidence and adjustment options. Do not guess forecasts or create cuts. "
-            "Return only JSON matching this schema: " + json.dumps(BudgetDraft.model_json_schema())
-        ),
+            "Return only JSON matching this schema: " + json.dumps(response_type.model_json_schema())
+        )
+    if response_type is CoreBudgetDraft:
+        # Keep specialist instructions out of the ordinary extraction task.
+        before, rest = system_prompt.split("WORKSPACE COMMANDS:", 1)
+        _, after = rest.split("CONFIRMED CONTEXT:", 1)
+        system_prompt = before + "CONFIRMED CONTEXT:" + after
+    return generate_structured_response(
+        agent.gateway,
+        response_type=response_type,
+        system_prompt=system_prompt,
         user_prompt=json.dumps(
             {
                 "message": task.sanitized_message,

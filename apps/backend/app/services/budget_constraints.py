@@ -44,12 +44,13 @@ class AllocationPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     period_start: date
     confirmed: Literal[True]
-    minimum_savings: Money
-    max_reduction_percent: float = Field(ge=0, le=100, allow_inf_nan=False)
-    protected_categories: list[str] = Field(max_length=50)
-    category_floors: dict[str, Money] = Field(max_length=50)
-    goals: list[GoalContribution] = Field(max_length=50)
-    debts: list[DebtCommitment] = Field(max_length=50)
+    # Unset policies impose no additional restriction; they are not user-selected zeroes.
+    minimum_savings: Money | None = None
+    max_reduction_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    protected_categories: list[str] = Field(default_factory=list, max_length=50)
+    category_floors: dict[str, Money] = Field(default_factory=dict, max_length=50)
+    goals: list[GoalContribution] = Field(default_factory=list, max_length=50)
+    debts: list[DebtCommitment] = Field(default_factory=list, max_length=50)
 
     @model_validator(mode="after")
     def validate_policy(self):
@@ -131,6 +132,14 @@ def validate_policy(session, user_id, policy):
     linked_goals(session, user_id, policy)
     validate_debt_links(session, user_id, policy)
     reference = {item.category: float(item.limit_amount) for item in record.categories}
+    previous = read_section(session, user_id, "constraints:" + str(policy.period_start))
+    if previous and previous["policy"].get("max_reduction_percent") == policy.max_reduction_percent:
+        previously_protected = previous["policy"].get("protected_categories", [])
+        for name, amount in previous["reference_limits"].items():
+            # A goal/floor edit must not silently lower an existing reduction floor.
+            # Newly protected categories deliberately freeze their current saved amount.
+            if name in reference and (name not in policy.protected_categories or name in previously_protected):
+                reference[name] = amount
     if any(n not in reference for n in policy.protected_categories):
         raise ValueError("Protected categories must exist in the saved plan")
     stored = {"policy": policy.model_dump(mode="json"), "reference_limits": reference}
@@ -155,11 +164,13 @@ def requirements(session, user_id, period):
     goals = linked_goals(session, user_id, policy)
     floors = {name: cents(value) for name, value in policy.category_floors.items()}
     for name, value in stored["reference_limits"].items():
+        if policy.max_reduction_percent is None and name not in policy.protected_categories and name not in floors:
+            continue
         minimum = int(
             (
                 Decimal(cents(value)) * (100 - Decimal(str(policy.max_reduction_percent))) / 100
             ).to_integral_value(rounding=ROUND_CEILING)
-        )
+        ) if policy.max_reduction_percent is not None else 0
         floors[name] = max(
             floors.get(name, 0), cents(value) if name in policy.protected_categories else minimum
         )
@@ -184,7 +195,8 @@ def requirements(session, user_id, period):
     return {
         "floors": floors,
         "savings": max(
-            cents(policy.minimum_savings), sum(cents(g.monthly_amount) for g in policy.goals) + reserve_total
+            cents(policy.minimum_savings) if policy.minimum_savings is not None else 0,
+            sum(cents(g.monthly_amount) for g in policy.goals) + reserve_total
         ),
         "goals": goals,
         "debts": [d.model_dump() for d in policy.debts],
@@ -217,18 +229,41 @@ def constraint_questions(session, user_id, period, categories, planning):
 def build_alternatives(session, user_id, request):
     from app.infrastructure.repositories import SQLAlchemyBudgetRepository
     from app.services.budget_capture import BudgetDraft
+    from app.services.budget_planning import PlanningInputs
     from app.services.budget_scenarios import compare_draft
 
     record = SQLAlchemyBudgetRepository(session).get(user_id, request.period_start)
     required = requirements(session, user_id, request.period_start)
-    if not record or not record.planning or record.currency != "SGD" or not required or not read_section(session, user_id, "constraints:" + str(request.period_start)):
+    if not record or not record.planning or record.currency != "SGD":
         return {
             "saved": False,
             "results": [],
             "questions": [
-                "Save a confirmed SGD plan and confirm this month's protected categories, savings minimum, reduction limit, goals and debt commitments in Budget first."
+                "Which take-home income, savings amount and category limits should I use? You can also create a monthly plan in Budget."
             ],
         }
+    stored_policy = read_section(session, user_id, "constraints:" + str(request.period_start))
+    if not stored_policy or stored_policy["policy"].get("max_reduction_percent") is None:
+        # A question about savings/income does not authorize choosing adjustable expenses.
+        # Compare the requested amounts first, without a mandatory optimizer configuration.
+        baseline = {item.category: float(item.limit_amount) for item in record.categories}
+        draft = BudgetDraft.model_validate({
+            "action": "compare", "period_start": str(request.period_start), "currency": "SGD",
+            "categories": [{"category": k, "limit_amount": v} for k, v in baseline.items()],
+            "planning": {k: v for k, v in record.planning.items() if k != "version"},
+            "scenarios": [{"name": "Proposed change", "take_home_income": request.take_home_income,
+                           "savings_target": request.savings_target}],
+        })
+        result = compare_draft(draft)
+        for item in result["results"]:
+            item["questions"].extend(constraint_questions(
+                session, user_id, request.period_start,
+                {c["category"]: c["limit_amount"] for c in item["draft"]["categories"]},
+                PlanningInputs.model_validate(item["draft"]["planning"]),
+            ))
+        if result["results"][-1]["totals"]["funding_gap"]:
+            result["questions"].append("Which category amounts can change to cover the gap? Fixed amounts and goal allocations will be kept.")
+        return result
     baseline = {item.category: cents(item.limit_amount) for item in record.categories}
     planning = {k: v for k, v in record.planning.items() if k != "version"}
     if request.take_home_income is not None:

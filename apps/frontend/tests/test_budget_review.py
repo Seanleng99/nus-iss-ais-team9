@@ -89,7 +89,7 @@ def control(items, label):
     return next(item for item in items if item.label == label)
 
 
-def test_review_is_on_demand_and_adoption_requires_actual_income_and_coverage():
+def test_review_loads_automatically_and_adoption_requires_actual_income_and_coverage():
     client = Client()
     app = AppTest.from_string("from ui.pages import budget_page\nbudget_page()")
     app.session_state["backend_client"] = client
@@ -97,12 +97,13 @@ def test_review_is_on_demand_and_adoption_requires_actual_income_and_coverage():
     app.session_state["active_period"] = date(2026, 9, 1)
     app.run(timeout=30)
     assert not app.exception
-    assert client.reviews == 0
+    assert client.reviews == 1
     control(app.button, "Refresh spending review").click().run()
     assert not app.exception
-    assert client.reviews == 1 and client.saved is None
+    assert client.reviews == 2 and client.saved is None
     assert control(app.metric, "Month-end pace illustration").value == "Unavailable"
-    assert len(app.get("plotly_chart")) == 3
+    assert len(app.get("plotly_chart")) == 2
+    control(app.checkbox, "Show suggested adjustment").check().run()
     control(app.button, "Review adjustment in editor").click().run()
     assert not app.exception
     assert control(app.number_input, "Food (SGD)").value == 150
@@ -110,11 +111,7 @@ def test_review_is_on_demand_and_adoption_requires_actual_income_and_coverage():
     control(app.button, "Save budget").click().run()
     assert client.saved is None
     control(
-        app.checkbox, "This is my actual monthly take-home income, not a hypothetical amount."
-    ).check()
-    control(
-        app.checkbox,
-        "These expense limits include my commitments, debt payments and irregular costs.",
+        app.checkbox, "This is my actual take-home income and these limits include all my expenses.",
     ).check()
     control(app.button, "Save budget").click().run()
     assert not app.exception

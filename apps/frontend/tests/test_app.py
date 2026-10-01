@@ -75,6 +75,9 @@ class SparseProfileClient:
 
 
 class WorkspaceDefaultsClient:
+    def review_budget(self, user_id, period):
+        return None
+
     def get_dashboard(self, user_id: str, period_start: date) -> None:
         return None
 
@@ -323,15 +326,15 @@ def test_transaction_inputs_start_empty_or_zero() -> None:
     assert app.toggle[0].value is False
 
 
-def test_budget_defaults_to_zero_except_saved_values() -> None:
+def test_budget_keeps_saved_values_and_leaves_new_amounts_unknown() -> None:
     app = _workspace_page("budget_page")
 
     assert not app.exception
     values = {item.label: item.value for item in app.number_input}
     assert values["Housing (SGD)"] == 1800.0
-    assert values["Scenario monthly take-home income (SGD)"] is None
+    assert "Scenario monthly take-home income (SGD)" not in values
     app.multiselect[0].set_value(["housing", "food"]).run()
-    assert next(item.value for item in app.number_input if item.label == "Food (SGD)") == 0.0
+    assert next(item.value for item in app.number_input if item.label == "Food (SGD)") is None
 
 
 def test_goal_inputs_start_empty_or_zero() -> None:
@@ -639,12 +642,12 @@ def test_budget_plan_edit_checks_commitments_and_funding_gap():
     assert not app.exception
     app.button[0].click().run()
     assert client.saved is None
-    assert "Confirm that the expense limits" in app.warning[0].value
-    app.checkbox[0].check()
+    assert "Confirm your actual take-home income" in app.warning[0].value
+    next(item for item in app.checkbox if item.label == "This is my actual take-home income and these limits include all my expenses.").check()
     next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3500)
     app.button[0].click().run()
     assert client.saved is None
-    assert "funding gap of SGD 300.00" in app.warning[0].value
+    assert any("funding gap of SGD 300.00" in item.value for item in app.warning)
     next(item for item in app.number_input if item.label == "Housing (SGD)").set_value(3200)
     app.button[0].click().run()
     assert client.saved["planning"]["savings_target"] == 800

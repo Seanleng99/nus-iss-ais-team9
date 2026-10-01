@@ -1,6 +1,8 @@
 # Budget planning: plans, methods, scenarios and spending reviews
 
-Status: deployed to the AWS demo on 2026-09-29 at `f821887a62e8b8d94aa77975f34d6770042e6312`. CI, migrations and release smoke passed. The focused GPT-6 Luna Budget acceptance suite passed 14/14 executions; see the deployed verification record below.
+Current UI and Coach flow: see [Everyday Budget and Coach workflow](budget-usability.md) for the 2026-10-01 simplification. It is implemented locally and requires separate deployment/live acceptance. Earlier workflow descriptions below retain the underlying contracts; the new document supersedes their UI entry points.
+
+Earlier release evidence: the AWS demo deployment on 2026-09-29 at `f821887a62e8b8d94aa77975f34d6770042e6312` passed CI, migrations and release smoke. The focused GPT-6 Luna Budget acceptance suite passed 14/14 executions at that revision; it does not validate later improvements or this simplification.
 
 ## User workflow
 

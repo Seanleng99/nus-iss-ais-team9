@@ -4,13 +4,15 @@ import streamlit as st
 from ui.components import backend_call, money
 
 
-def render_history(client,user_id,period,draft_key):
+def render_history(client,user_id,period,draft_key, *, patterns=None):
     key=f"history-{user_id}-{period}"
     with st.expander("Spending patterns and plan history",icon=":material/history:"):
-        lookback=st.number_input("Completed months to review",min_value=2,max_value=12,value=3,key=key+"-lookback")
-        if st.button("Review repeated overspending",key=key+"-review"):
+        lookback=3
+        if patterns is not False:
+            lookback=st.number_input("Completed months to review",min_value=2,max_value=12,value=3,key=key+"-lookback")
+        if patterns is not False and st.button("Review repeated overspending",key=key+"-review"):
             st.session_state[key+"-review"]=backend_call(lambda:client.adaptive_budget_review(user_id,period,lookback))
-        review=st.session_state.get(key+"-review")
+        review=st.session_state.get(key+"-review") if patterns is not False else None
         if review:
             for warning in review["warnings"]:
                 st.caption(warning)
@@ -28,6 +30,8 @@ def render_history(client,user_id,period,draft_key):
                     st.rerun()
             else:
                 st.info("No repeated overrun meets the evidence threshold.")
+        if patterns is True:
+            return
         if st.button("Open saved versions",key=key+"-open"):
             st.session_state[key+"-versions"]=backend_call(lambda:client.get_budget_history(user_id,period))
         versions=st.session_state.get(key+"-versions")

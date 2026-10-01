@@ -82,6 +82,7 @@ def test_overview_shortcut_opens_registered_budget_page():
         "from ui.pages import _render_overview_budget, budget_page\n"
         "class Client:\n"
         "    def get_budget(self, user_id, period): return None\n"
+        "    def review_budget(self, user_id, period): return None\n"
         "st.session_state['backend_client'] = Client()\n"
         "def overview(): _render_overview_budget(None, 'SGD')\n"
         "navigation = st.navigation([st.Page(overview, default=True), "

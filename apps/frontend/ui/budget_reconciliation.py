@@ -1,5 +1,7 @@
 """Review explicit transaction-to-bill allocations before confirmation."""
 
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -39,16 +41,17 @@ def render_reconciliation(client, user_id):
         "Choose a recorded expense, income or refund and its bill/payday occurrence. Partial amounts are supported; unmatched amounts remain available. No money is moved."
     )
     if schedules and records:
-        with st.form(key + "-match"):
+        with st.container(border=True):
             record_choices = {
-                f"{r['occurred_on']} · {r['description']} · {r['type']} · {money(r['unallocated'])} available ({r['id'][:8]})": r
-                for r in records
+                r["id"]: r for r in records
             }
-            bill_choices = {f"{s['name']} ({s['id'][:8]})": s for s in schedules}
+            bill_choices = {s["id"]: s for s in schedules}
+            record_labels = {r["id"]: f"{r['occurred_on']} · {r['description']} · {r['type']} · {money(r['unallocated'])} available · record {i+1}" for i, r in enumerate(records)}
+            bill_labels = {s["id"]: s["name"] + (f" · bill {i+1}" if sum(t["name"] == s["name"] for t in schedules) > 1 else "") for i, s in enumerate(schedules)}
             record = record_choices.get(
-                st.selectbox("Recorded payment or refund", ["Choose a record", *record_choices])
+                st.selectbox("Recorded payment or refund", ["Choose a record", *record_choices], format_func=lambda value: record_labels.get(value, value))
             )
-            bill = bill_choices.get(st.selectbox("Bill", ["Choose a bill", *bill_choices]))
+            bill = bill_choices.get(st.selectbox("Bill", ["Choose a bill", *bill_choices], format_func=lambda value: bill_labels.get(value, value)))
             due = st.date_input("Bill occurrence due date", value=None)
             amount = st.number_input("Amount to match (SGD)", min_value=0.01, value=None)
             labels = {
@@ -57,16 +60,21 @@ def render_reconciliation(client, user_id):
                 "refund_reopens": "Refund — amount becomes payable again",
                 "refund_reduces_due": "Refund — bill amount is reduced",
             }
-            effect_label = st.selectbox(
-                "How should this record affect the bill?", ["Choose an effect", *labels.values()]
-            )
-            effect = next((k for k, v in labels.items() if v == effect_label), None)
-            treatment = st.selectbox("For refunds: budget spending treatment", ["Choose if refund", "Cash only", "Reduce spending in the refund month"])
-            spending = {"Cash only":"cash_only", "Reduce spending in the refund month":"reduce_expense"}.get(treatment)
-            preview = st.form_submit_button("Preview bill match")
+            effect = {"expense": "payment", "income": "income"}.get(record["type"]) if record else None
+            spending = None
+            if record and record["type"] == "refund":
+                effect_label = st.selectbox("After this refund, is the amount still payable?", ["Choose", labels["refund_reopens"], labels["refund_reduces_due"]])
+                effect = next((k for k, v in labels.items() if v == effect_label), None)
+                treatment = st.selectbox("Should this refund reduce recorded budget spending?", ["Choose", "Keep recorded spending unchanged", "Reduce spending in the refund month"])
+                spending = {"Keep recorded spending unchanged":"cash_only", "Reduce spending in the refund month":"reduce_expense"}.get(treatment)
+            preview = st.button("Preview bill match", key=key + "-match-preview")
+        selection = json.dumps([record["id"] if record else None, bill["id"] if bill else None, str(due), amount, effect, spending])
+        old = st.session_state.get(key + "-preview")
+        if old and old.get("_source") == "manual" and old.get("_selection") != selection:
+            st.session_state.pop(key + "-preview", None)
         if preview:
             st.session_state.pop(key + "-preview", None)
-            if record and bill and due and amount is not None and effect:
+            if record and bill and due and amount is not None and effect and (record["type"] != "refund" or spending):
                 st.session_state[key + "-preview"] = backend_call(
                     lambda: client.preview_workspace_change(
                         user_id,
@@ -81,11 +89,14 @@ def render_reconciliation(client, user_id):
                         },
                     )
                 )
+                if st.session_state.get(key + "-preview"):
+                    st.session_state[key + "-preview"].update(_source="manual", _selection=selection)
             else:
                 st.warning("Choose the record, bill, occurrence date, amount and effect.")
     if records:
-        choices = {f"{r['occurred_on']} · {r['description']} ({r['id'][:8]})":r for r in records}
-        chosen_record = choices.get(st.selectbox("Find possible matches for", ["Choose a record", *choices], key=key+"-suggest-record"))
+        choices = {r["id"]: r for r in records}
+        descriptions = {r["id"]: f"{r['occurred_on']} · {r['description']} · record {i+1}" for i, r in enumerate(records)}
+        chosen_record = choices.get(st.selectbox("Find possible matches for", ["Choose a record", *choices], format_func=lambda value: descriptions.get(value, value), key=key+"-suggest-record"))
         if st.button("Find possible matches", key=key+"-suggest") and chosen_record:
             found = backend_call(lambda: client.get_match_candidates(user_id, chosen_record["id"]))
             st.session_state[key+"-candidates"] = {"record_id":chosen_record["id"], "result":found} if found else None
@@ -97,10 +108,26 @@ def render_reconciliation(client, user_id):
             candidate = options.get(st.selectbox("Possible occurrence", ["Choose an occurrence", *options], key=key+"-candidate"))
             if candidate:
                 amount = st.number_input("Suggested match amount (SGD)", min_value=0.01, value=float(candidate["suggested_amount"]), key=key+"-candidate-amount")
-                effect = st.selectbox("Suggested match effect", ["Choose an effect", "payment", "income", "refund_reopens", "refund_reduces_due"], key=key+"-candidate-effect")
-                treatment = st.selectbox("Suggested refund spending treatment", ["Choose if refund", "cash_only", "reduce_expense"], key=key+"-candidate-treatment")
-                if st.button("Preview selected suggestion", key=key+"-candidate-preview") and effect != "Choose an effect":
-                    st.session_state[key+"-preview"] = backend_call(lambda: client.preview_workspace_change(user_id,"reconcile",{"transaction_id":chosen_record["id"],"schedule_id":candidate["schedule_id"],"due_on":candidate["due_on"],"amount":amount,"effect":effect,"spending_treatment":None if treatment=="Choose if refund" else treatment}))
+                effect = {"expense": "payment", "income": "income"}.get(chosen_record["type"])
+                treatment = None
+                if chosen_record["type"] == "refund":
+                    effects = {"Refund makes the amount payable again": "refund_reopens", "Refund reduces the bill amount": "refund_reduces_due"}
+                    choice = st.selectbox("Refund effect", ["Choose", *effects], key=key+"-candidate-effect")
+                    effect = effects.get(choice)
+                    treatments = {"Keep recorded spending unchanged": "cash_only", "Reduce spending in the refund month": "reduce_expense"}
+                    choice = st.selectbox("Refund spending choice", ["Choose", *treatments], key=key+"-candidate-treatment")
+                    treatment = treatments.get(choice)
+                selection = json.dumps([chosen_record["id"], candidate["schedule_id"], candidate["due_on"], amount, effect, treatment])
+                old = st.session_state.get(key+"-preview")
+                if old and old.get("_source") == "suggestion" and old.get("_selection") != selection:
+                    st.session_state.pop(key+"-preview", None)
+                if st.button("Preview selected suggestion", key=key+"-candidate-preview"):
+                    if effect and (chosen_record["type"] != "refund" or treatment):
+                        st.session_state[key+"-preview"] = backend_call(lambda: client.preview_workspace_change(user_id,"reconcile",{"transaction_id":chosen_record["id"],"schedule_id":candidate["schedule_id"],"due_on":candidate["due_on"],"amount":amount,"effect":effect,"spending_treatment":treatment}))
+                        if st.session_state.get(key+"-preview"):
+                            st.session_state[key+"-preview"].update(_source="suggestion", _selection=selection)
+                    else:
+                        st.warning("Choose both refund effects before previewing the match.")
     existing = data["reconciliation"]["links"]
     if existing:
         names = {s["id"]: s["name"] for s in schedules}
@@ -119,8 +146,8 @@ def render_reconciliation(client, user_id):
             hide_index=True,
         )
         removal_choices = {
-            f"{names.get(r['schedule_id'], 'Bill')} · {r['due_on']} · {money(r['amount'])} · {r['effect']} · {r['id'][:8]}": r
-            for r in existing
+            f"{names.get(r['schedule_id'], 'Bill')} · {r['due_on']} · {money(r['amount'])} · {r['effect'].replace('_', ' ')} · match {i+1}": r
+            for i, r in enumerate(existing)
         }
         selected = removal_choices.get(
             st.selectbox("Match to remove", ["Choose a match", *removal_choices])

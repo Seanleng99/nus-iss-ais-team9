@@ -23,11 +23,11 @@ class WorkspaceChange(BaseModel):
     payload_json: str = Field(default="{}", max_length=30000)
 
 
-def context(session, user_id, *, search="", offset=0):
+def context(session, user_id, *, search="", offset=0, operations=None, period=None):
     from app.services.budget_reconciliation import reconciliation_context
 
     record = session.get(PlanningPreferencesRecord, user_id)
-    return {
+    data = {
         "settings": {
             k: v
             for k, v in (record.data if record else {}).items()
@@ -35,14 +35,30 @@ def context(session, user_id, *, search="", offset=0):
         },
         "goals": [
             {"id": str(g.id), "name": g.name, "currency": g.currency}
-            for g in session.scalars(
+            for g in (session.scalars(
                 select(FinancialGoalRecord).where(FinancialGoalRecord.user_id == user_id)
-            )
+            ) if operations is None or set(operations) & {"commitments", "debt_compare", "reserves"} else [])
         ],
         "budget_history": [{"period_start": k.removeprefix("history:"), "id": v["id"], "saved_at": v["saved_at"], "reason": v["reason"]}
                            for k, entries in (record.data if record else {}).items() if k.startswith("history:") for v in entries][-100:],
-        "reconciliation": reconciliation_context(session, user_id, search=search, offset=offset),
     }
+    if operations is None or set(operations) & {"reconcile", "unlink"}:
+        data["reconciliation"] = reconciliation_context(session, user_id, search=search, offset=offset)
+    if operations is not None:
+        operations = set(operations)
+        data["settings"] = {
+            k: v for k, v in data["settings"].items()
+            if (k == "cashflow" and operations & {"cashflow", "timing", "reconcile", "unlink", "commitments", "debt_compare"})
+            or (k == "reserves" and operations & {"reserves", "commitments", "debt_compare"})
+            or (k == "review_preferences" and "reviews" in operations)
+            or (k.startswith("constraints:") and operations & {"commitments", "debt_compare"} and (period is None or k.endswith(str(period))))
+            or (k.startswith("timing:") and "timing" in operations and (period is None or k.endswith(str(period))))
+        }
+        if not operations & {"commitments", "debt_compare", "reserves"}:
+            data.pop("goals")
+        if "restore" not in operations:
+            data.pop("budget_history")
+    return data
 
 
 def evidence(session, user_id):
@@ -314,9 +330,10 @@ def describe_preview(preview):
                 lines.append("No schedules.")
     elif op == "commitments":
         lines.append(f"Commitments for {target['period_start']}:")
-        lines.append(
-            f"Minimum savings {money(target['minimum_savings'])}; maximum reduction {target['max_reduction_percent']}% against the currently saved category limits."
-        )
+        if target.get("minimum_savings") is not None:
+            lines.append(f"Minimum savings {money(target['minimum_savings'])}.")
+        if target.get("max_reduction_percent") is not None:
+            lines.append(f"Maximum reduction {target['max_reduction_percent']}% against the saved category limits.")
         lines.append(
             "Protected categories: "
             + (", ".join(safe(c) for c in target["protected_categories"]) or "none")

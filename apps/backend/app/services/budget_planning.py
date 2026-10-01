@@ -1,5 +1,6 @@
 """Authoritative checks and summaries for first-stage Coach budget planning."""
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
@@ -51,19 +52,46 @@ class PlanningInputs(BaseModel):
         )
 
 
-def build_planning_context(session, user_id: str, *, today: date | None = None) -> dict:
+def planning_operations(message, pending=None):
+    """Route relevant evidence only; unknown facts are still clarified by the agent."""
+    operations = set()
+    pending_operation = ((pending or {}).get("workspace") or {}).get("operation")
+    if pending_operation:
+        operations.add(pending_operation)
+    patterns = {
+        "commitments": r"protect|fixed|minimum|commitment|goal contribution|fund.{0,20}goal|allocate.{0,30}goal|debt|don't touch|do not touch|keep.{0,30}unchanged|固定|保护",
+        "cashflow": r"bill|payday|cash.?flow|opening balance|available cash|schedule|账单|现金流",
+        "timing": r"until payday|timing|spendable|buffer|发薪",
+        "reconcile": r"match|reconcil|refund|recorded payment|recorded income|匹配|退款",
+        "unlink": r"unmatch|unlink|remove.{0,20}match",
+        "reserves": r"reserve|irregular|annual|upcoming expense|set aside|put aside|saving for|预留",
+        "restore": r"restore|previous version|history|恢复",
+        "adaptive_review": r"repeated|overspending pattern|spending pattern|多次超支",
+        "debt_compare": r"debt|repayment|interest|债务",
+        "continuity": r"next month|upcoming month|several month|through.{0,20}20\d\d|carry|rollover|copy.{0,20}plan|下个月",
+        "reviews": r"remind|review preference|weekly review|monthly review|提醒",
+    }
+    for operation, pattern in patterns.items():
+        if re.search(pattern, message, re.IGNORECASE):
+            operations.add(operation)
+    return sorted(operations)
+
+
+def build_planning_context(session, user_id: str, *, today: date | None = None,
+                           message=None, pending=None, period=None) -> dict:
     today = today or datetime.now(ZoneInfo("Asia/Singapore")).date()
     repository = SQLAlchemyBudgetRepository(session)
     history = []
+    include_spending = message is None or bool(re.search(r"spending|transaction|record|history|花费|支出", message, re.IGNORECASE)) or bool(((pending or {}).get("planning") or {}).get("use_recorded_spending"))
     # Aggregate complete calendar periods; completeness of the records is still unknown.
-    for offset in range(1, 4):
+    for offset in range(1, 4) if include_spending else []:
         year, month_index = divmod(today.year * 12 + today.month - 1 - offset, 12)
-        period = date(year, month_index + 1, 1)
-        totals = repository.spending_by_category(user_id, period, currency="SGD")
+        history_period = date(year, month_index + 1, 1)
+        totals = repository.spending_by_category(user_id, history_period, currency="SGD")
         if totals:
             history.append(
                 {
-                    "period_start": period.isoformat(),
+                    "period_start": history_period.isoformat(),
                     "currency": "SGD",
                     "categories": totals,
                     "coverage": "unconfirmed",
@@ -71,8 +99,9 @@ def build_planning_context(session, user_id: str, *, today: date | None = None) 
             )
     from app.services.budget_workspace import context
     profile = SQLAlchemyUserRepository(session).get_profile(user_id)
-    return {
-        "workspace": context(session, user_id),
+    operations = planning_operations(message, pending) if message is not None else None
+    data = {
+        "workspace": context(session, user_id, operations=operations, period=period),
         "recorded_spending": history,
         "profile_income": {
             "amount": float(profile.monthly_income),
@@ -82,6 +111,32 @@ def build_planning_context(session, user_id: str, *, today: date | None = None) 
         if profile and profile.monthly_income is not None
         else None,
     }
+    if message is not None:
+        data["request_scope"] = {"operations": operations}
+        if not include_spending:
+            data.pop("recorded_spending")
+    if period:
+        data["selected_period"] = str(period)
+        record = repository.get(user_id, period)
+        if record:
+            data["selected_budget"] = {
+                "period_start": str(period), "currency": record.currency,
+                "categories": {c.category: float(c.limit_amount) for c in record.categories},
+                "planning": record.planning,
+            }
+            if record.planning:
+                data["selected_budget"]["affordability"] = affordability(data["selected_budget"]["categories"], PlanningInputs.model_validate({k: v for k, v in record.planning.items() if k != "version"}))
+                from app.services.budget_constraints import requirements
+                try:
+                    required = requirements(session, user_id, period)
+                    if required:
+                        data["selected_budget"]["restrictions"] = {
+                            "category_minimums": {k: v / 100 for k, v in required["floors"].items()},
+                            "savings_minimum": required["savings"] / 100,
+                        }
+                except ValueError:
+                    data["selected_budget"]["restriction_status"] = "Saved restrictions need review; the backend will check them again."
+    return data
 
 
 def affordability(categories: dict[str, float], planning) -> dict:

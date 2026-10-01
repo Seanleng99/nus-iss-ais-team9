@@ -18,7 +18,11 @@ from app.infrastructure.repositories import SQLAlchemyBudgetRepository, SQLAlche
 from app.services.budget_methods import describe_method, method_report
 from app.services.budget_planning import PlanningInputs, describe_affordability
 from app.services.budget_review import build_budget_review, describe_review
-from app.services.budget_scenarios import compare_draft, describe_comparison
+from app.services.budget_scenarios import (
+    apply_saved_constraints,
+    compare_draft,
+    describe_comparison,
+)
 from app.services.budget_workspace import WorkspaceChange
 
 CONFIRM = re.compile(
@@ -331,10 +335,15 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
             else None
         )
         baseline = _snapshot(record)
+        if record and draft.currency is None:
+            draft.currency = record.currency
+        if record and record.planning and draft.planning is None:
+            draft.planning = PlanningInputs.model_validate({k: v for k, v in record.planning.items() if k != "version"})
+            draft.planning.expenses_confirmed = False
         if record and record.currency != draft.currency:
             response.answer = "Please confirm the saved budget currency before comparing scenarios. Nothing was saved."
             return
-        comparison = compare_draft(draft, baseline["categories"])
+        comparison = apply_saved_constraints(session, user_id, compare_draft(draft, baseline["categories"]))
         chat.pending_budget = {
             "draft": draft.model_dump(mode="json"),
             "ready": False,
@@ -375,13 +384,24 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
     adoption = re.fullmatch(
         r"use scenario ([A-Za-z0-9][A-Za-z0-9 _-]{0,39})", request.message.strip(), re.IGNORECASE
     )
+    simple_adoption = request.message.strip().casefold() in {"use this change", "use this option"}
     if not (
         adoption
+        or simple_adoption
         or CONFIRM.fullmatch(request.message.strip())
         or CANCEL.fullmatch(request.message.strip())
     ):
         return None
     chat = SQLAlchemyChatRepository(session).get_for_update(request.user_id, request.session_id)
+    if simple_adoption:
+        if chat is None or not (chat.pending_budget or {}).get("comparison"):
+            return None
+        choices = [item for item in ((chat.pending_budget if chat else None) or {}).get("comparison", {}).get("results", []) if item["name"] != "Current plan"]
+        if len(choices) == 1:
+            adoption = re.fullmatch(r"use scenario ([A-Za-z0-9][A-Za-z0-9 _-]{0,39})", "use scenario " + choices[0]["name"], re.IGNORECASE)
+        else:
+            return CoachResponse(session_id=request.session_id, selected_agents=[], agent_results=[], disclaimers=[],
+                answer="Choose which option to use first. No changes have been saved.", audit={"source": "budget_capture"})
     if chat is None or not chat.pending_budget:
         if not adoption and request.message.strip().lower() not in {
             "confirm budget",
