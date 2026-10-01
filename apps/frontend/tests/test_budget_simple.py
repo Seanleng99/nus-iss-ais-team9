@@ -132,31 +132,3 @@ def test_saved_method_survives_direct_edit_and_confirmed_save():
     assert not app.exception
     assert client.saved["planning"]["method"] == method
     assert client.saved["planning"]["savings_target"] == 900
-
-
-def test_coach_shortcut_keeps_selected_month_and_does_not_send_or_save_editor_changes():
-    client = Client()
-    app = AppTest.from_string(
-        "import streamlit as st\n"
-        "import ui.pages as pages\n"
-        "from ui.state import get_period_start\n"
-        "def coach(): st.write('Selected month: ' + str(get_period_start()))\n"
-        "original_coach = pages.coach_page\n"
-        "pages.coach_page = coach\n"
-        "navigation = st.navigation([st.Page(pages.budget_page, title='Budget', default=True), "
-        "st.Page(coach, title='Coach', url_path='coach')])\n"
-        "try: navigation.run()\n"
-        "finally: pages.coach_page = original_coach"
-    )
-    app.session_state["backend_client"] = client
-    app.session_state["active_user_id"] = "u"
-    app.session_state["active_period"] = PERIOD
-    app.run(timeout=30)
-    control(app.button, "Edit budget").click().run()
-    control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
-    control(app.button, "Ask Coach").click().run()
-    assert not app.exception
-    assert any("Selected month: 2026-10-01" in item.value for item in app.markdown)
-    assert client.saved is None
-    assert client.compared is None
-    assert client.budget["planning"]["savings_target"] == 800

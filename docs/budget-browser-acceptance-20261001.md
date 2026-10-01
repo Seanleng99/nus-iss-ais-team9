@@ -62,8 +62,8 @@ application code to fix the caption.
 Overview now says: “Edit your plan in Budget. Ask Coach for spending reviews or
 pace illustrations.” The correction changes only the caption; navigation and
 budget calculations are unchanged. All **11 Overview tests** passed; Ruff and
-diff whitespace checks passed. The corrected caption has not been pushed or
-verified in the deployed browser.
+diff whitespace checks passed. The corrected caption has not yet been verified
+in the deployed browser.
 
 ## Evidence and cleanup
 

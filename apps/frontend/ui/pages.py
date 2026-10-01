@@ -623,7 +623,7 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
                 if len(rows) > 5:
                     st.caption(f"View all {len(rows)} categories in Budget.")
     if st.button(
-        "Manage budget" if rows else "Set up budget",
+        "View budget" if rows else "Set up budget",
         icon=":material/edit:",
         key="overview-manage-budget",
     ):
@@ -870,7 +870,7 @@ def transactions_page() -> None:
 
 def budget_page() -> None:
     render_budget_page(
-        get_client(), get_user_id(), get_period_start(), CATEGORIES, coach_page, _create_pie_chart,
+        get_client(), get_user_id(), get_period_start(), CATEGORIES, _create_pie_chart,
     )
 
 

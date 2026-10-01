@@ -18,7 +18,7 @@ The selected month remains shared with Overview and Coach.
 - The editor has a live **Income / Expenses / Savings / Left to allocate** summary. A negative allocation displays **Shortfall** and a correction. Missing amounts remain missing rather than zero. The exact Saved → This plan review covers amounts, category removals, methods, types and percentages before one confirmation and **Save budget**. Any edit changes the confirmation signature and requires fresh approval.
 - Missing limits, income, savings and category types are explained beside their controls. Reasons for an unavailable save also appear near the button: incomplete inputs, an empty category list, invalid method percentages, a shortfall or no changes to save. Backend rejections retain inputs and require renewed confirmation. Success returns to saved spending with month-specific confirmation that remains visible across reruns.
 - **Explore a change** is removed. Direct editing already shows the effect on monthly affordability before saving. Ask Coach for comparisons or tradeoffs; the deterministic comparison tools and their separate adoption/confirmation contract remain available there.
-- **Ask Coach** stays near the page heading and warnings. It opens Coach with the selected month retained and sends no message automatically. Unsaved editor values are not treated as confirmed settings.
+- Overview offers **View budget** for saved plans and **Set up budget** when no category limits exist. View budget opens monitoring; **Edit budget** starts editing on Budget. The duplicate **Ask Coach** button is removed from Budget. Coach remains available in the sidebar with the shared selected month and saved-plan context; unsaved editor values are not treated as confirmed settings.
 
 ## Browser acceptance follow-up — 1 October 2026
 
@@ -148,6 +148,21 @@ backend or run live-model acceptance.
 No backend calculation, write contract or migration changes. This revision
 is validated locally; deployment and live-model acceptance remain pending.
 
+## Navigation simplification — 1 October 2026
+
+Overview's **Manage budget** shortcut is renamed **View budget** because it opens
+Budget monitoring rather than editing. **Set up budget** remains the empty-plan
+action. The duplicate **Ask Coach** button and its two-column action layout are
+removed from Budget; **Edit budget** remains the monitoring action.
+
+Coach is still accessible through the sidebar. Shared month selection and saved
+budget context are unchanged, and unsaved editor amounts are not automatically
+sent or saved. The obsolete button-specific test was removed with the button.
+The full frontend suite passed **100 tests**; Ruff and diff whitespace checks
+passed. These checks validate the revision locally; deployed browser verification
+remains pending. The browser acceptance report above records the earlier deployed
+shortcut behavior.
+
 ## Guidance and save feedback
 
 Percentage methods show a small Suggested / Your plan table using full take-home
@@ -169,7 +184,7 @@ adoption saves a budget automatically.
 
 The **More planning options** menu and all ten standalone workflows are removed.
 The Budget page focuses on saved spending, always-visible charts, an explicit
-monthly editor and the Coach shortcut. The unused frontend
+monthly editor. Coach remains accessible through the sidebar. The unused frontend
 renderers and their form-specific tests are removed, including the older cash-flow,
 reconciliation and full-commitments editors. Backend calculations, saved settings,
 workspace APIs and Coach operations remain available; no data or migrations change.
@@ -187,7 +202,7 @@ workspace APIs and Coach operations remain available; no data or migrations chan
 | Plan several months | Budget has no copy or multi-month form. Coach retains explicitly requested month reuse, multi-month and carry-rule planning with preview and confirmation. |
 | Debt repayment comparisons | Rates, fees and repayment policies need guided clarification. Coach retains deterministic comparisons; Budget does not duplicate a debt-planning interface. |
 
-The Coach shortcut retains the selected month and navigates without sending a
+Sidebar navigation to Coach retains the selected month without sending a
 message or treating unsaved editor amounts as confirmed. A short caption provides
 examples of requests instead of replacing the removed menu with another setup
 screen. Payment matching is no longer exposed on Budget; owned JSON matching

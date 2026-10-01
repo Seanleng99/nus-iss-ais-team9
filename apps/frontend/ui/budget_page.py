@@ -17,7 +17,7 @@ from ui.components import backend_call, money, page_header
 from ui.styles import BUDGET_CSS
 
 
-def render_budget_page(client, user_id, period, category_options, coach_page, create_pie_chart):
+def render_budget_page(client, user_id, period, category_options, create_pie_chart):
     st.markdown(BUDGET_CSS, unsafe_allow_html=True)
     base = f"budget-{user_id}-{period.isoformat()}"
     draft_key = f"budget-edit-draft-{user_id}-{period.isoformat()}"
@@ -37,17 +37,9 @@ def render_budget_page(client, user_id, period, category_options, coach_page, cr
 
     draft = st.session_state.get(draft_key)
     editing = not budget or bool(draft) or st.session_state.get(base + "-editing", False)
-    with st.container(key="budget-actions"):
-        actions = st.columns(2)
-    if budget and not editing and actions[0].button("Edit budget", icon=":material/edit:"):
+    if budget and not editing and st.button("Edit budget", icon=":material/edit:"):
         st.session_state[base + "-editing"] = True
         st.rerun()
-    if currency == "SGD" and actions[1].button(
-        "Ask Coach",
-        icon=":material/chat:",
-        help="Open Coach for the selected month. No message is sent automatically.",
-    ):
-        st.switch_page(st.Page(coach_page, title="Coach", url_path="coach"))
     if budget and not editing:
         render_spending(budget, currency, base, create_pie_chart)
     elif not budget:
