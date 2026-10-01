@@ -177,3 +177,24 @@ def test_describe_findings_forces_utf8_aws_cli_output(monkeypatch) -> None:
     assert captured["errors"] == "replace"
     assert captured["env"]["PYTHONUTF8"] == "1"
     assert captured["env"]["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_approved_gcc_exception_is_limited_to_ai_version_and_review_window() -> None:
+    exception_file = Path(__file__).parents[2] / "llmsecops" / "ecr-scan-exceptions.json"
+    finding = {
+        "id": "CVE-2026-102010",
+        "attributes": {"package_name": "gcc-14", "package_version": "14.2.0-19"},
+    }
+    active = ecr_scan_gate.load_exceptions(exception_file, date(2026, 10, 1))
+    approved = ecr_scan_gate.excepted_finding(finding, "nus-iss-ais-team9-ai", active)
+    assert approved is not None
+    assert approved["expires_on"] == "2026-10-08"
+    for repository in ("nus-iss-ais-team9-backend", "nus-iss-ais-team9-frontend"):
+        assert ecr_scan_gate.excepted_finding(finding, repository, active) is None
+    for attribute, value in (("package_name", "gcc-15"), ("package_version", "14.2.0-20")):
+        different = {**finding, "attributes": {**finding["attributes"], attribute: value}}
+        assert ecr_scan_gate.excepted_finding(different, "nus-iss-ais-team9-ai", active) is None
+    last_day = ecr_scan_gate.load_exceptions(exception_file, date(2026, 10, 8))
+    assert ecr_scan_gate.excepted_finding(finding, "nus-iss-ais-team9-ai", last_day)
+    expired = ecr_scan_gate.load_exceptions(exception_file, date(2026, 10, 9))
+    assert ecr_scan_gate.excepted_finding(finding, "nus-iss-ais-team9-ai", expired) is None

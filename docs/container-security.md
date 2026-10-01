@@ -1,6 +1,65 @@
 # Container Security Exception Review
 
-## Current Decision
+## 2026-10-01 Release Blocker — Approved Temporary Exception
+
+**Status: approved 2026-10-01 by the repository owner in this Codex conversation.**
+The owner explicitly accepted the proposed exact AI-image exception through
+2026-10-08 and authorized committing, pushing and retrying deployment. Native
+dependency reachability remains unverified; approval accepts that residual risk.
+
+[Release run 36803604113](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36803604113)
+for `2bcf575bdf278599130f86a062d0fd41a04aa174` built and published the images,
+then stopped at the ECR/Inspector gate before migrations or ECS deployment.
+[CI run 36803327539](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36803327539)
+passed. The completed AI-image scan reported one unexcepted HIGH finding:
+`CVE-2026-102010`, source package `gcc-14`, version `14.2.0-19`, CVSS 3 score 7.0.
+The existing zlib exception matched; no exception then covered this GCC finding.
+The gate stopped at the AI image, so this run does not establish backend or
+frontend scan acceptance.
+
+As checked on 2026-10-01, the [Debian tracker](https://security-tracker.debian.org/tracker/CVE-2026-102010)
+lists Trixie's `gcc-14 14.2.0-19` as vulnerable, with no fixed Debian version.
+It also lists GCC packages in Bookworm and unstable as vulnerable. Re-running
+the release reuses the immutable images and does not supply a package fix.
+All three Dockerfiles already run `apt-get upgrade`.
+
+The [upstream fix](https://github.com/gcc-mirror/gcc/commit/aaa8351f4d2e636f9680a1f0a8ebc2f0a60611e6)
+updates `m_a_entries` after reallocation in the C++ header
+`ext/pb_ds/detail/binary_heap_/erase_fn_imps.hpp`. Exploitation requires an
+application to invoke that binary heap's `erase_if` operation. Repository
+application code is Python and does not directly use this operation. This is
+limited exposure evidence, not proof that compiled third-party wheels cannot
+contain it. Patching an installed header alone would not repair a wheel that
+already compiled the vulnerable template. Local container inspection is also
+unavailable because the Docker daemon is not running.
+
+### Approved temporary exception
+
+This exact exception is recorded in `infra/llmsecops/ecr-scan-exceptions.json`
+and is loaded by the release gate. It expires after 2026-10-08.
+
+| Field | Approved value |
+|---|---|
+| CVE | `CVE-2026-102010` |
+| Source package/version | `gcc-14` / `14.2.0-19` |
+| Repository | `nus-iss-ais-team9-ai` only |
+| Review date | 2026-10-01 |
+| Expiry | 2026-10-08 |
+| Reviewer | Repository owner; explicit approval in the Codex conversation |
+| Scope | Existing synthetic-data demo only |
+| Rationale | No fixed Debian package is available; application code does not directly call the affected C++ operation. Native dependency reachability remains unverified and is explicitly accepted residual risk. |
+| Authoritative source | https://security-tracker.debian.org/tracker/CVE-2026-102010 |
+
+Approval authorizes adding this exact match to
+`infra/llmsecops/ecr-scan-exceptions.json`, validating the gate, committing and
+pushing the decision, and retrying release. It does not authorize raising the
+HIGH threshold or accepting other packages, versions, repositories or findings.
+Any additional backend/frontend finding requires its own evidence and decision.
+Before expiry, recheck the Debian fix status and investigate native dependencies;
+remove the exception when a patched release is available. An expired exception
+does not match, so an unresolved HIGH finding will block release again.
+
+## 2026-09-30 Decision
 
 **Status: approved 2026-09-30 by Tan Sean Leng** (drafted by Lee Jet Xuen).
 
