@@ -1,7 +1,7 @@
 """Conservative, offline-only spending fixture; production uses structured model extraction."""
 
 import re
-from datetime import date
+from datetime import UTC, datetime
 
 ISO_DATE_PATTERN = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
 SLASH_DATE_PATTERN = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2}|\d{4}))?\b")
@@ -33,7 +33,7 @@ def _absolute_date(text: str):
     slash = SLASH_DATE_PATTERN.search(text)
     if slash is not None:
         day, month = int(slash[1]), int(slash[2])
-        year = int(slash[3]) if slash[3] is not None else date.today().year
+        year = int(slash[3]) if slash[3] is not None else datetime.now(tz=UTC).date().year
         if year < 100:
             year += 2000
         if 1 <= month <= 12 and 1 <= day <= 31:

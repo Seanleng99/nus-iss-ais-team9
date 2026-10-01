@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, datetime
 
 from app.core.config import Settings
 from app.core.schemas import CoachRequest
@@ -29,7 +29,7 @@ def test_spend_query_extracts_query_action():
     result = next(r for r in reply.agent_results if r.agent == "spending")
     draft = result.data["spending_draft"]
     assert draft["action"] == "query"
-    assert draft["query_date"] == f"{date.today().year}-09-21"
+    assert draft["query_date"] == f"{datetime.now(tz=UTC).date().year}-09-21"
 
 
 def test_amount_missing_produces_clarifying_question():
