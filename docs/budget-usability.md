@@ -1,6 +1,6 @@
 # Everyday Budget and Coach workflow
 
-The simplified Budget page, inline method selector and monthly-editor improvements were tested in the deployed application using the signed-in Edge browser on 2026-10-01. The browser findings and their subsequent local fixes are described below. The fixes have not been deployed. This document supersedes earlier UI entry points in `budget-planning.md`; calculation and confirmation contracts remain in force. Browser UI checks and release smoke tests do not establish full Budget live-model acceptance.
+The simplified Budget page, inline method selector and monthly-editor improvements were tested in the deployed application using the signed-in Edge browser on 2026-10-01. The latest monitoring/editor and always-visible chart changes were subsequently deployed and checked in the same signed-in browser; see [deployed acceptance results](budget-browser-acceptance-20261001.md). Earlier local-only status and test counts below describe each revision before that acceptance run. This document supersedes earlier UI entry points in `budget-planning.md`; calculation and confirmation contracts remain in force. Browser UI checks and release smoke tests do not establish full Budget live-model acceptance.
 
 ## Everyday Budget page
 

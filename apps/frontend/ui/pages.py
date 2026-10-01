@@ -507,7 +507,10 @@ def _render_budget_plan_summary(budget: dict) -> None:
 
 def _render_overview_budget(budget: dict | None, currency: str) -> None:
     st.subheader(":material/account_balance_wallet: Budget", anchor=False)
-    st.caption("Your monthly plan and the categories that need attention. Open Budget for recorded-spending reviews and pace illustrations.")
+    st.caption(
+        "Your monthly plan and the categories that need attention. Edit your plan in Budget. "
+        "Ask Coach for spending reviews or pace illustrations."
+    )
     rows = (budget or {}).get("categories", [])
     if not rows:
         st.info(
