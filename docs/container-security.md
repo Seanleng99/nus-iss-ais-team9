@@ -3,8 +3,9 @@
 ## 2026-10-01 Release Blocker — Approved Temporary Exception
 
 **Status: approved 2026-10-01 by the repository owner in this Codex conversation.**
-The owner explicitly accepted the proposed exact AI-image exception through
-2026-10-08 and authorized committing, pushing and retrying deployment. Native
+The owner explicitly accepted the exact AI-image exception and then extended
+approval to the backend and conditionally to an identical frontend finding,
+through 2026-10-08, authorizing committing, pushing and retrying deployment. Native
 dependency reachability remains unverified; approval accepts that residual risk.
 
 [Release run 36803604113](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36803604113)
@@ -42,7 +43,7 @@ and is loaded by the release gate. It expires after 2026-10-08.
 |---|---|
 | CVE | `CVE-2026-102010` |
 | Source package/version | `gcc-14` / `14.2.0-19` |
-| Repository | `nus-iss-ais-team9-ai` only |
+| Repositories | `nus-iss-ais-team9-ai`, `nus-iss-ais-team9-backend`, `nus-iss-ais-team9-frontend` (identical finding only) |
 | Review date | 2026-10-01 |
 | Expiry | 2026-10-08 |
 | Reviewer | Repository owner; explicit approval in the Codex conversation |
@@ -54,10 +55,35 @@ Approval authorizes adding this exact match to
 `infra/llmsecops/ecr-scan-exceptions.json`, validating the gate, committing and
 pushing the decision, and retrying release. It does not authorize raising the
 HIGH threshold or accepting other packages, versions, repositories or findings.
-Any additional backend/frontend finding requires its own evidence and decision.
+Any other backend/frontend finding requires its own evidence and decision.
 Before expiry, recheck the Debian fix status and investigate native dependencies;
 remove the exception when a patched release is available. An expired exception
 does not match, so an unresolved HIGH finding will block release again.
+
+### Retry result and approved additional repository scope
+
+Commit `0bea979ea487012716ac042dec3a51307198730f` passed
+[CI run 36804503356](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36804503356).
+[Release run 36804828969](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36804828969)
+accepted the AI exception with no unexcepted HIGH or CRITICAL findings. It then
+stopped before deployment because the completed backend scan reported the same
+HIGH `CVE-2026-102010` in `gcc-14 14.2.0-19`. The frontend gate was not reached.
+A direct attempt to read its ECR scan failed because the local AWS session had
+expired; no frontend scan result was established by this investigation.
+
+**Additional scope approved 2026-10-01 by explicit repository-owner confirmation:**
+The repository list now includes the backend and frontend. A frontend exception
+matches only if the completed scan reports the identical CVE and package/version.
+
+| Repository | Evidence and approved acceptance |
+|---|---|
+| `nus-iss-ais-team9-backend` | Confirmed identical CVE and source package/version in the retry; same expiry 2026-10-08 and explicitly accepted uncertainty about native dependency reachability. |
+| `nus-iss-ais-team9-frontend` | Conditional acceptance of only this identical CVE and source package/version if its completed release scan reports it; same expiry 2026-10-08. Its native dependencies, including pandas, have not been assessed for reachability. The finding itself is not yet confirmed for this repository. |
+
+All three images use the same pinned Debian base, but this is not proof of
+identical findings or native dependency exposure. The owner separately approved
+extending the repository list with these residual risks. Any other finding
+or package/version remains blocked by the existing gate.
 
 ## 2026-09-30 Decision
 

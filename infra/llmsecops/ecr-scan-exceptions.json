@@ -5,12 +5,14 @@
       "package_name": "gcc-14",
       "package_version": "14.2.0-19",
       "repositories": [
-        "nus-iss-ais-team9-ai"
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
       ],
       "reviewed_on": "2026-10-01",
       "reviewed_by": "Repository owner (explicit approval in Codex conversation on 2026-10-01)",
       "expires_on": "2026-10-08",
-      "reason": "Temporary risk acceptance for the existing synthetic-data demo, explicitly approved by the repository owner. Debian has no fixed Trixie package. Application Python code does not directly invoke the affected libstdc++ binary-heap erase_if operation; native third-party dependency reachability remains unverified and is accepted residual risk. Applies only to this exact AI-image source package/version; backend and frontend are not covered.",
+      "reason": "Temporary risk acceptance for the existing synthetic-data demo, explicitly approved by the repository owner for the AI and backend findings and conditionally for an identical frontend finding. Debian has no fixed Trixie package. Application Python code does not directly invoke the affected libstdc++ binary-heap erase_if operation; native third-party dependency reachability remains unverified in all three services and is accepted residual risk. Applies only to this exact CVE, source package/version and listed repositories through 2026-10-08.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-102010"
     },
     {

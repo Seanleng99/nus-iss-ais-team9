@@ -179,7 +179,7 @@ def test_describe_findings_forces_utf8_aws_cli_output(monkeypatch) -> None:
     assert captured["env"]["PYTHONIOENCODING"] == "utf-8"
 
 
-def test_approved_gcc_exception_is_limited_to_ai_version_and_review_window() -> None:
+def test_approved_gcc_exception_is_limited_to_repositories_version_and_review_window() -> None:
     exception_file = Path(__file__).parents[2] / "llmsecops" / "ecr-scan-exceptions.json"
     finding = {
         "id": "CVE-2026-102010",
@@ -190,7 +190,10 @@ def test_approved_gcc_exception_is_limited_to_ai_version_and_review_window() -> 
     assert approved is not None
     assert approved["expires_on"] == "2026-10-08"
     for repository in ("nus-iss-ais-team9-backend", "nus-iss-ais-team9-frontend"):
-        assert ecr_scan_gate.excepted_finding(finding, repository, active) is None
+        assert ecr_scan_gate.excepted_finding(finding, repository, active) == approved
+    assert ecr_scan_gate.excepted_finding(finding, "another-repository", active) is None
+    other_cve = {**finding, "id": "CVE-2026-99999"}
+    assert ecr_scan_gate.excepted_finding(other_cve, "nus-iss-ais-team9-frontend", active) is None
     for attribute, value in (("package_name", "gcc-15"), ("package_version", "14.2.0-20")):
         different = {**finding, "attributes": {**finding["attributes"], attribute: value}}
         assert ecr_scan_gate.excepted_finding(different, "nus-iss-ais-team9-ai", active) is None
