@@ -43,6 +43,13 @@ from app.services.recurring_forecast import (
     handle_recurring_forecast_query,
     parse_recurring_forecast_query,
 )
+from app.services.session_context import (
+    budget_query_period,
+    budget_status_follow_up,
+    build_session_context,
+    complete_state,
+    session_fact_reply,
+)
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
 
@@ -61,12 +68,20 @@ def _current_period_start():  # pragma: no cover - trivial
 
 
 def _budget_alert_reply(session: Session, request: CoachRequest) -> CoachResponse:
-    answer = build_status_reply(session, request.user_id, _current_period_start())
+    try:
+        period = budget_query_period(request) or _current_period_start()
+    except ValueError as error:
+        answer = str(error)
+        results = [{"agent": "budget", "summary": answer, "rationale": [], "confidence": 1,
+                    "data": {"needs_input": True, "questions": [answer]}}]
+    else:
+        answer = build_status_reply(session, request.user_id, period)
+        results = []
     return CoachResponse(
         session_id=request.session_id,
         selected_agents=[],
         answer=answer,
-        agent_results=[],
+        agent_results=results,
         disclaimers=[],
         audit={"source": "budget_alert"},
     )
@@ -102,13 +117,17 @@ async def coach(
         return _finalize_coach_response(
             _persist_local_coach(session, request, other_user_data_reply(request.session_id))
         )
+    existing_chat = chat_repository.get(request.user_id, request.session_id)
+    request = InternalCoachRequest(
+        **request.model_dump(), conversation_context=context,
+        session_context=build_session_context(existing_chat, request.message, revision + 1),
+    )
     confirmed_goal = handle_goal_confirmation(session, request)
     if confirmed_goal is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, confirmed_goal))
     confirmed = handle_budget_confirmation(session, request)
     if confirmed is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, confirmed))
-    existing_chat = chat_repository.get(request.user_id, request.session_id)
     if existing_chat and existing_chat.pending_goal:
         existing_chat.pending_goal = {**existing_chat.pending_goal, "ready": False}
     pending_goal = existing_chat.pending_goal if existing_chat else None
@@ -116,21 +135,28 @@ async def coach(
     goal_context = pending_goal is not None or bool(
         re.search(r"\bgoals?\b|目标", request.message, re.IGNORECASE)
     )
+    stated_financial_detail = any(
+        fact["source_position"] == revision + 1
+        for fact in request.session_context["facts"].values()
+    )
     # Goal and budget drafts take precedence over transaction/date parsing for follow-ups.
     captured = (
-        None if goal_context or pending_budget or "budget" in request.message.casefold() or is_workspace_request(request.message)
+        None if goal_context or pending_budget or stated_financial_detail or "budget" in request.message.casefold() or is_workspace_request(request.message)
         else handle_transaction_capture(session, request)
     )
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
-    query_date = parse_date_spending_query(request.message)
+    remembered = session_fact_reply(request) if not pending_goal and not pending_budget else None
+    if remembered is not None:
+        return _finalize_coach_response(_persist_local_coach(session, request, remembered))
+    query_date = parse_date_spending_query(request.message, request.session_context)
     if query_date is not None and not pending_budget and not pending_goal and not is_workspace_request(request.message):
         queried = handle_date_spending_query(session, request, query_date)
         return _finalize_coach_response(_persist_local_coach(session, request, queried))
     if not pending_budget and not goal_context and "budget" not in request.message.casefold() and not is_workspace_request(request.message) and parse_recurring_forecast_query(request.message):
         forecast = handle_recurring_forecast_query(session, request.user_id, request.session_id)
         return _finalize_coach_response(_persist_local_coach(session, request, forecast))
-    if not pending_budget and not pending_goal and parse_budget_status_query(request.message):
+    if not pending_budget and not pending_goal and (parse_budget_status_query(request.message) or budget_status_follow_up(request)):
         alert_reply = _budget_alert_reply(session, request)
         return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
     user_repository = SQLAlchemyUserRepository(session)
@@ -138,17 +164,16 @@ async def coach(
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
-    request = InternalCoachRequest(
-        **request.model_dump(), conversation_context=context,
-        pending_goal=pending_goal["draft"] if pending_goal else None,
-        pending_budget=pending_budget["draft"] if pending_budget else None,
-        budget_context=build_planning_context(
+    request = request.model_copy(update={
+        "pending_goal": pending_goal["draft"] if pending_goal else None,
+        "pending_budget": pending_budget["draft"] if pending_budget else None,
+        "budget_context": build_planning_context(
             session, request.user_id, message=request.message,
             pending=pending_budget["draft"] if pending_budget else None,
             period=request.budget_period_start,
         ),
-        saved_budget_capacity=build_capacity_context(session, request.user_id, request.budget_period_start),
-    )
+        "saved_budget_capacity": build_capacity_context(session, request.user_id, request.budget_period_start),
+    })
     log_event("coach.history.loaded", history_count=len(context))
     session.rollback()
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
@@ -194,6 +219,9 @@ async def coach(
         if chat_session.pending_budget and not any("goal_draft" in r.data for r in response.agent_results):
             chat_session.pending_goal = None
         chat_repository.append_message(chat_session, "user", request.message)
+        next_state = complete_state(request.session_context, response)
+        if next_state is not None:
+            chat_session.conversation_state = next_state
         assistant_message = chat_repository.append_message(
             chat_session,
             "assistant",
@@ -255,7 +283,11 @@ def _persist_coach_exchange(
         chat_session = chat_repository.create(
             request.user_id, request.session_id, request.message[:120]
         )
+    state = build_session_context(chat_session, request.message, len(chat_session.messages) + 1)
     chat_repository.append_message(chat_session, "user", request.message)
+    next_state = complete_state(state, response)
+    if next_state is not None:
+        chat_session.conversation_state = next_state
     assistant_message = chat_repository.append_message(
         chat_session,
         "assistant",

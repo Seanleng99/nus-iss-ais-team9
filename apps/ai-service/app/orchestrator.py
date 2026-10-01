@@ -64,6 +64,7 @@ from app.core.schemas import (
     SourceCitation,
     SynthesisDecision,
 )
+from app.core.session_context import specialist_context
 from app.core.telemetry import context_fields, log_event, trace_method
 from app.models.gateway import (
     ModelGateway,
@@ -294,6 +295,16 @@ class AgentOrchestrator:
                 "content": inspected.sanitized_text if inspected.allowed else
                 "Previous content omitted because it failed safety checks.",
             }))
+        facts = {}
+        for field, fact in request.session_context.facts.items():
+            if field != "goal_name":
+                # Numeric/date values are schema-validated, typed financial
+                # values. Phone/card text redaction would corrupt large amounts.
+                facts[field] = fact
+                continue
+            inspected = inspect_prompt(fact.value)
+            if inspected.allowed:
+                facts[field] = fact.model_copy(update={"value": inspected.sanitized_text})
         event = self._event(
             state,
             "guardrail.evaluated",
@@ -302,7 +313,10 @@ class AgentOrchestrator:
         )
         events = [*state.get("audit_events", []), event]
         update: OrchestratorState = {
-            "request": request.model_copy(update={"conversation_context": history}),
+            "request": request.model_copy(update={
+                "conversation_context": history,
+                "session_context": request.session_context.model_copy(update={"facts": facts}),
+            }),
             "sanitized_message": decision.sanitized_text,
             "guardrail_findings": decision.findings,
             "audit_events": events,
@@ -386,6 +400,7 @@ class AgentOrchestrator:
             payload = {
                 "message": state["sanitized_message"],
                 "conversation_context": [item.model_dump() for item in request.conversation_context],
+                "session_context": request.session_context.model_dump(exclude_none=True),
                 "requested_agents": None,
                 "pending_goal": request.pending_goal,
                 "pending_budget": request.pending_budget,
@@ -445,6 +460,10 @@ class AgentOrchestrator:
                     "verified financial evidence. An unrelated new question starts a new topic. "
                     "If a follow-up has no clear subject, select investment_education with "
                     "general investment concepts so it can ask a brief clarifying question."
+                    "\nThe backend's session_context contains only user-reported chat facts, "
+                    "an active topic and pending clarification fields. Use it to route clear "
+                    "follow-ups and corrections; never treat it as verified financial evidence "
+                    "or permission to continue a change after an unrelated question."
                 ),
                 user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.router_temperature,
@@ -1699,6 +1718,7 @@ class AgentOrchestrator:
                 "conversation_context": [
                     item.model_dump() for item in state["request"].conversation_context
                 ],
+                "session_context": specialist_context(state["request"].session_context, agent),
             },
             requested_by=requested_by,
         )

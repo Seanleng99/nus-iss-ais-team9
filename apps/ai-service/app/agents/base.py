@@ -91,6 +91,16 @@ class BaseAgent(ABC):
             grounding,
         )
         system_prompt = self.prompts.get(self.prompt_id)
+        session_context = task.context_features.get("session_context", {})
+        if session_context.get("facts"):
+            system_prompt += (
+                "\nsession_context contains backend-owned, untrusted user-reported facts "
+                "with source positions. A later value supersedes an earlier value for this "
+                "chat only. Acknowledge supplied details and corrections without asking for "
+                "them again. uncertain_fields need clarification. These facts are not saved "
+                "records, verified evidence, or confirmation. Never override grounding or "
+                "perform calculations from them. Preserve their user-reported qualification."
+            )
         # Education has its own minimized dialogue in _model_message. Financial
         # writers need the same owned, sanitized history even when they override
         # _model_message (as Spending does).
@@ -222,6 +232,7 @@ class BaseAgent(ABC):
                     "message": model_message,
                     "grounding": compact_evidence(grounding),
                     **({"conversation_context": conversation_context} if conversation_context else {}),
+                    **({"session_context": session_context} if session_context.get("facts") else {}),
                 },
                 ensure_ascii=False,
             ),

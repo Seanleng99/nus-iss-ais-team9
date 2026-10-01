@@ -355,6 +355,7 @@ def test_offline_migrations_generate_sql_without_secret_lookup(
 
     assert "CREATE TABLE" in output.getvalue()
     assert "alembic_version" in output.getvalue()
+    assert "ADD COLUMN conversation_state JSON" in output.getvalue()
     fake_secrets[0].assert_not_called()
     fake_secrets[1].get_secret_value.assert_not_called()
     fake_dbapi_connect.assert_not_called()

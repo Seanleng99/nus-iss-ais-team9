@@ -333,6 +333,7 @@ class SQLAlchemyUserRepository:
                     "title": record.title,
                     "created_at": record.created_at.isoformat(),
                     "updated_at": record.updated_at.isoformat(),
+                    "session_context": record.conversation_state,
                     "messages": [
                         {
                             "id": str(message.id),

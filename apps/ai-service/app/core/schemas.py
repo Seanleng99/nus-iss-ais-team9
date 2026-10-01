@@ -1,4 +1,6 @@
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -81,6 +83,44 @@ class ConversationMessage(StrictContractModel):
     content: str = Field(min_length=1, max_length=1500)
 
 
+SessionField = Literal[
+    "monthly_income", "monthly_expenses", "goal_target_amount", "goal_current_amount",
+    "goal_name", "goal_target_months", "budget_period_start",
+]
+
+
+class SessionFact(StrictContractModel):
+    value: str = Field(min_length=1, max_length=120)
+    source_position: int = Field(ge=1)
+    status: Literal["user_reported"] = "user_reported"
+    supersedes_position: int | None = Field(default=None, ge=1)
+
+
+class SessionContext(StrictContractModel):
+    version: Literal[1] = 1
+    facts: dict[SessionField, SessionFact] = Field(default_factory=dict, max_length=7)
+    active_topic: Literal["spending", "budget", "goal_strategy", "investment_education"] | None = None
+    pending_fields: list[SessionField] = Field(default_factory=list, max_length=7)
+    last_stated_fields: list[SessionField] = Field(default_factory=list, max_length=7)
+    uncertain_fields: list[SessionField] = Field(default_factory=list, max_length=7)
+    pending_action: Literal["budget_status"] | None = None
+
+    @model_validator(mode="after")
+    def validate_fact_values(self):
+        for field, fact in self.facts.items():
+            if field in {"monthly_income", "monthly_expenses", "goal_target_amount", "goal_current_amount"}:
+                if not re.fullmatch(r"\d{1,12}(?:\.\d{1,2})?", fact.value) or Decimal(fact.value) > Decimal("999999999999.99"):
+                    raise ValueError("Session monetary values must be bounded SGD decimal strings")
+            elif field == "goal_target_months":
+                if not fact.value.isdecimal() or not 1 <= int(fact.value) <= 600:
+                    raise ValueError("Session duration must be between 1 and 600 months")
+            elif field == "budget_period_start" and date.fromisoformat(fact.value).day != 1:
+                raise ValueError("Session budget period must start on the first day")
+            if fact.supersedes_position and fact.supersedes_position >= fact.source_position:
+                raise ValueError("A correction must follow the statement it supersedes")
+        return self
+
+
 class CoachRequest(BaseModel):
     user_id: str
     session_id: str
@@ -92,6 +132,7 @@ class CoachRequest(BaseModel):
     pending_budget: dict[str, Any] | None = None
     budget_context: dict[str, Any] = Field(default_factory=dict)
     saved_budget_capacity: dict[str, Any] = Field(default_factory=dict)
+    session_context: SessionContext = Field(default_factory=SessionContext)
 
     @field_validator("message")
     @classmethod

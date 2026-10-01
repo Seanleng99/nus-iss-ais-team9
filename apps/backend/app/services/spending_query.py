@@ -13,9 +13,13 @@ SPENDING_INTENT_PATTERN = re.compile(
 )
 
 
-def parse_date_spending_query(message: str) -> date | None:
+def parse_date_spending_query(message: str, session_context: dict | None = None) -> date | None:
     text = message.strip()
-    if not SPENDING_INTENT_PATTERN.search(text):
+    contextual_follow_up = (
+        (session_context or {}).get("active_topic") == "spending"
+        and re.fullmatch(r"(?:what|how) about .+[?!.]*", text, re.IGNORECASE)
+    )
+    if not SPENDING_INTENT_PATTERN.search(text) and not contextual_follow_up:
         return None
     if re.search(r"\b(?:budget|budgeting|afford)\b", text, re.IGNORECASE):
         return None

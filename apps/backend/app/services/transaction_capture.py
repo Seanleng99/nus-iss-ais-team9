@@ -250,23 +250,26 @@ class CaptureDraft:
     recurring: bool = False
 
 
+CaptureKey = str | tuple[str, str]
+
+
 class PendingCaptureStore:
     def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
         self.ttl_seconds = ttl_seconds
         self._lock = threading.Lock()
-        self._entries: dict[str, tuple[list[CaptureDraft], float]] = {}
+        self._entries: dict[CaptureKey, tuple[list[CaptureDraft], float]] = {}
 
-    def put(self, user_id: str, draft: CaptureDraft) -> None:
+    def put(self, user_id: CaptureKey, draft: CaptureDraft) -> None:
         self.put_queue(user_id, [draft])
 
-    def put_queue(self, user_id: str, drafts: list[CaptureDraft]) -> None:
+    def put_queue(self, user_id: CaptureKey, drafts: list[CaptureDraft]) -> None:
         with self._lock:
             if drafts:
                 self._entries[user_id] = (list(drafts), time.monotonic())
             else:
                 self._entries.pop(user_id, None)
 
-    def _live(self, user_id: str) -> list[CaptureDraft] | None:
+    def _live(self, user_id: CaptureKey) -> list[CaptureDraft] | None:
         entry = self._entries.get(user_id)
         if entry is None:
             return None
@@ -276,17 +279,17 @@ class PendingCaptureStore:
             return None
         return drafts or None
 
-    def get(self, user_id: str) -> CaptureDraft | None:
+    def get(self, user_id: CaptureKey) -> CaptureDraft | None:
         with self._lock:
             drafts = self._live(user_id)
             return drafts[0] if drafts else None
 
-    def peek_all(self, user_id: str) -> list[CaptureDraft]:
+    def peek_all(self, user_id: CaptureKey) -> list[CaptureDraft]:
         with self._lock:
             drafts = self._live(user_id)
             return list(drafts) if drafts else []
 
-    def replace(self, user_id: str, drafts: list[CaptureDraft]) -> None:
+    def replace(self, user_id: CaptureKey, drafts: list[CaptureDraft]) -> None:
         with self._lock:
             stored_at = self._entries[user_id][1] if user_id in self._entries else time.monotonic()
             if drafts:
@@ -294,13 +297,13 @@ class PendingCaptureStore:
             else:
                 self._entries.pop(user_id, None)
 
-    def drop(self, user_id: str) -> list[CaptureDraft]:
+    def drop(self, user_id: CaptureKey) -> list[CaptureDraft]:
         with self._lock:
             drafts = self._live(user_id)
             self._entries.pop(user_id, None)
             return list(drafts) if drafts else []
 
-    def pop(self, user_id: str) -> CaptureDraft | None:
+    def pop(self, user_id: CaptureKey) -> CaptureDraft | None:
         with self._lock:
             drafts = self._live(user_id)
             if not drafts:
@@ -909,7 +912,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             session.commit()
         except SQLAlchemyError:
             session.rollback()
-            pending_capture_store.put(user_id, draft)
+            pending_capture_store.put((user_id, session_id), draft)
             return "Sorry, I couldn't save that transaction. Please try again."
         log_event(
             "transaction.added",
@@ -932,10 +935,10 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
         parts = [save_one(draft, when) for draft, when in zip(drafts, dates, strict=True)]
         return _finalize(parts)
 
-    pending = pending_capture_store.peek_all(user_id)
+    pending = pending_capture_store.peek_all((user_id, session_id))
     if pending:
         if is_cancel_message(message):
-            dropped = pending_capture_store.drop(user_id)
+            dropped = pending_capture_store.drop((user_id, session_id))
             if len(dropped) == 1:
                 return _local_reply(
                     session_id, "OK, I've dropped that transaction. Nothing was saved."
@@ -948,48 +951,48 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
         if pending[0].need_amount:
             resolved_date = parse_date_expression(message, allow_future=allow_future)
             if resolved_date is not None:
-                drafts = pending_capture_store.peek_all(user_id)
+                drafts = pending_capture_store.peek_all((user_id, session_id))
                 drafts[0].when = resolved_date
-                pending_capture_store.replace(user_id, drafts)
+                pending_capture_store.replace((user_id, session_id), drafts)
                 return _ask_amount_reply(session_id, drafts[0])
             amount = parse_amount_followup(message)
             if amount is None:
                 replacement = parse_spending_statement(message) or parse_spending_details(message)
                 if replacement is not None:
-                    pending_capture_store.drop(user_id)
+                    pending_capture_store.drop((user_id, session_id))
                     return _start_capture(session_id, user_id, message, replacement, save_one)
-                pending_capture_store.drop(user_id)
+                pending_capture_store.drop((user_id, session_id))
                 return None
-            drafts = pending_capture_store.drop(user_id)
+            drafts = pending_capture_store.drop((user_id, session_id))
             target = drafts[0]
             remainder = drafts[1:]
             target.amount = amount
             target.need_amount = False
             if target.when is None:
-                pending_capture_store.put_queue(user_id, drafts)
+                pending_capture_store.put_queue((user_id, session_id), drafts)
                 return _ask_date_reply(session_id, target)
             saved_part = save_one(target, target.when)
             if saved_part.startswith("Sorry"):
-                pending_capture_store.put_queue(user_id, drafts)
+                pending_capture_store.put_queue((user_id, session_id), drafts)
                 return _local_reply(session_id, saved_part)
             if remainder:
-                pending_capture_store.put_queue(user_id, remainder)
+                pending_capture_store.put_queue((user_id, session_id), remainder)
                 if remainder[0].need_amount:
                     return _ask_amount_reply(session_id, remainder[0])
                 return _ask_queue_reply(session_id, remainder[0], [saved_part])
             return _local_reply(session_id, _finalize([saved_part]))
         resolved = parse_date_expression(message, allow_future=allow_future)
         if resolved is not None:
-            drafts = pending_capture_store.drop(user_id)
+            drafts = pending_capture_store.drop((user_id, session_id))
             target = drafts[0]
             remainder = drafts[1:]
             saved_part = save_one(target, resolved)
             failed = saved_part.startswith("Sorry")
             if failed:
-                pending_capture_store.put_queue(user_id, drafts)
+                pending_capture_store.put_queue((user_id, session_id), drafts)
                 return _local_reply(session_id, saved_part)
             if remainder:
-                pending_capture_store.put_queue(user_id, remainder)
+                pending_capture_store.put_queue((user_id, session_id), remainder)
                 return _ask_queue_reply(session_id, remainder[0], [saved_part])
             return _local_reply(session_id, _finalize([saved_part]))
         if mentions_future_date(message) and not allow_future:
@@ -999,19 +1002,19 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             )
         batch = parse_batch(message)
         if batch is not None:
-            pending_capture_store.drop(user_id)
+            pending_capture_store.drop((user_id, session_id))
             return _handle_parsed_batch(session, session_id, user_id, batch, save_list, save_one)
         replacement = parse_spending_statement(message)
         if replacement is not None:
-            pending_capture_store.drop(user_id)
+            pending_capture_store.drop((user_id, session_id))
             inline = extract_date_from_text(message, allow_future=replacement.booking)
             if inline is not None:
                 saved_part = save_one(replacement, inline)
                 answer = saved_part if saved_part.startswith("Sorry") else _finalize([saved_part])
                 return _local_reply(session_id, answer)
-            pending_capture_store.put(user_id, replacement)
+            pending_capture_store.put((user_id, session_id), replacement)
             return _ask_date_reply(session_id, replacement)
-        pending_capture_store.drop(user_id)
+        pending_capture_store.drop((user_id, session_id))
         return None
 
     batch = parse_batch(message)
@@ -1039,7 +1042,7 @@ def _start_capture(
     save_one,
 ) -> CoachResponse:
     if draft.need_amount:
-        pending_capture_store.put(user_id, draft)
+        pending_capture_store.put((user_id, session_id), draft)
         return _ask_amount_reply(session_id, draft)
     if draft.when is None:
         draft.when = extract_date_from_text(message, allow_future=draft.booking)
@@ -1047,7 +1050,7 @@ def _start_capture(
         saved_part = save_one(draft, draft.when)
         answer = saved_part if saved_part.startswith("Sorry") else _finalize([saved_part])
         return _local_reply(session_id, answer)
-    pending_capture_store.put(user_id, draft)
+    pending_capture_store.put((user_id, session_id), draft)
     return _ask_date_reply(session_id, draft)
 
 
@@ -1066,6 +1069,6 @@ def _handle_parsed_batch(
     else:
         summary = ""
     if undated:
-        pending_capture_store.put_queue(user_id, undated)
+        pending_capture_store.put_queue((user_id, session_id), undated)
         return _ask_queue_reply(session_id, undated[0], [summary] if summary else [])
     return _local_reply(session_id, summary)

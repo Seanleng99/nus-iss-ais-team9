@@ -80,6 +80,7 @@ class InternalCoachRequest(CoachRequest):
     pending_budget: dict[str, Any] | None = None
     budget_context: dict[str, Any] = Field(default_factory=dict)
     saved_budget_capacity: dict[str, Any] = Field(default_factory=dict)
+    session_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentResult(BaseModel):

@@ -333,6 +333,12 @@ class LocalFixtureModelGateway:
                 ],
             }
             selected = [name for name, terms in rules.items() if any(term in message for term in terms)]
+            context = payload.get("session_context", {})
+            if not selected and context.get("active_topic") in rules and re.fullmatch(
+                r"(?:explain that(?: more simply)?|what about that|actually[, ]+(?:it(?:'s| is) )?[\d.,$ ]+|[\d.,$ ]+)[?.!]*",
+                message,
+            ):
+                selected = [context["active_topic"]]
             topics = education_topics(str(payload["message"]))
             if topics and "investment_education" not in selected and not (
                 topics == ["emergency fund readiness"] and "goal_strategy" in selected

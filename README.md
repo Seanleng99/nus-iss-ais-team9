@@ -78,6 +78,8 @@ The offline model fixture uses explicit fields, for example: `Create goal; name:
 
 ## Agents
 
+Coach now retains supported user-reported facts and corrections within each chat, alongside the latest eight messages. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Apply migration `20261002_0014` before updating the backend and deploy the backend/AI service together. See [Session context](docs/session-context.md) for supported inputs, examples, limits and validation.
+
 - Spending Agent: spending summaries, patterns, and anomaly explanations.
 - Budget Agent: illustrative monthly budget calculations and category-limit drafts that require user confirmation before persistence.
 - Goal Strategy Agent: savings goal decomposition and progress adjustments.

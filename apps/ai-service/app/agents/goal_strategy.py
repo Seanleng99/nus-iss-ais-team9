@@ -14,6 +14,7 @@ from app.core.schemas import (
     DependencyRequestDraft,
     UserFinancialSnapshot,
 )
+from app.core.session_context import reported_value
 from app.core.telemetry import trace_method
 from app.tools.registry import call_tool
 
@@ -112,11 +113,29 @@ class GoalStrategyAgent(BaseAgent):
             return ()
         questions = []
         if not task.input_data.get("goals"):
-            questions.append("What goal amount and target date would you like to plan for?")
+            amount = reported_value(task, "goal_target_amount")
+            months = reported_value(task, "goal_target_months")
+            if amount and months:
+                questions.append(
+                    f"You told me your goal target is SGD {amount} over {months} months "
+                    "(user-reported). It isn't a saved goal yet. Would you like to create "
+                    "a goal with a preview for confirmation?"
+                )
+            elif amount:
+                questions.append(f"You told me your goal target is SGD {amount} (user-reported). What duration in months would you like to plan for?")
+            elif months:
+                questions.append(f"You told me the duration is {months} months (user-reported). What goal amount would you like to plan for?")
+            else:
+                questions.append("What goal amount and target date would you like to plan for?")
         elif not task.context_features.get("has_monthly_income"):
-            questions.append(
+            income = reported_value(task, "monthly_income")
+            questions.append((
+                f"You told me your monthly income is SGD {income} (user-reported). "
+                "It hasn't been recorded in your profile. Please update your Profile income "
+                "before assessing feasibility against saved records."
+            ) if income else (
                 "What is your monthly income so the goal feasibility can be assessed?"
-            )
+            ))
         if any(goal.get("target_amount", {}).get("currency", "SGD") != "SGD" or goal.get("current_amount", {}).get("currency", "SGD") != "SGD" for goal in task.input_data.get("goals", [])):
             questions.append("Please provide goal targets and current amounts in SGD before comparing them with SGD budget capacity; no conversion is assumed.")
         return questions

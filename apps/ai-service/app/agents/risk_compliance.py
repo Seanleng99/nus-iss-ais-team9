@@ -780,6 +780,7 @@ class RiskComplianceAgent:
                     "message": decision.sanitized_text,
                     "known_neutral_financial_question": known_neutral_request,
                     "conversation_context": [item.model_dump() for item in request.conversation_context],
+                    "session_context": request.session_context.model_dump(exclude_none=True),
                     "draft_answer": draft_answer,
                     "routing_rationale": routing_rationale or [],
                     "contextual_financial_findings": contextual_financial_findings,

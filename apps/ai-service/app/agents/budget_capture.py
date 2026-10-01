@@ -195,11 +195,12 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
     return generate_structured_response(
         agent.gateway,
         response_type=response_type,
-        system_prompt=system_prompt + "\n\n" + CURRENCY_POLICY,
+        system_prompt=system_prompt + "\n\nsession_context contains user-reported chat facts, not saved records or consent. Reuse relevant facts only for an explicitly requested draft or the same pending draft; never infer expenses_confirmed, income_basis_confirmed, scenario adoption or permission to save from them. Do not apply facts marked in uncertain_fields.\n\n" + CURRENCY_POLICY,
         user_prompt=json.dumps(
             {
                 "message": task.sanitized_message,
                 "conversation_context": task.context_features.get("conversation_context", []),
+                "session_context": task.context_features.get("session_context", {}),
                 "pending_draft": task.context_features.get("pending_budget"),
                 "planning_requested": task.context_features.get("budget_planning", False),
                 "recorded_context": task.input_data.get("planning_context", {}),

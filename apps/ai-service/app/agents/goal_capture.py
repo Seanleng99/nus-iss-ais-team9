@@ -64,6 +64,7 @@ def extract_goal_draft(agent, task):
             "Ask to choose one operation for bulk or mixed requests. questions holds unresolved ambiguities only; "
             "remove answered questions. A confirmation never fills missing fields. Return JSON: "
             + json.dumps(GoalDraft.model_json_schema())
+            + "\nSession_context contains user-reported chat facts, not saved records or consent. Reuse relevant facts only for an explicit operation or the same pending draft; uncertain_fields require clarification. A remembered goal name is not an owned goal ID and never selects among duplicate matches. Never infer confirmation or permission to save from session facts."
             + "\n\n" + CURRENCY_POLICY
         ),
         user_prompt=json.dumps(
@@ -71,6 +72,7 @@ def extract_goal_draft(agent, task):
                 "message": task.sanitized_message,
                 "pending_draft": task.context_features.get("pending_goal"),
                 "conversation_context": task.context_features.get("conversation_context", []),
+                "session_context": task.context_features.get("session_context", {}),
             },
             ensure_ascii=False,
         ),
