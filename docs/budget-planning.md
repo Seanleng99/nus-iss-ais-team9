@@ -1,6 +1,6 @@
 # Budget planning: plans, methods, scenarios and spending reviews
 
-Current UI and Coach flow: see [Everyday Budget and Coach workflow](budget-usability.md) for the 2026-10-01 simplification. It is implemented locally and requires separate deployment/live acceptance. Earlier workflow descriptions below retain the underlying contracts; the new document supersedes their UI entry points.
+Current UI and Coach flow: see [Everyday Budget and Coach workflow](budget-usability.md) for the 2026-10-01 simplification. The first simplification deployed at `72846d0`; the subsequent optional-form removal is local and requires separate deployment/live acceptance. Earlier workflow descriptions below retain the underlying contracts; the new document supersedes their UI entry points.
 
 Earlier release evidence: the AWS demo deployment on 2026-09-29 at `f821887a62e8b8d94aa77975f34d6770042e6312` passed CI, migrations and release smoke. The focused GPT-6 Luna Budget acceptance suite passed 14/14 executions at that revision; it does not validate later improvements or this simplification.
 
@@ -53,7 +53,7 @@ The Budget and Overview pages show take-home income, the separate savings alloca
 
 ## Stage two: method selection and scenario comparisons
 
-Users can select a method in Coach or in **Budget → Explore budgeting methods and scenarios**. The method is saved alongside income and savings; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
+Users can select a method in Coach. Budget shows an existing saved method without a separate method/scenario setup form; its simple **Explore a change** flow compares income, savings or a category amount. The method is saved alongside income and savings; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
 
 | Method | Behavior |
 | --- | --- |

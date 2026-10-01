@@ -120,7 +120,7 @@ def render_budget_review(client, user_id, period, scope, draft_key, *, automatic
                 or candidate["planning"]["savings_target"] is None
             ):
                 st.info(
-                    "Supply take-home income and savings through Coach or the method explorer before adopting this adjustment."
+                    "Enter take-home income and savings in Your plan, or ask Coach, before adopting this adjustment."
                 )
                 return
             candidate["review_evidence"] = review["evidence_fingerprint"]

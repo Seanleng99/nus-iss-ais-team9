@@ -101,16 +101,6 @@ class Client:
         self.confirmed = identifier
         return {"periods": ["2026-11-01"]}
 
-    def get_budget_commitments(self, user, period):
-        return {"policy": {"category_floors": {"food": 400}, "protected_categories": []}}
-
-    def preview_workspace_change(self, user, operation, payload):
-        self.previewed = {"operation": operation, **deepcopy(payload)}
-        return {"preview_id": "fixed", "target": {**payload, "category_floors": {"food": 400}}}
-
-    def confirm_workspace_change(self, user, identifier):
-        self.confirmed = identifier
-        return {"saved": True}
 
 
 def control(items, label):
@@ -135,7 +125,8 @@ def test_everyday_page_has_no_specialist_setup_and_one_plan_confirmation():
         < headings.index("Spending this month")
         < headings.index("Explore a change")
     )
-    assert control(app.selectbox, "Planning option").value == "Choose an option"
+    assert not any(item.label == "Planning option" for item in app.selectbox)
+    assert not any(item.label == "More planning options" for item in app.expander)
     assert not any(i.label == "Minimum monthly savings (SGD)" for i in app.number_input)
     assert not any(
         i.label == "Reserve this month's full savings allocation on" for i in app.date_input
@@ -205,18 +196,56 @@ def test_copy_next_month_requires_preview_and_explicit_coverage_confirmation():
     assert client.confirmed is None
 
 
-def test_fixed_amount_action_sends_only_the_selected_setting_and_requires_confirmation():
+def test_saved_method_survives_simple_comparison_adoption_and_confirmed_save():
     client = Client()
-    app = render(client)
-    control(app.selectbox, "Planning option").set_value("Fixed amounts").run()
-    control(app.multiselect, "Keep these category amounts fixed").set_value(["housing"]).run()
-    control(app.button, "Preview fixed amounts").click().run()
-    assert not app.exception
-    assert client.previewed == {
-        "operation": "commitments",
-        "period_start": str(PERIOD),
-        "protected_categories": ["housing"],
+    method = {
+        "name": "custom",
+        "percentages": {"needs": 60, "wants": 20, "savings": 20},
+        "category_groups": {"housing": "needs", "food": "wants"},
     }
-    assert client.confirmed is None
-    control(app.button, "Confirm changes").click().run()
-    assert client.confirmed == "fixed"
+    client.budget["planning"]["method"] = deepcopy(method)
+    app = render(client)
+    assert not app.exception
+    assert any("Saved budgeting approach: Custom percentages" in c.value for c in app.caption)
+    control(app.selectbox, "What would you like to change?").set_value("Savings").run()
+    control(app.number_input, "New monthly savings (SGD)").set_value(900).run()
+    control(app.button, "Check this change").click().run()
+    assert client.compared["planning"]["method"] == method
+    control(app.button, "Review this change in my plan").click().run()
+    assert client.saved is None
+    control(app.button, "Save budget").click().run()
+    assert client.saved is None
+    control(
+        app.checkbox, "This is my actual take-home income and these limits include all my expenses."
+    ).check()
+    control(app.button, "Save budget").click().run()
+    assert not app.exception
+    assert client.saved["planning"]["method"] == method
+    assert client.saved["planning"]["savings_target"] == 900
+
+
+def test_coach_shortcut_keeps_selected_month_and_does_not_send_or_save_editor_changes():
+    client = Client()
+    app = AppTest.from_string(
+        "import streamlit as st\n"
+        "import ui.pages as pages\n"
+        "from ui.state import get_period_start\n"
+        "def coach(): st.write('Selected month: ' + str(get_period_start()))\n"
+        "original_coach = pages.coach_page\n"
+        "pages.coach_page = coach\n"
+        "navigation = st.navigation([st.Page(pages.budget_page, title='Budget', default=True), "
+        "st.Page(coach, title='Coach', url_path='coach')])\n"
+        "try: navigation.run()\n"
+        "finally: pages.coach_page = original_coach"
+    )
+    app.session_state["backend_client"] = client
+    app.session_state["active_user_id"] = "u"
+    app.session_state["active_period"] = PERIOD
+    app.run(timeout=30)
+    control(app.number_input, "Monthly savings allocation (SGD)").set_value(900).run()
+    control(app.button, "Discuss my saved budget with Coach").click().run()
+    assert not app.exception
+    assert any("Selected month: 2026-10-01" in item.value for item in app.markdown)
+    assert client.saved is None
+    assert client.compared is None
+    assert client.budget["planning"]["savings_target"] == 800

@@ -11,20 +11,10 @@ import pandas as pd
 import streamlit as st
 
 from client import build_request
-from ui.budget_continuity import render_continuity, render_review_preferences
-from ui.budget_history import render_history
-from ui.budget_methods import METHODS, render_method_explorer
+from ui.budget_methods import METHODS
 from ui.budget_review import render_budget_review
-from ui.budget_simple import (
-    render_change,
-    render_copy_month,
-    render_fixed_amounts,
-    render_goal_allocation,
-    render_payday,
-    render_upcoming_expense,
-)
+from ui.budget_simple import render_change, render_copy_month
 from ui.budget_timing import render_timing_summary
-from ui.budget_tradeoffs import render_tradeoffs
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
@@ -926,6 +916,12 @@ def budget_page() -> None:
             edited_planning = {key: value for key, value in planning.items() if key != "use_recorded_spending"}
             edited_planning.setdefault("method", {"name": "flexible", "category_groups": {}})
             edited_planning.update(take_home_income=plan_income, savings_target=plan_savings, income_basis="take_home", expenses_confirmed=True)
+            method_name = edited_planning["method"]["name"]
+            if method_name != "flexible":
+                st.caption(
+                    "Saved budgeting approach: " + METHODS.get(method_name, method_name)
+                    + ". Ask Coach if you want to change this approach."
+                )
         values: dict[str, float] = {}
         columns = st.columns(3)
         for index, category in enumerate(categories):
@@ -1021,7 +1017,7 @@ def budget_page() -> None:
             chart.update_yaxes(autorange="reversed")
             st.plotly_chart(chart, use_container_width=True, key=f"{scope}-comparison")
     else:
-        st.info("Build your monthly plan. Choose categories below or ask Coach to prepare a budget.",
+        st.info("Build your monthly plan. Choose categories above or ask Coach to prepare a budget.",
                 icon=":material/account_balance_wallet:")
 
     if currency == "SGD":
@@ -1031,27 +1027,11 @@ def budget_page() -> None:
         render_change(client, user_id, period_start, values, edited_planning, scope, draft_key)
         if st.button("Discuss my saved budget with Coach", key=scope + "-coach"):
             st.switch_page(st.Page(coach_page, title="Coach", url_path="coach"))
+        st.caption(
+            "Ask Coach to keep rent fixed, compare savings amounts or plan for an upcoming expense. "
+            "Manage savings targets on the Goals page."
+        )
         render_copy_month(client, user_id, period_start, budget)
-        with st.expander("More planning options", icon=":material/tune:"):
-            option = st.selectbox("Planning option", ["Choose an option", "Fixed amounts", "Savings goals", "Check until payday", "Upcoming expenses", "Budgeting methods", "Spending patterns", "Previous versions", "Review reminders", "Plan several months", "Debt repayment comparisons"], key=scope + "-more")
-            if option == "Fixed amounts":
-                render_fixed_amounts(client, user_id, period_start, {c["category"]: c["limit_amount"] for c in (budget or {}).get("categories", [])})
-            elif option == "Savings goals":
-                render_goal_allocation(client, user_id, period_start)
-            elif option == "Check until payday":
-                render_payday(client, user_id, period_start)
-            elif option == "Upcoming expenses":
-                render_upcoming_expense(client, user_id, period_start)
-            elif option == "Budgeting methods":
-                render_method_explorer(client, user_id, period_start, values, edited_planning, scope, draft_key)
-            elif option in {"Spending patterns", "Previous versions"}:
-                render_history(client, user_id, period_start, draft_key, patterns=option == "Spending patterns")
-            elif option == "Review reminders":
-                render_review_preferences(client, user_id)
-            elif option == "Plan several months":
-                render_continuity(client, user_id, period_start)
-            elif option == "Debt repayment comparisons":
-                render_tradeoffs(client, user_id, period_start)
     if edit_draft and st.button("Discard unsaved scenario", key=f"{scope}-discard"):
         st.session_state.pop(draft_key, None)
         st.rerun()
