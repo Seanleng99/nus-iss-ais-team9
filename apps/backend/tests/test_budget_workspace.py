@@ -407,3 +407,30 @@ def test_coach_http_workspace_clarification_and_confirmation(db_session_factory)
             )
     finally:
         app.dependency_overrides.pop(get_ai_service_client, None)
+
+
+@pytest.mark.parametrize("message", [
+    "Set my budget for October 2026 in SGD: housing 1500 and pet care 120. These are monthly expense limits. Ask me to confirm before saving.",
+    "Plan my October 2026 budget in SGD. My gross monthly income is 4000 before deductions; I have not supplied my take-home income. Housing limit 1500, food limit 500, savings target 500. These are all my expenses.",
+    "Set up my cash-flow plan in SGD: opening combined balance SGD 2000 at the start of September 1, 2026. My only schedule is a bill called Rent, expense category housing, SGD 1500 monthly starting September 5, 2026, with no end date and no manually settled dates. Preview it and ask me to confirm before saving.",
+])
+def test_budget_planning_is_not_intercepted_by_local_spending_handlers(message):
+    from app.api.routes import get_ai_service_client
+    from app.core.config import settings
+
+    calls = []
+
+    class BudgetAI:
+        async def coach(self, request):
+            calls.append(request)
+            return CoachResponse(session_id=request.session_id, selected_agents=["budget"], answer="Budget agent reached", agent_results=[], disclaimers=[], audit={})
+
+    app.dependency_overrides[get_ai_service_client] = BudgetAI
+    try:
+        with TestClient(app, headers={"X-API-Key": settings.api_key}) as client:
+            response = client.post("/api/coach", json={"user_id": "u", "session_id": "route-budget", "message": message, "requested_agents": ["budget"]})
+            assert response.status_code == 200
+            assert response.json()["answer"] == "Budget agent reached"
+            assert len(calls) == 1
+    finally:
+        app.dependency_overrides.pop(get_ai_service_client, None)

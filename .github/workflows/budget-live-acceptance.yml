@@ -39,6 +39,7 @@ jobs:
             --maximum-p95-ms 30000 --maximum-estimated-cost-usd 0.05 \
             --output artifacts/budget-live-acceptance.json
       - name: Verify multi-turn edits and confirmation against the live model
+        if: success() || failure()
         env:
           COACH_URL: ${{ vars.COACH_SMOKE_URL }}
           SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}

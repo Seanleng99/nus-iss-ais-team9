@@ -124,10 +124,10 @@ async def coach(
     if captured is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, captured))
     query_date = parse_date_spending_query(request.message)
-    if query_date is not None and not pending_budget and not pending_goal:
+    if query_date is not None and not pending_budget and not pending_goal and not is_workspace_request(request.message):
         queried = handle_date_spending_query(session, request, query_date)
         return _finalize_coach_response(_persist_local_coach(session, request, queried))
-    if not pending_budget and not goal_context and parse_recurring_forecast_query(request.message):
+    if not pending_budget and not goal_context and "budget" not in request.message.casefold() and not is_workspace_request(request.message) and parse_recurring_forecast_query(request.message):
         forecast = handle_recurring_forecast_query(session, request.user_id, request.session_id)
         return _finalize_coach_response(_persist_local_coach(session, request, forecast))
     if not pending_budget and not pending_goal and parse_budget_status_query(request.message):

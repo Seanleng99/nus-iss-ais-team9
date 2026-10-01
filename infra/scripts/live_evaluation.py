@@ -442,6 +442,8 @@ def run_live_evaluation(
                         "question_topics": [term for term in terms if term in questions],
                         "answer_checks": {term: term.casefold() in response.get("answer", "").casefold() for term in case["expected"].get("answer_contains", [])},
                         "blocked_agents": [r.get("agent") for r in response.get("agent_results", []) if r.get("blocked")],
+                        "block_reasons": [str(reason)[:100] for r in response.get("agent_results", []) for reason in (r.get("data") or {}).get("block_reasons", [])],
+                        "local_handler": response.get("audit", {}).get("source"),
                     }
                 audit = response.get("audit", {})
                 input_tokens = int(audit.get("model_input_tokens") or 0)
