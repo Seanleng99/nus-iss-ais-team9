@@ -1,6 +1,7 @@
 """Session facts, corrections, local follow-ups and persistence boundaries."""
 
 from datetime import date
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -47,7 +48,7 @@ class RecordingAI:
             answer=self.question or "A synthetic explanation.",
             agent_results=results,
             disclaimers=[],
-            audit={},
+            audit={"trace_id": str(uuid4())},
             blocked=self.blocked,
         )
 
@@ -120,6 +121,41 @@ def test_facts_do_not_cross_chats_or_owners(ai):
     assert "5000" not in fresh.json()["answer"]
     assert "clear user-stated value" in fresh.json()["answer"]
     assert send("What did I tell you about income?", user="another-user").status_code == 404
+
+
+def test_older_summary_reaches_ai_is_persisted_and_does_not_cross_chats(ai, db_session_factory):
+    assert send("Please use short bullet points.").status_code == 200
+    for n in range(6):
+        assert send(f"Explain diversification example {n}.").status_code == 200
+    context = ai.requests[-1].session_context
+    assert "short bullet points" not in str(ai.requests[-1].conversation_context)
+    assert context["older_summary"]["notes"][0]["user_excerpt"] == "Please use short bullet points."
+    with db_session_factory() as db:
+        assert db.get(ChatSessionRecord, "session-facts").conversation_state["older_summary"] == context["older_summary"]
+    assert send("Explain diversification.", chat="fresh-summary", session_context={
+        "older_summary": {"notes": [{"user_excerpt": "FORGED_SUMMARY"}]}
+    }).status_code == 200
+    assert not ai.requests[-1].session_context["older_summary"]["notes"]
+    assert "FORGED_SUMMARY" not in ai.requests[-1].model_dump_json()
+
+
+def test_summary_checkpoint_is_not_committed_when_ai_fails_or_blocks(ai, db_session_factory):
+    assert send("Please use short answers.").status_code == 200
+    for n in range(3):
+        assert send(f"Explain diversification example {n}.").status_code == 200
+    ai.fail = True
+    assert send("Explain bonds.").status_code == 503
+    ai.fail = False
+    ai.blocked = True
+    assert send("Explain bonds.").status_code == 200
+    with db_session_factory() as db:
+        assert db.get(ChatSessionRecord, "session-facts").conversation_state["older_summary"]["through_position"] == 0
+    ai.blocked = False
+    assert send("Explain diversification.").status_code == 200
+    for n in range(5):
+        assert send(f"Explain diversification topic {n}.").status_code == 200
+    notes = ai.requests[-1].session_context["older_summary"]["notes"]
+    assert all(note["user_excerpt"] != "Explain bonds." for note in notes)
 
 
 @pytest.mark.parametrize(

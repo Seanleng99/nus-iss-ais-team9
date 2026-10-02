@@ -10,6 +10,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.domain.schemas import CoachResponse
+from app.services.conversation_summary import roll_summary
 
 MONEY_FIELDS = {"monthly_income", "monthly_expenses", "goal_target_amount", "goal_current_amount"}
 FIELDS = MONEY_FIELDS | {"goal_name", "goal_target_months", "budget_period_start"}
@@ -184,7 +185,11 @@ def build_session_context(chat, message, position):
                 ):
                     continue
                 state = advance_state(state, item.content, item.position)
-    return advance_state(state, message, position)
+    state = advance_state(state, message, position)
+    state["older_summary"] = roll_summary(
+        state.get("older_summary"), chat.messages if chat else [], position, state["facts"]
+    )
+    return state
 
 
 def complete_state(state, response):

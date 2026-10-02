@@ -200,7 +200,11 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             {
                 "message": task.sanitized_message,
                 "conversation_context": task.context_features.get("conversation_context", []),
-                "session_context": task.context_features.get("session_context", {}),
+                "session_context": {
+                    key: value
+                    for key, value in task.context_features.get("session_context", {}).items()
+                    if key != "older_summary"
+                },
                 "pending_draft": task.context_features.get("pending_budget"),
                 "planning_requested": task.context_features.get("budget_planning", False),
                 "recorded_context": task.input_data.get("planning_context", {}),

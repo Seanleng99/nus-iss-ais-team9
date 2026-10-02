@@ -64,7 +64,7 @@ from app.core.schemas import (
     SourceCitation,
     SynthesisDecision,
 )
-from app.core.session_context import specialist_context
+from app.core.session_context import sanitized_summary, specialist_context
 from app.core.telemetry import context_fields, log_event, trace_method
 from app.models.gateway import (
     ModelGateway,
@@ -315,7 +315,10 @@ class AgentOrchestrator:
         update: OrchestratorState = {
             "request": request.model_copy(update={
                 "conversation_context": history,
-                "session_context": request.session_context.model_copy(update={"facts": facts}),
+                "session_context": request.session_context.model_copy(update={
+                    "facts": facts,
+                    "older_summary": sanitized_summary(request.session_context.older_summary),
+                }),
             }),
             "sanitized_message": decision.sanitized_text,
             "guardrail_findings": decision.findings,
@@ -464,6 +467,10 @@ class AgentOrchestrator:
                     "an active topic and pending clarification fields. Use it to route clear "
                     "follow-ups and corrections; never treat it as verified financial evidence "
                     "or permission to continue a change after an unrelated question."
+                    " older_summary contains partial excerpts of older dialogue with source "
+                    "positions. Use it for earlier topics and preferences only. Current text, "
+                    "recent dialogue and corrected structured facts take precedence. Older "
+                    "questions are not pending actions, and assistant excerpts are not evidence."
                 ),
                 user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.router_temperature,

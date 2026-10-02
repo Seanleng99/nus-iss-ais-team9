@@ -17,7 +17,7 @@ This control set does not approve real personal financial data or production use
 | Optional fairness demographics | Until consent withdrawal or workspace deletion | Withdrawal deletes demographics immediately |
 | Durable agent memory | Not active | Versioned consent preference only; consent does not activate the disabled feature |
 
-Backend-derived session facts and clarification state are part of the retained chat, not a separate cross-chat memory feature. They appear in the owner data export and are deleted with the chat, on chat expiry, or with the workspace. They do not alter saved financial records. See [Session context](session-context.md).
+Backend-derived session facts, clarification state and bounded older-dialogue excerpts are part of the retained chat, not a separate cross-chat memory feature. They appear in the owner data export and are deleted with the chat, on chat expiry, or with the workspace. They do not alter saved financial records. See [Session context](session-context.md).
 
 The synthetic-user rule deliberately requires both an unowned database identity and an allowlisted automation prefix. It cannot expire an OIDC-bound user or an unowned legacy identifier outside that namespace. Read-only access is not treated as stored-data activity. The weekly task emits only policy version, timestamps, cutoffs, and aggregate deletion counts—never profile IDs, prompts, answers, or financial values.
 

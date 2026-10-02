@@ -1,9 +1,10 @@
 # Coach session context
 
-The Coach uses two complementary forms of context within an owned conversation:
+The Coach uses three complementary forms of context within an owned conversation:
 
 - The latest eight messages, capped at 1,500 characters each, retain recent dialogue.
 - Backend-owned structured state retains supported user-reported details, their source message positions, corrections, the active topic and pending clarification fields.
+- A rolling extractive summary retains selected older exchanges, with original user/assistant message positions, topics and exact shortened excerpts.
 
 This is derived chat state, not cross-chat durable agent memory. It has the same ownership, 90-day inactivity retention, export and deletion boundary as its chat. It never writes profile income, goals, budgets or transactions. Saved records and deterministic grounding remain authoritative for financial calculations; normal previews and confirmations still govern draft changes.
 
@@ -36,10 +37,22 @@ Immediately after stating one supported field, `Actually, it's 4200.` replaces t
 - Recognized fact answers and corrections are not routed into automatic expense capture. Transaction amount/date clarification queues are separately scoped to the user and chat; their existing process-local storage and ten-minute expiry remain.
 - Facts are committed together with a successful chat exchange. Failed and blocked replies do not commit new facts. Legacy chats bootstrap supported facts from at most the latest 64 messages, excluding blocked turns; subsequent compact state persists with the chat.
 
+## Older dialogue summary
+
+When a completed exchange leaves the eight-message window, the backend rolls it into `session_context.older_summary`. The summary keeps at most six exchanges: it reserves up to two slots for recent preferences/objectives, then retains the latest remaining exchanges. Repeated user excerpts are deduplicated. Each user excerpt is capped at 240 characters and each assistant excerpt at 160, for at most 2,400 excerpt characters. A checkpoint records the original message position processed; subsequent requests process only newer eligible messages. Existing chats backfill from at most 128 older messages.
+
+This is an extractive summary, not an additional model call. It preserves selected words rather than generating new claims. It is partial: truncation, deduplication and bounded selection can omit details. For example, `Please use short bullet points.` can survive many later discussion turns, even after the original exchange leaves the recent-message window. A preference outside the bounded legacy backfill is not recovered automatically.
+
+Only completed exchanges with an available, nonblocked orchestration trace are eligible. Blocked user turns and untraced exchanges are omitted. Supported structured financial statements and explicit corrections are not duplicated into the summary; remembered notes tied to a superseded fact are removed. Current text and recent dialogue take precedence over earlier preferences, while structured corrections remain authoritative for user-reported values.
+
+The AI sanitizes both excerpts before routing and model calls, scopes topic-specific notes to the relevant specialist, and applies the existing education-question minimization to identifiers and recognizable personal amounts in Investment Education notes. Writers receive the summary outside financial grounding. Earlier assistant excerpts are not verified evidence, current balances or proof of a completed action. Older questions are not pending requests. Budget/goal draft extraction does not receive the older summary, so old excerpts cannot supply draft fields or confirmation. An unclear reference still needs a brief clarification.
+
+Summary updates commit atomically with successful replies. Failed, blocked or concurrent rejected replies do not advance the persisted checkpoint. The summary lives in the existing chat JSON state, appears in owner export, and follows chat deletion and retention. It adds no migration beyond `20261002_0014` and no cross-chat memory.
+
 ## Rollout and validation
 
 Apply `alembic upgrade head` in `apps/backend` before running the updated backend, then deploy the backend and AI service together. Compose runs migrations automatically. This change does not require a frontend change.
 
-Backend regressions cover source attribution, corrections, recall beyond the recent-message window, isolated chats/owners, client-forged context, ambiguous input, failed/blocked replies, local follow-ups, export/deletion and transaction clarification isolation. AI regressions cover preflight acknowledgment, context-aware fixture routing, role minimization, schema validation and unchanged calculation grounding. These offline tests do not establish live-model recall quality; verify representative multi-turn conversations after deployment using synthetic inputs and automatic agent routing.
+Backend regressions cover source attribution, corrections, recall beyond the recent-message window, isolated chats/owners, client-forged context, ambiguous input, failed/blocked replies, local follow-ups, export/deletion and transaction clarification isolation. Summary regressions cover window boundaries, bounded size/backfill, preference retention, deduplication, withheld exchanges and transactional checkpoints. AI regressions cover preflight acknowledgment, context-aware fixture routing, role minimization, summary sanitization/schema validation and unchanged calculation grounding. These offline tests do not establish live-model recall quality; verify representative multi-turn conversations after deployment using synthetic inputs and automatic agent routing.
 
-Older-message summarization, arbitrary natural-language fact extraction, a session-state editing UI and cross-chat memory are deferred. The ordinary local fixture still produces deterministic narratives; its limited follow-up routing is for regression coverage, not a substitute for live-model behavior.
+Semantic model-generated summarization, arbitrary natural-language fact extraction, a session-state editing UI and cross-chat memory are deferred. The ordinary local fixture still produces deterministic narratives; its limited follow-up routing is for regression coverage, not a substitute for live-model behavior.

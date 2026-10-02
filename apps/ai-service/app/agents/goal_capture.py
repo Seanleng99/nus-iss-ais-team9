@@ -72,7 +72,11 @@ def extract_goal_draft(agent, task):
                 "message": task.sanitized_message,
                 "pending_draft": task.context_features.get("pending_goal"),
                 "conversation_context": task.context_features.get("conversation_context", []),
-                "session_context": task.context_features.get("session_context", {}),
+                "session_context": {
+                    key: value
+                    for key, value in task.context_features.get("session_context", {}).items()
+                    if key != "older_summary"
+                },
             },
             ensure_ascii=False,
         ),

@@ -96,6 +96,31 @@ class SessionFact(StrictContractModel):
     supersedes_position: int | None = Field(default=None, ge=1)
 
 
+class ConversationNote(StrictContractModel):
+    source_position: int = Field(ge=1)
+    assistant_position: int = Field(ge=2)
+    kind: Literal["preference", "objective", "discussion"]
+    topics: list[Literal["spending", "budget", "goal_strategy", "investment_education"]] = Field(max_length=4)
+    user_excerpt: str = Field(min_length=1, max_length=240)
+    assistant_excerpt: str = Field(max_length=160)
+
+
+class OlderConversationSummary(StrictContractModel):
+    through_position: int = Field(ge=0)
+    notes: list[ConversationNote] = Field(default_factory=list, max_length=6)
+
+    @model_validator(mode="after")
+    def validate_sources(self):
+        previous = 0
+        for note in self.notes:
+            if not previous < note.source_position < note.assistant_position <= self.through_position:
+                raise ValueError("Summary notes must reference ordered older exchanges")
+            if note.assistant_position != note.source_position + 1:
+                raise ValueError("Summary excerpts must reference a single exchange")
+            previous = note.assistant_position
+        return self
+
+
 class SessionContext(StrictContractModel):
     version: Literal[1] = 1
     facts: dict[SessionField, SessionFact] = Field(default_factory=dict, max_length=7)
@@ -104,6 +129,7 @@ class SessionContext(StrictContractModel):
     last_stated_fields: list[SessionField] = Field(default_factory=list, max_length=7)
     uncertain_fields: list[SessionField] = Field(default_factory=list, max_length=7)
     pending_action: Literal["budget_status"] | None = None
+    older_summary: OlderConversationSummary | None = None
 
     @model_validator(mode="after")
     def validate_fact_values(self):
