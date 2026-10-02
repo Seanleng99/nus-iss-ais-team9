@@ -225,6 +225,7 @@ jobs:
           python -m pip install
           "cfn-lint>=1.53,<2"
           "pytest>=8.2,<9"
+          -e "apps/shared"
           -e "apps/ai-service"
       - name: Test deployment and operational scripts
         run: python -m pytest infra/scripts/tests
