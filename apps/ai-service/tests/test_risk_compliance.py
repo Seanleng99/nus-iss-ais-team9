@@ -260,7 +260,11 @@ def test_contextual_financial_findings_block_without_explicit_safe_flag(decision
     {"request_allowed": False},
 ])
 def test_semantic_safe_flag_does_not_override_other_model_vetoes(overrides):
-    gateway = _DecisionGateway(_education_decision(**overrides))
+    gateway = _DecisionGateway(_education_decision(
+        **overrides, policy_notes=["The draft or request fails the reviewed policy."],
+        block_categories=["prohibited_request" if overrides.get("request_allowed") is False
+                          else "unverifiable_claim"],
+    ))
     agent = _agent(gateway)
     request = CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk.")
     results = [AgentResult(
@@ -277,6 +281,73 @@ def test_semantic_safe_flag_does_not_override_other_model_vetoes(overrides):
 
     assert result.blocked is True
     assert result.data["financial_language_safe"] is True
+
+
+@pytest.mark.parametrize("corrected", ["allowed", "explained_block", "invalid"])
+def test_unexplained_education_block_gets_one_contract_correction(corrected):
+    class CorrectingGateway(_DecisionGateway):
+        def generate(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1 or corrected == "invalid":
+                return json.dumps(_education_decision(blocked=True))
+            if corrected == "explained_block":
+                return json.dumps(_education_decision(
+                    blocked=True, block_categories=["unverifiable_claim"],
+                    policy_notes=["The draft contains an unverified claim."],
+                ))
+            return json.dumps(_education_decision())
+
+    gateway = CorrectingGateway({})
+    request = CoachRequest(user_id="synthetic-review", session_id="s", message="Explain fixed deposits.")
+    results = [AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary="A bank deposit.")]
+    if corrected == "invalid":
+        with pytest.raises(ModelGatewayError, match="invalid structured response"):
+            _agent(gateway).validate(request, results, "A bank deposit.")
+    else:
+        result = _agent(gateway).validate(request, results, "A bank deposit.")
+        assert result.blocked == (corrected == "explained_block")
+        assert result.data["review_block_categories"] == (
+            ["unverifiable_claim"] if result.blocked else []
+        )
+    assert len(gateway.calls) == 2
+    assert "CORRECTION" in gateway.calls[1]["system_prompt"]
+    assert gateway.calls[0]["user_prompt"] == gateway.calls[1]["user_prompt"]
+
+
+def test_education_block_categories_are_logged_without_model_wording(caplog):
+    caplog.set_level("INFO", logger="service.ai.workflow")
+
+    class ExplainedBlockGateway(LocalFixtureModelGateway):
+        def generate(self, **kwargs):
+            if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
+                return json.dumps(_education_decision(
+                    blocked=True, block_categories=["unverifiable_claim"],
+                    policy_notes=["Private reviewer wording."],
+                ))
+            return super().generate(**kwargs)
+
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        gateway=ExplainedBlockGateway(), policy_retriever=LocalPolicyRetriever(),
+    ).handle(CoachRequest(user_id="synthetic-review", session_id="s", message="Explain bonds."))
+    assert response.blocked
+    event = next(e for e in response.audit["events"] if e["event_type"] == "compliance.completed")
+    assert event["details"]["review_block_categories"] == ["unverifiable_claim"]
+    assert event["details"]["policy_note_count"] == 1
+    assert "unverifiable_claim" in caplog.text and "Private reviewer wording." not in caplog.text
+
+
+@pytest.mark.parametrize("category", ["personal_advice", "return_guarantee", "privacy", "injection", "prohibited_request"])
+def test_hard_policy_review_cannot_mark_a_block_repairable(category):
+    from pydantic import ValidationError
+
+    from app.core.schemas import EducationComplianceDecision
+
+    with pytest.raises(ValidationError, match="can be repairable"):
+        EducationComplianceDecision.model_validate(_education_decision(
+            blocked=True, block_categories=[category], policy_notes=["Policy defect."],
+            repairable=True, missing_points=["Correct the defect."],
+        ))
 
 
 @pytest.mark.parametrize(("message", "draft"), [
@@ -344,7 +415,10 @@ def test_semantic_flag_must_be_a_real_boolean():
 
 
 def test_exact_boundary_question_is_identified_without_approving_the_draft():
-    gateway = _DecisionGateway(_education_decision(blocked=True))
+    gateway = _DecisionGateway(_education_decision(
+        blocked=True, block_categories=["unverifiable_claim"],
+        policy_notes=["The draft contains an unverified claim."],
+    ))
     results = [AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary="Education.", rationale=[], confidence=0.8)]
     result = _agent(gateway).validate(
         CoachRequest(user_id="u1", session_id="s1", message="Why can't you tell me which stock should I buy?"),

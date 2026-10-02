@@ -101,6 +101,7 @@ SAFE_WORKFLOW_DETAIL_KEYS = {
     "attempts",
     "blocked",
     "block_reasons",
+    "review_block_categories",
     "capabilities",
     "capability",
     "corpus_version",
@@ -444,7 +445,7 @@ class AgentOrchestrator:
         else:
             payload = {
                 "message": state["sanitized_message"],
-                "conversation_context": [item.model_dump() for item in request.conversation_context],
+                "conversation_context": [item.model_dump(exclude_defaults=True) for item in request.conversation_context],
                 "session_context": request.session_context.model_dump(exclude_none=True),
                 "follow_up": resolution.model_dump(exclude_none=True),
                 "requested_agents": None,
@@ -1529,6 +1530,13 @@ class AgentOrchestrator:
             < self.config.max_model_tokens_per_run
             and len(calls) + 4 <= self.config.max_model_calls_per_run
         )
+        follow_up = state.get("follow_up", FollowUpResolution())
+        # A model review cannot invent the missing subject. Recover a mistaken
+        # clarification only when deterministic resolution already supplies it.
+        clarification_repairable = (
+            follow_up.status == "resolved"
+            and follow_up.agent == AgentName.INVESTMENT_EDUCATION
+        )
         if (
             repair_fits
             and result.data.get("request_allowed") is not False
@@ -1538,7 +1546,10 @@ class AgentOrchestrator:
             and not cross_user_data_findings(state["sanitized_message"])
             and not state["guardrail_findings"]
             and not any(item.blocked for item in state["agent_results"])
-            and not any(item.data.get("needs_input") for item in state["agent_results"])
+            and (
+                not any(item.data.get("needs_input") for item in state["agent_results"])
+                or clarification_repairable
+            )
             and len(state["agent_results"]) == 1
             and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
             and result.data.get("missing_points")
@@ -1585,6 +1596,7 @@ class AgentOrchestrator:
                 details={
                     "blocked": result.blocked,
                     "block_reasons": result.data.get("block_reasons", []),
+                    "review_block_categories": result.data.get("review_block_categories", []),
                     "policy_note_count": len(result.policy_notes),
                     "policy_source_count": len(result.data.get("policy_sources", [])),
                     "policy_corpus_version": result.data.get("policy_corpus_version"),
@@ -1848,7 +1860,7 @@ class AgentOrchestrator:
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
                 "education_topics": state.get("education_topics", []),
                 "conversation_context": [
-                    item.model_dump() for item in state["request"].conversation_context
+                    item.model_dump(exclude_defaults=True) for item in state["request"].conversation_context
                 ],
                 "session_context": specialist_context(state["request"].session_context, agent),
                 "follow_up": specialist_follow_up(state.get("follow_up", FollowUpResolution()), agent),

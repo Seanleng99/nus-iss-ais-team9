@@ -940,11 +940,18 @@ class SQLAlchemyChatRepository:
         context = []
         for message in reversed(messages):
             content = message.content
+            answer_status = "available"
             if message.role == "assistant":
                 trace = message.orchestration_trace
                 if trace is None or trace.blocked:
                     content = "The previous answer is unavailable or was withheld. Ask for clarification."
-            context.append({"role": message.role, "content": content[:1500]})
+                    answer_status = "unavailable" if trace is None else "withheld"
+                elif any(item.get("data", {}).get("needs_input") for item in trace.agent_results):
+                    answer_status = "needs_input"
+            entry = {"role": message.role, "content": content[:1500]}
+            if answer_status != "available":
+                entry["answer_status"] = answer_status
+            context.append(entry)
         return True, messages[0].position if messages else 0, context
 
     @trace_method

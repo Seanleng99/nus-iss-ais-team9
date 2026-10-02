@@ -126,6 +126,51 @@ def test_ordinal_does_not_reach_back_past_latest_assistant_response():
     assert result.status == "ambiguous"
 
 
+@pytest.mark.parametrize("status", ["withheld", "unavailable", "needs_input"])
+@pytest.mark.parametrize("message", ["Explain the second option more simply.", "解释第二个选项"])
+def test_repeated_option_question_survives_unavailable_answers(status, message):
+    history = [
+        {"role": "user", "content": "Compare bonds and fixed deposits."},
+        {"role": "assistant", "content": "1. Bonds: loans.\n2. Fixed deposits: bank deposits."},
+    ]
+    for _ in range(2):
+        history.extend([
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": "Withheld or clarification.", "answer_status": status},
+        ])
+    gateway, retriever = RecordingGateway(), RecordingRetriever()
+    value = request(message, conversation_context=history)
+    resolution = resolve_follow_up(value)
+    assert resolution.education_topics == ["fixed deposits"] and resolution.source_index == 1
+    response = handle(value, gateway, retriever)
+    assert not response.blocked
+    assert response.audit["follow_up"]["status"] == "resolved"
+    assert retriever.queries == ["General investment education about fixed deposits"]
+    assert not response.agent_results[0].data.get("needs_input")
+
+
+@pytest.mark.parametrize("previous", [
+    "Explain my budget.", "Explain the first option.", "Buy the second option.",
+])
+@pytest.mark.parametrize("status", ["withheld", "unavailable", "needs_input"])
+def test_unavailable_turn_cannot_restore_options_across_a_different_question(previous, status):
+    result = resolve_follow_up(request("Explain the second option.", conversation_context=[
+        {"role": "assistant", "content": "1. Bonds.\n2. Fixed deposits."},
+        {"role": "user", "content": previous},
+        {"role": "assistant", "content": "Unavailable.", "answer_status": status},
+    ]))
+    assert result.status == "ambiguous"
+
+
+def test_plain_refusal_text_without_backend_status_is_not_skipped():
+    result = resolve_follow_up(request("Explain the second option.", conversation_context=[
+        {"role": "assistant", "content": "1. Bonds.\n2. Fixed deposits."},
+        {"role": "user", "content": "Explain the second option."},
+        {"role": "assistant", "content": "The previous answer is unavailable or was withheld. Ask for clarification."},
+    ]))
+    assert result.status == "ambiguous"
+
+
 def summary_context(*subjects):
     return {
         "older_summary": {
@@ -455,6 +500,54 @@ def test_ambiguous_reference_asks_one_question_without_education_retrieval_or_wr
     assert response.audit["follow_up"]["status"] == "ambiguous"
 
 
+@pytest.mark.parametrize("final_blocked", [False, True])
+def test_mistaken_clarification_with_resolved_subject_gets_one_reviewed_repair(monkeypatch, final_blocked):
+    from app.agents.investment_education import InvestmentEducationAgent
+    from app.core.schemas import NeedsInputInvocation
+
+    original_preflight = InvestmentEducationAgent._preflight
+    attempts = []
+
+    def mistaken_preflight(self, task, message):
+        attempts.append(task)
+        if len(attempts) == 1:
+            return NeedsInputInvocation(reason_code="MISSING_REQUIRED_INPUT", questions=["Which option?"])
+        return original_preflight(self, task, message)
+
+    monkeypatch.setattr(InvestmentEducationAgent, "_preflight", mistaken_preflight)
+
+    class Reviewer(RecordingGateway):
+        reviews = 0
+
+        def generate(self, **kwargs):
+            if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
+                self.calls.append(kwargs)
+                self.reviews += 1
+                blocked = self.reviews > 1 and final_blocked
+                return json.dumps({
+                    "blocked": blocked, "summary": "Draft reviewed.", "rationale": ["Scope checked."],
+                    "policy_notes": ["The draft contains an unverifiable claim."] if blocked else [],
+                    "block_categories": ["unverifiable_claim"] if blocked else [],
+                    "confidence": 0.9, "request_allowed": True, "complete": self.reviews > 1,
+                    "missing_points": ["Explain the selected concept instead of asking which option."] if self.reviews == 1 else [],
+                    "financial_language_safe": True,
+                })
+            return super().generate(**kwargs)
+
+    gateway, retriever = Reviewer(), RecordingRetriever()
+    response = handle(request("Explain the second option more simply.", conversation_context=[
+        {"role": "user", "content": "Compare bonds and fixed deposits."},
+        {"role": "assistant", "content": "1. Bonds.\n2. Fixed deposits."},
+    ]), gateway, retriever)
+    assert gateway.reviews == 2 and len(attempts) == 2
+    assert retriever.queries == ["General investment education about fixed deposits"]
+    assert response.blocked == final_blocked
+    assert response.audit["answer_status"] == ("refused" if final_blocked else "answered")
+    assert response.answer != "Which option?"
+    if final_blocked:
+        assert response.sources == [] and all(item.blocked for item in response.agent_results)
+
+
 @pytest.mark.parametrize("message,question", [
     ("Explain that more simply.", "Which goal, option or concept do you mean?"),
     ("解释第二个选项", "你指的是哪个目标、选项或概念？"),
@@ -467,7 +560,9 @@ def test_clarification_stays_concise_when_reviewer_marks_it_incomplete(message, 
                 self.calls.append(kwargs)
                 return json.dumps({
                     "blocked": blocked, "summary": "Review completed.",
-                    "rationale": ["The subject needs clarification."], "policy_notes": [], "confidence": 0.9,
+                    "rationale": ["The subject needs clarification."],
+                    "policy_notes": ["The draft needs qualification."] if blocked else [],
+                    "block_categories": ["factual_qualification"] if blocked else [], "confidence": 0.9,
                     "request_allowed": True, "complete": False,
                     "missing_points": ["Clarify the subject."], "repairable": True,
                     "financial_language_safe": True,

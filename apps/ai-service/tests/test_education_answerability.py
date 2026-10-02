@@ -260,7 +260,9 @@ def test_safe_repair_fits_observed_token_usage_without_repeating_the_draft():
                 raw = json.dumps({
                     'blocked': not complete, 'summary': 'Citation scope reviewed.',
                     'rationale': ['A source qualification needs correction.'],
-                    'policy_notes': [], 'confidence': 0.9, 'request_allowed': True,
+                    'policy_notes': [] if complete else ['The source qualification needs correction.'],
+                    'block_categories': [] if complete else ['factual_qualification'],
+                    'confidence': 0.9, 'request_allowed': True,
                     'complete': complete, 'repairable': not complete,
                     'missing_points': [] if complete else ['Preserve the source qualification.'],
                 })
@@ -324,7 +326,9 @@ def test_repairable_draft_must_pass_a_fresh_review_before_release(repair_outcome
                 blocked = self.reviews == 1 or repair_outcome == 'blocked'
                 return json.dumps({
                     'blocked': blocked, 'summary': 'Draft reviewed.',
-                    'rationale': ['Citation qualification checked.'], 'policy_notes': [],
+                    'rationale': ['Citation qualification checked.'],
+                    'policy_notes': ['The citation attribution needs correction.'] if blocked else [],
+                    'block_categories': ['citation_attribution'] if blocked else [],
                     'confidence': 0.9, 'request_allowed': True, 'complete': not blocked,
                     'repairable': self.reviews == 1,
                     'missing_points': ['Correct the citation attribution.'] if blocked else [],
@@ -426,8 +430,10 @@ def test_prohibited_intent_is_refused_even_when_model_draft_is_harmless():
                 return json.dumps({
                     'blocked': False, 'request_allowed': False,
                     'summary': 'The draft is safe; the requested action is prohibited.',
-                    'rationale': ['Do not perform the action.'], 'policy_notes': [],
-                    'confidence': 0.99, 'complete': False, 'repairable': True,
+                    'rationale': ['Do not perform the action.'],
+                    'policy_notes': ['The request asks for market manipulation.'],
+                    'block_categories': ['prohibited_request'],
+                    'confidence': 0.99, 'complete': False, 'repairable': False,
                     'missing_points': ['Clearly refuse the action.'],
                 })
             return super().generate(**kwargs)

@@ -81,6 +81,7 @@ class UserFinancialSnapshot(BaseModel):
 class ConversationMessage(StrictContractModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=1500)
+    answer_status: Literal["available", "withheld", "unavailable", "needs_input"] = "available"
 
 
 SessionField = Literal[
@@ -439,6 +440,28 @@ class EducationComplianceDecision(ComplianceDecision):
     missing_points: list[str] = Field(max_length=6)
     repairable: bool = False
     financial_language_safe: bool = Field(default=False, strict=True)
+    block_categories: list[Literal[
+        "prohibited_request", "personal_advice", "return_guarantee", "privacy",
+        "injection", "citation_attribution", "factual_qualification", "unverifiable_claim",
+    ]] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_block_explanation(self):
+        veto = self.blocked or not self.request_allowed
+        if veto and (not self.block_categories or not any(note.strip() for note in self.policy_notes)):
+            raise ValueError("A blocking verdict requires block_categories and a brief policy note")
+        if not veto and self.block_categories:
+            raise ValueError("An allowed verdict must have empty block_categories")
+        if not self.request_allowed and "prohibited_request" not in self.block_categories:
+            raise ValueError("A prohibited request requires the prohibited_request category")
+        if self.repairable and (
+            not self.request_allowed or not self.missing_points
+            or (self.blocked and not set(self.block_categories) <= {
+                "citation_attribution", "factual_qualification",
+            })
+        ):
+            raise ValueError("Only an allowed draft with correction requirements can be repairable")
+        return self
 
     @field_validator("missing_points")
     @classmethod

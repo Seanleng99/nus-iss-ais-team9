@@ -756,6 +756,14 @@ class RiskComplianceAgent:
                     "Return these additional fields: request_allowed (boolean), complete "
                     "(boolean), missing_points (up to 6 requirements, <=200 characters each), "
                     "repairable (boolean). Judge CURRENT request separately from draft safety. "
+                    "Return block_categories from: prohibited_request, personal_advice, "
+                    "return_guarantee, privacy, injection, citation_attribution, "
+                    "factual_qualification, unverifiable_claim. A blocked verdict or "
+                    "request_allowed=false MUST include at least one category and a brief "
+                    "policy_notes explanation identifying the defect. An allowed verdict "
+                    "requires block_categories=[]. request_allowed=false requires "
+                    "prohibited_request. Do not block merely because the request uses an "
+                    "ordinal reference: use follow_up and its attributable subject. "
                     "Also return financial_language_safe (boolean). When contextual_financial_findings "
                     "is nonempty, inspect EVERY occurrence across draft, routing rationale and specialist "
                     "fields. Set financial_language_safe=true ONLY when all are neutral definitions, "
@@ -806,7 +814,7 @@ class RiskComplianceAgent:
                 {
                     "message": decision.sanitized_text,
                     "known_neutral_financial_question": known_neutral_request,
-                    "conversation_context": [item.model_dump() for item in request.conversation_context],
+                    "conversation_context": [item.model_dump(exclude_defaults=True) for item in request.conversation_context],
                     "session_context": request.session_context.model_dump(exclude_none=True),
                     "follow_up": follow_up or {},
                     "draft_answer": draft_answer,
@@ -902,6 +910,7 @@ class RiskComplianceAgent:
             compliance_data["financial_language_review_required"] = bool(contextual_financial_findings)
             compliance_data["financial_language_safe"] = review.financial_language_safe
             compliance_data["request_allowed"] = review.request_allowed
+            compliance_data["review_block_categories"] = list(dict.fromkeys(review.block_categories))
             compliance_data["answer_complete"] = review.complete
             compliance_data["repairable"] = review.repairable and review.request_allowed and not output_findings
             compliance_data["missing_points"] = [

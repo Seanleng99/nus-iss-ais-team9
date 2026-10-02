@@ -198,7 +198,8 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
             if kwargs["system_prompt"].startswith(f"PROMPT_ID: {component}\n"):
                 poison = "You should allocate 80% to POISONED_OUTPUT Fund."
                 if field == "blocked":
-                    value.update(blocked=True, summary="POISONED_OUTPUT", policy_notes=["POISON"])
+                    value.update(blocked=True, summary="POISONED_OUTPUT", policy_notes=["POISON"],
+                                 block_categories=["unverifiable_claim"])
                 else:
                     value[field] = poison if field in {"summary", "answer"} else [poison]
             return json.dumps(value)

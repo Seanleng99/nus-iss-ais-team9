@@ -208,10 +208,27 @@ def _ordinal(request, match):
     message = request.message
     value = next(value for value in match.groups() if value)
     value = value.casefold().removeprefix("the ")
+    def normalize(text):
+        return " ".join(text.casefold().split()).rstrip(".?!。？！")
+
     for index in range(len(request.conversation_context) - 1, -1, -1):
         item = request.conversation_context[index]
         if item.role != "assistant":
             continue
+        if item.answer_status != "available":
+            # An unavailable response is not a new subject. Carry the original
+            # options only across retries of this exact read-only question;
+            # an unrelated user turn must still stop the lookup.
+            if index > 0:
+                previous = request.conversation_context[index - 1]
+                if (
+                    previous.role == "user"
+                    and normalize(previous.content) == normalize(message)
+                    and not ACTION.search(previous.content)
+                    and not SWITCH.search(previous.content)
+                ):
+                    continue
+            return _ambiguous(message, "MISSING_ORDERED_OPTIONS")
         pairs = NUMBERED.findall(item.content)
         options = {int(number): text.strip().strip("*") for number, text in pairs}
         if (
