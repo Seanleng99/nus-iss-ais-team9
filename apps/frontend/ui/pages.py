@@ -8,6 +8,7 @@ from urllib.parse import quote
 import httpx
 import pandas as pd
 import streamlit as st
+from coach_i18n import translate
 
 from client import build_request
 from ui.budget_methods import METHODS
@@ -173,10 +174,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
             )
             if explanation.get("blocked"):
                 st.warning(
-                    "此回复未通过安全审查，因此已隐藏助手生成的指导内容。"
-                    if explanation.get("response_language") == "Chinese"
-                    else "The safety review blocked this response, so the assistant-generated "
-                    "guidance was withheld."
+                    translate('safety.ui_withheld_notice', explanation.get('response_language'))
                 )
                 trace_id = explanation.get("trace_id")
                 prompt_version = explanation.get("prompt_set_version")
@@ -1085,6 +1083,11 @@ def coach_page() -> None:
     if "coach_active_session_id" not in st.session_state:
         st.session_state.coach_active_session_id = sessions[0]["id"] if sessions else None
     active_session_id = st.session_state.get("coach_active_session_id")
+    response_locale = st.selectbox(
+        "Coach response language", [None, "en", "zh-Hans"],
+        format_func=lambda value: {None: "Automatic / profile preference", "en": "English", "zh-Hans": "Chinese (Simplified)"}[value],
+        key=f"coach-response-locale-{user_id}",
+    )
     if active_session_id not in session_by_id:
         active_session_id = None
         st.session_state.coach_active_session_id = None
@@ -1268,7 +1271,7 @@ def coach_page() -> None:
             ), st.spinner("Thinking"):
                 response = backend_call(
                     lambda: client.ask_coach(
-                        {**build_request(user_id, pending_question, active_session_id), "budget_period_start": get_period_start().isoformat()}
+                        {**build_request(user_id, pending_question, active_session_id, response_locale=response_locale), "budget_period_start": get_period_start().isoformat()}
                     )
                 )
             if response:

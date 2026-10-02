@@ -31,7 +31,8 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
 - `docs/policy-rag-governance.md`: separate policy-corpus lifecycle, runtime enforcement, and deployment gates.
 - `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
-- [Investment Agent 调用链日志](docs/investment-call-logging.md): login, method calls, RAG/model execution, response packaging, CloudWatch queries, and explicitly marked synthetic Q&A logs.
+- [Investment Agent call-chain logging](docs/investment-call-logging.md): login, method calls, RAG/model execution, response packaging, CloudWatch queries, and explicitly marked synthetic Q&A logs.
+- [Chinese language support](docs/language-support.md): shared locale selection, fixed-message catalogs, supported scope, and the project-wide character inventory.
 - `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
 - `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
 - `docs/container-security.md`: exact-version image-scan exceptions, current risk review, and expiry controls.
@@ -120,16 +121,16 @@ To run the services separately:
 
 ```powershell
 cd C:\ai-financial-wellness-coach\apps\ai-service
-pip install -e ".[dev]"
+pip install -e "../shared" -e ".[dev]"
 $env:MODEL_PROVIDER="local_fixture" # use openai plus OPENAI_API_KEY for a live synthetic test
 uvicorn app.main:app --reload --port 8001
 
 cd C:\ai-financial-wellness-coach\apps\backend
-pip install -e ".[dev]"
+pip install -e "../shared" -e ".[dev]"
 uvicorn app.main:app --reload --port 8080
 
 cd C:\ai-financial-wellness-coach\apps\frontend
-pip install -e ".[dev]"
+pip install -e "../shared" -e ".[dev]"
 streamlit run app.py --server.port 8501
 ```
 

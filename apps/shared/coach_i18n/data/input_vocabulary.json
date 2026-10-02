@@ -1,0 +1,55 @@
+{
+  "education_intents": [
+    [
+      [
+        "compare",
+        "difference",
+        "比较",
+        "区别"
+      ],
+      "comparison"
+    ],
+    [
+      [
+        "why",
+        "为什么",
+        "为何"
+      ],
+      "reason"
+    ],
+    [
+      [
+        "how",
+        "如何",
+        "怎样"
+      ],
+      "mechanism"
+    ]
+  ],
+  "education_example_terms": [
+    "example",
+    "for example",
+    "举例",
+    "例子",
+    "示例"
+  ],
+  "ordinal_values": {
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "1st": 1,
+    "2nd": 2,
+    "3rd": 3,
+    "4th": 4,
+    "former": 1,
+    "一": 1,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4
+  }
+}

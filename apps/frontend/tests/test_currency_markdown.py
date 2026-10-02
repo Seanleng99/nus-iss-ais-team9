@@ -1,4 +1,5 @@
 import pytest
+from language_fixtures import language_case
 
 from ui.currency_markdown import currency_safe_markdown
 
@@ -9,7 +10,14 @@ from ui.currency_markdown import currency_safe_markdown
         ("A S$2 snack becomes S$2.10, a 5% rise.", r"A S\$2 snack becomes S\$2.10, a 5% rise."),
         ("$100 grows to $104 and then $108.16.", r"\$100 grows to \$104 and then \$108.16."),
         ("$2 + $2.10", r"\$2 + \$2.10"),
-        ("从 $100 到 $200。", r"从 \$100 到 \$200。"),
+        (
+            language_case(
+                "currency_markdown.test_currency_is_literal_without_breaking_math_code_or_links"
+            ),
+            language_case(
+                "currency_markdown.test_currency_is_literal_without_breaking_math_code_or_links_2"
+            ),
+        ),
         ("Refund $-20; balance $ 100.", r"Refund \$-20; balance \$ 100."),
         (r"Already escaped \$100 and \$200.", r"Already escaped \$100 and \$200."),
         ("A $2 snack, `print('$100')`, now $3.", r"A \$2 snack, `print('$100')`, now \$3."),

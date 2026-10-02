@@ -2,7 +2,9 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from app.agents.education_access import education_gap_message, education_response_language
+from coach_i18n import task_language, translate
+
+from app.agents.education_access import education_gap_message
 from app.core.citations import citation_contract, compact_evidence, validate_citations
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
@@ -75,6 +77,7 @@ class BaseAgent(ABC):
             return preflight
 
         grounding = self._ground(task, decision.sanitized_text)
+        grounding["response_language"] = task_language(task)
         log_event(
             "agent.grounding.ready", agent=self.name.value,
             evidence_status=grounding.get("evidence_status"),
@@ -243,9 +246,7 @@ class BaseAgent(ABC):
                 "Keep rationale to one brief assessment sentence "
                 "without additional financial facts."
             )
-        response_language = grounding.get("response_language") or education_response_language(
-            decision.sanitized_text
-        )
+        response_language = task_language(task)
         if response_language in {"English", "Chinese"}:
             system_prompt += (
                 "\nRequired output language for THIS request: "
@@ -454,9 +455,7 @@ class BaseAgent(ABC):
             agent=self.name,
             summary=education_gap_message(grounding),
             rationale=[
-                "未检索到相关的经批准资料。"
-                if grounding.get("response_language") == "Chinese"
-                else "No relevant approved source was retrieved."
+                translate('education.no_approved_source', grounding.get('response_language'))
             ],
             confidence=1.0,
             data=grounding,

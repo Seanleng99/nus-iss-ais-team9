@@ -1,14 +1,14 @@
 import json
 import re
 
+from coach_i18n import input_pattern, task_language, topic_label, translate
+
 from app.agents.base import BaseAgent
 from app.agents.education_access import (
-    CHINESE_GAP_LABELS,
     apply_education_scope,
     build_minimal_education_query,
     education_gap_message,
     education_model_question,
-    education_response_language,
     ordered_education_topics,
     unsupported_education_topics,
 )
@@ -51,7 +51,7 @@ class InvestmentEducationAgent(BaseAgent):
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         validate_tool_permission(self.name, "education_retriever")
-        response_language = education_response_language(sanitized_message)
+        response_language = task_language(task)
         unsupported_topics = unsupported_education_topics(sanitized_message)
         try:
             query, query_topics = build_minimal_education_query(
@@ -95,9 +95,13 @@ class InvestmentEducationAgent(BaseAgent):
         )
         apply_education_scope(grounding, sanitized_message, query_topics)
         grounding["excluded_topics"] = unsupported_topics
-        grounding["table_requested"] = bool(re.search(
-            r"\btable\b|表格|对照表|比較表|比较表", sanitized_message, re.IGNORECASE,
-        ))
+        grounding["table_requested"] = bool(
+            re.search(
+                input_pattern("ai.agents.investment_education.grounding_table_requested"),
+                sanitized_message,
+                re.IGNORECASE,
+            )
+        )
         if self.narrative_type is HybridEducationNarrative:
             grounding["ordered_topics"] = ordered_education_topics(sanitized_message, query_topics)
         if "source verification" in query_topics:
@@ -129,11 +133,20 @@ class InvestmentEducationAgent(BaseAgent):
                 if (
                     [option.topic for option in options] != expected
                     or not expected
-                    or narrative.summary or narrative.general_knowledge or narrative.source_ids
-                    or any(not (option.sourced_text.strip() or option.model_text.strip())
-                           or bool(option.sourced_text.strip()) != bool(option.source_ids)
-                           or re.search(r"^\s*(?:[-*]\s*)?\d+[.)、]\s", text, re.MULTILINE)
-                           for option in options for text in (option.sourced_text, option.model_text))
+                    or narrative.summary
+                    or narrative.general_knowledge
+                    or narrative.source_ids
+                    or any(
+                        not (option.sourced_text.strip() or option.model_text.strip())
+                        or bool(option.sourced_text.strip()) != bool(option.source_ids)
+                        or re.search(
+                            input_pattern("ai.agents.investment_education.numbered_answer"),
+                            text,
+                            re.MULTILINE,
+                        )
+                        for option in options
+                        for text in (option.sourced_text, option.model_text)
+                    )
                 ):
                     raise ModelGatewayError(
                         "Numbered education must preserve the requested options and provenance.",
@@ -207,10 +220,7 @@ class InvestmentEducationAgent(BaseAgent):
             for section in narrative.general_knowledge:
                 validate_citations(section.text, [])
                 if re.search(
-                    r"\b(?:the|supplied|retrieved|provided|approved)\s+"
-                    r"(?:(?:retrieved|education|approved|supplied)\s+)?"
-                    r"(?:evidence|sources?|passages?|documents?)\b|"
-                    r"(?:检索资料|知识库|资料)(?:显示|说明|描述|指出)",
+                    input_pattern("ai.agents.investment_education.attributed_evidence_claim"),
                     section.text, re.IGNORECASE,
                 ):
                     raise ModelGatewayError(
@@ -237,22 +247,19 @@ class InvestmentEducationAgent(BaseAgent):
             narrative.summary += " " + " ".join(
                 f"[source:{source_id}]" for source_id in dict.fromkeys(narrative.source_ids)
             )
-        chinese = grounding.get("response_language") == "Chinese"
         if isinstance(narrative, HybridEducationNarrative) and narrative.ordered_options:
             parts = []
             for index, option in enumerate(narrative.ordered_options, 1):
-                label = CHINESE_GAP_LABELS.get(option.topic, option.topic) if chinese else option.topic.capitalize()
+                label = topic_label(option.topic, grounding.get("response_language"), capitalize=True)
                 parts.append(f"{index}. {label}")
                 if option.sourced_text:
                     parts.append(
-                        ("RAG 知识库（已保存资料；未进行实时网页搜索）：" if chinese else
-                         "RAG knowledge base (saved documents; no live web search):")
+                        (translate('education.rag_heading', grounding.get("response_language")))
                         + "\n" + option.sourced_text
                     )
                 if option.model_text:
                     parts.append(
-                        ("AI 模型知识补充（未进行实时网页搜索；未经本次检索资料验证）：" if chinese else
-                         "AI model knowledge — no live web search (not verified against retrieved sources):")
+                        (translate('education.model_knowledge_heading', grounding.get("response_language")))
                         + "\n" + option.model_text
                     )
             if narrative.uncertainties:
@@ -262,8 +269,7 @@ class InvestmentEducationAgent(BaseAgent):
         sourced_summary = narrative.summary
         if sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
             sourced_summary = (
-                "RAG 知识库（已保存资料；未进行实时网页搜索）：\n\n" if chinese else
-                "RAG knowledge base (saved documents; no live web search):\n\n"
+                translate('education.rag_section', grounding.get("response_language"))
             ) + sourced_summary
         if not isinstance(narrative, HybridEducationNarrative) or not narrative.general_knowledge:
             # The explicit limitation/clarifying question belongs in the answer,
@@ -281,14 +287,13 @@ class InvestmentEducationAgent(BaseAgent):
             if grounding.get("table_requested") and not text.lstrip().startswith("|"):
                 # Preserve source separation while keeping the requested table
                 # format for stable concepts supplied only by the model.
-                headings = "概念 | 说明" if chinese else "Concept | Explanation"
+                headings = translate('education.table_columns', grounding.get("response_language"))
                 explanation = " ".join(text.splitlines()).replace("|", "\\|")
-                label = CHINESE_GAP_LABELS.get(section.topic, "一般投资概念") if chinese else section.topic
+                label = topic_label(section.topic, grounding.get("response_language"))
                 text = f"| {headings} |\n|---|---|\n| {label} | {explanation} |"
             sections.append(text if text.lstrip().startswith("|") else "- " + text)
         parts.append(
-            ("AI 模型知识补充（未进行实时网页搜索；未经本次检索资料验证）：\n\n" if chinese else
-             "AI model knowledge — no live web search (not verified against retrieved sources):\n\n")
+            (translate('education.model_knowledge_section', grounding.get("response_language")))
             + "\n\n".join(sections)
         )
         if narrative.uncertainties:

@@ -10,7 +10,8 @@ COPY apps/ai-service/app ./app
 COPY apps/ai-service/prompts ./prompts
 COPY knowledge/investment_education ./knowledge/investment_education
 COPY knowledge/policy_controls ./knowledge/policy_controls
-RUN pip install --no-cache-dir .
+COPY apps/shared ./shared
+RUN pip install --no-cache-dir ./shared .
 # The service does not invoke Perl; remove it from the runtime attack surface.
 RUN apt-get update && \
     apt-get upgrade -y && \

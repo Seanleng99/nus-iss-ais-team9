@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.core.config import Settings
 from app.core.schemas import AgentName, CoachRequest
@@ -32,10 +33,15 @@ def orchestrator(gateway):
     )
 
 
-@pytest.mark.parametrize("message", [
-    "什么是分散投资？请用中文解释。",
-    "Explain diversification and review my spending.",
-])
+@pytest.mark.parametrize(
+    "message",
+    [
+        language_case(
+            "education_routing_coverage.test_education_topic_cannot_be_routed_only_to_spending"
+        ),
+        "Explain diversification and review my spending.",
+    ],
+)
 def test_education_topic_cannot_be_routed_only_to_spending(message):
     gateway = RouterGateway(["spending"])
     response = orchestrator(gateway).handle(CoachRequest(

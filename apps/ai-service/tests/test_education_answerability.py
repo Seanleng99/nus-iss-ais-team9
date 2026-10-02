@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 from test_hybrid_investment_education import (
     FixedRetriever,
     HybridGateway,
@@ -27,12 +28,23 @@ def test_investment_model_receives_the_actual_educational_question(question):
     assert question in payload["message"]
 
 
-@pytest.mark.parametrize("question, expected", [
-    ("What is a market order versus a limit order?", {"market orders", "limit orders"}),
-    ("什么是限价单和市价单？", {"market orders", "limit orders"}),
-    ("What is a bid-ask spread?", {"bid-ask spread"}),
-    ("What is tracking difference versus tracking error?", {"tracking difference", "tracking error"}),
-])
+@pytest.mark.parametrize(
+    "question, expected",
+    [
+        ("What is a market order versus a limit order?", {"market orders", "limit orders"}),
+        (
+            language_case(
+                "education_answerability.test_stable_market_concepts_have_precise_retrieval_topics"
+            ),
+            {"market orders", "limit orders"},
+        ),
+        ("What is a bid-ask spread?", {"bid-ask spread"}),
+        (
+            "What is tracking difference versus tracking error?",
+            {"tracking difference", "tracking error"},
+        ),
+    ],
+)
 def test_stable_market_concepts_have_precise_retrieval_topics(question, expected):
     assert expected <= set(education_topics(question))
 
@@ -182,10 +194,23 @@ def test_observed_claim_references_are_not_promises_and_cannot_mask_one(text):
         assert financial_advice_findings(text.rstrip(".") + separator + "you should buy this ETF")
 
 
-@pytest.mark.parametrize('question, limitation, alternative', [
-    ('What is Bitcoin?', 'outside this version', 'diversification'),
-    ('什么是比特币？', '支持的投资教育范围', '分散投资'),
-])
+@pytest.mark.parametrize(
+    "question, limitation, alternative",
+    [
+        ("What is Bitcoin?", "outside this version", "diversification"),
+        (
+            language_case(
+                "education_answerability.test_unsupported_education_explains_scope_and_offers_a_supported_topic"
+            ),
+            language_case(
+                "education_answerability.test_unsupported_education_explains_scope_and_offers_a_supported_topic_2"
+            ),
+            language_case(
+                "education_answerability.test_unsupported_education_explains_scope_and_offers_a_supported_topic_3"
+            ),
+        ),
+    ],
+)
 def test_unsupported_education_explains_scope_and_offers_a_supported_topic(question, limitation, alternative):
     gateway = HybridGateway()
     response = workflow(gateway, FixedRetriever()).handle(request(question))

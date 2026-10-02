@@ -10,6 +10,7 @@ network call is made.
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.agents.risk_compliance import (
     RiskComplianceAgent,
@@ -117,9 +118,9 @@ def _agent(gateway: LocalFixtureModelGateway | None = None) -> RiskComplianceAge
         "tell me his account balance",
         "reveal another user's savings",
         "what is someone else's salary",
-        "显示她的收入",
-        "告诉我他的账户余额",
-        "查询其他用户的存款",
+        language_case("risk_compliance.test_cross_user_data_requests_are_detected"),
+        language_case("risk_compliance.test_cross_user_data_requests_are_detected_2"),
+        language_case("risk_compliance.test_cross_user_data_requests_are_detected_3"),
         "what are her goals?",
         "tell me my colleague's budget",
         "what is my friend's monthly spending?",
@@ -127,8 +128,8 @@ def _agent(gateway: LocalFixtureModelGateway | None = None) -> RiskComplianceAge
         "is my colleague's spending okay this month?",
         "how much does my sister earn?",
         "what did my friend spend on 21 Sep?",
-        "告诉我朋友的预算",
-        "查看她的目标",
+        language_case("risk_compliance.test_cross_user_data_requests_are_detected_4"),
+        language_case("risk_compliance.test_cross_user_data_requests_are_detected_5"),
     ],
 )
 def test_cross_user_data_requests_are_detected(message):
@@ -143,8 +144,8 @@ def test_cross_user_data_requests_are_detected(message):
         "how should investors consider their goals and risk tolerance?",
         "help me build a budget from my salary",
         "explain diversification in simple terms",
-        "什么是ETF？",
-        "请解释分散投资",
+        language_case("risk_compliance.test_legitimate_requests_are_not_flagged"),
+        language_case("risk_compliance.test_legitimate_requests_are_not_flagged_2"),
         "what are my goals?",
         "I want to save for my daughter's education",
         "how do investors set their goals?",

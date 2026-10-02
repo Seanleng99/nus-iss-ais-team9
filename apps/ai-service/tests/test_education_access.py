@@ -1,4 +1,5 @@
 import pytest
+from language_fixtures import language_case
 
 from app.agents.education_access import (
     CANONICAL_EDUCATION_TOPICS,
@@ -9,8 +10,12 @@ from app.agents.education_access import (
 
 
 def test_acronyms_match_when_adjacent_to_chinese_text() -> None:
-    assert education_topics("请解释ETF的风险") == ["exchange-traded funds"]
-    assert education_topics("请解释REITs") == ["real estate investment trusts"]
+    assert education_topics(
+        language_case("education_access.test_acronyms_match_when_adjacent_to_chinese_text")
+    ) == ["exchange-traded funds"]
+    assert education_topics(
+        language_case("education_access.test_acronyms_match_when_adjacent_to_chinese_text_2")
+    ) == ["real estate investment trusts"]
 
 
 def test_acronyms_match_with_punctuation_and_case() -> None:
@@ -26,8 +31,7 @@ def test_acronyms_do_not_match_inside_longer_ascii_words() -> None:
 
 def test_new_allowlisted_phrases_use_canonical_topics() -> None:
     assert education_topics(
-        "Explain DCA, 定投, T-bills, 国库券, SSBs, 新加坡储蓄债券, "
-        "zero-coupon bonds, 零息债券, bond duration, and 债券久期."
+        language_case("education_access.test_new_allowlisted_phrases_use_canonical_topics")
     ) == [
         "zero-coupon bonds",
         "bond duration",
@@ -44,7 +48,7 @@ def test_unsupported_tax_concepts_remain_unallowlisted() -> None:
 
 def test_minimal_query_contains_topics_without_personal_data() -> None:
     query, topics = build_minimal_education_query(
-        "I earn SGD 9,876 and my email is learner@example.com. Explain ETF的风险。"
+        language_case("education_access.query_topics")
     )
 
     assert topics == ["exchange-traded funds"]
@@ -87,27 +91,57 @@ def test_unsupported_or_unrecognized_question_does_not_use_generic_fallback(
     assert education_topics(message) == []
 
 
-@pytest.mark.parametrize(("message", "topic"), [
-    ("I’m completely new to investing. Where should I start?", "investment basics"),
-    ("Why invest instead of leaving all my money in savings?", "saving vs investing"),
-    ("Could you show how interest earned on interest works?", "compound interest"),
-    ("How might rising prices erode what my cash can buy?", "inflation"),
-    ("What should I check before putting spare cash into investments?", "investment readiness"),
-    ("How should my investment choices change with my goal date?", "investment time horizon"),
-    ("How do I compare an index-tracking fund with a manager-picked fund?", "index funds"),
-    ("My holdings fell sharply; what factors should I review?", "investment drawdowns"),
-    ("Someone promises guaranteed monthly gains. How can I verify the offer?", "investment scams"),
-    ("Where can I independently confirm this financial explanation is current?", "source verification"),
-    ("What do exchange-rate movements mean for overseas holdings?", "currency risk"),
-    ("How do fixed-term bank deposits compare with bonds?", "fixed deposits"),
-    ("收入不稳定时，怎样判断是否有能力投资？", "irregular income investment readiness"),
-    ("信用卡还有欠款，投资前需要考虑什么？", "debt and investment readiness"),
-    ("定期存款和投资有什么不同？", "fixed deposits"),
-    ("指数基金和主动管理基金有什么区别？", "index funds"),
-    ("投资下跌后，我应该先评估哪些因素？", "investment drawdowns"),
-    ("如何核实投资说明的来源和更新时间？", "source verification"),
-    ("What reliable sources can I use to check your explanation, and how up to date are they?", "source verification"),
-])
+@pytest.mark.parametrize(
+    ("message", "topic"),
+    [
+        ("I’m completely new to investing. Where should I start?", "investment basics"),
+        ("Why invest instead of leaving all my money in savings?", "saving vs investing"),
+        ("Could you show how interest earned on interest works?", "compound interest"),
+        ("How might rising prices erode what my cash can buy?", "inflation"),
+        ("What should I check before putting spare cash into investments?", "investment readiness"),
+        ("How should my investment choices change with my goal date?", "investment time horizon"),
+        ("How do I compare an index-tracking fund with a manager-picked fund?", "index funds"),
+        ("My holdings fell sharply; what factors should I review?", "investment drawdowns"),
+        (
+            "Someone promises guaranteed monthly gains. How can I verify the offer?",
+            "investment scams",
+        ),
+        (
+            "Where can I independently confirm this financial explanation is current?",
+            "source verification",
+        ),
+        ("What do exchange-rate movements mean for overseas holdings?", "currency risk"),
+        ("How do fixed-term bank deposits compare with bonds?", "fixed deposits"),
+        (
+            language_case("education_access.test_beginner_paraphrases_map_to_canonical_topics"),
+            "irregular income investment readiness",
+        ),
+        (
+            language_case("education_access.test_beginner_paraphrases_map_to_canonical_topics_2"),
+            "debt and investment readiness",
+        ),
+        (
+            language_case("education_access.test_beginner_paraphrases_map_to_canonical_topics_3"),
+            "fixed deposits",
+        ),
+        (
+            language_case("education_access.test_beginner_paraphrases_map_to_canonical_topics_4"),
+            "index funds",
+        ),
+        (
+            language_case("education_access.test_beginner_paraphrases_map_to_canonical_topics_5"),
+            "investment drawdowns",
+        ),
+        (
+            language_case("education_access.test_beginner_paraphrases_map_to_canonical_topics_6"),
+            "source verification",
+        ),
+        (
+            "What reliable sources can I use to check your explanation, and how up to date are they?",
+            "source verification",
+        ),
+    ],
+)
 def test_beginner_paraphrases_map_to_canonical_topics(message: str, topic: str) -> None:
     assert topic in education_topics(message)
 

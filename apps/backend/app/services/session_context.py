@@ -9,6 +9,8 @@ from copy import deepcopy
 from datetime import date
 from decimal import Decimal
 
+from coach_i18n import input_pattern
+
 from app.domain.schemas import CoachResponse
 from app.services.conversation_summary import roll_summary
 
@@ -16,38 +18,53 @@ MONEY_FIELDS = {"monthly_income", "monthly_expenses", "goal_target_amount", "goa
 FIELDS = MONEY_FIELDS | {"goal_name", "goal_target_months", "budget_period_start"}
 NUMBER = r"(?:\d{1,9}|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?"
 MONEY = rf"(?:SGD\s*|S?\$\s*)?(?P<value>{NUMBER})(?:\s*SGD)?"
-SUFFIX = r"(?:\s*(?:per month|a month|monthly|/month|每月))?"
+SUFFIX = input_pattern("backend.services.session_context.suffix")
 PREFIX = r"(?:(?:actually|correction|sorry)[, :]*\s*)?"
 LABELS = {
-    "monthly_income": r"(?:(?:my\s+)?(?:monthly |take.home )?(?:income|salary)|I earn|我的(?:每月|月)?(?:收入|工资|薪水))",
-    "monthly_expenses": r"(?:(?:my\s+)?(?:monthly |necessary monthly )?(?:expenses|spending)|我的(?:每月|月)?(?:支出|开销))",
-    "goal_target_amount": r"(?:(?:my\s+)?(?:goal )?target(?: amount)?|目标金额)",
-    "goal_current_amount": r"(?:(?:my\s+)?(?:current savings|currently saved|saved amount)|I have saved|已存金额)",
+    "monthly_income": input_pattern("backend.services.session_context.monthly_income_label"),
+    "monthly_expenses": input_pattern("backend.services.session_context.monthly_expenses_label"),
+    "goal_target_amount": input_pattern(
+        "backend.services.session_context.goal_target_amount_label"
+    ),
+    "goal_current_amount": input_pattern(
+        "backend.services.session_context.goal_current_amount_label"
+    ),
 }
-SEPARATOR = r"\s*(?:is|are|:|=|为|是)?\s*"
+SEPARATOR = input_pattern("backend.services.session_context.separator")
 PATTERNS = {
-    key: re.compile(rf"^{PREFIX}{label}{SEPARATOR}{MONEY}{SUFFIX}[.!。]*$", re.IGNORECASE)
+    key: re.compile(
+        input_pattern(
+            "backend.services.session_context.money_statement",
+            PREFIX=PREFIX,
+            label=label,
+            SEPARATOR=SEPARATOR,
+            MONEY=MONEY,
+            SUFFIX=SUFFIX,
+        ),
+        re.IGNORECASE,
+    )
     for key, label in LABELS.items()
 }
 PATTERNS["goal_target_months"] = re.compile(
-    rf"^{PREFIX}(?:(?:my\s+)?(?:goal )?(?:duration|time horizon|target duration)|期限)"
-    rf"{SEPARATOR}(?P<value>\d{{1,3}})\s*(?:months?|个月)[.!。]*$",
+    input_pattern(
+        "backend.services.session_context.goal_target_months", PREFIX=PREFIX, SEPARATOR=SEPARATOR
+    ),
     re.IGNORECASE,
 )
 PATTERNS["goal_name"] = re.compile(
-    rf"^{PREFIX}(?:(?:my\s+)?goal(?: name)?|目标名称){SEPARATOR}"
-    r"(?P<value>[\w\u4e00-\u9fff][\w\u4e00-\u9fff -]{0,119})[.!。]*$",
+    input_pattern("backend.services.session_context.goal_name", PREFIX=PREFIX, SEPARATOR=SEPARATOR),
     re.IGNORECASE,
 )
 FOREIGN_CURRENCY = re.compile(
     r"(?<![a-z])(?:USD|EUR|GBP|MYR|RM|AUD|HKD|JPY|CNY|RMB|US\$)(?![a-z])|[€£]", re.IGNORECASE
 )
 UNSAFE = re.compile(
-    r"ignore.{0,25}instructions|reveal.{0,25}prompt|bypass.{0,25}(?:policy|safety)|"
-    r"<\s*/?(?:system|developer)|忽略.{0,20}指令|泄露.{0,20}提示|[STFGM]\d{7}[A-Z]",
+    input_pattern("backend.services.session_context.unsafe"),
     re.IGNORECASE,
 )
-BARE_MONEY = re.compile(rf"^{MONEY}[.!。]*$", re.IGNORECASE)
+BARE_MONEY = re.compile(
+    input_pattern("backend.services.session_context.bare_money", MONEY=MONEY), re.IGNORECASE
+)
 MONTHS = {
     name: index
     for index, name in enumerate(
@@ -70,7 +87,7 @@ MONTHS = {
 }
 PERIOD = re.compile(r"(?P<month>" + "|".join(MONTHS) + r")\s+(?P<year>20\d{2})", re.IGNORECASE)
 CORRECTION = re.compile(
-    r"^(?:actually|correction|sorry|更正|其实)[, :，]*\s*(?:(?:it(?:['’]s| is)|that(?:['’]s| is))\s*)?",
+    input_pattern("backend.services.session_context.correction"),
     re.IGNORECASE,
 )
 
@@ -99,7 +116,9 @@ def advance_state(previous, message, position):
         return state
     updates = {}
     ambiguous = set()
-    for clause in re.split(r"[;\n]|(?<=[.!?。])\s+", message.strip()):
+    for clause in re.split(
+        input_pattern("backend.services.session_context.clause_separator"), message.strip()
+    ):
         clause = clause.strip()
         if FOREIGN_CURRENCY.search(clause):
             continue
@@ -146,7 +165,9 @@ def advance_state(previous, message, position):
                 if value is not None:
                     updates[fields[0]] = value
         elif len(fields) == 1 and fields[0] == "goal_target_months":
-            match = re.fullmatch(r"(\d{1,3})\s*(?:months?|个月)?[.!。]*", text, re.IGNORECASE)
+            match = re.fullmatch(
+                input_pattern("backend.services.session_context.bare_duration"), text, re.IGNORECASE
+            )
             if match and 1 <= int(match[1]) <= 600:
                 updates[fields[0]] = match[1]
         elif fields == ["budget_period_start"]:
@@ -210,12 +231,16 @@ def complete_state(state, response):
         for question in result.data.get("questions", []):
             lower = question.lower()
             if re.search(
-                r"(?:what (?:is |monthly )|provide |share ).*monthly income|每月收入是多少", lower
+                input_pattern("backend.services.session_context.income_clarification"), lower
             ):
                 fields.add("monthly_income")
-            if re.search(r"what goal amount|provide .*goal amount|目标金额是多少", lower):
+            if re.search(
+                input_pattern("backend.services.session_context.goal_amount_clarification"), lower
+            ):
                 fields.add("goal_target_amount")
-            if re.search(r"target date|what duration|provide .*duration|期限是多久", lower):
+            if re.search(
+                input_pattern("backend.services.session_context.duration_clarification"), lower
+            ):
                 fields.add("goal_target_months")
             if "month and year" in lower or "which month" in lower:
                 fields.add("budget_period_start")
@@ -255,9 +280,7 @@ def budget_status_follow_up(request):
 def session_fact_reply(request):
     """Recall requests use user facts, never an inferred balance or record write."""
     if not re.fullmatch(
-        r"(?:what (?:did I (?:tell|say to) you|have I told you)(?: about (?:my )?(?:income|expenses|goal))?"
-        r"|(?:what|do you remember) (?:is |was )?(?:my )?(?:monthly income|monthly expenses|goal name)"
-        r"|你还记得我的(?:收入|支出|目标)吗)[?？.!\s]*",
+        input_pattern("backend.services.session_context.recall_question"),
         request.message,
         re.IGNORECASE,
     ):
@@ -266,11 +289,14 @@ def session_fact_reply(request):
     facts = state["facts"]
     selected = [key for key in facts if key not in state["uncertain_fields"]]
     lower = request.message.lower()
-    if "income" in lower or "收入" in lower:
+    if "income" in lower or input_pattern("backend.services.session_context.income_term") in lower:
         selected = [key for key in selected if key == "monthly_income"]
-    elif "expenses" in lower or "支出" in lower:
+    elif (
+        "expenses" in lower
+        or input_pattern("backend.services.session_context.expenses_term") in lower
+    ):
         selected = [key for key in selected if key == "monthly_expenses"]
-    elif "goal" in lower or "目标" in lower:
+    elif "goal" in lower or input_pattern("backend.services.session_context.goal_term") in lower:
         selected = [key for key in selected if key.startswith("goal_")]
     if not selected:
         answer = "I don't have a clear user-stated value for that in this chat yet. Please state or clarify it."

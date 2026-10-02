@@ -3,6 +3,8 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from coach_i18n import input_pattern, translate
+
 from app.core.schemas import AgentName
 from app.core.telemetry import trace_method
 
@@ -42,8 +44,8 @@ PROMPT_INJECTION_PATTERNS = [
         r"(?:^|\n)\s*(?:system|developer|assistant)\s*:",
         re.IGNORECASE,
     ),
-    re.compile(r"(?:忽略|无视|忽視|無視).{0,12}(?:之前|以前|系统|系統|开发者|開發者).{0,8}(?:指令|提示|规则|規則)"),
-    re.compile(r"(?:输出|輸出|显示|顯示|透露|泄露|洩露).{0,12}(?:系统提示|系統提示|隐藏指令|隱藏指令)"),
+    re.compile(input_pattern("ai.core.guardrails.ignore_instructions")),
+    re.compile(input_pattern("ai.core.guardrails.reveal_prompt")),
     # Explicit record-concealment directives are safeguard evasion. Ordinary
     # privacy deletion and questions about record integrity remain allowed.
     re.compile(
@@ -55,17 +57,11 @@ PROMPT_INJECTION_PATTERNS = [
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:^|[。？！；;\n]|然后|然後|并且|並且)\s*(?:请|請)?(?:帮我|幫我|替我)?"
-        r"(?:修改|改写|改寫|篡改|伪造|偽造|删除|刪除)"
-        r"[^。？！；;]{0,30}(?:记录|紀錄|記錄|日志|日誌|历史|歷史)"
-        r"[^。？！；;]{0,30}(?:隐藏|隱藏|隐瞒|隱瞞|掩盖|掩蓋)"
+        input_pattern("ai.core.guardrails.conceal_record_tampering")
     ),
 ]
 
-ADVISORY_DISCLAIMER = (
-    "This is general financial education, not regulated financial advice. "
-    "Consider consulting a licensed financial adviser for personal investment decisions."
-)
+ADVISORY_DISCLAIMER = translate("safety.educational_disclaimer", "en")
 
 
 @dataclass(frozen=True)

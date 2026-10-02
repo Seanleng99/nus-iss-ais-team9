@@ -1,0 +1,10 @@
+{
+  "en": {
+    "name": "English",
+    "aliases": ["en", "english", "en-sg", "en-us", "en-gb"]
+  },
+  "zh-Hans": {
+    "name": "Chinese",
+    "aliases": ["zh", "zh-hans", "zh-cn", "zh-sg", "chinese", "mandarin", "simplified chinese"]
+  }
+}

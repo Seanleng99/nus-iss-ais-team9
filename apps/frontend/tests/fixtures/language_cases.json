@@ -1,0 +1,5 @@
+{
+  "app.test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference": "此回复未通过安全审查",
+  "currency_markdown.test_currency_is_literal_without_breaking_math_code_or_links": "从 $100 到 $200。",
+  "currency_markdown.test_currency_is_literal_without_breaking_math_code_or_links_2": "从 \\$100 到 \\$200。"
+}

@@ -10,6 +10,8 @@ from time import perf_counter, sleep
 from typing import TypedDict
 from uuid import uuid4
 
+from coach_i18n import input_pattern, localize_reviewed, request_locale, translate
+from coach_i18n import response_language as request_language
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.base import BaseAgent
@@ -19,7 +21,6 @@ from app.agents.education_access import (
     apply_education_scope,
     build_minimal_education_query,
     education_gap_message,
-    education_response_language,
     education_topics,
     should_request_education_context,
 )
@@ -336,18 +337,14 @@ class AgentOrchestrator:
         if decision.allowed:
             return update
 
-        response_language = education_response_language(decision.sanitized_text)
+        response_language = request_language(request)
         blocked_result = AgentResult(
             agent=AgentName.RISK_COMPLIANCE,
             summary=(
-                "请求已在协调流程入口被拦截。"
-                if response_language == "Chinese"
-                else "Request blocked at the orchestration boundary."
+                translate('safety.boundary_summary', response_language)
             ),
             rationale=[
-                "请求触发了提示注入安全检查。"
-                if response_language == "Chinese"
-                else "Prompt-injection controls matched the request."
+                translate('safety.prompt_injection_rationale', response_language)
             ],
             confidence=1.0,
             blocked=True,
@@ -366,12 +363,10 @@ class AgentOrchestrator:
             session_id=request.session_id,
             selected_agents=[],
             answer=(
-                "此请求不符合安全要求，我无法处理。"
-                if response_language == "Chinese"
-                else "I cannot process that request because it conflicts with safety controls."
+                translate('safety.boundary_refusal', response_language)
             ),
             agent_results=[blocked_result],
-            disclaimers=[ADVISORY_DISCLAIMER],
+            disclaimers=[localize_reviewed(ADVISORY_DISCLAIMER, request_language(state["request"]))],
             audit={
                 "trace_id": state["trace_id"],
                 "executed_at": state["executed_at"],
@@ -397,8 +392,7 @@ class AgentOrchestrator:
         )) > 12:
             resolution = FollowUpResolution(
                 status="ambiguous", reason_code="TOO_MANY_REFERENCE_TOPICS",
-                question="你想先进一步解释哪个概念？" if education_response_language(state["sanitized_message"]) == "Chinese"
-                else "Which concept would you like to clarify first?",
+                question=translate('conversation.choose_concept', request_language(state['request'])),
             )
         if resolution.subject:
             inspected = inspect_prompt(resolution.subject)
@@ -409,6 +403,10 @@ class AgentOrchestrator:
                 )
             else:
                 resolution = resolution.model_copy(update={"subject": inspected.sanitized_text[:240]})
+        if resolution.question:
+            resolution = resolution.model_copy(update={
+                "question": localize_reviewed(resolution.question, request_language(state["request"]))
+            })
         event = self._event(state, "conversation.follow_up.resolved", "orchestrator", details={
             "resolution": resolution.status, "reason_code": resolution.reason_code,
         })
@@ -418,7 +416,7 @@ class AgentOrchestrator:
     def _route(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
         resolution = state.get("follow_up", FollowUpResolution())
-        response_language = education_response_language(state["sanitized_message"])
+        response_language = request_language(state["request"])
         requested_agents = list(
             dict.fromkeys(
                 agent
@@ -435,9 +433,7 @@ class AgentOrchestrator:
             decision = RouterDecision(
                 selected_agents=requested_agents,
                 rationale=[
-                    "调用方已明确选择允许列表中的专业代理。"
-                    if response_language == "Chinese"
-                    else "The caller supplied an explicit allowlisted specialist selection."
+                    translate('routing.explicit_selection', response_language)
                 ],
             )
             routing_mode = "explicit"
@@ -552,9 +548,7 @@ class AgentOrchestrator:
             ):
                 decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
                 decision.rationale.append(
-                    "已识别的教育主题需要由可访问经批准资料的专业代理处理。"
-                    if response_language == "Chinese"
-                    else "The recognized education topic requires a specialist with approved source access."
+                    translate('routing.education_specialist', response_language)
                 )
         decision.goal_capture = decision.goal_capture or goal_change_request(state["sanitized_message"]) or request.pending_goal is not None
         if decision.goal_capture and AgentName.GOAL_STRATEGY not in decision.selected_agents:
@@ -577,16 +571,18 @@ class AgentOrchestrator:
             decision.selected_agents.append(AgentName.BUDGET)
         if requested_agents and AgentName.BUDGET in requested_agents:
             decision.budget_capture = decision.budget_capture or bool(re.search(
-                r"\b(save|set|add|update|change|record|limit|allocate)\b|(?:设置|设定|调整|修改|新增|添加|保存).{0,20}预算|预算.{0,20}(?:设置|设定|调整|修改|新增|添加|保存)",
+                input_pattern("ai.orchestrator.decision_budget_capture"),
                 state["sanitized_message"], re.IGNORECASE,
             ))
         # Pending spending drafts are backend-owned context; explicit spending
         # statements and dated spend lookups always reach the extraction step.
         goal_related = request.pending_goal is not None or re.search(
-            r"\bgoals?\b|目标", state["sanitized_message"], re.IGNORECASE
+            input_pattern("ai.orchestrator.goal_related"), state["sanitized_message"], re.IGNORECASE
         )
         budget_related = request.pending_budget is not None or re.search(
-            r"\bbudget\b|afford|预算", state["sanitized_message"], re.IGNORECASE
+            input_pattern("ai.orchestrator.budget_related"),
+            state["sanitized_message"],
+            re.IGNORECASE,
         )
         decision.spending_capture = decision.spending_capture or (
             request.pending_transaction is not None
@@ -614,12 +610,7 @@ class AgentOrchestrator:
             decision.budget_capture = False
             decision.budget_planning = False
             decision.spending_capture = False
-            decision.rationale = [
-                "已从会话上下文解析只读追问。" if resolution.status == "resolved" else "追问所指的内容需要澄清。"
-            ] if response_language == "Chinese" else [
-                "The read-only follow-up was resolved from conversation context."
-                if resolution.status == "resolved" else "The follow-up's subject needs clarification."
-            ]
+            decision.rationale = [(translate('conversation.follow_up_resolved', response_language) if resolution.status == 'resolved' else translate('conversation.follow_up_unclear', response_language))]
             routing_mode = "follow_up"
         if memory_reply is not None:
             # A read-only memory question never resumes an unrelated saved-record draft.
@@ -1124,6 +1115,7 @@ class AgentOrchestrator:
                         ),
                     )
                     apply_education_scope(data, state["sanitized_message"], query_topics)
+                    data["response_language"] = request_language(state["request"])
                     capability_result = CapabilityResult(
                         capability=request.capability,
                         provider=definition.provider,
@@ -1140,9 +1132,7 @@ class AgentOrchestrator:
                             []
                             if data["evidence_status"] == "grounded"
                             else [
-                                "未检索到相关的经批准教育资料。"
-                                if data["response_language"] == "Chinese"
-                                else "No relevant approved Education source was retrieved."
+                                translate('education.no_approved_education_source', data['response_language'])
                             ]
                         ),
                         input_fingerprint=fingerprint,
@@ -1392,7 +1382,7 @@ class AgentOrchestrator:
         payload = {
             "message": state["sanitized_message"],
             "follow_up": state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
-            "response_language": education_response_language(state["sanitized_message"]),
+            "response_language": request_language(state["request"]),
             "agent_results": [
                 {
                     "agent": result.agent.value,
@@ -1608,7 +1598,7 @@ class AgentOrchestrator:
     @trace_method
     def _finalize(self, state: OrchestratorState) -> OrchestratorState:
         compliance = state["compliance_result"]
-        response_language = education_response_language(state["sanitized_message"])
+        response_language = request_language(state["request"])
         answer = state["draft_answer"]
         if (
             not compliance.blocked
@@ -1616,59 +1606,32 @@ class AgentOrchestrator:
             and not any(item.data.get("needs_input") for item in state["agent_results"])
         ):
             answer += (
-                "\n\n这次解释还没有完整回答你的问题。你可以指定需要进一步说明的概念或区别。"
-                if response_language == "Chinese" else
-                "\n\nThis explanation does not yet fully answer your question. "
-                "Please name the concept or distinction you would like clarified."
+                translate('education.incomplete_answer', response_language)
             )
         if compliance.blocked:
             answer = (
-                "我无法提供该建议，但仍可提供一般金融教育信息。"
-                if response_language == "Chinese"
-                else "I cannot provide that recommendation. I can still offer general financial education."
+                translate('safety.education_only', response_language)
             )
             request_findings = financial_advice_findings(state["sanitized_message"], is_request=True)
             if "regulated_advice:brokerage_execution" in request_findings:
                 answer = (
-                    "我不能登录你的券商账户、接收登录凭证或代你买入投资产品。"
-                    "我可以解释 ETF 的运作方式、费用、风险，以及比较 ETF 时可以了解的因素。"
-                    if response_language == "Chinese"
-                    else "I can't log in to your brokerage account, handle your login details, "
-                    "or buy investments for you. I can explain how ETFs work, their fees and risks, "
-                    "and factors to consider when comparing them."
+                    translate('safety.brokerage_refusal', response_language)
                 )
             elif "regulated_advice:guaranteed return" in request_findings:
                 answer = (
-                    "我不能推荐投资产品或承诺回报。可以解释收益声明、风险、费用，"
-                    "以及通过官方来源核实提供者的方法，供你了解和比较。"
-                    if response_language == "Chinese"
-                    else "I cannot recommend an investment product or promise a return. "
-                    "I can explain return claims, risks, fees and ways to check providers "
-                    "through official sources, so you can understand and compare the information."
+                    translate('safety.product_return_refusal', response_language)
                 )
             elif request_findings:
                 answer = (
-                    "我不能替你选择投资产品，或提供个人买卖和配置指示。"
-                    "我可以解释投资类别、回报的不确定性与亏损风险、费用及一般比较因素。"
-                    if response_language == "Chinese" else
-                    "I can't choose investments or give personal buy, sell or allocation instructions. "
-                    "I can explain investment types, uncertainty and loss risk, fees, and general comparison factors."
+                    translate('safety.personal_investment_refusal', response_language)
                 )
             elif compliance.data.get("request_allowed") is False:
                 answer = (
-                    "我不能协助执行这项操作。我可以解释一般投资概念、风险，"
-                    "以及通过官方来源核实信息的方法。"
-                    if response_language == "Chinese" else
-                    "I can't help with that action. I can explain general investment concepts, "
-                    "risks, and ways to check information through official sources."
+                    translate('safety.action_refusal', response_language)
                 )
             else:
                 answer = (
-                    "我还不能充分核实这次回答，所以暂时无法提供。"
-                    "你可以让我解释一个金融概念，或查看你已记录的支出和储蓄目标。"
-                    if response_language == "Chinese" else
-                    "I couldn't verify this answer well enough to share it. "
-                    "You can ask me to explain a financial concept or review your recorded spending and savings goals."
+                    translate('safety.unverified_answer', response_language)
                 )
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
@@ -1749,7 +1712,7 @@ class AgentOrchestrator:
             selected_agents=state["selected_agents"],
             answer=answer,
             agent_results=public_results,
-            disclaimers=[ADVISORY_DISCLAIMER],
+            disclaimers=[localize_reviewed(ADVISORY_DISCLAIMER, request_language(state["request"]))],
             sources=sources,
             audit={
                 "trace_id": state["trace_id"],
@@ -1767,9 +1730,7 @@ class AgentOrchestrator:
                 ),
                 "routing_rationale": (
                     [
-                        "最终安全审查已拦截此回复。"
-                        if response_language == "Chinese"
-                        else "The final safety review blocked this response."
+                        translate('safety.final_review_rationale', response_language)
                     ]
                     if compliance.blocked else state["routing_rationale"]
                 ),
@@ -1845,6 +1806,7 @@ class AgentOrchestrator:
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
             context_features={
+                "response_locale": request_locale(state["request"]),
                 "income_memory_reply": memory_reply.model_dump(mode="json") if memory_reply else None,
                 "goal_capture": state.get("goal_capture", False) and agent == AgentName.GOAL_STRATEGY,
                 "pending_goal": state["request"].pending_goal if agent == AgentName.GOAL_STRATEGY else None,
@@ -2066,6 +2028,7 @@ class AgentOrchestrator:
 
     @trace_method
     def handle(self, request: CoachRequest) -> CoachResponse:
+        request = request.model_copy(update={"response_locale": request_locale(request)})
         trace_id = workflow_id.get() or str(uuid4())
         log_event(
             "workflow.context",
@@ -2103,6 +2066,8 @@ class AgentOrchestrator:
                 }
             )
             response = result["response"]
+            response.audit["response_locale"] = request_locale(request)
+            response.audit["response_language"] = request_language(request)
             model_calls = self.gateway.snapshot(trace_id)
             workflow_duration_ms = round(
                 (perf_counter() - workflow_started) * 1000,

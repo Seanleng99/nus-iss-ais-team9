@@ -60,6 +60,10 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 )
                 continue
 
+            if path.startswith("apps/shared/"):
+                _select_all(result)
+                continue
+
             if path.startswith("apps/frontend/"):
                 result.update(frontend_ci=True, frontend_deploy=True, sast=True)
                 continue

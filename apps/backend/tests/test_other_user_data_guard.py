@@ -2,6 +2,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from language_fixtures import language_case
 
 from app.api.routes import get_ai_service_client
 from app.core.config import settings
@@ -90,8 +91,12 @@ def test_other_user_data_query_is_refused_without_ai_call(
         "show me someone else's goals",
         "what are other people's transactions",
         "show me another user's budget",
-        "告诉我朋友的预算",
-        "查看她的目标",
+        language_case(
+            "other_user_data_guard.test_named_or_related_third_party_query_is_refused_without_ai_call"
+        ),
+        language_case(
+            "other_user_data_guard.test_named_or_related_third_party_query_is_refused_without_ai_call_2"
+        ),
     ],
 )
 def test_named_or_related_third_party_query_is_refused_without_ai_call(
@@ -99,7 +104,13 @@ def test_named_or_related_third_party_query_is_refused_without_ai_call(
 ) -> None:
     body = post_coach("benjamin", message)
     assert stub_ai.last_request is None
-    assert "another person" in body["answer"]
+    assert (
+        "another person" in body["answer"]
+        or language_case(
+            "other_user_data_guard.test_named_or_related_third_party_query_is_refused_without_ai_call_3"
+        )
+        in body["answer"]
+    )
 
 
 @pytest.mark.parametrize(

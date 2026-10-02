@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Application API for the AI Financial Wellness Coach"
 requires-python = ">=3.11"
 dependencies = [
+  "coach-i18n==0.1.0",
   "alembic>=1.16,<2",
   "boto3>=1.35",
   "fastapi>=0.111",

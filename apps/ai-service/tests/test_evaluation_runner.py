@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from language_fixtures import language_case
+
 from app.core.config import Settings
 from app.core.schemas import CoachRequest
 from app.evals.gate import evaluate_policy
@@ -43,10 +45,14 @@ def test_expected_properties_are_conjunctive() -> None:
 
 
 def test_chinese_answer_check_rejects_an_english_answer_with_chinese_metadata() -> None:
-    response = _orchestrator().handle(CoachRequest(
-        user_id="eval", session_id="language-check",
-        message="请解释ETF的风险。", requested_agents=["investment_education"],
-    ))
+    response = _orchestrator().handle(
+        CoachRequest(
+            user_id="eval",
+            session_id="language-check",
+            message=language_case("evaluation_runner.response"),
+            requested_agents=["investment_education"],
+        )
+    )
     assert _matches_expected(response, {"answer_language": "Chinese"})
     response.answer = "This is an English answer regardless of the Chinese language hint."
     assert not _matches_expected(response, {"answer_language": "Chinese"})

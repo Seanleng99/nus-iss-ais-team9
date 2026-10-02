@@ -1,6 +1,8 @@
 import re
 from typing import Any
 
+from coach_i18n import input_pattern, translate
+
 from app.domain.schemas import CoachResponse
 
 OTHER_USER_TOKEN_PATTERN = re.compile(
@@ -76,13 +78,7 @@ THIRD_PARTY_PATTERNS = (
     (
         "chinese_third_party_data",
         re.compile(
-            r"(?:显示|顯示|告诉|告訴|查看|查询|查詢|给我看|給我看|看看|列出|多少|是什么|是什麼)"
-            r"[^。？！]{0,20}"
-            r"(?:她|他|他们|他們|朋友|同事|老板|老闆|妻子|丈夫|老婆|老公|别人|別人|"
-            r"其他用户|其他用戶|另一个用户|另一個用戶)"
-            r"的?[^。？！]{0,6}"
-            r"(?:交易|消费|消費|支出|开销|開銷|预算|預算|目标|目標|储蓄|儲蓄|存款|收入|"
-            r"工资|工資|薪水|余额|餘額|账户|帳戶)"
+            input_pattern("backend.services.privacy_guard.third_party_patterns")
         ),
     ),
 )
@@ -161,11 +157,7 @@ def other_user_data_reply(session_id: str) -> CoachResponse:
     return CoachResponse(
         session_id=session_id,
         selected_agents=[],
-        answer=(
-            "I can't share another person's financial information, such as their "
-            "spending, budget or goals. I can only access your own data, so please ask "
-            "about your own records instead."
-        ),
+        answer=translate("privacy.other_user_data"),
         agent_results=[],
         disclaimers=[],
         audit=audit,

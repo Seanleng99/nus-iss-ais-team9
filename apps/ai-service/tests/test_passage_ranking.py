@@ -1,4 +1,5 @@
 import pytest
+from language_fixtures import language_case
 
 from app.rag.ranking import passage_scores
 from app.rag.retriever import BedrockEducationRetriever
@@ -63,5 +64,13 @@ def test_managed_retrieval_rejects_unbounded_result_counts_before_aws_call(top_k
 
 def test_lexical_ranking_handles_empty_or_unmatched_passages():
     assert passage_scores("ETF", []) == []
-    assert passage_scores("ETF", ["", "。！？"]) == [0, 0]
+    assert passage_scores(
+        "ETF",
+        [
+            "",
+            language_case(
+                "passage_ranking.test_lexical_ranking_handles_empty_or_unmatched_passages"
+            ),
+        ],
+    ) == [0, 0]
     assert passage_scores("NAV", ["bonds", "shares"]) == [0, 0]

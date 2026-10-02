@@ -397,12 +397,14 @@ class BackendClient:
 
 @trace_method
 def build_request(
-    user_id: str, message: str, session_id: str | None = None
+    user_id: str, message: str, session_id: str | None = None,
+    *, response_locale: str | None = None,
 ) -> dict[str, Any]:
     return {
         "user_id": user_id.strip() or "demo-user",
         "session_id": session_id or str(uuid4()),
         "message": message.strip(),
+        **({"response_locale": response_locale} if response_locale else {}),
     }
 
 

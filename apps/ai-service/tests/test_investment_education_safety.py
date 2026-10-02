@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.agents.education_access import education_topics
 from app.agents.investment_education import InvestmentEducationAgent
@@ -16,43 +17,53 @@ from app.rag.policy import LocalPolicyRetriever
 from app.rag.retriever import LocalEducationRetriever
 
 
-@pytest.mark.parametrize("message", [
-    "Can you recommend an investment that guarantees a 10% annual return with no risk?",
-    "Find me a guaranteed 0.5% monthly return.",
-    "This fund guarantees a 12% annual return.",
-    "Can you log in to my brokerage account and buy an ETF for me?",
-    "Please purchase shares on my behalf.",
-    "帮我登录证券账户并买入ETF。",
-    "I recommend buying this ETF.",
-    "I recommend gradually buying this ETF.",
-    "I recommend starting to invest in this fund.",
-    "I suggest, after considering the risks, buying this ETF.",
-    "I suggest, after a 0.5% drop, buying this ETF.",
-    "You should, after a 0.5% drop, buy this ETF.",
-    "I suggest, e.g., buying this ETF.",
-    "We advise slowly accumulating and holding this stock.",
-    "ETFs pool investments, so I recommend buying this ETF.",
-    "I recommend learning about ETFs before investing and buying this ETF.",
-    "I recommend avoiding buying unfamiliar products, then buying this ETF.",
-    "ETFs pool investments. I recommend buying this ETF.",
-    "ETFs pool investments. I recommend buying this ETF. They can lose value.",
-    "We suggest you buy this ETF.",
-    "I advise you to invest in this fund.",
-    "Buy this stock now.",
-])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Can you recommend an investment that guarantees a 10% annual return with no risk?",
+        "Find me a guaranteed 0.5% monthly return.",
+        "This fund guarantees a 12% annual return.",
+        "Can you log in to my brokerage account and buy an ETF for me?",
+        "Please purchase shares on my behalf.",
+        language_case(
+            "investment_education_safety.test_recommendations_guarantees_and_execution_are_blocked"
+        ),
+        "I recommend buying this ETF.",
+        "I recommend gradually buying this ETF.",
+        "I recommend starting to invest in this fund.",
+        "I suggest, after considering the risks, buying this ETF.",
+        "I suggest, after a 0.5% drop, buying this ETF.",
+        "You should, after a 0.5% drop, buy this ETF.",
+        "I suggest, e.g., buying this ETF.",
+        "We advise slowly accumulating and holding this stock.",
+        "ETFs pool investments, so I recommend buying this ETF.",
+        "I recommend learning about ETFs before investing and buying this ETF.",
+        "I recommend avoiding buying unfamiliar products, then buying this ETF.",
+        "ETFs pool investments. I recommend buying this ETF.",
+        "ETFs pool investments. I recommend buying this ETF. They can lose value.",
+        "We suggest you buy this ETF.",
+        "I advise you to invest in this fund.",
+        "Buy this stock now.",
+    ],
+)
 def test_recommendations_guarantees_and_execution_are_blocked(message):
     assert financial_advice_findings(message)
 
 
-@pytest.mark.parametrize("message", [
-    "I cannot guarantee a 10% annual return.",
-    "A guaranteed 10% annual return is a warning sign.",
-    "Claims of guaranteed 10% annual returns are red flags.",
-    "An ETF pools investments and has fees and risks.",
-    "How does a brokerage account work?",
-    "I cannot log in to your brokerage account.",
-    "我不能帮你登录券商账户。",
-])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I cannot guarantee a 10% annual return.",
+        "A guaranteed 10% annual return is a warning sign.",
+        "Claims of guaranteed 10% annual returns are red flags.",
+        "An ETF pools investments and has fees and risks.",
+        "How does a brokerage account work?",
+        "I cannot log in to your brokerage account.",
+        language_case(
+            "investment_education_safety.test_educational_explanations_and_warnings_are_allowed"
+        ),
+    ],
+)
 def test_educational_explanations_and_warnings_are_allowed(message):
     assert financial_advice_findings(message) == []
 

@@ -7,21 +7,22 @@ checkpoint advances only with the parent chat state's successful transaction.
 import re
 from copy import deepcopy
 
+from coach_i18n import input_pattern
+
 MAX_NOTES = 6
 BACKFILL_MESSAGES = 128
 TOPICS = {
-    "spending": r"spend|expense|transaction|支出|消费",
-    "budget": r"budget|income|salary|预算|收入",
-    "goal_strategy": r"goal|saving|目标|储蓄",
-    "investment_education": r"invest|bond|stock|diversif|risk|基金|投资|债券|风险",
+    "spending": input_pattern("backend.services.conversation_summary.spending_topic"),
+    "budget": input_pattern("backend.services.conversation_summary.budget_topic"),
+    "goal_strategy": input_pattern("backend.services.conversation_summary.goal_topic"),
+    "investment_education": input_pattern("backend.services.conversation_summary.investment_topic"),
 }
 PREFERENCE = re.compile(
-    r"\b(?:prefer|please use|keep (?:it|your|the)|explain .*simply|bullet points|"
-    r"plain (?:language|english)|short (?:answers|replies))\b|请用|简单解释|我喜欢",
+    input_pattern("backend.services.conversation_summary.preference"),
     re.IGNORECASE,
 )
 OBJECTIVE = re.compile(
-    r"\b(?:I want|I am trying|I'd like|my priority|my aim)\b|我想|我的重点", re.IGNORECASE
+    input_pattern("backend.services.conversation_summary.objective"), re.IGNORECASE
 )
 
 

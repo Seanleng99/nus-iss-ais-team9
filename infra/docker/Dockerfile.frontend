@@ -12,7 +12,8 @@ COPY apps/frontend/app.py ./app.py
 COPY apps/frontend/entrypoint.py ./entrypoint.py
 COPY apps/frontend/ui ./ui
 COPY apps/frontend/.streamlit ./.streamlit
-RUN pip install --no-cache-dir .
+COPY apps/shared ./shared
+RUN pip install --no-cache-dir ./shared .
 # The service does not invoke Perl; remove it from the runtime attack surface.
 RUN apt-get update && \
     apt-get upgrade -y && \

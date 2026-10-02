@@ -4,6 +4,7 @@ from typing import ClassVar
 
 import pytest
 from fastapi.testclient import TestClient
+from language_fixtures import language_case
 
 from app.api.routes import get_ai_service_client
 from app.core.config import settings
@@ -185,7 +186,11 @@ def add_transaction(user_id: str, description: str, category: str, amount: float
         ("i bought a nintendo switch 2 costing about 750 dollars", 750.0, "nintendo switch 2"),
         ("got a iphone 15 pro, paid 1200 dollars", 1200.0, "iphone 15 pro"),
         ("I have spent 7.50 dollars on fried rice for today's lunch", 7.5, "Lunch (Fried Rice)"),
-        ("i have booked for a $1288 anniversary dinner on the 28 sep", 1288.0, "anniversary dinner"),
+        (
+            "i have booked for a $1288 anniversary dinner on the 28 sep",
+            1288.0,
+            "anniversary dinner",
+        ),
         # item-first ledger style (no verb)
         ("lunch 5.50", 5.5, "lunch"),
         ("toll 3.50", 3.5, "toll"),
@@ -246,8 +251,16 @@ def add_transaction(user_id: str, description: str, category: str, amount: float
         ("spent 30k for the wedding", 30000.0, "wedding"),
         ("movie tix 13.50 x 2", 27.0, "movie tix"),
         # light Chinese support
-        ("花了5块买咖啡", 5.0, "买咖啡"),
-        ("地铁 3.5块", 3.5, "地铁"),
+        (
+            language_case("transaction_capture.test_parse_spending_statement_positives"),
+            5.0,
+            language_case("transaction_capture.test_parse_spending_statement_positives_2"),
+        ),
+        (
+            language_case("transaction_capture.test_parse_spending_statement_positives_3"),
+            3.5,
+            language_case("transaction_capture.test_parse_spending_statement_positives_4"),
+        ),
     ],
 )
 def test_parse_spending_statement_positives(

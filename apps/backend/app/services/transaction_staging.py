@@ -10,6 +10,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
+from coach_i18n import input_pattern
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -32,13 +33,11 @@ from app.services.transaction_capture import (
 )
 
 CANCEL = re.compile(
-    r"^(?:cancel|cancel transaction|no|never mind|forget it|取消|取消记账)[.!。!\s]*$",
+    input_pattern("backend.services.transaction_staging.cancel"),
     re.IGNORECASE,
 )
 CONFIRM_OR_CANCEL = re.compile(
-    r"^(?:please\s+|ok\s+|okay\s+)?(?:yes(?:\s+please)?|confirm(?:\s+transaction)?|save(?:\s+it)?"
-    r"|cancel(?:\s+transaction)?|no|never\s+mind|forget\s+(?:it|that))"
-    r"[.!。!\s]*$",
+    input_pattern("backend.services.transaction_staging.confirm_or_cancel"),
     re.IGNORECASE,
 )
 

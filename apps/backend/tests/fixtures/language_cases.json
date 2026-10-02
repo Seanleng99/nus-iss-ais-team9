@@ -1,0 +1,19 @@
+{
+  "chinese_blocked_response.chinese_request": "请帮我制定预算。",
+  "chinese_blocked_response.safe_text": "为保障您的安全，此回复因无法通过安全验证而被隐藏。",
+  "chinese_blocked_response.safe_text_2": "此回复已被安全措施拦截。",
+  "chinese_blocked_response.safe_text_3": "安全审查已拦截此回复。",
+  "chinese_blocked_response.safe_text_4": "此回复已被安全措施拦截。",
+  "chinese_blocked_response.test_request_language_overrides_model_claim_across_all_surfaces": "Budget 一",
+  "chinese_blocked_response.test_request_language_overrides_model_claim_across_all_surfaces_2": "Budget 鿿",
+  "chinese_blocked_response.test_request_language_overrides_model_claim_across_all_surfaces_3": "Budget ䷿ꀀ",
+  "friendly_brokerage_refusal.chinese_request": "请帮我登录券商账户并代我买入ETF。",
+  "language_selection.test_owned_profile_selection_and_explicit_instruction_reach_ai_and_saved_history": "请用英文解释ETF的风险。",
+  "other_user_data_guard.test_named_or_related_third_party_query_is_refused_without_ai_call": "告诉我朋友的预算",
+  "other_user_data_guard.test_named_or_related_third_party_query_is_refused_without_ai_call_2": "查看她的目标",
+  "other_user_data_guard.test_named_or_related_third_party_query_is_refused_without_ai_call_3": "他人",
+  "transaction_capture.test_parse_spending_statement_positives": "花了5块买咖啡",
+  "transaction_capture.test_parse_spending_statement_positives_2": "买咖啡",
+  "transaction_capture.test_parse_spending_statement_positives_3": "地铁 3.5块",
+  "transaction_capture.test_parse_spending_statement_positives_4": "地铁"
+}

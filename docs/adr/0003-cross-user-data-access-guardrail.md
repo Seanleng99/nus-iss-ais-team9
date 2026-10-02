@@ -26,9 +26,10 @@ defence and it did not block.
 Add a deterministic cross-user data-access control inside the Risk & Compliance
 Agent: `CROSS_USER_DATA_ACCESS_REGEXES` and `cross_user_data_findings` in
 `app/agents/risk_compliance.py`. It inspects the user's request (English and
-Chinese) for another-user references ("another user", "someone else's",
-"其他用户") and third-party data requests ("show me her income",
-"告诉我他的账户余额"). A match blocks the response deterministically inside
+Chinese) for another-user references ("another user", "someone else's") and
+third-party data requests ("show me her income", "tell me his account balance").
+Chinese recognition rules live in `apps/shared/coach_i18n/data/input_patterns.json`;
+independent Chinese test cases live in service test fixtures. A match blocks the response deterministically inside
 `validate()`, before any policy retrieval or model call, recording a
 `data_access:*` finding in `policy_notes`; the finding is added to
 `SAFE_POLICY_NOTES` so it survives withholding for auditability.

@@ -5,12 +5,13 @@ import re
 from datetime import date
 from typing import Literal
 
+from coach_i18n import input_pattern
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.structured import generate_structured_response
 
 SPENDING_EXCLUSION_PATTERN = re.compile(
-    r"\b(?:budget|afford|allocate|limit|savings\s+goal)\w*\b|(?:预算|储蓄目标).{0,20}|.{0,20}(?:预算|储蓄目标)",
+    input_pattern("ai.agents.spending_capture.spending_exclusion_pattern"),
     re.IGNORECASE,
 )
 
@@ -40,7 +41,9 @@ def spending_capture_request(message: str) -> bool:
     # budget capture; analysis and advice questions stay on the specialist path.
     if SPENDING_EXCLUSION_PATTERN.search(message):
         return False
-    for clause in re.split(r"[,;.!?，。；]|\b(?:and|then)\b", message, flags=re.IGNORECASE):
+    for clause in re.split(
+        input_pattern("ai.agents.spending_capture.clause_separator"), message, flags=re.IGNORECASE
+    ):
         text = clause.strip()
         if not text:
             continue

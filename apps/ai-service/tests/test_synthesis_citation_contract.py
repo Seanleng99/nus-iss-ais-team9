@@ -106,6 +106,7 @@ def synthesis_state(sources=()):
         }
     return {
         "trace_id": "synthetic-citation-contract",
+        "request": budget_request("Summarize the supplied budget calculation."),
         "sanitized_message": "Summarize the supplied budget calculation.",
         "agent_results": [AgentResult(
             agent=AgentName.BUDGET, summary=BUDGET_ANSWER,

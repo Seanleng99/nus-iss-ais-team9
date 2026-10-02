@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from coach_i18n import input_pattern
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -169,8 +170,7 @@ CAPTURE_OBJECT_PATTERN = re.compile(
 )
 
 MARKED_AMOUNT_PATTERN = re.compile(
-    r"(?:(?:[$]|s\$)\s*|sgd\s+)(\d{1,7}(?:[.,]\d{1,2})?)"
-    r"|(\d{1,7}(?:[.,]\d{1,2})?)\s*(?:(?:sgd|dollars?|s\$)\b|[块元])",
+    input_pattern("backend.services.transaction_capture.marked_amount_pattern"),
     re.IGNORECASE,
 )
 BARE_AMOUNT_PATTERN = re.compile(
@@ -529,7 +529,7 @@ def classify_category(text: str) -> str:
 
 
 DESCRIPTION_STRIP_PHRASES = re.compile(
-    r"\b(?:forked\s+out|shelled\s+out)\b|花了|化了", re.IGNORECASE
+    input_pattern("backend.services.transaction_capture.description_strip_phrases"), re.IGNORECASE
 )
 
 DESCRIPTION_STRIP_TOKENS = frozenset(

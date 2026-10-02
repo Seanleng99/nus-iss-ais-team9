@@ -1,0 +1,6 @@
+{
+  "han_basic": "[\\u4e00-\\u9fff]",
+  "non_chinese_fallback_scripts": "[\\u3040-\\u30ff\\uac00-\\ud7af]",
+  "han_inventory": "[\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\U00020000-\\U000323af]",
+  "education_prose_letters": "[A-Za-z\\u4e00-\\u9fff]"
+}

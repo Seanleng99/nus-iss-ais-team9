@@ -6,6 +6,8 @@ confirmation or calculation input. Unsupported or ambiguous references clarify.
 
 import re
 
+from coach_i18n import input_pattern, language_name, load_data, resolve_locale, translate
+
 from app.agents.education_access import (
     education_model_question,
     education_topics,
@@ -14,56 +16,32 @@ from app.agents.education_access import (
 from app.core.schemas import AgentName, CoachRequest, FollowUpResolution
 
 ORDINAL = re.compile(
-    r"\b(first|second|third|fourth|1st|2nd|3rd|4th|former|latter)\s+(?:option|point|item|one)\b|"
-    r"\b(the former|the latter)\b|第([一二三四1234])个(?:选项|方案|要点)?",
+    input_pattern("ai.core.follow_up.ordinal"),
     re.IGNORECASE,
 )
-ORDINAL_VALUES = {
-    "first": 1,
-    "second": 2,
-    "third": 3,
-    "fourth": 4,
-    "1st": 1,
-    "2nd": 2,
-    "3rd": 3,
-    "4th": 4,
-    "former": 1,
-    "一": 1,
-    "二": 2,
-    "三": 3,
-    "四": 4,
-    "1": 1,
-    "2": 2,
-    "3": 3,
-    "4": 4,
-}
-NUMBERED = re.compile(r"^\s*(?:\*\*)?(\d{1,2})[.)、]\s*(.+)$", re.MULTILINE)
+ORDINAL_VALUES = load_data("input_vocabulary")["ordinal_values"]
+NUMBERED = re.compile(input_pattern("ai.core.follow_up.numbered"), re.MULTILINE)
 REFERENCE = re.compile(
-    r"\b(?:explain|clarify|review|compare|about|by|is|does|do)\s+(?:that|this|it|its|them|those|these)\b|"
-    r"\b(?:that|this|those|these|earlier|previous)\s+(?:goal|budget|option|concept|point|topic|explanation)\b|"
-    r"\b(?:discussed|mentioned|explained)\s+(?:earlier|previously)\b|\bits\s+(?:risk|cost|meaning)\b|"
-    r"(?:那个|这个|那些|这些)(?:目标|预算|选项|概念|方案)|那是什么意思|它(?:的|们)?|之前的(?:目标|预算|概念)",
+    input_pattern("ai.core.follow_up.reference"),
     re.IGNORECASE,
 )
 ELLIPSIS = re.compile(
-    r"^(?:(?:please|can you|could you)\s+)?(?:tell me more|elaborate|give (?:me )?an example|"
-    r"show (?:me )?an example|explain (?:again|more|more simply)|why)[?.!\s]*$|"
-    r"^(?:再解释一下|说简单一点|举个例子|为什么)[？。！\s]*$",
+    input_pattern("ai.core.follow_up.ellipsis"),
     re.IGNORECASE,
 )
 READ = re.compile(
-    r"\b(?:explain|what|why|how|tell|elaborate|example|compare|review)\b|解释|什么|怎样|怎么样|为何|为什么|例子|比较|看看",
+    input_pattern("ai.core.follow_up.read"),
     re.IGNORECASE,
 )
 ACTION = re.compile(
-    r"\b(?:save|set|add|update|change|delete|remove|rename|record|confirm|adopt|buy|sell|execute|do it)\b|保存|确认|删除|修改|买入|卖出",
+    input_pattern("ai.core.follow_up.action"),
     re.IGNORECASE,
 )
 SWITCH = re.compile(
-    r"\b(?:instead|new topic|switch|unrelated|rather than)\b|换个话题|改为", re.IGNORECASE
+    input_pattern("ai.core.follow_up.switch"), re.IGNORECASE
 )
 GOAL_REFERENCE = re.compile(
-    r"\b(?:that|this|the)(?: earlier)? goal\b|那个目标|这个目标|之前的目标", re.IGNORECASE
+    input_pattern("ai.core.follow_up.goal_reference"), re.IGNORECASE
 )
 
 
@@ -81,7 +59,7 @@ def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
     # Pronouns inside a self-contained question can refer to its own nouns.
     # For example "Explain bonds and compare them with shares" starts a topic.
     strong_reference = re.search(
-        r"\b(?:that|those|its|earlier|previously|this (?:goal|budget|option|concept))\b|那个|这个|之前|以前|它的",
+        input_pattern("ai.core.follow_up.strong_reference"),
         message,
         re.IGNORECASE,
     )
@@ -91,10 +69,14 @@ def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
         return _ordinal(request, ordinal)
     if GOAL_REFERENCE.search(message):
         return _goal(request)
-    hint = AgentName.BUDGET if re.search(r"\bbudget\b|预算", message, re.IGNORECASE) else None
+    hint = (
+        AgentName.BUDGET
+        if re.search(input_pattern("ai.core.follow_up.hint"), message, re.IGNORECASE)
+        else None
+    )
     summary = request.session_context.older_summary
     prefer_older = bool(
-        re.search(r"\b(?:earlier|previously)\b|之前|以前", message, re.IGNORECASE)
+        re.search(input_pattern("ai.core.follow_up.prefer_older"), message, re.IGNORECASE)
         and summary
         and any(note.kind == "discussion" for note in summary.notes)
     )
@@ -121,7 +103,7 @@ def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
             if hint and candidate.agent != hint:
                 continue
             if len(candidate.education_topics) > 1 and re.search(
-                r"\bits\b|它的", message, re.IGNORECASE
+                input_pattern("ai.core.follow_up.possessive_reference"), message, re.IGNORECASE
             ):
                 return _ambiguous(message, "MULTIPLE_SUBJECTS")
             return candidate.model_copy(
@@ -167,7 +149,7 @@ def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
 
 def _is_reference(text, request):
     if _subject(text, request) and not re.search(
-        r"\b(?:that|those|its|earlier|previously|this (?:goal|budget|option|concept))\b|那个|这个|之前|以前|它的",
+        input_pattern("ai.core.follow_up.is_reference"),
         text,
         re.IGNORECASE,
     ):
@@ -181,12 +163,12 @@ def _subject(text, request):
     topics = education_topics(text)
     if len(topics) > 12:
         return None
-    if re.search(r"\bbudget\b|预算", text, re.IGNORECASE):
+    if re.search(input_pattern("ai.core.follow_up.budget_subject"), text, re.IGNORECASE):
         agent = AgentName.BUDGET
-    elif re.search(r"\bgoal\b|目标", text, re.IGNORECASE):
+    elif re.search(input_pattern("ai.core.follow_up.goal_subject"), text, re.IGNORECASE):
         agent = AgentName.GOAL_STRATEGY
     elif re.search(
-        r"\b(?:spend\w*|transaction\w*|expense\w*|dining)\b|支出|消费", text, re.IGNORECASE
+        input_pattern("ai.core.follow_up.spending_subject"), text, re.IGNORECASE
     ):
         agent = AgentName.SPENDING
     elif topics:
@@ -209,7 +191,9 @@ def _ordinal(request, match):
     value = next(value for value in match.groups() if value)
     value = value.casefold().removeprefix("the ")
     def normalize(text):
-        return " ".join(text.casefold().split()).rstrip(".?!。？！")
+        return " ".join(text.casefold().split()).rstrip(
+            input_pattern("ai.core.follow_up.sentence_punctuation")
+        )
 
     for index in range(len(request.conversation_context) - 1, -1, -1):
         item = request.conversation_context[index]
@@ -276,8 +260,10 @@ def _goal(request):
             return _ambiguous(request.message, "MULTIPLE_GOALS")
         if fact and fact.value.casefold() in item.content.casefold():
             return _reported_goal(request, fact)
-        if re.search(r"\bgoal\b|目标", item.content, re.IGNORECASE) and not re.search(
-            r"\b(?:my|the|that|this) goal\b|我的目标|那个目标|这个目标", item.content, re.IGNORECASE
+        if re.search(
+            input_pattern("ai.core.follow_up.goal"), item.content, re.IGNORECASE
+        ) and not re.search(
+            input_pattern("ai.core.follow_up.owned_goal_reference"), item.content, re.IGNORECASE
         ):
             return _ambiguous(request.message, "REFERENCED_GOAL_NOT_IN_SAVED_CONTEXT")
     if fact:
@@ -365,11 +351,8 @@ def specialist_follow_up(resolution, agent):
 
 
 def _ambiguous(message, reason):
-    chinese = bool(re.search(r"[\u4e00-\u9fff]", message))
     return FollowUpResolution(
         status="ambiguous",
         reason_code=reason,
-        question="你指的是哪个目标、选项或概念？"
-        if chinese
-        else "Which goal, option or concept do you mean?",
+        question=translate('conversation.choose_subject', language_name(resolve_locale(message))),
     )

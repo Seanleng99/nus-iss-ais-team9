@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.agents.education_access import education_topics
 from app.agents.investment_education import InvestmentEducationAgent
@@ -171,7 +172,9 @@ def test_additional_manifest_topics_are_normalized_for_retrieval() -> None:
 
 def test_chinese_investment_topics_are_normalized_for_retrieval() -> None:
     assert education_topics(
-        "请用简单中文解释债券、ETF、分散投资和市场风险。"
+        language_case(
+            "investment_education_agent.test_chinese_investment_topics_are_normalized_for_retrieval"
+        )
     ) == [
         "market risk",
         "diversification",

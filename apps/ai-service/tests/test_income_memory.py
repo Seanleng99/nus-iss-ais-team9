@@ -1,6 +1,7 @@
 """Regression tests for deployed income acknowledgements and chat-only recall."""
 
 import pytest
+from language_fixtures import language_case
 
 from app.agents.risk_compliance import RiskComplianceAgent
 from app.core.config import Settings
@@ -64,7 +65,9 @@ def run(req, *, policy_retriever=None):
         "Have I given you a monthly income value in this conversation?",
         "Do you remember my monthly income?",
         "What did I tell you about my income?",
-        "我在这个对话中提供月收入了吗？",
+        language_case(
+            "income_memory.test_missing_income_clarifies_without_substituting_saved_profile"
+        ),
     ],
 )
 def test_missing_income_clarifies_without_substituting_saved_profile(message):
@@ -72,7 +75,13 @@ def test_missing_income_clarifies_without_substituting_saved_profile(message):
     assert not response.blocked
     assert response.audit["answer_status"] == "needs_input"
     assert "5000" not in response.answer and "5,000" not in response.answer
-    assert "?" in response.answer or "？" in response.answer
+    assert (
+        "?" in response.answer
+        or language_case(
+            "income_memory.test_missing_income_clarifies_without_substituting_saved_profile_2"
+        )
+        in response.answer
+    )
     assert response.agent_results[0].data["questions"]
     assert response.agent_results[-1].data["review_mode"] == "deterministic_chat_memory"
 
@@ -86,8 +95,18 @@ def test_missing_income_clarifies_without_substituting_saved_profile(message):
             {"role": "assistant", "content": "What is your monthly income?"},
             {"role": "user", "content": "Explain the second option."},
             {"role": "assistant", "content": "Which option do you mean?"},
-            {"role": "user", "content": "请解释第二个选项。"},
-            {"role": "assistant", "content": "你指哪个选项？"},
+            {
+                "role": "user",
+                "content": language_case(
+                    "income_memory.test_browser_preamble_is_acknowledged_despite_unrelated_clarifications"
+                ),
+            },
+            {
+                "role": "assistant",
+                "content": language_case(
+                    "income_memory.test_browser_preamble_is_acknowledged_despite_unrelated_clarifications_2"
+                ),
+            },
         ],
     ],
 )
@@ -153,7 +172,12 @@ def test_corrected_fact_survives_recent_history_without_becoming_saved_income():
         ("5000", "5000"),
         ("My monthly income is S$4,200.50.", "4200.50"),
         ("My monthly income is SGD 0.00.", "0.00"),
-        ("我的月收入是 SGD 5000。", "5000"),
+        (
+            language_case(
+                "income_memory.test_qualified_acknowledgements_use_validated_current_fact"
+            ),
+            "5000",
+        ),
         ("My income is SGD 80,001,234.", "80001234"),
     ],
 )

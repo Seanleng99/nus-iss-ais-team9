@@ -1,3 +1,5 @@
+from coach_i18n import translate
+
 from app.agents.base import BaseAgent
 from app.agents.budget_capture import PlanningInputs, extract_budget_draft
 from app.agents.education_access import should_request_education_context
@@ -199,21 +201,10 @@ class BudgetAgent(BaseAgent):
         return AgentResult(
             agent=self.name,
             summary=(
-                "已完成预算计算，但经批准的教育知识库没有足够资料提供所请求的投资解释。"
-                if grounding.get("response_language") == "Chinese"
-                else (
-                    "The deterministic budget calculation is available, but the approved "
-                    "Education knowledge base does not contain enough information for the "
-                    "requested investment explanation."
-                )
+                translate('budget.education_gap', grounding.get('response_language'))
             ),
             rationale=[
-                "已保留计算结果，未提供缺乏资料支持的教育性内容。"
-                if grounding.get("response_language") == "Chinese"
-                else (
-                    "Calculated values were preserved while unsupported educational "
-                    "claims were withheld."
-                )
+                translate('education.calculations_preserved', grounding.get('response_language'))
             ],
             confidence=1.0,
             data=grounding,

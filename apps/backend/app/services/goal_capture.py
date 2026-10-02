@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
+from coach_i18n import input_pattern
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 
@@ -38,9 +39,9 @@ class GoalDraft(BaseModel):
 
 
 CONFIRM = re.compile(
-    r"^(?:confirm goal|confirm delete goal|确认目标|确认删除目标)[.!。！\s]*$", re.IGNORECASE
+    input_pattern("backend.services.goal_capture.confirm"), re.IGNORECASE
 )
-CANCEL = re.compile(r"^(?:cancel goal|cancel|取消目标|取消)[.!。！\s]*$", re.IGNORECASE)
+CANCEL = re.compile(input_pattern("backend.services.goal_capture.cancel"), re.IGNORECASE)
 
 
 def goal_snapshot(record):
@@ -184,7 +185,10 @@ def handle_goal_confirmation(session, request):
         return None
     chat = SQLAlchemyChatRepository(session).get_for_update(request.user_id, request.session_id)
     if not chat or not chat.pending_goal:
-        if not confirm and request.message.strip().casefold() not in {"cancel goal", "取消目标"}:
+        if not confirm and request.message.strip().casefold() not in {
+            "cancel goal",
+            input_pattern("backend.services.goal_capture.cancel_term"),
+        }:
             return None
         answer = "There is no pending goal change in this conversation. Nothing changed."
     elif cancel:

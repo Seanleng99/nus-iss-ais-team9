@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from language_fixtures import language_case
 from sqlalchemy import select
 
 from app.api.routes import get_ai_service_client
@@ -32,7 +33,7 @@ from app.main import app
 client = TestClient(app)
 HEADERS = {"X-API-Key": settings.api_key}
 ENGLISH_REQUEST = "Can you log in to my brokerage account and buy an ETF for me?"
-CHINESE_REQUEST = "请帮我登录券商账户并代我买入ETF。"
+CHINESE_REQUEST = language_case("friendly_brokerage_refusal.chinese_request")
 POISON = "POISONED_AGENT_OR_TRACE_CONTENT"
 POISON_SOURCE = {
     "source_id": "poison-source",

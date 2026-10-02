@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from coach_i18n import input_pattern
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.financial_schemas import BudgetPlanSettings
@@ -59,17 +60,17 @@ def planning_operations(message, pending=None):
     if pending_operation:
         operations.add(pending_operation)
     patterns = {
-        "commitments": r"protect|fixed|minimum|commitment|goal contribution|fund.{0,20}goal|allocate.{0,30}goal|debt|don't touch|do not touch|keep.{0,30}unchanged|固定|保护",
-        "cashflow": r"bill|payday|cash.?flow|opening balance|available cash|schedule|账单|现金流",
-        "timing": r"until payday|timing|spendable|buffer|发薪",
-        "reconcile": r"match|reconcil|refund|recorded payment|recorded income|匹配|退款",
+        "commitments": input_pattern("backend.services.budget_planning.commitments"),
+        "cashflow": input_pattern("backend.services.budget_planning.cashflow"),
+        "timing": input_pattern("backend.services.budget_planning.timing"),
+        "reconcile": input_pattern("backend.services.budget_planning.reconcile"),
         "unlink": r"unmatch|unlink|remove.{0,20}match",
-        "reserves": r"reserve|irregular|annual|upcoming expense|set aside|put aside|saving for|预留",
-        "restore": r"restore|previous version|history|恢复",
-        "adaptive_review": r"repeated|overspending pattern|spending pattern|多次超支",
-        "debt_compare": r"debt|repayment|interest|债务",
-        "continuity": r"next month|upcoming month|several month|through.{0,20}20\d\d|carry|rollover|copy.{0,20}plan|下个月",
-        "reviews": r"remind|review preference|weekly review|monthly review|提醒",
+        "reserves": input_pattern("backend.services.budget_planning.reserves"),
+        "restore": input_pattern("backend.services.budget_planning.restore"),
+        "adaptive_review": input_pattern("backend.services.budget_planning.adaptive_review"),
+        "debt_compare": input_pattern("backend.services.budget_planning.debt_compare"),
+        "continuity": input_pattern("backend.services.budget_planning.continuity"),
+        "reviews": input_pattern("backend.services.budget_planning.reviews"),
     }
     for operation, pattern in patterns.items():
         if re.search(pattern, message, re.IGNORECASE):
@@ -82,7 +83,17 @@ def build_planning_context(session, user_id: str, *, today: date | None = None,
     today = today or datetime.now(ZoneInfo("Asia/Singapore")).date()
     repository = SQLAlchemyBudgetRepository(session)
     history = []
-    include_spending = message is None or bool(re.search(r"spending|transaction|record|history|花费|支出", message, re.IGNORECASE)) or bool(((pending or {}).get("planning") or {}).get("use_recorded_spending"))
+    include_spending = (
+        message is None
+        or bool(
+            re.search(
+                input_pattern("backend.services.budget_planning.include_spending"),
+                message,
+                re.IGNORECASE,
+            )
+        )
+        or bool(((pending or {}).get("planning") or {}).get("use_recorded_spending"))
+    )
     # Aggregate complete calendar periods; completeness of the records is still unknown.
     for offset in range(1, 4) if include_spending else []:
         year, month_index = divmod(today.year * 12 + today.month - 1 - offset, 12)

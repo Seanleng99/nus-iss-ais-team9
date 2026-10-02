@@ -5,6 +5,7 @@ from pathlib import Path
 from shutil import copytree
 
 import pytest
+from language_fixtures import language_case
 
 from app.agents.education_access import build_minimal_education_query, education_topics
 from app.agents.investment_education import InvestmentEducationAgent
@@ -110,12 +111,20 @@ def test_full_document_provider_requires_exact_pin_and_stays_local():
 
 def test_fine_topics_keep_identifiers_and_amounts_out_of_retrieval():
     query, _ = build_minimal_education_query(
-        "I earn SGD 12345, contact user@example.com. 实物ETF与合成ETF有什么区别？"
+        language_case("local_documents.query")
     )
     assert "cash-based physical ETFs" in query
     assert "synthetic ETFs derivatives swaps" in query
     assert "12345" not in query and "example.com" not in query
-    assert education_topics("实物ETF") == education_topics("实物etf")
+    assert education_topics(
+        language_case(
+            "local_documents.test_fine_topics_keep_identifiers_and_amounts_out_of_retrieval"
+        )
+    ) == education_topics(
+        language_case(
+            "local_documents.test_fine_topics_keep_identifiers_and_amounts_out_of_retrieval_2"
+        )
+    )
     assert education_topics("Explain capital gains tax.") == []
 
 

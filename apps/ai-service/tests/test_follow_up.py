@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.core.config import Settings
 from app.core.follow_up import resolve_follow_up
@@ -48,7 +49,11 @@ def request(message="Explain that more simply.", previous=None, **kwargs):
         ("Explain my monthly budget baseline.", "budget", []),
         ("Explain my Holiday goal projection.", "goal_strategy", []),
         ("Explain diversification.", "investment_education", ["diversification"]),
-        ("什么是债券？", "investment_education", ["bonds"]),
+        (
+            language_case("follow_up.test_recent_subject_resolves_without_explicit_agent"),
+            "investment_education",
+            ["bonds"],
+        ),
     ],
 )
 def test_recent_subject_resolves_without_explicit_agent(previous, agent, topics):
@@ -61,7 +66,14 @@ def test_recent_subject_resolves_without_explicit_agent(previous, agent, topics)
 
 
 @pytest.mark.parametrize(
-    "message", ["Give an example.", "Can you elaborate?", "Why?", "再解释一下", "举个例子"]
+    "message",
+    [
+        "Give an example.",
+        "Can you elaborate?",
+        "Why?",
+        language_case("follow_up.test_elliptical_follow_ups_use_latest_subject"),
+        language_case("follow_up.test_elliptical_follow_ups_use_latest_subject_2"),
+    ],
 )
 def test_elliptical_follow_ups_use_latest_subject(message):
     assert resolve_follow_up(request(message, previous="Explain bonds.")).education_topics == [
@@ -70,7 +82,12 @@ def test_elliptical_follow_ups_use_latest_subject(message):
 
 
 @pytest.mark.parametrize(
-    "message", ["Explain the second option.", "What about the latter?", "解释第二个选项"]
+    "message",
+    [
+        "Explain the second option.",
+        "What about the latter?",
+        language_case("follow_up.test_ordinal_reference_selects_only_requested_option"),
+    ],
 )
 def test_ordinal_reference_selects_only_requested_option(message):
     result = resolve_follow_up(
@@ -127,7 +144,13 @@ def test_ordinal_does_not_reach_back_past_latest_assistant_response():
 
 
 @pytest.mark.parametrize("status", ["withheld", "unavailable", "needs_input"])
-@pytest.mark.parametrize("message", ["Explain the second option more simply.", "解释第二个选项"])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Explain the second option more simply.",
+        language_case("follow_up.test_repeated_option_question_survives_unavailable_answers"),
+    ],
+)
 def test_repeated_option_question_survives_unavailable_answers(status, message):
     history = [
         {"role": "user", "content": "Compare bonds and fixed deposits."},
@@ -325,7 +348,12 @@ def test_older_summary_can_identify_goal_among_multiple_owned_goals():
 
 
 @pytest.mark.parametrize(
-    "message", ["Explain this again.", "What about this goal?", "这个目标怎么样？"]
+    "message",
+    [
+        "Explain this again.",
+        "What about this goal?",
+        language_case("follow_up.test_demonstrative_references_are_resolved_in_both_languages"),
+    ],
 )
 def test_demonstrative_references_are_resolved_in_both_languages(message):
     result = resolve_follow_up(
@@ -335,8 +363,12 @@ def test_demonstrative_references_are_resolved_in_both_languages(message):
 
 
 def test_explicit_education_agent_alone_does_not_invent_a_concept():
-    result = resolve_follow_up(request("再解释一下", requested_agents=["investment_education"]))
-    assert result.status == "ambiguous" and result.question == "你指的是哪个目标、选项或概念？"
+    result = resolve_follow_up(
+        request(language_case("follow_up.result"), requested_agents=["investment_education"])
+    )
+    assert result.status == "ambiguous" and result.question == language_case(
+        "follow_up.test_explicit_education_agent_alone_does_not_invent_a_concept"
+    )
 
 
 @pytest.mark.parametrize(
@@ -548,10 +580,20 @@ def test_mistaken_clarification_with_resolved_subject_gets_one_reviewed_repair(m
         assert response.sources == [] and all(item.blocked for item in response.agent_results)
 
 
-@pytest.mark.parametrize("message,question", [
-    ("Explain that more simply.", "Which goal, option or concept do you mean?"),
-    ("解释第二个选项", "你指的是哪个目标、选项或概念？"),
-])
+@pytest.mark.parametrize(
+    "message,question",
+    [
+        ("Explain that more simply.", "Which goal, option or concept do you mean?"),
+        (
+            language_case(
+                "follow_up.test_clarification_stays_concise_when_reviewer_marks_it_incomplete"
+            ),
+            language_case(
+                "follow_up.test_clarification_stays_concise_when_reviewer_marks_it_incomplete_2"
+            ),
+        ),
+    ],
+)
 @pytest.mark.parametrize("blocked", [False, True])
 def test_clarification_stays_concise_when_reviewer_marks_it_incomplete(message, question, blocked):
     class IncompleteReviewer(RecordingGateway):

@@ -3,6 +3,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
+from coach_i18n import SupportedLocale, normalize_locale, translate
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.telemetry import trace_method
@@ -56,6 +57,7 @@ class CoachRequest(BaseModel):
     user_id: str
     session_id: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=5000)
+    response_locale: SupportedLocale | None = None
     budget_period_start: date | None = None
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
@@ -66,6 +68,16 @@ class CoachRequest(BaseModel):
         if value is not None and value.day != 1:
             raise ValueError("Budget period must be the first day of a month")
         return value
+
+    @field_validator("response_locale", mode="before")
+    @classmethod
+    def validate_response_locale(cls, value):
+        if value is None:
+            return None
+        locale = normalize_locale(value)
+        if locale is None:
+            raise ValueError("Supported response locales are en and zh-Hans")
+        return locale
 
     @field_validator("message")
     @classmethod
@@ -94,63 +106,26 @@ class AgentResult(BaseModel):
     policy_notes: list[str] = Field(default_factory=list)
 
 
-BLOCKED_RESPONSE_ANSWER = (
-    "For your safety, this response has been withheld because it could not be safely verified."
+BLOCKED_RESPONSE_ANSWER = translate('safety.withheld_answer', 'en')
+BLOCKED_AGENT_SUMMARY = translate('safety.withheld_summary', 'en')
+BLOCKED_AGENT_RATIONALE = translate('safety.withheld_rationale', 'en')
+BLOCKED_ROUTING_RATIONALE = translate('safety.withheld_summary', 'en')
+BLOCKED_RESPONSE_ANSWER_ZH = translate('safety.withheld_answer', 'zh-Hans')
+BROKERAGE_RESPONSE_ANSWER = translate('safety.brokerage_refusal', 'en')
+BROKERAGE_RESPONSE_ANSWER_ZH = translate('safety.brokerage_refusal', 'zh-Hans')
+SAFE_REFUSAL_KEYS = (
+    "safety.unverified_answer", "safety.action_refusal", "safety.brokerage_refusal",
+    "safety.personal_investment_refusal", "safety.product_return_refusal",
+    "safety.unverified_narrow_question",
 )
-BLOCKED_AGENT_SUMMARY = "Response withheld by safety controls."
-BLOCKED_AGENT_RATIONALE = "The safety review blocked this response."
-BLOCKED_ROUTING_RATIONALE = "Response withheld by safety controls."
-BLOCKED_RESPONSE_ANSWER_ZH = "为保障您的安全，此回复因无法通过安全验证而被隐藏。"
-BROKERAGE_RESPONSE_ANSWER = (
-    "I can't log in to your brokerage account, handle your login details, or buy investments for you. "
-    "I can explain how ETFs work, their fees and risks, and factors to consider when comparing them."
+SAFE_REFUSAL_TEMPLATES = tuple(
+    (translate(key, "en"), translate(key, "zh-Hans")) for key in SAFE_REFUSAL_KEYS
 )
-BROKERAGE_RESPONSE_ANSWER_ZH = (
-    "我不能登录你的券商账户、接收登录凭证或代你买入投资产品。"
-    "我可以解释 ETF 的运作方式、费用、风险，以及比较 ETF 时可以了解的因素。"
-)
-SAFE_REFUSAL_TEMPLATES = (
-    (
-        ("I couldn't verify this answer well enough to share it. "
-         "You can ask me to explain a financial concept or review your recorded spending and savings goals."),
-        ("我还不能充分核实这次回答，所以暂时无法提供。"
-         "你可以让我解释一个金融概念，或查看你已记录的支出和储蓄目标。"),
-    ),
-    (
-        ("I can't help with that action. I can explain general investment concepts, "
-         "risks, and ways to check information through official sources."),
-        ("我不能协助执行这项操作。我可以解释一般投资概念、风险，"
-         "以及通过官方来源核实信息的方法。"),
-    ),
-    (BROKERAGE_RESPONSE_ANSWER, BROKERAGE_RESPONSE_ANSWER_ZH),
-    (
-        ("I can't choose investments or give personal buy, sell or allocation instructions. "
-        "I can explain investment types, uncertainty and loss risk, fees, and general comparison factors."),
-        ("我不能替你选择投资产品，或提供个人买卖和配置指示。"
-        "我可以解释投资类别、回报的不确定性与亏损风险、费用及一般比较因素。"),
-    ),
-    (
-        ("I cannot recommend an investment product or promise a return. "
-        "I can explain return claims, risks, fees and ways to check providers "
-        "through official sources, so you can understand and compare the information."),
-        ("我不能推荐投资产品或承诺回报。可以解释收益声明、风险、费用，"
-        "以及通过官方来源核实提供者的方法，供你了解和比较。"),
-    ),
-    (
-        ("I couldn't verify this answer well enough to share it. "
-        "Please try a narrower investment question, such as a definition or a comparison."),
-        ("我还不能充分核实这次回答，所以暂时无法提供。"
-        "你可以把问题缩小到一个投资概念的定义或比较，我会再尝试说明。"),
-    ),
-)
-BLOCKED_AGENT_SUMMARY_ZH = "此回复已被安全措施拦截。"
-BLOCKED_AGENT_RATIONALE_ZH = "安全审查已拦截此回复。"
-BLOCKED_ROUTING_RATIONALE_ZH = "此回复已被安全措施拦截。"
+BLOCKED_AGENT_SUMMARY_ZH = translate('safety.withheld_summary', 'zh-Hans')
+BLOCKED_AGENT_RATIONALE_ZH = translate('safety.withheld_rationale', 'zh-Hans')
+BLOCKED_ROUTING_RATIONALE_ZH = translate('safety.withheld_summary', 'zh-Hans')
 BLOCKED_POLICY_NOTE = "response_withheld"
-BLOCKED_EDUCATIONAL_DISCLAIMER = (
-    "This is general financial education, not regulated financial advice. "
-    "Consider consulting a licensed financial adviser for personal investment decisions."
-)
+BLOCKED_EDUCATIONAL_DISCLAIMER = translate("safety.educational_disclaimer", "en")
 SAFE_REGULATED_ADVICE_CODES = frozenset(
     {
         "regulated_advice:guaranteed return",
@@ -175,6 +150,8 @@ SAFE_POLICY_EVIDENCE_CODE = "policy_evidence:insufficient"
 
 
 def normalize_response_language(value: Any) -> Literal["English", "Chinese"]:
+    # Historical audit values are untrusted; preserve the strict read boundary.
+    # Request aliases are normalized separately by the request contract.
     return "Chinese" if value == "Chinese" else "English"
 
 
@@ -182,22 +159,16 @@ def blocked_response_answer(
     *, response_language: str = "English", answer: str | None = None
 ) -> str:
     # Only exact, reviewed templates may survive a blocked response. Never pass through model text.
-    for english, chinese in SAFE_REFUSAL_TEMPLATES:
-        if answer in (english, chinese):
-            return chinese if response_language == "Chinese" else english
-    return (
-        BLOCKED_RESPONSE_ANSWER_ZH
-        if response_language == "Chinese"
-        else BLOCKED_RESPONSE_ANSWER
-    )
+    response_language = normalize_response_language(response_language)
+    for key in SAFE_REFUSAL_KEYS:
+        if answer in (translate(key, "en"), translate(key, "zh-Hans")):
+            return translate(key, response_language)
+    return translate("safety.withheld_answer", response_language)
 
 
 def blocked_agent_rationale(*, response_language: str = "English") -> str:
-    return (
-        BLOCKED_AGENT_RATIONALE_ZH
-        if response_language == "Chinese"
-        else BLOCKED_AGENT_RATIONALE
-    )
+    response_language = normalize_response_language(response_language)
+    return translate("safety.withheld_rationale", response_language)
 
 
 def _safe_policy_notes(notes: list[str]) -> list[str]:
@@ -221,13 +192,10 @@ def blocked_agent_result(
     *,
     response_language: str = "English",
 ) -> dict[str, Any]:
+    response_language = normalize_response_language(response_language)
     return {
         "agent": agent.value if isinstance(agent, AgentName) else agent,
-        "summary": (
-            BLOCKED_AGENT_SUMMARY_ZH
-            if response_language == "Chinese"
-            else BLOCKED_AGENT_SUMMARY
-        ),
+        "summary": translate("safety.withheld_summary", response_language),
         "rationale": [blocked_agent_rationale(response_language=response_language)],
         "confidence": 1.0,
         "data": {},
@@ -264,9 +232,7 @@ def sanitize_blocked_audit(audit: dict[str, Any]) -> dict[str, Any]:
     response_language = normalize_response_language(audit.get("response_language"))
     sanitized["response_language"] = response_language
     sanitized["routing_rationale"] = [
-        BLOCKED_ROUTING_RATIONALE_ZH
-        if response_language == "Chinese"
-        else BLOCKED_ROUTING_RATIONALE
+        translate("safety.withheld_summary", response_language)
     ]
     return sanitized
 
@@ -314,7 +280,7 @@ class CoachResponse(BaseModel):
                 )
             ]
             self.disclaimers = [
-                BLOCKED_EDUCATIONAL_DISCLAIMER,
+                translate("safety.educational_disclaimer", response_language),
                 blocked_agent_rationale(response_language=response_language),
             ]
         return self

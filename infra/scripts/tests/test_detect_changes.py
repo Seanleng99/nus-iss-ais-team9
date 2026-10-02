@@ -10,6 +10,12 @@ SPEC.loader.exec_module(detect_changes)
 
 
 class ChangeDetectionTests(unittest.TestCase):
+    def test_shared_language_resources_select_every_service(self):
+        result = detect_changes.classify_changes(["apps/shared/coach_i18n/locales/zh-Hans.json"])
+        for flag in ("frontend_ci", "backend_ci", "ai_ci",
+                     "frontend_deploy", "backend_deploy", "ai_deploy", "integration"):
+            self.assertTrue(result[flag], flag)
+
     def test_frontend_change_is_isolated(self):
         result = detect_changes.classify_changes(["apps/frontend/app.py"])
 

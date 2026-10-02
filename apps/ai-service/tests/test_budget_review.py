@@ -1,3 +1,5 @@
+from language_fixtures import language_case
+
 from app.core.config import Settings
 from app.core.schemas import CoachRequest
 from app.orchestrator import AgentOrchestrator
@@ -69,7 +71,13 @@ def test_multi_month_request_routes_to_confirmation_workspace():
 
 def test_chinese_explicit_budget_setting_enters_capture_path():
     result = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture")).handle(
-        CoachRequest(user_id="u", session_id="s", message="请设置2026年10月的每月预算：宠物护理120新加坡元。保存之前请先让我确认。", requested_agents=["budget"]))
+        CoachRequest(
+            user_id="u",
+            session_id="s",
+            message=language_case("budget_review.result"),
+            requested_agents=["budget"],
+        )
+    )
     budget = next(item for item in result.agent_results if item.agent.value == "budget")
     assert "budget_draft" in budget.data
     assert budget.data.get("needs_input") is not True

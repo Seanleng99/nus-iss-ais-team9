@@ -1,0 +1,11 @@
+{
+  "language.test_explicit_request_and_bounded_detection": "请用英文解释分散投资。",
+  "language.test_explicit_request_and_bounded_detection_2": "Explain the Chinese term 风险 in English.",
+  "language.test_explicit_request_and_bounded_detection_3": "请解释ETF。",
+  "language.test_explicit_request_and_bounded_detection_4": "ETFのリスクについて教えてください。",
+  "language.test_explicit_request_and_bounded_detection_5": "투자 위험을 설명해 주세요",
+  "language.test_explicit_request_selection_session_preference_and_detection_precedence": "请用英文解释。",
+  "recognition.goal_duration": "期限 12个月。",
+  "recognition.oversized_duration": "期限 1234个月。",
+  "recognition.goal_name": "目标名称 Emergency fund。"
+}

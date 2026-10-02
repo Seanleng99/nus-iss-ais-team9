@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
+from coach_i18n import SupportedLocale, normalize_locale
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -152,6 +153,7 @@ class CoachRequest(BaseModel):
     user_id: str
     session_id: str
     message: str = Field(min_length=1, max_length=5000)
+    response_locale: SupportedLocale | None = None
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
     conversation_context: list[ConversationMessage] = Field(default_factory=list, max_length=8)
@@ -161,6 +163,16 @@ class CoachRequest(BaseModel):
     budget_context: dict[str, Any] = Field(default_factory=dict)
     saved_budget_capacity: dict[str, Any] = Field(default_factory=dict)
     session_context: SessionContext = Field(default_factory=SessionContext)
+
+    @field_validator("response_locale", mode="before")
+    @classmethod
+    def validate_response_locale(cls, value):
+        if value is None:
+            return None
+        locale = normalize_locale(value)
+        if locale is None:
+            raise ValueError("Supported response locales are en and zh-Hans")
+        return locale
 
     @field_validator("message")
     @classmethod

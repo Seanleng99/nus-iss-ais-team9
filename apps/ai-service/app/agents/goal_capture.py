@@ -4,6 +4,7 @@ import json
 import re
 from typing import Literal
 
+from coach_i18n import input_pattern
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.prompts import CURRENCY_POLICY
@@ -15,11 +16,13 @@ def goal_change_request(message: str) -> bool:
     # and assessing a goal is not a request to create a goal.
     return any(
         re.search(
-            r"\b(create|add|save|set|edit|update|change|rename|delete|remove)\b.{0,80}\bgoals?\b|\bgoals?\b.{0,80}\b(create|add|save|set|edit|update|change|rename|delete|remove)\b|(?:创建|新增|添加|保存|修改|更新|删除).{0,30}目标",
+            input_pattern("ai.agents.goal_capture.goal_change_request"),
             clause,
             re.IGNORECASE,
         )
-        for clause in re.split(r"[,;.!?，。；]|\b(?:and|then)\b", message, flags=re.IGNORECASE)
+        for clause in re.split(
+            input_pattern("ai.agents.goal_capture.clause_separator"), message, flags=re.IGNORECASE
+        )
     )
 
 

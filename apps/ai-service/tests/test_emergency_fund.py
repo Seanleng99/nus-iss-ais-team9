@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.agents.education_access import build_minimal_education_query
 from app.core.config import Settings
@@ -35,11 +36,16 @@ def workflow(gateway):
                              education_retriever=LocalDocumentEducationRetriever())
 
 
-@pytest.mark.parametrize("message", [
-    "use my spending to access my emergency fund goal",
-    "how much should i left for emergency fund",
-    "我的应急基金需要留多少钱？",
-])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "use my spending to access my emergency fund goal",
+        "how much should i left for emergency fund",
+        language_case(
+            "emergency_fund.test_emergency_questions_retrieve_guidance_without_income_or_saved_goal"
+        ),
+    ],
+)
 def test_emergency_questions_retrieve_guidance_without_income_or_saved_goal(message):
     query, topics = build_minimal_education_query(message)
     assert topics == ["emergency fund readiness"]

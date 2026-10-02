@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from language_fixtures import language_case
 from streamlit.testing.v1 import AppTest
 
 
@@ -562,11 +563,19 @@ def test_coach_answer_explains_rationale_confidence_and_reference() -> None:
     assert "Reference ID: trace-coach-session-1 · Prompt set: v4" in rendered_captions
 
 
-@pytest.mark.parametrize("language, warning", [
-    (None, "safety review blocked this response"),
-    ("English", "safety review blocked this response"),
-    ("Chinese", "此回复未通过安全审查"),
-])
+@pytest.mark.parametrize(
+    "language, warning",
+    [
+        (None, "safety review blocked this response"),
+        ("English", "safety review blocked this response"),
+        (
+            "Chinese",
+            language_case(
+                "app.test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference"
+            ),
+        ),
+    ],
+)
 def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
     language, warning,
 ) -> None:

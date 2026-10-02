@@ -5,6 +5,7 @@ from dataclasses import replace
 from threading import Event
 
 import pytest
+from language_fixtures import language_case
 
 from app.core.config import Settings
 from app.core.observability import _correlation_id
@@ -35,8 +36,8 @@ def request(message="Explain diversification.", agents=None):
 @pytest.mark.parametrize("unsafe", [
     "You should allocate 80% to Synthetic Alpha Fund.",
     "You should\nallocate 80% to Synthetic Alpha Fund.",
-    "建议你买入Synthetic Alpha Fund基金。",
-    "Ｙｏｕ should allocate 80% to Synthetic Alpha Fund.",
+    language_case("review_followup.test_every_generated_explanation_obeys_advice_boundary"),
+    language_case("review_followup.test_every_generated_explanation_obeys_advice_boundary_2"),
     "You should al\u200blocate 80% to Synthetic Alpha Fund.",
 ])
 def test_every_generated_explanation_obeys_advice_boundary(component, field, unsafe):

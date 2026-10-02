@@ -3,6 +3,8 @@ import re
 from datetime import UTC, datetime
 from typing import Annotated
 
+from coach_i18n import input_pattern, localize_reviewed, request_locale, resolve_locale
+from coach_i18n import response_language as request_language
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -116,6 +118,14 @@ async def coach(
         )
     except PermissionError as error:
         raise HTTPException(status_code=404, detail="Conversation not found") from error
+    user_repository = SQLAlchemyUserRepository(session)
+    profile = user_repository.get_profile(request.user_id)
+    locale = resolve_locale(
+        request.message, selected=request.response_locale,
+        preferred=(profile.preferred_language if profile is not None else
+                   request.snapshot.preferences.get("preferred_language")), history=context,
+    )
+    request = request.model_copy(update={"response_locale": locale})
     # Refuse third-party data requests before any local handler can answer from this user's data.
     if find_other_user_reference(request.message, request.user_id) is not None:
         return _finalize_coach_response(
@@ -143,7 +153,7 @@ async def coach(
     pending_budget = existing_chat.pending_budget if existing_chat else None
     pending_transaction = existing_chat.pending_transaction if existing_chat else None
     goal_context = pending_goal is not None or bool(
-        re.search(r"\bgoals?\b|目标", request.message, re.IGNORECASE)
+        re.search(input_pattern("backend.api.routes.goal_context"), request.message, re.IGNORECASE)
     )
     stated_financial_detail = any(
         fact["source_position"] == revision + 1
@@ -175,7 +185,6 @@ async def coach(
     if not pending_budget and not pending_goal and (parse_budget_status_query(request.message) or budget_status_follow_up(request)):
         alert_reply = _budget_alert_reply(session, request)
         return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
-    user_repository = SQLAlchemyUserRepository(session)
     persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
@@ -221,11 +230,8 @@ async def coach(
     try:
         response = await ai_service.coach(request)
         response.audit["trace_id"] = run.trace_id
-        response.audit["response_language"] = (
-            "Chinese"
-            if any("\u4e00" <= character <= "\u9fff" for character in request.message)
-            else "English"
-        )
+        response.audit["response_language"] = request_language(request)
+        response.audit["response_locale"] = request_locale(request)
         with call_span("pydantic.main.BaseModel.model_validate", response_type="CoachResponse"):
             response = CoachResponse.model_validate(response.model_dump())
         # Reacquire the conversation lock after incremental event commits.
@@ -288,6 +294,14 @@ async def coach(
 def _persist_local_coach(
     session: Session, request: CoachRequest, response: CoachResponse
 ) -> CoachResponse:
+    locale = request_locale(request)
+    response.audit.update(response_locale=locale, response_language=request_language(request))
+    response.answer = localize_reviewed(response.answer, locale)
+    for result in response.agent_results:
+        result.summary = localize_reviewed(result.summary, locale)
+        result.rationale = [localize_reviewed(text, locale) for text in result.rationale]
+    response.disclaimers = [localize_reviewed(text, locale) for text in response.disclaimers]
+    response = CoachResponse.model_validate(response.model_dump())
     _persist_coach_exchange(session, request, response)
     log_event("coach.persistence.completed", persisted=True, message_count=2)
     return response

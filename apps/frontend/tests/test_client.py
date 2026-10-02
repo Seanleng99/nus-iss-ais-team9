@@ -17,6 +17,16 @@ def test_build_request_uses_backend_owned_snapshot() -> None:
     assert persisted_payload["session_id"] == "conversation-1"
 
 
+def test_response_language_selection_is_optional_and_forwarded() -> None:
+    automatic = build_request("demo-user", "Explain ETF risks.", "language-session")
+    assert "response_locale" not in automatic
+    selected = build_request(
+        "demo-user", "Explain ETF risks.", "language-session", response_locale="zh-Hans",
+    )
+    assert selected["response_locale"] == "zh-Hans"
+    assert "snapshot" not in selected
+
+
 def test_client_sends_automation_key_and_period() -> None:
     captured: list[httpx.Request] = []
 

@@ -3,26 +3,26 @@
 import re
 from decimal import Decimal
 
-from app.agents.education_access import education_response_language
+from coach_i18n import input_pattern, translate
+from coach_i18n import response_language as request_language
+
 from app.core.schemas import AgentName, AgentResult, CoachRequest
 
 NUMBER = r"(?:\d{1,12}|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?"
 MONEY = rf"(?:SGD\s*|S?\$\s*)?(?P<amount>{NUMBER})(?:\s*SGD)?"
-BARE_AMOUNT = re.compile(rf"{MONEY}[.!。]*", re.IGNORECASE)
+BARE_AMOUNT = re.compile(
+    input_pattern("ai.core.income_memory.bare_amount", MONEY=MONEY), re.IGNORECASE
+)
 STATEMENT = re.compile(
-    rf"(?:(?:actually|correction|sorry)[, :]*\s*)?"
-    rf"(?:(?:my\s+)?(?:monthly |take.home )?(?:income|salary)|I earn|我的(?:每月|月)?(?:收入|工资|薪水))"
-    rf"\s*(?:is|:|=|为|是)?\s*{MONEY}(?:\s*(?:per month|a month|monthly|/month|每月))?[.!。]*",
+    input_pattern("ai.core.income_memory.statement", MONEY=MONEY),
     re.IGNORECASE,
 )
 CORRECTION = re.compile(
-    rf"(?:actually|correction|sorry|更正|其实)[, :，]*\s*"
-    rf"(?:(?:it(?:['’]s| is)|that(?:['’]s| is))\s*)?{MONEY}[.!。]*",
+    input_pattern("ai.core.income_memory.correction", MONEY=MONEY),
     re.IGNORECASE,
 )
 REMINDER = re.compile(
-    r"(?:please\s+)?remember (?:it|this|my (?:monthly )?income)(?: (?:within|in) this chat)?[.!]*|"
-    r"请?(?:在这个对话中)?记住(?:它|我的收入)[。！]*",
+    input_pattern("ai.core.income_memory.reminder"),
     re.IGNORECASE,
 )
 CONTEXT_QUALIFIER = re.compile(
@@ -40,8 +40,7 @@ RECALL = re.compile(
     + CHAT
     + r"(?: yet)?|(?:do|can) you remember my (?:monthly )?income"
     + CHAT
-    + r"|我(?:之前|最近)?(?:在这个对话中)?(?:告诉|报给)你的(?:月收入|收入)是多少|"
-    r"我(?:在这个对话中)?(?:提供|说过)月收入(?:了吗|吗))[?？.!。]*",
+    + input_pattern("ai.core.income_memory.recall"),
     re.IGNORECASE,
 )
 
@@ -56,7 +55,9 @@ def income_memory_reply(request: CoachRequest) -> AgentResult | None:
         if context.last_stated_fields != ["monthly_income"]:
             return None
         amounts = []
-        for clause in re.split(r"[;\n]|(?<=[.!?。])\s+", request.message.strip()):
+        for clause in re.split(
+            input_pattern("ai.core.income_memory.clause_separator"), request.message.strip()
+        ):
             clause = clause.strip()
             match = (
                 STATEMENT.fullmatch(clause)
@@ -73,7 +74,6 @@ def income_memory_reply(request: CoachRequest) -> AgentResult | None:
         operation = "acknowledge"
     fact = context.facts.get("monthly_income")
     uncertain = "monthly_income" in context.uncertain_fields
-    chinese = education_response_language(request.message) == "Chinese"
     status = "uncertain" if uncertain else "known" if fact else "missing"
     if status == "known":
         amount = (
@@ -83,38 +83,26 @@ def income_memory_reply(request: CoachRequest) -> AgentResult | None:
         )
         if operation == "acknowledge":
             summary = (
-                f"我已记下你在这个对话中提供的月收入 SGD {amount}。这是你提供的数值，未经独立核实；没有更改已保存的财务记录。"
-                if chinese
-                else f"I've noted your user-reported monthly income of SGD {amount} for this chat. "
-                "It is not independently verified, and no saved financial records have been changed."
+                translate('income.acknowledge', request_language(request), amount=amount)
             )
         else:
             summary = (
-                f"你最近在这个对话中提供的月收入是 SGD {amount}。这是你提供的数值，不是已确认的财务记录。"
-                if chinese
-                else f"You most recently reported monthly income of SGD {amount} in this chat. "
-                "That is user-reported, not a confirmed financial record."
+                translate('income.recall', request_language(request), amount=amount)
             )
     elif status == "uncertain":
         summary = (
-            "这个对话中的月收入数值还不明确。你希望在这个对话中使用哪个数值？"
-            if chinese
-            else "Your reported monthly income is unclear in this chat. What value should I use for this chat?"
+            translate('income.uncertain', request_language(request))
         )
     else:
         summary = (
-            "这个对话中没有明确记录你提供的月收入。你的每月收入是多少？"
-            if chinese
-            else "I don't have a clearly recorded user-reported monthly income in this chat. What is your monthly income?"
+            translate('income.missing', request_language(request))
         )
     return AgentResult(
         agent=AgentName.BUDGET,
         summary=summary,
         confidence=1.0,
         rationale=[
-            "仅使用用户提供的对话事实；没有更改已保存的记录。"
-            if chinese
-            else "Only owned user-reported chat facts are used; no saved records are changed."
+            translate('income.rationale', request_language(request))
         ],
         data={
             "income_memory": {
@@ -127,7 +115,7 @@ def income_memory_reply(request: CoachRequest) -> AgentResult | None:
             **(
                 {
                     "questions": [
-                        "你的每月收入是多少？" if chinese else "What is your monthly income?"
+                        translate('income.question', request_language(request))
                     ]
                 }
                 if status != "known"

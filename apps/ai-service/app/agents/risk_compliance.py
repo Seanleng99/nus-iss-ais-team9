@@ -2,7 +2,9 @@ import json
 import re
 from dataclasses import asdict
 
-from app.agents.education_access import education_response_language
+from coach_i18n import input_pattern, translate
+from coach_i18n import response_language as request_language
+
 from app.core.citations import citation_contract, compact_evidence, validate_citations
 from app.core.guardrails import (
     ADVISORY_DISCLAIMER,
@@ -47,11 +49,7 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     (
         "brokerage_execution",
         re.compile(
-            r"\b(?:log\s*in(?:to)?|sign\s*in(?:to)?|access)\s+"
-            r"(?:to\s+)?(?:my|our|your|the user's)\s+(?:\w+\s+){0,3}"
-            r"(?:brokerage|trading)\s+account\b|"
-            r"\b(?:buy|purchase|sell|trade)\b[^.!?;]{0,70}\b(?:for me|on my behalf)\b|"
-            r"(?:帮我|替我|代我|为你|帮你).{0,20}(?:登录|登入|下单|买入|卖出|交易)",
+            input_pattern("ai.agents.risk_compliance.brokerage_action"),
             re.IGNORECASE,
         ),
     ),
@@ -108,7 +106,7 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     ),
     (
         "personalized_investment_instruction",
-        re.compile(r"(?:建议你|你应该|你应当).{0,40}(?:买入|卖出|持有|投资于|投入|配置)"),
+        re.compile(input_pattern("ai.agents.risk_compliance.personal_investment_advice")),
     ),
 )
 
@@ -169,20 +167,13 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
     (
         "cross_user_reference",
         re.compile(
-            r"(?:其他|另一|别的|別的|别人|別人|他人)"
-            r"(?:用户|用戶|人|会员|會員|客户|客戶)?"
-            r"[^。？！]{0,20}"
-            r"(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|"
-            r"财务|財務|资料|資料|数据|數據|持仓|持倉)"
+            input_pattern("ai.agents.risk_compliance.other_user_financial_data")
         ),
     ),
     (
         "third_party_request",
         re.compile(
-            r"(?:显示|顯示|告诉|告訴|查看|查询|查詢|给我|給我|透露|看看)"
-            r"[^。？！]{0,20}(?:她|他|他们|他們|朋友|同事|老板|老闆|妻子|丈夫|老婆|老公)"
-            r"[^。？！]{0,15}(?:收入|工资|工資|薪水|账户|帳戶|余额|餘額|存款|持仓|持倉|"
-            r"交易|消费|消費|支出|开销|開銷|预算|預算|目标|目標|储蓄|儲蓄)"
+            input_pattern("ai.agents.risk_compliance.third_party_financial_data")
         ),
     ),
 )
@@ -373,7 +364,7 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
         if any(
             not (
                 label == "brokerage_execution" and re.search(
-                    r"(?:\b(?:cannot|can't|won't|never|not|don't)\s+|(?:不能|无法|不可以))$",
+                    input_pattern("ai.agents.risk_compliance.refusal_prefix"),
                     normalized[:match.start()],
                 )
             ) and not (
@@ -418,19 +409,9 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
 
 
 def is_neutral_financial_question(text: str) -> bool:
-    text = text.rstrip("?？.。 ")
+    text = text.rstrip(input_pattern("ai.agents.risk_compliance.question_punctuation"))
     return bool(re.fullmatch(
-        r"(?:can|could|do|does)\s+(?:(?:any|an?|the|this|that)\s+)?"
-        r"(?:investments?|funds?|etfs?|products?)\s+"
-        r"(?:ever\s+)?guarantee\s+(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
-        r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?"
-        r"(?:\s+(?:with no risk|without risk))?"
-        r"|why\s+(?:can't|cannot|won't|don't|can you not|do you not)\s+"
-        r"(?:you\s+)?(?:tell me|say)\s+(?:which|what)\s+"
-        r"(?:stock|share|bond|etf|fund|reit|investment|product)\s+"
-        r"(?:should i|i should)\s+(?:buy|choose|pick)"
-        r"|(?:投资|基金|产品|ETF)(?:能|能够|可以)(?:保证|确保)(?:收益|回报)吗"
-        r"|为什么你不能告诉我(?:应该)?买(?:哪只|什么)(?:股票|基金|ETF)",
+        input_pattern("ai.agents.risk_compliance.neutral_financial_question"),
         text, re.IGNORECASE,
     ))
 
@@ -508,14 +489,10 @@ def withhold_agent_result(
     return AgentResult(
         agent=result.agent,
         summary=(
-            "生成内容未通过最终安全审查，已被隐藏。"
-            if response_language == "Chinese"
-            else "Generated content was withheld by the final safety review."
+            translate('safety.withheld_generated_summary', response_language)
         ),
         rationale=[
-            "最终安全审查已拦截此回复。"
-            if response_language == "Chinese"
-            else "The final safety review blocked this response."
+            translate('safety.final_review_rationale', response_language)
         ],
         confidence=1.0,
         blocked=True,
@@ -697,12 +674,10 @@ class RiskComplianceAgent:
                 },
             )
         if verified_income_memory_reply(request, results, draft_answer, routing_rationale):
-            chinese = education_response_language(request.message) == "Chinese"
             return AgentResult(
                 agent=self.name,
-                summary="已核对回答与用户提供的对话事实。" if chinese else "The reply matches the user-reported chat facts.",
-                rationale=["已核对完整的受限回答，并应用安全检查和经批准的政策。" if chinese else
-                           "The entire controlled reply was verified after safety checks and governed policy retrieval."],
+                summary=translate('safety.chat_facts_summary', request_language(request)),
+                rationale=[translate('safety.chat_facts_rationale', request_language(request))],
                 confidence=1.0,
                 data={
                     "disclaimer": ADVISORY_DISCLAIMER,
@@ -747,7 +722,7 @@ class RiskComplianceAgent:
                 "or introduce any financial facts. Keep rationale and policy_notes "
                 "to at most two short assessment sentences each."
                 + "\nWrite summary, rationale and policy_notes in "
-                + education_response_language(decision.sanitized_text)
+                + request_language(request)
                 + "."
                 + citation_contract(review_sources)
                 + (

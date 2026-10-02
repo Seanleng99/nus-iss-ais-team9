@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from language_fixtures import language_case
 
 from app.core.config import Settings
 from app.core.schemas import CoachRequest
@@ -225,5 +226,8 @@ def test_existing_corpus_concepts_can_be_retrieved(question):
 
 
 def test_chinese_evidence_gap_is_in_chinese():
-    response = ask("请解释债券久期。")
-    assert "知识库没有足够资料" in response.answer
+    response = ask(language_case("investment_review_regressions.response"))
+    assert (
+        language_case("investment_review_regressions.test_chinese_evidence_gap_is_in_chinese")
+        in response.answer
+    )

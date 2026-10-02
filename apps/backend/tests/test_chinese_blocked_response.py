@@ -3,7 +3,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from coach_i18n import localize_reviewed
 from fastapi.testclient import TestClient
+from language_fixtures import language_case
 from sqlalchemy import event, select
 from sqlalchemy.dialects import postgresql, sqlite
 
@@ -28,7 +30,7 @@ HEADERS = {"X-API-Key": settings.api_key}
 USER_ID = "localized-blocked-user"
 SESSION_ID = "localized-blocked-chat"
 TRACE_IDS: dict[str, str] = {}
-CHINESE_REQUEST = "请帮我制定预算。"
+CHINESE_REQUEST = language_case("chinese_blocked_response.chinese_request")
 POISON = "POISONED_MODEL_PAYLOAD"
 PRIVATE_DATA = "POISONED_PRIVATE_DATA"
 POISON_SOURCE = {
@@ -46,10 +48,10 @@ SAFE_NOTES = [
 ]
 SAFE_TEXT = {
     "Chinese": {
-        "answer": "为保障您的安全，此回复因无法通过安全验证而被隐藏。",
-        "summary": "此回复已被安全措施拦截。",
-        "rationale": "安全审查已拦截此回复。",
-        "routing": "此回复已被安全措施拦截。",
+        "answer": language_case("chinese_blocked_response.safe_text"),
+        "summary": language_case("chinese_blocked_response.safe_text_2"),
+        "rationale": language_case("chinese_blocked_response.safe_text_3"),
+        "routing": language_case("chinese_blocked_response.safe_text_4"),
     },
     "English": {
         "answer": BLOCKED_RESPONSE_ANSWER,
@@ -192,9 +194,27 @@ def _assert_surfaces(
         (CHINESE_REQUEST, [POISON], "Chinese"),
         (CHINESE_REQUEST, None, "Chinese"),
         ("Create a budget", "Chinese", "English"),
-        ("Budget \u4e00", "English", "Chinese"),
-        ("Budget \u9fff", "English", "Chinese"),
-        ("Budget \u4dff\ua000", "Chinese", "English"),
+        (
+            language_case(
+                "chinese_blocked_response.test_request_language_overrides_model_claim_across_all_surfaces"
+            ),
+            "English",
+            "Chinese",
+        ),
+        (
+            language_case(
+                "chinese_blocked_response.test_request_language_overrides_model_claim_across_all_surfaces_2"
+            ),
+            "English",
+            "Chinese",
+        ),
+        (
+            language_case(
+                "chinese_blocked_response.test_request_language_overrides_model_claim_across_all_surfaces_3"
+            ),
+            "Chinese",
+            "English",
+        ),
     ],
 )
 def test_request_language_overrides_model_claim_across_all_surfaces(
@@ -210,7 +230,7 @@ def test_request_language_overrides_model_claim_across_all_surfaces(
     assert response["answer"] == safe_text["answer"]
     assert response["sources"] == []
     assert response["disclaimers"] == [
-        BLOCKED_EDUCATIONAL_DISCLAIMER,
+        localize_reviewed(BLOCKED_EDUCATIONAL_DISCLAIMER, expected_language),
         safe_text["rationale"],
     ]
     assert response["agent_results"] == [_expected_agent(expected_language)]

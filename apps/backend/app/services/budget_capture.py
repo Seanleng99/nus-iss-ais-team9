@@ -8,6 +8,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
+from coach_i18n import input_pattern
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.orm import Session
 
@@ -26,10 +27,10 @@ from app.services.budget_scenarios import (
 from app.services.budget_workspace import WorkspaceChange
 
 CONFIRM = re.compile(
-    r"^(?:yes|yes please|confirm|confirm budget|save budget|yes[, ]+save(?: it| the budget)?|确认|确认保存)[.!。!\s]*$",
+    input_pattern("backend.services.budget_capture.confirm"),
     re.IGNORECASE,
 )
-CANCEL = re.compile(r"^(?:cancel|cancel budget|no|never mind|取消)[.!。!\s]*$", re.IGNORECASE)
+CANCEL = re.compile(input_pattern("backend.services.budget_capture.cancel"), re.IGNORECASE)
 
 
 class DraftCategory(BaseModel):
