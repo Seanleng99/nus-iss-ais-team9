@@ -13,6 +13,7 @@ from app.core.guardrails import (
     sanitize_rag_document,
     validate_tool_permission,
 )
+from app.core.income_memory import verified_income_memory_reply
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
     AgentName,
@@ -693,6 +694,24 @@ class RiskComplianceAgent:
                     "policy_corpus_version": policy_corpus_version,
                     "policy_sources": [],
                     "block_reasons": ["policy_evidence_missing"],
+                },
+            )
+        if verified_income_memory_reply(request, results, draft_answer, routing_rationale):
+            chinese = education_response_language(request.message) == "Chinese"
+            return AgentResult(
+                agent=self.name,
+                summary="已核对回答与用户提供的对话事实。" if chinese else "The reply matches the user-reported chat facts.",
+                rationale=["已核对完整的受限回答，并应用安全检查和经批准的政策。" if chinese else
+                           "The entire controlled reply was verified after safety checks and governed policy retrieval."],
+                confidence=1.0,
+                data={
+                    "disclaimer": ADVISORY_DISCLAIMER,
+                    "policy_evidence_status": "grounded",
+                    "policy_sources": policy_sources,
+                    "policy_corpus_version": policy_corpus_version,
+                    "policy_contexts": contexts,
+                    "block_reasons": [],
+                    "review_mode": "deterministic_chat_memory",
                 },
             )
         review_sources = [

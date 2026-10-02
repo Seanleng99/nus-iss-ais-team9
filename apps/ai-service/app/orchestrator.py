@@ -40,6 +40,7 @@ from app.core.config import Settings
 from app.core.config import settings as runtime_settings
 from app.core.follow_up import resolve_follow_up, specialist_follow_up
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
+from app.core.income_memory import income_memory_reply
 from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
 from app.core.run_trace import emit, task_context, workflow_id
@@ -386,7 +387,10 @@ class AgentOrchestrator:
 
     @trace_method
     def _resolve_follow_up(self, state: OrchestratorState) -> OrchestratorState:
-        resolution = resolve_follow_up(state["request"].model_copy(update={"message": state["sanitized_message"]}))
+        resolution = (
+            FollowUpResolution() if income_memory_reply(state["request"]) is not None else
+            resolve_follow_up(state["request"].model_copy(update={"message": state["sanitized_message"]}))
+        )
         if resolution.agent == AgentName.INVESTMENT_EDUCATION and len(set(
             resolution.education_topics + education_topics(state["sanitized_message"])
         )) > 12:
@@ -421,7 +425,12 @@ class AgentOrchestrator:
                 if agent != AgentName.RISK_COMPLIANCE
             )
         )
-        if requested_agents:
+        memory_reply = income_memory_reply(request)
+        if memory_reply is not None:
+            decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
+            routing_mode = "chat_memory"
+            routing_actor = "orchestrator"
+        elif requested_agents:
             decision = RouterDecision(
                 selected_agents=requested_agents,
                 rationale=[
@@ -611,6 +620,9 @@ class AgentOrchestrator:
                 if resolution.status == "resolved" else "The follow-up's subject needs clarification."
             ]
             routing_mode = "follow_up"
+        if memory_reply is not None:
+            # A read-only memory question never resumes an unrelated saved-record draft.
+            decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
         event = self._event(
             state,
             "routing.completed",
@@ -1417,7 +1429,11 @@ class AgentOrchestrator:
             + ". Write the entire answer in this language. Reuse only the specialists' "
             "supported facts; do not add explanations, definitions or examples from memory."
         )
-        if state["agent_results"] and all(
+        memory_reply = income_memory_reply(state["request"]) if state.get("request") else None
+        if memory_reply is not None and state["agent_results"] == [memory_reply]:
+            synthesis = SynthesisDecision(answer=memory_reply.summary)
+            log_event("synthesis.strategy", component="reuse_chat_memory")
+        elif state["agent_results"] and all(
             result.data.get("needs_input") is True for result in state["agent_results"]
         ):
             questions = list(dict.fromkeys(
@@ -1811,11 +1827,13 @@ class AgentOrchestrator:
             input_data["saved_budget_capacity"] = state["request"].saved_budget_capacity
         if agent == AgentName.BUDGET and state.get("budget_capture"):
             input_data["planning_context"] = state["request"].budget_context
+        memory_reply = income_memory_reply(state["request"]) if agent == AgentName.BUDGET else None
         return AgentTask(
             agent=agent,
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
             context_features={
+                "income_memory_reply": memory_reply.model_dump(mode="json") if memory_reply else None,
                 "goal_capture": state.get("goal_capture", False) and agent == AgentName.GOAL_STRATEGY,
                 "pending_goal": state["request"].pending_goal if agent == AgentName.GOAL_STRATEGY else None,
                 "budget_capture": state.get("budget_capture", False) and agent == AgentName.BUDGET,

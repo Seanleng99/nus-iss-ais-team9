@@ -24,6 +24,10 @@ class BudgetAgent(BaseAgent):
     dependency_planning_enabled = True
 
     def run_task(self, task: AgentTask):
+        if task.context_features.get("income_memory_reply") and inspect_prompt(task.sanitized_message).allowed:
+            # Created by the orchestrator from owned context; compliance recomputes
+            # the entire reply from the original request before permitting release.
+            return CompletedInvocation(result=AgentResult.model_validate(task.context_features["income_memory_reply"]))
         if task.context_features.get("budget_capture") and inspect_prompt(task.sanitized_message).allowed:
             draft = extract_budget_draft(self, task)
             if draft.is_budget_request:

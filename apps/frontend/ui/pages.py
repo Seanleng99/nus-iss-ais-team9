@@ -14,6 +14,7 @@ from ui.budget_methods import METHODS
 from ui.budget_page import render_budget_page
 from ui.budget_timing import render_timing_summary
 from ui.components import backend_call, clamp_progress, money, page_header, percent
+from ui.currency_markdown import currency_safe_markdown
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
 from ui.telemetry import call_span, context_fields, log_event, trace_context
@@ -197,7 +198,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
             if routing_rationale:
                 st.markdown("**Why these areas were used**")
                 for rationale in routing_rationale:
-                    st.markdown(f"- {rationale}")
+                    st.markdown(currency_safe_markdown(f"- {rationale}"))
             for result in explanation.get("agent_results", []):
                 agent = result.get("agent", "unknown")
                 label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
@@ -207,7 +208,7 @@ def _render_coach_explanation(explanation: dict | None) -> None:
                     f"(self-assessed score {confidence:.2f})**"
                 )
                 for rationale in result.get("rationale", []):
-                    st.markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}")
+                    st.markdown(currency_safe_markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}"))
             trace_id = explanation.get("trace_id")
             prompt_version = explanation.get("prompt_set_version")
             reference = f"Reference ID: {trace_id}" if trace_id else ""
@@ -1003,7 +1004,7 @@ def goals_page() -> None:
 
 def _user_message_markdown(content: str) -> str:
     # Markdown renders a single newline as a space; keep the user's typed line breaks.
-    return "  \n".join(content.replace("\r\n", "\n").split("\n"))
+    return "  \n".join(currency_safe_markdown(content).replace("\r\n", "\n").split("\n"))
 
 
 def _render_coach_message(message: dict) -> None:
@@ -1020,7 +1021,7 @@ def _render_coach_message(message: dict) -> None:
             st.markdown(
                 _user_message_markdown(message["content"])
                 if message["role"] == "user"
-                else message["content"]
+                else currency_safe_markdown(message["content"])
             )
             sources = message.get("sources", [])
             if sources:
@@ -1055,7 +1056,7 @@ def _render_coach_message(message: dict) -> None:
 
 def _escape_markdown_text(value: str) -> str:
     value = html.escape(" ".join(value.split()), quote=False)
-    return re.sub(r"([\\`*_{}\[\]()#+!|>])", r"\\\1", value)
+    return re.sub(r"([\\`*_{}\[\]()#+!|>$])", r"\\\1", value)
 
 
 def coach_page() -> None:

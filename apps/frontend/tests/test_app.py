@@ -483,6 +483,17 @@ def test_user_message_history_keeps_typed_line_breaks() -> None:
     ]
 
 
+@pytest.mark.parametrize("role", ["assistant", "user"])
+def test_coach_currency_examples_are_escaped_at_render_boundary(role) -> None:
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        f"_render_coach_message({{'role': {role!r}, "
+        "'content': 'A S$2 snack becomes S$2.10, a 5% rise.'})"
+    ).run(timeout=30)
+    assert not app.exception
+    assert [item.value for item in app.markdown] == [r"A S\$2 snack becomes S\$2.10, a 5% rise."]
+
+
 def test_submitted_multiline_question_keeps_typed_line_breaks() -> None:
     app = AppTest.from_string("from ui.pages import coach_page\ncoach_page()")
     app.session_state["backend_client"] = CoachClient()
