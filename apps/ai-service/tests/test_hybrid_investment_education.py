@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 
 from app.core.config import Settings
+from app.core.follow_up import resolve_follow_up
 from app.core.schemas import CoachRequest
 from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
 from app.orchestrator import AgentOrchestrator
@@ -42,11 +43,12 @@ class FixedRetriever:
 
 
 class HybridGateway(LocalFixtureModelGateway):
-    def __init__(self, general=(), *, summary=None, source_ids=None, synthesis=None):
+    def __init__(self, general=(), *, summary=None, source_ids=None, synthesis=None, options=()):
         self.general = list(general)
         self.summary = summary
         self.source_ids = source_ids
         self.synthesis = synthesis
+        self.options = list(options)
         self.calls = []
 
     def generate(self, **kwargs):
@@ -69,6 +71,7 @@ class HybridGateway(LocalFixtureModelGateway):
                 "source_ids": ids,
                 "uncertainties": [],
                 "general_knowledge": self.general,
+                "ordered_options": self.options,
             })
         if prompt.startswith("PROMPT_ID: synthesizer") and self.synthesis is not None:
             return json.dumps({"answer": self.synthesis})
@@ -99,6 +102,112 @@ def request(message, agents=("investment_education",)):
         message=message,
         requested_agents=list(agents),
     )
+
+
+@pytest.mark.parametrize("version", ["v6", "v7"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_mixed_evidence_numbered_options_preserve_order_and_next_reference(version, reverse):
+    options = [
+        {"topic": "bonds", "model_text": "A bond is a loan to an issuer."},
+        {"topic": "fixed deposits", "sourced_text": "A fixed deposit is held for a set term. [source:deposit-source]",
+         "source_ids": ["deposit-source"]},
+    ]
+    if reverse:
+        options.reverse()
+    message = "Compare these as two numbered options: " + "; ".join(
+        f"{index}. {option['topic']}" for index, option in enumerate(options, 1)
+    ) + ". Explain what each means briefly."
+    gateway = HybridGateway(summary="", source_ids=[], options=options)
+    response = workflow(gateway, FixedRetriever([
+        source("deposit-source", "A fixed deposit is held for a set term."),
+    ]), version=version).handle(request(message))
+    assert not response.blocked
+    assert response.answer.index("1. " + options[0]["topic"].capitalize()) < response.answer.index(
+        "2. " + options[1]["topic"].capitalize()
+    )
+    assert "- 1." not in response.answer
+    assert "not verified against retrieved sources" in response.answer
+    assert "[MoneySense ETF guide]" in response.answer
+    review = json.loads(gateway.calls_for("risk_compliance")[0]["user_prompt"])
+    assert review["agent_results"][0]["data"]["general_knowledge"] == [{"topic": "bonds"}]
+    for phrase in ("Explain the second option more simply.", "What about the latter?"):
+        follow_up = resolve_follow_up(CoachRequest(
+            user_id="hybrid-regression", session_id="hybrid-regression", message=phrase,
+            conversation_context=[{"role": "user", "content": message},
+                                  {"role": "assistant", "content": response.answer}],
+        ))
+        assert follow_up.status == "resolved"
+        assert follow_up.education_topics == [options[1]["topic"]]
+    follow_gateway = HybridGateway(
+        [{"topic": options[1]["topic"], "text": "This is a stable general definition."}],
+        summary="", source_ids=[],
+    )
+    follow_response = workflow(follow_gateway, FixedRetriever(), version=version).handle(CoachRequest(
+        user_id="hybrid-regression", session_id="hybrid-regression",
+        message="Explain the second option more simply.",
+        conversation_context=[{"role": "user", "content": message},
+                              {"role": "assistant", "content": response.answer}],
+    ))
+    assert not follow_response.blocked
+    assert follow_response.audit["follow_up"]["status"] == "resolved"
+    follow_payload = json.loads(follow_gateway.calls_for("agent_investment_education")[0]["user_prompt"])
+    assert follow_payload["grounding"]["query_topics"] == [options[1]["topic"]]
+
+
+def test_numbered_writer_can_correct_legacy_layout_once_before_independent_review():
+    class CorrectingGateway(HybridGateway):
+        def generate(self, **kwargs):
+            if (kwargs["system_prompt"].startswith("PROMPT_ID: agent_investment_education")
+                    and "CORRECTION:" not in kwargs["system_prompt"]):
+                self.calls.append(kwargs)
+                return json.dumps({
+                    "summary": "", "source_ids": [], "rationale": ["General concepts."], "confidence": 0.8,
+                    "general_knowledge": [{"topic": "bonds", "text": "1. Bonds: a loan."},
+                                          {"topic": "fixed deposits", "text": "2. Fixed deposits: a term deposit."}],
+                })
+            return super().generate(**kwargs)
+
+    gateway = CorrectingGateway(summary="", source_ids=[], options=[
+        {"topic": "fixed deposits", "model_text": "A deposit held for a set term."},
+        {"topic": "bonds", "model_text": "A loan to an issuer."},
+    ])
+    response = workflow(gateway, FixedRetriever()).handle(
+        request("Explain fixed deposits and bonds as a numbered list.")
+    )
+    assert not response.blocked
+    assert response.answer.index("1. Fixed deposits") < response.answer.index("2. Bonds")
+    assert len(gateway.calls_for("agent_investment_education")) == 2
+    assert "CORRECTION:" in gateway.calls_for("agent_investment_education")[1]["system_prompt"]
+    assert len(gateway.calls_for("risk_compliance")) == 1
+
+
+@pytest.mark.parametrize("options", [
+    [{"topic": "fixed deposits", "model_text": "A term deposit."},
+     {"topic": "bonds", "model_text": "A loan."}],
+    [{"topic": "bonds", "model_text": "A loan."}],
+    [{"topic": "bonds", "model_text": "1. Bonds\n2. Shares"},
+     {"topic": "fixed deposits", "model_text": "A term deposit."}],
+    [{"topic": "bonds", "model_text": "A loan. [source:deposit-source]"},
+     {"topic": "fixed deposits", "model_text": "A term deposit."}],
+    [{"topic": "bonds", "sourced_text": "A loan. [source:invented]", "source_ids": ["invented"]},
+     {"topic": "fixed deposits", "model_text": "A term deposit."}],
+])
+def test_numbered_options_cannot_change_subjects_or_launder_citations(options):
+    gateway = HybridGateway(summary="", source_ids=[], options=options)
+    with pytest.raises(ModelGatewayError):
+        workflow(gateway, FixedRetriever([source("deposit-source")])).handle(
+            request("Compare 1. Bonds; 2. Fixed deposits.")
+        )
+
+
+def test_numbered_options_keep_independent_safety_review():
+    gateway = HybridGateway(summary="", source_ids=[], options=[
+        {"topic": "bonds", "model_text": "I recommend buying this bond."},
+        {"topic": "fixed deposits", "model_text": "A deposit held for a set term."},
+    ])
+    response = workflow(gateway, FixedRetriever()).handle(request("Compare 1. Bonds; 2. Fixed deposits."))
+    assert response.blocked
+    assert "I recommend buying" not in response.model_dump_json()
 
 
 @pytest.mark.parametrize("version", ["v6", "v7"])

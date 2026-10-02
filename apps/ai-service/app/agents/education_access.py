@@ -272,6 +272,36 @@ def _contains_phrase(normalized: str, phrase: str) -> bool:
     )
 
 
+def ordered_education_topics(message: str, topics: list[str]) -> list[str]:
+    """Use explicit option labels or mention order, never registry order."""
+    numbered = list(re.finditer(r"(?<!\w)(\d{1,2})[.)、]\s*", message))
+    if numbered:
+        if [int(match[1]) for match in numbered] != list(range(1, len(numbered) + 1)):
+            return []
+        ordered = []
+        for index, match in enumerate(numbered):
+            end = numbered[index + 1].start() if index + 1 < len(numbered) else len(message)
+            candidates = education_topics(message[match.end():end])
+            if len(candidates) != 1 or candidates[0] not in topics:
+                return []
+            ordered.append(candidates[0])
+    elif re.search(r"\bnumbered\b|编号|編號", message, re.IGNORECASE):
+        normalized = message.casefold()
+        positions = {
+            topic: min((match.start() for phrase, canonical in EDUCATION_TOPIC_PHRASES
+                        if canonical == topic
+                        for match in re.finditer(re.escape(phrase.casefold()), normalized)),
+                       default=len(normalized))
+            for topic in topics
+        }
+        if any(position == len(normalized) for position in positions.values()):
+            return []
+        ordered = sorted(topics, key=positions.get)
+    else:
+        return []
+    return ordered if len(ordered) >= 2 and len(set(ordered)) == len(ordered) else []
+
+
 def education_topics(message: str) -> list[str]:
     normalized = message.casefold()
     normalized = re.sub(r"\bcapital gains? tax(?:ation)?\b|资本(?:利得|收益)税", "", normalized)

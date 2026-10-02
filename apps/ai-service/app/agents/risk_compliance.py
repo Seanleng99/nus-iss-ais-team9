@@ -821,6 +821,10 @@ class RiskComplianceAgent:
                                     # Deterministic tool outputs are evidence too;
                                     # the request text may omit saved financial inputs.
                                     "income",
+                                    "capacity",
+                                    "capacity_source",
+                                    "planned_expenses",
+                                    "unallocated_income",
                                     "recurring_expenses",
                                     "disposable_income",
                                     "needs",
@@ -832,6 +836,7 @@ class RiskComplianceAgent:
                                     "emergency_fund",
                                     "monthly_savings_capacity",
                                     "feasibility",
+                                    "combined_feasibility",
                                     "category_totals",
                                     "transaction_count",
                                     "category_trends",

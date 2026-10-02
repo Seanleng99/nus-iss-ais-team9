@@ -397,14 +397,26 @@ class GeneralEducationSection(BaseModel):
     text: str = Field(min_length=1, max_length=1500)
 
 
+class EducationOption(BaseModel):
+    topic: str = Field(min_length=1, max_length=100)
+    sourced_text: str = Field(default="", max_length=1500)
+    source_ids: list[str] = Field(default_factory=list, max_length=9)
+    model_text: str = Field(default="", max_length=1500)
+
+
 class HybridEducationNarrative(GroundedEducationNarrative):
     summary: str = Field(default="", max_length=3000)
     source_ids: list[str] = Field(default_factory=list, max_length=9)
     general_knowledge: list[GeneralEducationSection] = Field(default_factory=list, max_length=12)
+    ordered_options: list[EducationOption] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
     def bound_combined_answer(self) -> "HybridEducationNarrative":
-        if len(self.summary) + sum(len(section.text) for section in self.general_knowledge) > 5000:
+        if (
+            len(self.summary) + sum(len(section.text) for section in self.general_knowledge)
+            + sum(len(option.sourced_text) + len(option.model_text) for option in self.ordered_options)
+            > 5000
+        ):
             raise ValueError("Combined education content must fit within 5000 characters.")
         return self
 

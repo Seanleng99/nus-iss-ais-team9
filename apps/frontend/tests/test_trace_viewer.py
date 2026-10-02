@@ -4,7 +4,18 @@ import httpx
 from streamlit.testing.v1 import AppTest
 
 from client import BackendClient
-from ui.trace_viewer import event_rows, model_calls_for
+from ui.trace_viewer import event_rows, model_calls_for, safe_details
+
+
+def test_compliance_reason_codes_survive_viewer_without_exposing_unreviewed_prose():
+    assert safe_details({
+        "blocked": True, "block_reasons": ["model_review", "UNREVIEWED PRIVATE DRAFT"],
+        "policy_note_count": 1, "policy_source_count": 3, "policy_corpus_version": "policy-v1",
+        "policy_notes": ["Private reviewer explanation"], "draft_answer": "Private draft",
+    }) == {
+        "blocked": True, "block_reasons": ["model_review"],
+        "policy_note_count": 1, "policy_source_count": 3, "policy_corpus_version": "policy-v1",
+    }
 
 TRACE = {
     "trace_id": "run-1",

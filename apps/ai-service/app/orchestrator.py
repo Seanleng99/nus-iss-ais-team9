@@ -1522,6 +1522,7 @@ class AgentOrchestrator:
             and not cross_user_data_findings(state["sanitized_message"])
             and not state["guardrail_findings"]
             and not any(item.blocked for item in state["agent_results"])
+            and not any(item.data.get("needs_input") for item in state["agent_results"])
             and len(state["agent_results"]) == 1
             and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
             and result.data.get("missing_points")
@@ -1581,7 +1582,11 @@ class AgentOrchestrator:
         compliance = state["compliance_result"]
         response_language = education_response_language(state["sanitized_message"])
         answer = state["draft_answer"]
-        if not compliance.blocked and compliance.data.get("answer_complete") is False:
+        if (
+            not compliance.blocked
+            and compliance.data.get("answer_complete") is False
+            and not any(item.data.get("needs_input") for item in state["agent_results"])
+        ):
             answer += (
                 "\n\n这次解释还没有完整回答你的问题。你可以指定需要进一步说明的概念或区别。"
                 if response_language == "Chinese" else
@@ -1729,6 +1734,7 @@ class AgentOrchestrator:
                 },
                 "answer_status": (
                     "refused" if compliance.blocked else
+                    "needs_input" if any(item.data.get("needs_input") for item in state["agent_results"]) else
                     "incomplete" if compliance.data.get("answer_complete") is False else "answered"
                 ),
                 "routing_rationale": (

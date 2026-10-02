@@ -448,6 +448,27 @@ def test_unsafe_recommendation_stays_blocked_with_budget_calculation_data():
     assert "I recommend buying this ETF" not in response.model_dump_json()
 
 
+def test_reviewer_receives_complete_confirmed_budget_evidence_for_memory_acknowledgement():
+    capacity = {
+        "source": "confirmed_plan", "period_start": "2026-10-01", "currency": "SGD",
+        "take_home_income": 5000, "planned_expenses": 2600,
+        "estimated_savings_capacity": 1000, "unallocated_income": 1400,
+        "calculation_method": "Confirmed monthly savings allocation", "budget_method": "flexible",
+    }
+    response, review = _review_input(CoachRequest(
+        user_id="synthetic-safety", session_id="budget-memory-review",
+        message="My monthly income is SGD 5,000. Please remember it within this chat.",
+        requested_agents=["budget"], saved_budget_capacity=capacity,
+    ), _RecordingGateway())
+    assert not response.blocked
+    budget = next(item["data"] for item in review["agent_results"] if item["agent"] == "budget")
+    assert budget["capacity"] == capacity
+    assert budget["capacity_source"] == "confirmed_plan"
+    assert budget["planned_expenses"] == 2600
+    assert budget["unallocated_income"] == 1400
+    assert budget["income"] == 5000 and budget["savings"] == 1000
+
+
 @pytest.mark.parametrize("message", [
     "should I buy ETFs",
     "Should I invest in ETFs?",

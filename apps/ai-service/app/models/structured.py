@@ -64,6 +64,7 @@ def generate_structured_response(
     except ModelGatewayError as exc:
         if exc.code not in {
             "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_CITATION", "MISSING_CITATION",
+            "INVALID_EDUCATION_OPTIONS",
         }:
             raise
         log_event(
@@ -73,7 +74,14 @@ def generate_structured_response(
             attempt=2,
         )
         cause = exc.__cause__
-        if exc.code in {"UNAPPROVED_CITATION", "MISSING_CITATION"}:
+        if exc.code == "INVALID_EDUCATION_OPTIONS":
+            validation_issues = (
+                "Use ordered_options exactly in grounding.ordered_topics order, one entry per topic. "
+                "Keep summary empty, source_ids and general_knowledge empty. Each option needs "
+                "sourced_text with its supporting source_ids, or permitted model_text, or both. "
+                "Do not put numbered lists inside either text field."
+            )
+        elif exc.code in {"UNAPPROVED_CITATION", "MISSING_CITATION"}:
             validation_issues = (
                 "Follow the citation contract and use only actual source IDs supplied "
                 "in the request. Never copy example or placeholder IDs. If there are "

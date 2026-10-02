@@ -455,6 +455,36 @@ def test_ambiguous_reference_asks_one_question_without_education_retrieval_or_wr
     assert response.audit["follow_up"]["status"] == "ambiguous"
 
 
+@pytest.mark.parametrize("message,question", [
+    ("Explain that more simply.", "Which goal, option or concept do you mean?"),
+    ("解释第二个选项", "你指的是哪个目标、选项或概念？"),
+])
+@pytest.mark.parametrize("blocked", [False, True])
+def test_clarification_stays_concise_when_reviewer_marks_it_incomplete(message, question, blocked):
+    class IncompleteReviewer(RecordingGateway):
+        def generate(self, **kwargs):
+            if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
+                self.calls.append(kwargs)
+                return json.dumps({
+                    "blocked": blocked, "summary": "Review completed.",
+                    "rationale": ["The subject needs clarification."], "policy_notes": [], "confidence": 0.9,
+                    "request_allowed": True, "complete": False,
+                    "missing_points": ["Clarify the subject."], "repairable": True,
+                    "financial_language_safe": True,
+                })
+            return super().generate(**kwargs)
+
+    gateway, retriever = IncompleteReviewer(), RecordingRetriever()
+    response = handle(request(message), gateway, retriever)
+    assert response.blocked == blocked
+    assert response.audit["answer_status"] == ("refused" if blocked else "needs_input")
+    assert (response.answer == question) == (not blocked)
+    assert "not yet fully answer" not in response.answer
+    assert retriever.queries == []
+    assert not any(c["system_prompt"].startswith("PROMPT_ID: agent_") for c in gateway.calls)
+    assert len([c for c in gateway.calls if c["system_prompt"].startswith("PROMPT_ID: risk_compliance")]) == 1
+
+
 def test_read_only_follow_up_does_not_resume_pending_drafts_even_if_router_requests_capture():
     gateway = RecordingGateway(force_capture=True)
     response = handle(
