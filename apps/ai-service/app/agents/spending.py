@@ -1,12 +1,15 @@
 import json
 
 from app.agents.base import BaseAgent
+from app.agents.spending_capture import extract_spending_draft
+from app.core.guardrails import inspect_prompt
 from app.core.schemas import (
     AgentName,
     AgentResult,
     AgentTask,
     CapabilityName,
     CapabilityResult,
+    CompletedInvocation,
     UserFinancialSnapshot,
 )
 from app.core.telemetry import trace_method
@@ -17,6 +20,31 @@ class SpendingAgent(BaseAgent):
     name = AgentName.SPENDING
     prompt_id = "agent_spending"
     dependency_planning_enabled = True
+
+    def run_task(self, task):
+        if task.context_features.get("spending_capture") and inspect_prompt(
+            task.sanitized_message
+        ).allowed:
+            draft = extract_spending_draft(self, task)
+            if draft.is_spending_request:
+                return CompletedInvocation(
+                    result=AgentResult(
+                        agent=self.name,
+                        summary=(
+                            "An unsaved spending entry was proposed. The backend validates it and "
+                            "shows an exact preview for explicit confirmation before anything is "
+                            "saved. A recorded-spending lookup is answered by the backend from the "
+                            "user's own records."
+                        ),
+                        rationale=[
+                            "Spending records require a backend preview and explicit user confirmation."
+                        ],
+                        confidence=1.0,
+                        data={"spending_draft": draft.model_dump(mode="json")},
+                    ),
+                    capabilities=[],
+                )
+        return super().run_task(task)
 
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:

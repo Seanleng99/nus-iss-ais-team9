@@ -156,6 +156,7 @@ class CoachRequest(BaseModel):
     conversation_context: list[ConversationMessage] = Field(default_factory=list, max_length=8)
     pending_goal: dict[str, Any] | None = None
     pending_budget: dict[str, Any] | None = None
+    pending_transaction: dict[str, Any] | None = None
     budget_context: dict[str, Any] = Field(default_factory=dict)
     saved_budget_capacity: dict[str, Any] = Field(default_factory=dict)
     session_context: SessionContext = Field(default_factory=SessionContext)
@@ -370,6 +371,7 @@ class RouterDecision(BaseModel):
     goal_capture: bool = False
     budget_capture: bool = False
     budget_planning: bool = False
+    spending_capture: bool = False
 
     @field_validator("selected_agents")
     @classmethod

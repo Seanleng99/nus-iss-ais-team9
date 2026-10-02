@@ -356,6 +356,31 @@ def test_offline_migrations_generate_sql_without_secret_lookup(
     assert "CREATE TABLE" in output.getvalue()
     assert "alembic_version" in output.getvalue()
     assert "ADD COLUMN conversation_state JSON" in output.getvalue()
+    assert "ADD COLUMN pending_transaction JSON" in output.getvalue()
     fake_secrets[0].assert_not_called()
     fake_secrets[1].get_secret_value.assert_not_called()
     fake_dbapi_connect.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "previous_head,missing_column,existing_column",
+    [
+        ("20261001_0014", "conversation_state", "pending_transaction"),
+        ("20261002_0014", "pending_transaction", "conversation_state"),
+    ],
+)
+def test_chat_state_merge_upgrades_from_either_existing_head(
+    previous_head, missing_column, existing_column, monkeypatch, secret_settings, fake_secrets,
+):
+    monkeypatch.setattr(config_module, "settings", secret_settings)
+    output = StringIO()
+    config = Config(output_buffer=output)
+    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+
+    command.upgrade(config, f"{previous_head}:head", sql=True)
+
+    sql = output.getvalue()
+    assert f"ADD COLUMN {missing_column} JSON" in sql
+    assert f"ADD COLUMN {existing_column} JSON" not in sql
+    assert "20261002_0015" in sql
+    fake_secrets[0].assert_not_called()

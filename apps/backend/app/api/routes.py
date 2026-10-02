@@ -52,6 +52,10 @@ from app.services.session_context import (
 )
 from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
 from app.services.transaction_capture import handle_transaction_capture
+from app.services.transaction_staging import (
+    handle_transaction_confirmation,
+    stage_transaction_draft,
+)
 
 router = APIRouter()
 
@@ -128,10 +132,16 @@ async def coach(
     confirmed = handle_budget_confirmation(session, request)
     if confirmed is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, confirmed))
+    confirmed_transaction = handle_transaction_confirmation(session, request)
+    if confirmed_transaction is not None:
+        return _finalize_coach_response(
+            _persist_local_coach(session, request, confirmed_transaction)
+        )
     if existing_chat and existing_chat.pending_goal:
         existing_chat.pending_goal = {**existing_chat.pending_goal, "ready": False}
     pending_goal = existing_chat.pending_goal if existing_chat else None
     pending_budget = existing_chat.pending_budget if existing_chat else None
+    pending_transaction = existing_chat.pending_transaction if existing_chat else None
     goal_context = pending_goal is not None or bool(
         re.search(r"\bgoals?\b|目标", request.message, re.IGNORECASE)
     )
@@ -139,7 +149,7 @@ async def coach(
         fact["source_position"] == revision + 1
         for fact in request.session_context["facts"].values()
     )
-    # Goal and budget drafts take precedence over transaction/date parsing for follow-ups.
+    # Drafts and explicit financial facts take precedence over transaction edits.
     captured = (
         None if goal_context or pending_budget or stated_financial_detail or "budget" in request.message.casefold() or is_workspace_request(request.message)
         else handle_transaction_capture(session, request)
@@ -149,7 +159,13 @@ async def coach(
     remembered = session_fact_reply(request) if not pending_goal and not pending_budget else None
     if remembered is not None:
         return _finalize_coach_response(_persist_local_coach(session, request, remembered))
-    query_date = parse_date_spending_query(request.message, request.session_context)
+    query_date = (
+        parse_date_spending_query(request.message, request.session_context)
+        if request.session_context["active_topic"] == "spending"
+        and not pending_transaction
+        and re.fullmatch(r"(?:what|how) about .+[?!.]*", request.message.strip(), re.IGNORECASE)
+        else None
+    )
     if query_date is not None and not pending_budget and not pending_goal and not is_workspace_request(request.message):
         queried = handle_date_spending_query(session, request, query_date)
         return _finalize_coach_response(_persist_local_coach(session, request, queried))
@@ -167,6 +183,7 @@ async def coach(
     request = request.model_copy(update={
         "pending_goal": pending_goal["draft"] if pending_goal else None,
         "pending_budget": pending_budget["draft"] if pending_budget else None,
+        "pending_transaction": pending_transaction["draft"] if pending_transaction else None,
         "budget_context": build_planning_context(
             session, request.user_id, message=request.message,
             pending=pending_budget["draft"] if pending_budget else None,
@@ -193,6 +210,11 @@ async def coach(
         chat_session.pending_goal = {**chat_session.pending_goal, "ready": False}
     if chat_session.pending_budget:
         chat_session.pending_budget = {**chat_session.pending_budget, "ready": False}
+    if chat_session.pending_transaction:
+        chat_session.pending_transaction = {
+            **chat_session.pending_transaction,
+            "ready": False,
+        }
     # DurableRun commits metadata and releases the conversation lock before AI.
     run = DurableRun(session, chat_session.id, settings.ai_service_timeout_seconds)
     token = active_run.set(run)
@@ -216,6 +238,9 @@ async def coach(
             raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
         stage_budget_draft(session, request.user_id, chat_session, response)
         stage_goal_draft(session, request.user_id, chat_session, response)
+        stage_transaction_draft(
+            session, request.user_id, chat_session, response, request.message
+        )
         if chat_session.pending_budget and not any("goal_draft" in r.data for r in response.agent_results):
             chat_session.pending_goal = None
         chat_repository.append_message(chat_session, "user", request.message)

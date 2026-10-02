@@ -356,6 +356,7 @@ class RecordingGateway(LocalFixtureModelGateway):
                     "budget_capture": True,
                     "goal_capture": True,
                     "budget_planning": True,
+                    "spending_capture": True,
                 }
             )
         response = json.loads(super().generate(**kwargs))
@@ -462,6 +463,7 @@ def test_read_only_follow_up_does_not_resume_pending_drafts_even_if_router_reque
             snapshot=SNAPSHOT,
             pending_goal={"name": "Holiday"},
             pending_budget={"planning": {}},
+            pending_transaction={"action": "record", "transactions": [{"description": "Dinner"}]},
         ),
         gateway,
     )
@@ -469,10 +471,11 @@ def test_read_only_follow_up_does_not_resume_pending_drafts_even_if_router_reque
     assert not any(
         "goal_capture" in c["system_prompt"].splitlines()[0]
         or "budget_capture" in c["system_prompt"].splitlines()[0]
+        or "spending_capture" in c["system_prompt"].splitlines()[0]
         for c in gateway.calls
     )
     assert not any(
-        result.data.get("goal_draft") or result.data.get("budget_draft")
+        result.data.get("goal_draft") or result.data.get("budget_draft") or result.data.get("spending_draft")
         for result in response.agent_results
     )
 

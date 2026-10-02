@@ -13,6 +13,72 @@ from app.core.telemetry import log_event
 from app.domain.schemas import ApplicationMoneyAmount, CoachRequest, CoachResponse
 from app.infrastructure.repositories import SQLAlchemyTransactionRepository
 
+AMEND_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:oh\s+)?(?:sorry|oops|wait|hold\s+on)[,!.]?\s+"
+    r"|^\s*(?:actually|correction)[,!]?\s+"
+    r"|^\s*(?:make\s+it|change\s+it\s+to|it\s+should\s+be|no[,]?\s+it(?:'s| is))\b",
+    re.IGNORECASE,
+)
+
+AMEND_AMOUNT_PATTERN = re.compile(
+    r"^\s*(?:s?\$\s*|sgd\s+)?(\d{1,7}(?:[.,]\d{1,2})?)\s*(?:sgd|dollars?|s\$|bucks?)?$",
+    re.IGNORECASE,
+)
+
+AMEND_FILLER_TOKENS = frozenset(
+    {
+        "its", "it", "it's", "it is", "is", "was", "the", "amount", "price", "total",
+        "make", "change", "correct", "corrected", "should", "be", "to", "not",
+        "cost", "costs", "costed", "paid", "pay", "instead", "rather", "said",
+        "oops", "sorry", "actually", "correction", "misread", "mistake",
+        "that", "this", "one",
+    }
+)
+
+EDIT_DIRECTIVE_PATTERN = re.compile(
+    r"^\s*(?:please\s+)?(?:edit|change|update|correct|amend)\b"
+    r"\s+(?P<target>[^.!?]{1,120}?)"
+    r"\s+(?:to|at|as)\s+(?:s?\$\s*|sgd\s*)?(?P<amount>\d{1,7}(?:[.,]\d{1,2})?)\s*"
+    r"(?:sgd|dollars?|s\$|bucks?)?\s*[.!]?$",
+    re.IGNORECASE,
+)
+
+EDIT_REQUEST_PATTERN = re.compile(
+    r"\b(?:edit|change|update|correct|amend)\b"
+    r"\s+(?P<target>[^.!?]{1,120}?)"
+    r"\s+(?:to|at|as)\s+(?:s?\$\s*|sgd\s*)?(?P<amount>\d{1,7}(?:[.,]\d{1,2})?)\s*"
+    r"(?:sgd|dollars?|s\$|bucks?)?\s*[.!?]*$",
+    re.IGNORECASE,
+)
+
+TRANSACTION_NAME_PATTERN = re.compile(
+    r"\btransaction\s+(?:for|called|named)\s+(?P<name>[a-z0-9' ]{2,80})(?:\s*[.!?]|$)",
+    re.IGNORECASE,
+)
+
+DELETE_DIRECTIVE_PATTERN = re.compile(
+    r"^\s*(?:please\s+)?(?:delete|remove)\b\s+(?P<target>[^.!?]{1,120}?)[.!?]*$",
+    re.IGNORECASE,
+)
+
+DELETE_REQUEST_PATTERN = re.compile(
+    r"\b(?:delete|remove)\b\s+(?P<target>[^.!?]{1,120}?)[.!?]*$",
+    re.IGNORECASE,
+)
+
+EDIT_META_WORDS = frozenset(
+    {
+        "transaction", "transactions", "spending", "spend", "expense", "expenses",
+        "amount", "amounts", "price", "cost", "costs", "total", "purchase",
+        "purchases", "entry", "entries", "record", "records", "receipt", "value",
+    }
+)
+
+EDIT_CONFIRM_PATTERN = re.compile(
+    r"^(?:yes|yeah|yep|yup|confirm|confirmed|ok|okay|do it|go ahead|save it)$",
+    re.IGNORECASE,
+)
+
 PENDING_TTL_SECONDS = 600.0
 
 CANCEL_PATTERN = re.compile(
@@ -95,6 +161,10 @@ POLITE_ADD_PREFIX_PATTERN = re.compile(
 )
 CAPTURE_DIRECTIVE_PATTERN = re.compile(
     r"^(?:please\s+|kindly\s+)?(?:add|record|log|enter|store)\b",
+    re.IGNORECASE,
+)
+CAPTURE_OBJECT_PATTERN = re.compile(
+    r"^(?:a|an|the|this|that)?\s*(?:new\s+)?(?:transaction|expense|expenditure|spending)\b\s*",
     re.IGNORECASE,
 )
 
@@ -208,7 +278,7 @@ INLINE_DATE_PATTERN = re.compile(
     rf"|\b(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\s+of\s+(?:{MONTH_ALTERNATIVES})\b(?:\s+\d{{2,4}})?"
     rf"|\b\d{{1,2}}(?:st|nd|rd|th)\s+(?:{MONTH_ALTERNATIVES})\b(?:\s+\d{{2,4}})?"
     rf"|\b(?:{MONTH_ALTERNATIVES})\s+\d{{1,2}}(?:st|nd|rd|th)?\b(?:\s+\d{{2,4}})?"
-    rf"|\b(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\b"
+    rf"|\b(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\b(?!\s+of\s+|\s+(?:{MONTH_ALTERNATIVES})\b)"
     rf"|\b\d{{1,2}}\s+(?:{MONTH_ALTERNATIVES})\b(?:\s+\d{{2,4}})?"
     rf"|\b(?:{WEEKDAY_ALTERNATIVES})\b)",
     re.IGNORECASE,
@@ -222,7 +292,8 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
                    "parking", "carpark", "erp", "top-up", "topup", "transit", "commute",
                    "scoot", "rideshare", "flight", "airticket", "air ticket")),
     ("housing", ("rent", "mortgage", "maintenance fee", "service charge", "condo", "hdb")),
-    ("utilities", ("electricity", "water bill", "gas bill", "internet", "broadband",
+    ("utilities", ("utilit", "electricity", "power bill", "sproupit", "water bill",
+                   "gas bill", "internet", "broadband",
                    "mobile plan", "phone bill", "singtel", "starhub", "m1 ")),
     ("healthcare", ("doctor", "clinic", "medicine", "paracetamol", "pharmac", "hospital",
                     "dental", "gp ", "supplement")),
@@ -250,26 +321,23 @@ class CaptureDraft:
     recurring: bool = False
 
 
-CaptureKey = str | tuple[str, str]
-
-
 class PendingCaptureStore:
     def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
         self.ttl_seconds = ttl_seconds
         self._lock = threading.Lock()
-        self._entries: dict[CaptureKey, tuple[list[CaptureDraft], float]] = {}
+        self._entries: dict[str, tuple[list[CaptureDraft], float]] = {}
 
-    def put(self, user_id: CaptureKey, draft: CaptureDraft) -> None:
+    def put(self, user_id: str, draft: CaptureDraft) -> None:
         self.put_queue(user_id, [draft])
 
-    def put_queue(self, user_id: CaptureKey, drafts: list[CaptureDraft]) -> None:
+    def put_queue(self, user_id: str, drafts: list[CaptureDraft]) -> None:
         with self._lock:
             if drafts:
                 self._entries[user_id] = (list(drafts), time.monotonic())
             else:
                 self._entries.pop(user_id, None)
 
-    def _live(self, user_id: CaptureKey) -> list[CaptureDraft] | None:
+    def _live(self, user_id: str) -> list[CaptureDraft] | None:
         entry = self._entries.get(user_id)
         if entry is None:
             return None
@@ -279,17 +347,17 @@ class PendingCaptureStore:
             return None
         return drafts or None
 
-    def get(self, user_id: CaptureKey) -> CaptureDraft | None:
+    def get(self, user_id: str) -> CaptureDraft | None:
         with self._lock:
             drafts = self._live(user_id)
             return drafts[0] if drafts else None
 
-    def peek_all(self, user_id: CaptureKey) -> list[CaptureDraft]:
+    def peek_all(self, user_id: str) -> list[CaptureDraft]:
         with self._lock:
             drafts = self._live(user_id)
             return list(drafts) if drafts else []
 
-    def replace(self, user_id: CaptureKey, drafts: list[CaptureDraft]) -> None:
+    def replace(self, user_id: str, drafts: list[CaptureDraft]) -> None:
         with self._lock:
             stored_at = self._entries[user_id][1] if user_id in self._entries else time.monotonic()
             if drafts:
@@ -297,13 +365,13 @@ class PendingCaptureStore:
             else:
                 self._entries.pop(user_id, None)
 
-    def drop(self, user_id: CaptureKey) -> list[CaptureDraft]:
+    def drop(self, user_id: str) -> list[CaptureDraft]:
         with self._lock:
             drafts = self._live(user_id)
             self._entries.pop(user_id, None)
             return list(drafts) if drafts else []
 
-    def pop(self, user_id: CaptureKey) -> CaptureDraft | None:
+    def pop(self, user_id: str) -> CaptureDraft | None:
         with self._lock:
             drafts = self._live(user_id)
             if not drafts:
@@ -322,6 +390,134 @@ class PendingCaptureStore:
 
 
 pending_capture_store = PendingCaptureStore()
+
+
+@dataclass
+class LastSavedRecord:
+    transaction_id: Any
+    description: str
+    category: str
+    amount: float
+    when: date
+    recurring: bool = False
+
+
+class LastSavedStore:
+    def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
+        self.ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._entries: dict[str, tuple[LastSavedRecord, float]] = {}
+
+    def remember(self, user_id: str, record: LastSavedRecord) -> None:
+        with self._lock:
+            self._entries[user_id] = (record, time.monotonic())
+
+    def get(self, user_id: str) -> LastSavedRecord | None:
+        with self._lock:
+            entry = self._entries.get(user_id)
+            if entry is None:
+                return None
+            record, stored_at = entry
+            if time.monotonic() - stored_at > self.ttl_seconds:
+                del self._entries[user_id]
+                return None
+            return record
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+last_saved_store = LastSavedStore()
+
+
+@dataclass
+class EditCandidate:
+    transaction_id: Any
+    description: str
+    category: str
+    amount: float
+    when: date
+    recurring: bool = False
+
+
+@dataclass
+class PendingEdit:
+    new_amount: float
+    candidates: list[EditCandidate]
+    candidate: EditCandidate | None
+    op: str = "edit"
+
+
+class PendingEditStore:
+    def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
+        self.ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._entries: dict[str, tuple[PendingEdit, float]] = {}
+
+    def put(self, user_id: str, pending: PendingEdit) -> None:
+        with self._lock:
+            self._entries[user_id] = (pending, time.monotonic())
+
+    def get(self, user_id: str) -> PendingEdit | None:
+        with self._lock:
+            entry = self._entries.get(user_id)
+            if entry is None:
+                return None
+            pending, stored_at = entry
+            if time.monotonic() - stored_at > self.ttl_seconds:
+                del self._entries[user_id]
+                return None
+            return pending
+
+    def drop(self, user_id: str) -> None:
+        with self._lock:
+            self._entries.pop(user_id, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+pending_edit_store = PendingEditStore()
+
+EDIT_STOP_WORDS = EDIT_META_WORDS | frozenset(
+    {
+        "my", "the", "a", "an", "this", "that", "these", "those", "it", "its",
+        "for", "of", "to", "is", "was", "have", "has", "there", "one",
+        "me", "you", "can", "could", "would", "will", "help", "please",
+        "delete", "remove", "edit", "change", "update", "on", "at", "in", "did",
+        "made", "make", "able",
+    }
+)
+
+
+def _edit_keywords(target: str) -> list[str]:
+    words = [
+        word
+        for word in re.sub(r"[^a-z0-9 ]", " ", target.lower()).split()
+        if word not in EDIT_STOP_WORDS
+    ]
+    return words
+
+
+DAY_MONTH_NAME_FILTER_PATTERN = re.compile(
+    rf"\b(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{MONTH_ALTERNATIVES})\b(?:\s+\d{{2,4}})?",
+    re.IGNORECASE,
+)
+
+
+def _split_name_and_date_filter(target: str) -> tuple[list[str], date | None]:
+    match = DAY_MONTH_NAME_FILTER_PATTERN.search(target)
+    if match is not None:
+        parsed, _ = _parse_date_token(match.group(0), allow_future=True)
+        if parsed is not None:
+            target = target[: match.start()] + " " + target[match.end():]
+            return _edit_keywords(target), parsed
+    when_filter = extract_date_from_text(target, allow_future=True)
+    if when_filter is not None:
+        target = INLINE_DATE_PATTERN.sub(" ", target)
+    return _edit_keywords(target), when_filter
 
 
 def classify_category(text: str) -> str:
@@ -456,6 +652,9 @@ def parse_spending_statement(message: str) -> CaptureDraft | None:
     directive = CAPTURE_DIRECTIVE_PATTERN.match(text)
     if directive is not None and len(text) > directive.end():
         text = text[directive.end():].strip()
+        object_prefix = CAPTURE_OBJECT_PATTERN.match(text)
+        if object_prefix is not None and len(text) > object_prefix.end():
+            text = text[object_prefix.end():].strip()
     first_word = text.split(" ", 1)[0].lower().strip(".,!?;:")
     if first_word in QUESTION_PREFIXES:
         return None
@@ -796,6 +995,36 @@ def is_cancel_message(message: str) -> bool:
     return bool(CANCEL_PATTERN.fullmatch(message.strip().rstrip(".!")))
 
 
+def parse_last_saved_amendment(
+    message: str,
+) -> tuple[float | None, date | None] | None:
+    prefix = AMEND_PREFIX_PATTERN.match(message)
+    if prefix is None:
+        return None
+    remainder = message[prefix.end():].strip()
+    if not remainder:
+        return None
+    when = extract_date_from_text(remainder)
+    if when is not None:
+        remainder = INLINE_DATE_PATTERN.sub(" ", remainder)
+    tokens = [token for token in re.split(r"[^a-z0-9'.]+", remainder.lower()) if token]
+    if not tokens:
+        return (None, when) if when is not None else None
+    meaningful = [token for token in tokens if token not in AMEND_FILLER_TOKENS]
+    if not meaningful:
+        return (None, when) if when is not None else None
+    match = AMEND_AMOUNT_PATTERN.match(" ".join(meaningful))
+    if match is None:
+        return None
+    try:
+        amount = float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    if amount <= 0:
+        return None
+    return amount, when
+
+
 BATCH_HEADER_PATTERN = re.compile(
     r"\b(?:add|record|log|enter|input)\b[^.:;]*\b(?:expense|expenses|transaction|transactions|"
     r"spending|purchase|purchases)\b",
@@ -823,11 +1052,29 @@ def _split_and_items(segment: str) -> list[str]:
     return [segment]
 
 
+COMMA_ITEM_SEPARATOR = re.compile(r",\s+")
+
+
+def _split_comma_items(segment: str) -> list[str]:
+    parts = [part.strip() for part in COMMA_ITEM_SEPARATOR.split(segment) if part.strip()]
+    if len(parts) < 2:
+        return [segment]
+    parts = [re.sub(r"^(?:and|also)\s+", "", part, flags=re.IGNORECASE) for part in parts]
+    if all(BARE_AMOUNT_PATTERN.search(part) for part in parts):
+        return parts
+    return [segment]
+
+
 def parse_batch(message: str) -> list[CaptureDraft] | None:
     raw_segments = _split_segments(message)
-    segments: list[str] = []
+    segment_groups: list[list[str]] = []
     for segment in raw_segments:
-        segments.extend(_split_and_items(segment))
+        group: list[str] = []
+        for part in _split_and_items(segment):
+            for sub in _split_comma_items(part):
+                group.extend(_split_and_items(sub))
+        segment_groups.append(group)
+    segments = [item for group in segment_groups for item in group]
     if len(segments) < 2:
         return None
     header_present = any(
@@ -835,12 +1082,33 @@ def parse_batch(message: str) -> list[CaptureDraft] | None:
         for segment in segments
     )
     drafts: list[CaptureDraft] = []
-    for segment in segments:
-        draft = parse_spending_statement(segment)
-        if draft is None:
-            continue
-        draft.when = extract_date_from_text(segment, allow_future=draft.booking)
-        drafts.append(draft)
+    header_dates: list[date] = []
+    for group in segment_groups:
+        group_drafts: list[CaptureDraft] = []
+        for segment in group:
+            draft = parse_spending_statement(segment)
+            if draft is None:
+                header_date = extract_date_from_text(segment)
+                if (
+                    header_date is not None
+                    and MARKED_AMOUNT_PATTERN.search(segment) is None
+                    and BARE_AMOUNT_PATTERN.search(segment) is None
+                ):
+                    header_dates.append(header_date)
+                continue
+            draft.when = extract_date_from_text(segment, allow_future=draft.booking)
+            group_drafts.append(draft)
+        if len(group_drafts) >= 2:
+            shared = next((draft.when for draft in group_drafts if draft.when is not None), None)
+            if shared is not None:
+                for draft in group_drafts:
+                    if draft.when is None:
+                        draft.when = shared
+        drafts.extend(group_drafts)
+    if header_dates:
+        for draft in drafts:
+            if draft.when is None:
+                draft.when = header_dates[0]
     if len(drafts) >= 2:
         return drafts
     if header_present and drafts:
@@ -862,7 +1130,7 @@ def _local_reply(session_id: str, answer: str) -> CoachResponse:
     audit: dict[str, Any] = {"source": "transaction_capture"}
     return CoachResponse(
         session_id=session_id,
-        selected_agents=[],
+        selected_agents=["spending"],
         answer=answer,
         agent_results=[],
         disclaimers=[],
@@ -893,13 +1161,16 @@ def _ask_amount_reply(session_id: str, draft: CaptureDraft) -> CoachResponse:
 
 
 def handle_transaction_capture(session: Session, request: CoachRequest) -> CoachResponse | None:
+    # New spending records and lookups now run through the AI-service capture
+    # flow (transaction_staging). This handler keeps only named edit, delete
+    # and last-saved amendment helpers.
     user_id = request.user_id
     session_id = request.session_id
     message = request.message
 
     def save_one(draft: CaptureDraft, when: date) -> str:
         try:
-            SQLAlchemyTransactionRepository(session).create(
+            record = SQLAlchemyTransactionRepository(session).create(
                 user_id,
                 TransactionCreate(
                     description=draft.description,
@@ -910,9 +1181,20 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 ),
             )
             session.commit()
+            last_saved_store.remember(
+                user_id,
+                LastSavedRecord(
+                    transaction_id=record.id,
+                    description=draft.description,
+                    category=draft.category,
+                    amount=draft.amount,
+                    when=when,
+                    recurring=draft.recurring,
+                ),
+            )
         except SQLAlchemyError:
             session.rollback()
-            pending_capture_store.put((user_id, session_id), draft)
+            pending_capture_store.put(user_id, draft)
             return "Sorry, I couldn't save that transaction. Please try again."
         log_event(
             "transaction.added",
@@ -935,103 +1217,382 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
         parts = [save_one(draft, when) for draft, when in zip(drafts, dates, strict=True)]
         return _finalize(parts)
 
-    pending = pending_capture_store.peek_all((user_id, session_id))
-    if pending:
+    pending_edit = pending_edit_store.get(user_id)
+    if pending_edit is not None:
         if is_cancel_message(message):
-            dropped = pending_capture_store.drop((user_id, session_id))
-            if len(dropped) == 1:
+            pending_edit_store.drop(user_id)
+            if pending_edit.op == "delete":
                 return _local_reply(
-                    session_id, "OK, I've dropped that transaction. Nothing was saved."
+                    session_id, "OK, I've dropped that delete. Nothing was deleted."
+                )
+            return _local_reply(
+                session_id, "OK, I've dropped that edit. Nothing was changed."
+            )
+        if EDIT_CONFIRM_PATTERN.fullmatch(message.strip().rstrip(".!")):
+            if pending_edit.candidate is None:
+                return _local_reply(
+                    session_id,
+                    "Which one did you mean? Mention its date, for example 'the 21 Sep one'.",
+                )
+            if pending_edit.op == "delete":
+                return _apply_named_delete(session, session_id, user_id, pending_edit)
+            return _apply_named_edit(session, session_id, user_id, pending_edit)
+        picked_keywords, when_filter = _split_name_and_date_filter(message)
+        if picked_keywords or when_filter is not None:
+            candidates = pending_edit.candidates
+
+            def candidate_words(candidate: EditCandidate) -> list[str]:
+                return re.sub(r"[^a-z0-9 ]", " ", candidate.description.lower()).split()
+
+            keywords_text = " ".join(picked_keywords)
+            exact = [
+                candidate
+                for candidate in candidates
+                if keywords_text
+                and " ".join(candidate_words(candidate)) == keywords_text
+                and (when_filter is None or candidate.when == when_filter)
+            ]
+            narrowed = exact or [
+                candidate
+                for candidate in candidates
+                if (when_filter is None or candidate.when == when_filter)
+                and all(
+                    keyword in candidate_words(candidate) for keyword in picked_keywords
+                )
+            ]
+            if not narrowed and when_filter is not None:
+                narrowed = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.when == when_filter
+                ]
+            if len(narrowed) == 1:
+                selected = narrowed[0]
+                if pending_edit.op == "delete":
+                    return _delete_preview_reply(session_id, user_id, selected)
+                return _edit_preview_reply(
+                    session_id, user_id, selected, pending_edit.new_amount
+                )
+            listing = "; ".join(
+                f"{candidate.description} on {candidate.when.day} "
+                f"{candidate.when.strftime('%b')} for SGD {candidate.amount:.2f}"
+                for candidate in narrowed[:3]
+            )
+            pending_edit_store.put(
+                user_id,
+                PendingEdit(
+                    new_amount=pending_edit.new_amount,
+                    candidates=(narrowed or candidates)[:3],
+                    candidate=None,
+                    op=pending_edit.op,
+                ),
+            )
+            if narrowed:
+                return _local_reply(
+                    session_id,
+                    f"I found more than one match: {listing}. Which one did you mean? "
+                    "Mention its date, for example 'the 21 Sep one'.",
                 )
             return _local_reply(
                 session_id,
-                f"OK, I've dropped {len(dropped)} pending transactions. Nothing was saved.",
+                "None of those match — which one did you mean? "
+                f"Your options: {listing or ', '.join(c.description for c in candidates)}.",
             )
-        allow_future = any(draft.booking for draft in pending)
-        if pending[0].need_amount:
-            resolved_date = parse_date_expression(message, allow_future=allow_future)
-            if resolved_date is not None:
-                drafts = pending_capture_store.peek_all((user_id, session_id))
-                drafts[0].when = resolved_date
-                pending_capture_store.replace((user_id, session_id), drafts)
-                return _ask_amount_reply(session_id, drafts[0])
-            amount = parse_amount_followup(message)
-            if amount is None:
-                replacement = parse_spending_statement(message) or parse_spending_details(message)
-                if replacement is not None:
-                    pending_capture_store.drop((user_id, session_id))
-                    return _start_capture(session_id, user_id, message, replacement, save_one)
-                pending_capture_store.drop((user_id, session_id))
-                return None
-            drafts = pending_capture_store.drop((user_id, session_id))
-            target = drafts[0]
-            remainder = drafts[1:]
-            target.amount = amount
-            target.need_amount = False
-            if target.when is None:
-                pending_capture_store.put_queue((user_id, session_id), drafts)
-                return _ask_date_reply(session_id, target)
-            saved_part = save_one(target, target.when)
-            if saved_part.startswith("Sorry"):
-                pending_capture_store.put_queue((user_id, session_id), drafts)
-                return _local_reply(session_id, saved_part)
-            if remainder:
-                pending_capture_store.put_queue((user_id, session_id), remainder)
-                if remainder[0].need_amount:
-                    return _ask_amount_reply(session_id, remainder[0])
-                return _ask_queue_reply(session_id, remainder[0], [saved_part])
-            return _local_reply(session_id, _finalize([saved_part]))
-        resolved = parse_date_expression(message, allow_future=allow_future)
-        if resolved is not None:
-            drafts = pending_capture_store.drop((user_id, session_id))
-            target = drafts[0]
-            remainder = drafts[1:]
-            saved_part = save_one(target, resolved)
-            failed = saved_part.startswith("Sorry")
-            if failed:
-                pending_capture_store.put_queue((user_id, session_id), drafts)
-                return _local_reply(session_id, saved_part)
-            if remainder:
-                pending_capture_store.put_queue((user_id, session_id), remainder)
-                return _ask_queue_reply(session_id, remainder[0], [saved_part])
-            return _local_reply(session_id, _finalize([saved_part]))
-        if mentions_future_date(message) and not allow_future:
+        pending_edit_store.drop(user_id)
+
+    delete_directive = DELETE_DIRECTIVE_PATTERN.match(message) or (
+        DELETE_REQUEST_PATTERN.search(message)
+        if EDIT_REQUEST_PATTERN.search(message) is None
+        else None
+    )
+    if delete_directive is not None:
+        named = TRANSACTION_NAME_PATTERN.search(message)
+        target_text = delete_directive.group("target")
+        if named is not None:
+            target_text = f"{named.group('name')} {target_text}"
+        keywords, when_filter = _split_name_and_date_filter(target_text)
+        if not keywords:
             return _local_reply(
                 session_id,
-                "That date is in the future — when did you spend it?",
+                "I couldn't find the transaction you meant. "
+                "Mention its name, for example 'delete the Lunch transaction'.",
             )
-        batch = parse_batch(message)
-        if batch is not None:
-            pending_capture_store.drop((user_id, session_id))
-            return _handle_parsed_batch(session, session_id, user_id, batch, save_list, save_one)
-        replacement = parse_spending_statement(message)
-        if replacement is not None:
-            pending_capture_store.drop((user_id, session_id))
-            inline = extract_date_from_text(message, allow_future=replacement.booking)
-            if inline is not None:
-                saved_part = save_one(replacement, inline)
-                answer = saved_part if saved_part.startswith("Sorry") else _finalize([saved_part])
-                return _local_reply(session_id, answer)
-            pending_capture_store.put((user_id, session_id), replacement)
-            return _ask_date_reply(session_id, replacement)
-        pending_capture_store.drop((user_id, session_id))
-        return None
+        records = SQLAlchemyTransactionRepository(session).list_records(user_id)
+        matches: list[EditCandidate] = []
+        for record in records:
+            words = set(re.sub(r"[^a-z0-9 ]", " ", record.description.lower()).split())
+            if all(keyword in words for keyword in keywords):
+                matches.append(
+                    EditCandidate(
+                        transaction_id=record.id,
+                        description=record.description,
+                        category=record.category,
+                        amount=float(record.amount),
+                        when=record.occurred_on,
+                        recurring=record.recurring,
+                    )
+                )
+        if when_filter is not None:
+            matches = [candidate for candidate in matches if candidate.when == when_filter]
+        if not matches:
+            return _local_reply(
+                session_id,
+                f"I couldn't find a transaction matching "
+                f"'{' '.join(keywords)}' in your records.",
+            )
+        matches.sort(key=lambda candidate: candidate.when, reverse=True)
+        if len(matches) == 1:
+            return _delete_preview_reply(session_id, user_id, matches[0])
+        pending_edit_store.put(
+            user_id,
+            PendingEdit(
+                new_amount=0.0, candidates=matches[:3], candidate=None, op="delete"
+            ),
+        )
+        listing = "; ".join(
+            f"{candidate.description} on {candidate.when.day} "
+            f"{candidate.when.strftime('%b')} for SGD {candidate.amount:.2f}"
+            for candidate in matches[:3]
+        )
+        return _local_reply(
+            session_id,
+            f"I found more than one match: {listing}. Which one did you mean? "
+            "Mention its date, for example 'the 21 Sep one'.",
+        )
 
-    batch = parse_batch(message)
-    if batch is not None:
-        return _handle_parsed_batch(session, session_id, user_id, batch, save_list, save_one)
+    edit_directive = EDIT_DIRECTIVE_PATTERN.match(message) or EDIT_REQUEST_PATTERN.search(message)
+    if edit_directive is not None:
+        named = TRANSACTION_NAME_PATTERN.search(message)
+        target_text = edit_directive.group("target")
+        if named is not None:
+            target_text = f"{named.group('name')} {target_text}"
+        keywords, when_filter = _split_name_and_date_filter(target_text)
+        try:
+            new_amount = float(edit_directive.group("amount").replace(",", "."))
+        except ValueError:
+            new_amount = 0.0
+        if new_amount <= 0:
+            return None
+        if not keywords:
+            return _local_reply(
+                session_id,
+                "I couldn't find the transaction you meant. "
+                "Mention its name, for example 'change the Lunch to 25'.",
+            )
+        records = SQLAlchemyTransactionRepository(session).list_records(user_id)
+        matches: list[EditCandidate] = []
+        for record in records:
+            words = set(re.sub(r"[^a-z0-9 ]", " ", record.description.lower()).split())
+            if all(keyword in words for keyword in keywords):
+                matches.append(
+                    EditCandidate(
+                        transaction_id=record.id,
+                        description=record.description,
+                        category=record.category,
+                        amount=float(record.amount),
+                        when=record.occurred_on,
+                        recurring=record.recurring,
+                    )
+                )
+        if when_filter is not None:
+            matches = [candidate for candidate in matches if candidate.when == when_filter]
+        if not matches:
+            return _local_reply(
+                session_id,
+                f"I couldn't find a transaction matching "
+                f"'{' '.join(keywords)}' in your records.",
+            )
+        matches.sort(key=lambda candidate: candidate.when, reverse=True)
+        if len(matches) == 1:
+            return _edit_preview_reply(session_id, user_id, matches[0], new_amount)
+        pending_edit_store.put(
+            user_id,
+            PendingEdit(new_amount=new_amount, candidates=matches[:3], candidate=None),
+        )
+        listing = "; ".join(
+            f"{candidate.description} on {candidate.when.day} "
+            f"{candidate.when.strftime('%b')} for SGD {candidate.amount:.2f}"
+            for candidate in matches[:3]
+        )
+        return _local_reply(
+            session_id,
+            f"I found more than one match: {listing}. Which one did you mean? "
+            "Mention its date, for example 'the 21 Sep one'.",
+        )
 
-    draft = parse_spending_statement(message)
-    if draft is None:
-        draft = parse_spending_details(message)
-    if draft is None:
-        return None
-    return _start_capture(session_id, user_id, message, draft, save_one)
+    amendment = parse_last_saved_amendment(message)
+    if amendment is not None:
+        stored = last_saved_store.get(user_id)
+        if stored is None:
+            return None
+        amount, when = amendment
+        new_amount = stored.amount if amount is None else amount
+        new_when = stored.when if when is None else when
+        try:
+            record = SQLAlchemyTransactionRepository(session).update(
+                user_id,
+                stored.transaction_id,
+                TransactionCreate(
+                    description=stored.description,
+                    category=stored.category,
+                    amount=ApplicationMoneyAmount(amount=new_amount),
+                    occurred_on=new_when,
+                    recurring=stored.recurring,
+                ),
+            )
+            if record is None:
+                last_saved_store.clear()
+                return None
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            return _local_reply(
+                session_id, "Sorry, I couldn't update that transaction. Please try again."
+            )
+        last_saved_store.remember(
+            user_id,
+            LastSavedRecord(
+                transaction_id=stored.transaction_id,
+                description=stored.description,
+                category=stored.category,
+                amount=new_amount,
+                when=new_when,
+                recurring=stored.recurring,
+            ),
+        )
+        log_event("transaction.updated", source="coach_capture", category=stored.category)
+        formatted = f"{new_when.day} {new_when.strftime('%b %Y')}"
+        part = (
+            f"{stored.description} is now SGD {new_amount:.2f} on {formatted} "
+            f"under {stored.category.capitalize()}"
+        )
+        from app.services.budget_alert import category_overage_note
+
+        note = category_overage_note(session, user_id, new_when.replace(day=1), stored.category)
+        if note:
+            part = part + " " + note.strip()
+        return _local_reply(session_id, f"Updated: {part}.")
+
+    return None
 
 
 def _finalize(parts: list[str]) -> str:
     body = "; ".join(parts)
     return f"Saved: {body}" + ("" if body.endswith((".", "!")) else ".")
+
+
+def _edit_preview_reply(
+    session_id: str, user_id: str, candidate: EditCandidate, new_amount: float
+) -> CoachResponse:
+    pending_edit_store.put(
+        user_id,
+        PendingEdit(
+            new_amount=new_amount,
+            candidates=[candidate],
+            candidate=candidate,
+        ),
+    )
+    formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
+    return _local_reply(
+        session_id,
+        f"Change {candidate.description} from SGD {candidate.amount:.2f} on {formatted} "
+        f"to SGD {new_amount:.2f}? Reply 'confirm' to save, or 'cancel'.",
+    )
+
+
+def _delete_preview_reply(
+    session_id: str, user_id: str, candidate: EditCandidate
+) -> CoachResponse:
+    pending_edit_store.put(
+        user_id,
+        PendingEdit(
+            new_amount=0.0,
+            candidates=[candidate],
+            candidate=candidate,
+            op="delete",
+        ),
+    )
+    formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
+    return _local_reply(
+        session_id,
+        f"Delete {candidate.description} for SGD {candidate.amount:.2f} on {formatted}? "
+        "Reply 'confirm' to delete, or 'cancel'.",
+    )
+
+
+def _apply_named_delete(
+    session: Session, session_id: str, user_id: str, pending_edit: PendingEdit
+) -> CoachResponse:
+    candidate = pending_edit.candidate
+    assert candidate is not None
+    try:
+        removed = SQLAlchemyTransactionRepository(session).delete(
+            user_id, candidate.transaction_id
+        )
+        if not removed:
+            pending_edit_store.drop(user_id)
+            return _local_reply(
+                session_id, "I couldn't find that transaction anymore. Nothing was deleted."
+            )
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        return _local_reply(
+            session_id, "Sorry, I couldn't delete that transaction. Please try again."
+        )
+    pending_edit_store.drop(user_id)
+    log_event("transaction.deleted", source="coach_capture", category=candidate.category)
+    formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
+    return _local_reply(
+        session_id,
+        f"Deleted: {candidate.description} for SGD {candidate.amount:.2f} on {formatted}.",
+    )
+
+
+def _apply_named_edit(
+    session: Session, session_id: str, user_id: str, pending_edit: PendingEdit
+) -> CoachResponse:
+    candidate = pending_edit.candidate
+    assert candidate is not None
+    new_amount = pending_edit.new_amount
+    try:
+        record = SQLAlchemyTransactionRepository(session).update(
+            user_id,
+            candidate.transaction_id,
+            TransactionCreate(
+                description=candidate.description,
+                category=candidate.category,
+                amount=ApplicationMoneyAmount(amount=new_amount),
+                occurred_on=candidate.when,
+                recurring=candidate.recurring,
+            ),
+        )
+        if record is None:
+            pending_edit_store.drop(user_id)
+            return _local_reply(
+                session_id, "I couldn't find that transaction anymore. Nothing was changed."
+            )
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        return _local_reply(
+            session_id, "Sorry, I couldn't update that transaction. Please try again."
+        )
+    pending_edit_store.drop(user_id)
+    log_event("transaction.updated", source="coach_capture", category=candidate.category)
+    formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
+    part = (
+        f"{candidate.description} is now SGD {new_amount:.2f} on {formatted} "
+        f"under {candidate.category.capitalize()}"
+    )
+    from app.services.budget_alert import category_overage_note
+
+    note = category_overage_note(
+        session, user_id, candidate.when.replace(day=1), candidate.category
+    )
+    if note:
+        part = part + " " + note.strip()
+    return _local_reply(session_id, f"Updated: {part}.")
 
 
 def _start_capture(
@@ -1042,7 +1603,7 @@ def _start_capture(
     save_one,
 ) -> CoachResponse:
     if draft.need_amount:
-        pending_capture_store.put((user_id, session_id), draft)
+        pending_capture_store.put(user_id, draft)
         return _ask_amount_reply(session_id, draft)
     if draft.when is None:
         draft.when = extract_date_from_text(message, allow_future=draft.booking)
@@ -1050,7 +1611,7 @@ def _start_capture(
         saved_part = save_one(draft, draft.when)
         answer = saved_part if saved_part.startswith("Sorry") else _finalize([saved_part])
         return _local_reply(session_id, answer)
-    pending_capture_store.put((user_id, session_id), draft)
+    pending_capture_store.put(user_id, draft)
     return _ask_date_reply(session_id, draft)
 
 
@@ -1069,6 +1630,6 @@ def _handle_parsed_batch(
     else:
         summary = ""
     if undated:
-        pending_capture_store.put_queue((user_id, session_id), undated)
+        pending_capture_store.put_queue(user_id, undated)
         return _ask_queue_reply(session_id, undated[0], [summary] if summary else [])
     return _local_reply(session_id, summary)

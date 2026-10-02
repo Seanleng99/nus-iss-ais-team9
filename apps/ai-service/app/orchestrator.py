@@ -33,6 +33,7 @@ from app.agents.risk_compliance import (
     withhold_agent_result,
 )
 from app.agents.spending import SpendingAgent
+from app.agents.spending_capture import spending_capture_request
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
 from app.core.citations import citation_contract, render_citations, validate_citations
 from app.core.config import Settings
@@ -193,6 +194,7 @@ class OrchestratorState(TypedDict, total=False):
     goal_capture: bool
     budget_capture: bool
     budget_planning: bool
+    spending_capture: bool
     tasks: dict[str, AgentTask]
     task_results: dict[str, AgentResult]
     agent_results: list[AgentResult]
@@ -439,6 +441,7 @@ class AgentOrchestrator:
                 "requested_agents": None,
                 "pending_goal": request.pending_goal,
                 "pending_budget": request.pending_budget,
+                "pending_transaction": request.pending_transaction,
                 "snapshot_features": {
                     "has_monthly_income": request.snapshot.monthly_income is not None,
                     "recurring_expense_count": len(request.snapshot.recurring_expenses),
@@ -473,6 +476,12 @@ class AgentOrchestrator:
                     "Planning requires budget_capture=true and budget. General explanations of rules "
                     "alone are not planning requests. A pending draft does "
                     "not make an unrelated new question a budget-setting request."
+                    + "\nSet spending_capture=true and include spending for statements recording a "
+                    "new expense the user already paid or was charged for ('I spent $5 on chicken "
+                    "rice'), for questions looking up recorded spending on a day or period ('what "
+                    "did I spend on 21/9?'), and for replies continuing pending_transaction. "
+                    "Budget category limits stay budget_capture, not spending_capture. Analysis, "
+                    "advice or pattern questions about spending are not spending_capture."
                     + "\nWrite every rationale sentence in "
                     + response_language
                     + ". Keep machine agent names in selected_agents unchanged."
@@ -561,6 +570,29 @@ class AgentOrchestrator:
                 r"\b(save|set|add|update|change|record|limit|allocate)\b|(?:设置|设定|调整|修改|新增|添加|保存).{0,20}预算|预算.{0,20}(?:设置|设定|调整|修改|新增|添加|保存)",
                 state["sanitized_message"], re.IGNORECASE,
             ))
+        # Pending spending drafts are backend-owned context; explicit spending
+        # statements and dated spend lookups always reach the extraction step.
+        goal_related = request.pending_goal is not None or re.search(
+            r"\bgoals?\b|目标", state["sanitized_message"], re.IGNORECASE
+        )
+        budget_related = request.pending_budget is not None or re.search(
+            r"\bbudget\b|afford|预算", state["sanitized_message"], re.IGNORECASE
+        )
+        decision.spending_capture = decision.spending_capture or (
+            request.pending_transaction is not None
+            and not request.pending_budget
+            and not request.pending_goal
+        ) or (
+            not budget_related
+            and not goal_related
+            and spending_capture_request(state["sanitized_message"])
+        )
+        if request.session_context.last_stated_fields and not spending_capture_request(state["sanitized_message"]):
+            # An explicit profile fact or correction does not answer a pending
+            # transaction's missing amount/date.
+            decision.spending_capture = False
+        if decision.spending_capture and AgentName.SPENDING not in decision.selected_agents:
+            decision.selected_agents.append(AgentName.SPENDING)
         if resolution.status != "standalone":
             # Deterministic resolution constrains the model router. A reference
             # to earlier prose cannot turn a read-only question into draft capture.
@@ -571,6 +603,7 @@ class AgentOrchestrator:
             decision.goal_capture = False
             decision.budget_capture = False
             decision.budget_planning = False
+            decision.spending_capture = False
             decision.rationale = [
                 "已从会话上下文解析只读追问。" if resolution.status == "resolved" else "追问所指的内容需要澄清。"
             ] if response_language == "Chinese" else [
@@ -594,6 +627,7 @@ class AgentOrchestrator:
             "goal_capture": decision.goal_capture,
             "budget_capture": decision.budget_capture,
             "budget_planning": decision.budget_planning,
+            "spending_capture": decision.spending_capture,
             "audit_events": [*state.get("audit_events", []), event],
         }
 
@@ -1781,6 +1815,8 @@ class AgentOrchestrator:
                 "budget_capture": state.get("budget_capture", False) and agent == AgentName.BUDGET,
                 "budget_planning": state.get("budget_planning", False) and agent == AgentName.BUDGET,
                 "pending_budget": state["request"].pending_budget if agent == AgentName.BUDGET else None,
+                "spending_capture": state.get("spending_capture", False) and agent == AgentName.SPENDING,
+                "pending_transaction": state["request"].pending_transaction if agent == AgentName.SPENDING else None,
                 "has_monthly_income": snapshot.monthly_income is not None or state["request"].saved_budget_capacity.get("source") == "confirmed_plan",
                 "recurring_expense_count": len(snapshot.recurring_expenses),
                 "recent_transaction_count": len(snapshot.recent_transactions),

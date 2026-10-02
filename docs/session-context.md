@@ -31,10 +31,10 @@ Immediately after stating one supported field, `Actually, it's 4200.` replaces t
 - Financial reply writers acknowledge remembered details and corrections as user-reported. Their calculation grounding is unchanged.
 - Goal Strategy clarification acknowledges previously supplied income, goal amount and duration. If a saved record is required, it explains that requirement instead of asking for the same amount again.
 - `What did I tell you about my income?` recalls supported facts in this chat and explicitly identifies them as unconfirmed chat details.
-- After a local date-spending query, `What about 21/9?` continues that topic using owned transaction records. A fresh chat or unrelated topic does not inherit that query.
+- After an AI date-spending query, `What about 21/9?` continues that topic using owned transaction records. A fresh chat or unrelated topic does not inherit that query.
 - A budget-status question with an explicit month uses that month. `Am I over budget for that month?` can refer to a previously stated budget month.
 - An unknown or ambiguous budget month requires clarification. After `Which month and year does that budget refer to?`, a short answer such as `September 2026` resumes the local read-only status check.
-- Recognized fact answers and corrections are not routed into automatic expense capture. Transaction amount/date clarification queues are separately scoped to the user and chat; their existing process-local storage and ten-minute expiry remain.
+- Recognized fact answers and corrections are not routed into automatic expense capture. Pending transaction drafts are persisted separately from conversation facts on the owned chat record, with a thirty-minute expiry.
 - Facts are committed together with a successful chat exchange. Failed and blocked replies do not commit new facts. Legacy chats bootstrap supported facts from at most the latest 64 messages, excluding blocked turns; subsequent compact state persists with the chat.
 
 ## Older dialogue summary
@@ -57,7 +57,7 @@ Supported examples include `Explain that more simply.`, `Give an example.`, `Wha
 
 Recent concrete subjects take precedence over older context. A unique earlier summary subject can resolve a reference when recent context is unavailable, and an explicit earlier reference can use the older summary. Multiple older subjects clarify. Goal references use recent named context, an unambiguous user-reported goal name, a unique named older exchange or a single saved goal; they never resolve to a record ID. Multiple/duplicate names, uncertain names and missing referenced goals clarify. A new unrelated question starts a new topic. Time words such as `earlier gains` and pronouns inside a complete new question do not hijack semantic routing.
 
-The model router sees the typed resolution. For supported read-only follow-ups, the server constrains specialist/topic selection and clears goal capture, budget capture and budget planning flags even if the model or a pending draft suggests them. Explicit allowlisted caller agent selection remains authoritative. Ambiguous references produce one brief clarification before specialist grounding; they do not run financial calculations or education retrieval. The ordinary policy review still runs. Actions, confirmation replies and fact answers retain their existing governed flows.
+The model router sees the typed resolution. For supported read-only follow-ups, the server constrains specialist/topic selection and clears goal capture, budget capture, budget planning and spending capture flags even if the model or a pending draft suggests them. Explicit allowlisted caller agent selection remains authoritative. Ambiguous references produce one brief clarification before specialist grounding; they do not run financial calculations or education retrieval. The ordinary policy review still runs. Actions, confirmation replies and fact answers retain their existing governed flows.
 
 Writers, synthesis and Compliance receive the reference outside financial grounding. Education uses only canonical topic labels for retrieval and minimizes personal amounts in the referenced subject. Source text cannot supply calculation inputs or consent. If the referenced saved context is absent, writers must explain that gap rather than substitute another goal or period. Workflow logs and public audit record only resolution status/reason codes, not the subject text. This adds no database migration or extra resolver model call.
 
@@ -65,7 +65,7 @@ This first stage is deliberately bounded: it recognizes explicit reference phras
 
 ## Rollout and validation
 
-Apply `alembic upgrade head` in `apps/backend` before running the updated backend, then deploy the backend and AI service together. Compose runs migrations automatically. This change does not require a frontend change.
+Apply `alembic upgrade head` in `apps/backend` before running the updated backend, then deploy the backend and AI service together. Merge revision `20261002_0015` joins conversation memory (`20261002_0014`) and pending transactions (`20261001_0014`), allowing upgrades from either existing branch. Compose runs migrations automatically. This change does not require a frontend change.
 
 Backend regressions cover source attribution, corrections, recall beyond the recent-message window, isolated chats/owners, client-forged context, ambiguous input, failed/blocked replies, local follow-ups, export/deletion and transaction clarification isolation. Summary regressions cover window boundaries, bounded size/backfill, preference retention, deduplication, withheld exchanges and transactional checkpoints. AI regressions cover preflight acknowledgment, context-aware fixture routing, role minimization, summary sanitization/schema validation and unchanged calculation grounding. These offline tests do not establish live-model recall quality; verify representative multi-turn conversations after deployment using synthetic inputs and automatic agent routing.
 

@@ -24,6 +24,7 @@ class RecordingAI:
         self.question = None
         self.blocked = False
         self.fail = False
+        self.spending_draft = None
 
     async def coach(self, request):
         self.requests.append(request)
@@ -42,9 +43,17 @@ class RecordingAI:
             if self.question
             else []
         )
+        if self.spending_draft is not None:
+            results = [{
+                "agent": "spending",
+                "summary": "Extracted spending draft.",
+                "rationale": [],
+                "confidence": 1,
+                "data": {"spending_draft": self.spending_draft},
+            }]
         return CoachResponse(
             session_id=request.session_id,
-            selected_agents=["goal_strategy"],
+            selected_agents=["spending" if self.spending_draft is not None else "goal_strategy"],
             answer=self.question or "A synthetic explanation.",
             agent_results=results,
             disclaimers=[],
@@ -214,12 +223,17 @@ def test_local_spending_follow_up_uses_active_topic_and_owned_records(ai, monkey
     import app.services.transaction_capture as capture
 
     monkeypatch.setattr(capture, "_today", lambda: date(2026, 9, 25))
+    ai.spending_draft = {
+        "is_spending_request": True, "action": "query", "transactions": [],
+        "query_date": "2026-09-20", "questions": [],
+    }
     first = send("How much did I spend on 20/9?")
-    assert first.json()["audit"]["source"] == "spending_date_query"
+    assert first.json()["audit"]["spending_capture"] == "read_only_query"
+    ai.spending_draft = None
     second = send("What about 21/9?")
     assert second.json()["audit"]["source"] == "spending_date_query"
     assert "21 September 2026" in second.json()["answer"]
-    assert not ai.requests
+    assert len(ai.requests) == 1
     assert send("Explain diversification.").status_code == 200
     assert send("What about 21/9?").json()["audit"].get("source") != "spending_date_query"
     assert (
@@ -273,22 +287,34 @@ def test_export_contains_session_state_and_deleting_chat_removes_it(ai, db_sessi
         assert db.get(ChatSessionRecord, "session-facts") is None
 
 
-def test_transaction_clarification_does_not_cross_chats(ai, monkeypatch):
+def test_transaction_clarification_does_not_cross_chats(ai, monkeypatch, db_session_factory):
     import app.services.transaction_capture as capture
 
-    capture.pending_capture_store.clear()
     monkeypatch.setattr(capture, "_today", lambda: date(2026, 9, 25))
-    try:
-        assert (
-            "When did you spend"
-            in send("I spent $5 on chicken rice.", chat="capture-one").json()["answer"]
-        )
-        other = send("today", chat="capture-two")
-        assert other.json()["audit"].get("source") != "transaction_capture"
-        saved = send("today", chat="capture-one")
-        assert "Saved:" in saved.json()["answer"]
-    finally:
-        capture.pending_capture_store.clear()
+    assert send("My income is 5000.", chat="capture-one").status_code == 200
+    ai.spending_draft = {
+        "is_spending_request": True, "action": "record",
+        "transactions": [{"description": "chicken rice", "amount": 5}],
+        "query_date": None, "questions": [],
+    }
+    first = send("I spent $5 on chicken rice.", chat="capture-one")
+    assert first.json()["audit"]["spending_capture"] == "needs_input"
+    with db_session_factory() as db:
+        chat = db.get(ChatSessionRecord, "capture-one")
+        assert chat.pending_transaction["draft"]["transactions"][0]["amount"] == 5
+        assert chat.conversation_state["facts"]["monthly_income"]["value"] == "5000"
+    ai.spending_draft = None
+    other = send("today", chat="capture-two")
+    assert other.json()["audit"].get("spending_capture") != "saved"
+    assert ai.requests[-1].pending_transaction is None
+    ai.spending_draft = {"is_spending_request": True, "action": "record", "transactions": []}
+    saved = send("today", chat="capture-one")
+    assert ai.requests[-1].pending_transaction["transactions"][0]["amount"] == 5
+    assert "Saved:" in saved.json()["answer"]
+    with db_session_factory() as db:
+        chat = db.get(ChatSessionRecord, "capture-one")
+        assert chat.pending_transaction is None
+        assert chat.conversation_state["facts"]["monthly_income"]["value"] == "5000"
 
 
 def test_unresolved_budget_month_is_clarified_and_short_answer_resumes_query(ai, monkeypatch):

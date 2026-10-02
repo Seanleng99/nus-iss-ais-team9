@@ -197,7 +197,7 @@ def complete_state(state, response):
     if response.blocked:
         return None
     source = response.audit.get("source")
-    if source in {"spending_date_query", "transaction_capture"}:
+    if source in {"spending_date_query", "transaction_capture", "spending_capture"} or response.audit.get("spending_capture"):
         state["active_topic"] = "spending"
     elif source == "budget_alert":
         state["active_topic"] = "budget"

@@ -152,7 +152,7 @@ def test_self_name_query_falls_through_to_ai(stub_ai: type[StubAIServiceClient])
     [
         ("review my spending", "Stub guidance"),
         ("what is my highest spending category?", "Stub guidance"),
-        ("how much did I spend on 20/9?", None),
+        ("how much did I spend on 20/9?", "Stub guidance"),
         ("is my spending okay this month?", None),
     ],
 )

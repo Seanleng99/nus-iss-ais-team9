@@ -18,17 +18,39 @@ HEADERS = {"X-API-Key": settings.api_key}
 
 class StubAIServiceClient:
     last_request: CoachRequest | None = None
+    draft: dict | None = None
 
     async def coach(self, request: CoachRequest) -> CoachResponse:
         StubAIServiceClient.last_request = request
+        agent_results: list[dict] = []
+        if StubAIServiceClient.draft is not None:
+            agent_results = [
+                {
+                    "agent": "spending",
+                    "summary": "Spending draft",
+                    "rationale": ["Extracted a spending draft from the message."],
+                    "confidence": 1.0,
+                    "data": {"spending_draft": StubAIServiceClient.draft},
+                }
+            ]
         return CoachResponse(
             session_id=request.session_id,
             selected_agents=["spending"],
             answer="Stub guidance",
-            agent_results=[],
+            agent_results=agent_results,
             disclaimers=["Educational guidance only."],
             audit={"source": "stub"},
         )
+
+
+def query_draft(query_date: str | None = None) -> dict:
+    return {
+        "is_spending_request": True,
+        "action": "query",
+        "transactions": [],
+        "query_date": query_date,
+        "questions": [],
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -42,9 +64,11 @@ def _freeze_today(monkeypatch: pytest.MonkeyPatch) -> None:
 def stub_ai() -> Iterator[type[StubAIServiceClient]]:
     app.dependency_overrides[get_ai_service_client] = StubAIServiceClient
     StubAIServiceClient.last_request = None
+    StubAIServiceClient.draft = None
     try:
         yield StubAIServiceClient
     finally:
+        StubAIServiceClient.draft = None
         app.dependency_overrides.pop(get_ai_service_client, None)
 
 
@@ -119,8 +143,9 @@ def test_date_query_lists_only_matching_day_transactions(stub_ai: type[StubAISer
     add_transaction("dq-u1", "MRT top-up", "transport", 12.5, "2026-09-21")
     add_transaction("dq-u1", "Groceries", "food", 40.0, "2026-09-20")
 
+    stub_ai.draft = query_draft("2026-09-21")
     body = post_coach("dq-u1", "what is my spending on 21/9/2026?")
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
     answer = body["answer"]
     assert "Chicken rice" in answer
     assert "MRT top-up" in answer
@@ -132,14 +157,15 @@ def test_date_query_lists_only_matching_day_transactions(stub_ai: type[StubAISer
 
 def test_date_query_no_transactions_on_day(stub_ai: type[StubAIServiceClient]) -> None:
     add_transaction("dq-u2", "Chicken rice", "food", 5.0, "2026-09-20")
+    stub_ai.draft = query_draft("2026-09-21")
     body = post_coach("dq-u2", "what is my spending on 21/9/2026?")
-    assert stub_ai.last_request is None
     assert "no transactions" in body["answer"].lower()
 
 
 def test_date_query_without_any_data(stub_ai: type[StubAIServiceClient]) -> None:
+    # The model leaves relative dates null; the backend resolves "yesterday".
+    stub_ai.draft = query_draft(None)
     body = post_coach("dq-u3", "how much did I spend yesterday?")
-    assert stub_ai.last_request is None
     assert "no transactions" in body["answer"].lower()
 
 
