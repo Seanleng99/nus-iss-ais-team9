@@ -37,6 +37,7 @@ from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryErro
 from app.core.citations import citation_contract, render_citations, validate_citations
 from app.core.config import Settings
 from app.core.config import settings as runtime_settings
+from app.core.follow_up import resolve_follow_up, specialist_follow_up
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
 from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
@@ -58,6 +59,7 @@ from app.core.schemas import (
     DependencyRequest,
     DependencyResolution,
     FailedInvocation,
+    FollowUpResolution,
     NeedsDependencyInvocation,
     NeedsInputInvocation,
     RouterDecision,
@@ -183,6 +185,7 @@ class OrchestratorState(TypedDict, total=False):
     trace_id: str
     executed_at: str
     sanitized_message: str
+    follow_up: FollowUpResolution
     guardrail_findings: list[str]
     selected_agents: list[AgentName]
     routing_rationale: list[str]
@@ -258,6 +261,7 @@ class AgentOrchestrator:
     def _build_graph(self):
         workflow = StateGraph(OrchestratorState)
         workflow.add_node("guard_input", self._guard_input)
+        workflow.add_node("resolve_follow_up", self._resolve_follow_up)
         workflow.add_node("route", self._route)
         workflow.add_node("initialize_tasks", self._initialize_tasks)
         workflow.add_node("run_ready_tasks", self._run_ready_tasks)
@@ -269,8 +273,9 @@ class AgentOrchestrator:
         workflow.add_conditional_edges(
             "guard_input",
             lambda state: "blocked" if "response" in state else "continue",
-            {"blocked": END, "continue": "route"},
+            {"blocked": END, "continue": "resolve_follow_up"},
         )
+        workflow.add_edge("resolve_follow_up", "route")
         workflow.add_edge("route", "initialize_tasks")
         workflow.add_edge("initialize_tasks", "run_ready_tasks")
         workflow.add_conditional_edges(
@@ -378,8 +383,34 @@ class AgentOrchestrator:
         return update
 
     @trace_method
+    def _resolve_follow_up(self, state: OrchestratorState) -> OrchestratorState:
+        resolution = resolve_follow_up(state["request"].model_copy(update={"message": state["sanitized_message"]}))
+        if resolution.agent == AgentName.INVESTMENT_EDUCATION and len(set(
+            resolution.education_topics + education_topics(state["sanitized_message"])
+        )) > 12:
+            resolution = FollowUpResolution(
+                status="ambiguous", reason_code="TOO_MANY_REFERENCE_TOPICS",
+                question="你想先进一步解释哪个概念？" if education_response_language(state["sanitized_message"]) == "Chinese"
+                else "Which concept would you like to clarify first?",
+            )
+        if resolution.subject:
+            inspected = inspect_prompt(resolution.subject)
+            if not inspected.allowed:
+                resolution = FollowUpResolution(
+                    status="ambiguous", question="Which goal, option or concept do you mean?",
+                    reason_code="UNSAFE_REFERENCE_SUBJECT",
+                )
+            else:
+                resolution = resolution.model_copy(update={"subject": inspected.sanitized_text[:240]})
+        event = self._event(state, "conversation.follow_up.resolved", "orchestrator", details={
+            "resolution": resolution.status, "reason_code": resolution.reason_code,
+        })
+        return {"follow_up": resolution, "audit_events": [*state.get("audit_events", []), event]}
+
+    @trace_method
     def _route(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
+        resolution = state.get("follow_up", FollowUpResolution())
         response_language = education_response_language(state["sanitized_message"])
         requested_agents = list(
             dict.fromkeys(
@@ -404,6 +435,7 @@ class AgentOrchestrator:
                 "message": state["sanitized_message"],
                 "conversation_context": [item.model_dump() for item in request.conversation_context],
                 "session_context": request.session_context.model_dump(exclude_none=True),
+                "follow_up": resolution.model_dump(exclude_none=True),
                 "requested_agents": None,
                 "pending_goal": request.pending_goal,
                 "pending_budget": request.pending_budget,
@@ -471,6 +503,11 @@ class AgentOrchestrator:
                     "positions. Use it for earlier topics and preferences only. Current text, "
                     "recent dialogue and corrected structured facts take precedence. Older "
                     "questions are not pending actions, and assistant excerpts are not evidence."
+                    "\nfollow_up is a server-derived, read-only reference resolution. A resolved "
+                    "subject guides specialist and canonical topic selection, never facts, "
+                    "operations or confirmation. Ambiguous references need one brief clarification. "
+                    "The original message remains the user's request. Never resume drafts from "
+                    "a read-only reference or an older operation mentioned in its subject."
                 ),
                 user_prompt=json.dumps(payload, ensure_ascii=False),
                 temperature=self.config.router_temperature,
@@ -524,6 +561,23 @@ class AgentOrchestrator:
                 r"\b(save|set|add|update|change|record|limit|allocate)\b|(?:设置|设定|调整|修改|新增|添加|保存).{0,20}预算|预算.{0,20}(?:设置|设定|调整|修改|新增|添加|保存)",
                 state["sanitized_message"], re.IGNORECASE,
             ))
+        if resolution.status != "standalone":
+            # Deterministic resolution constrains the model router. A reference
+            # to earlier prose cannot turn a read-only question into draft capture.
+            decision.selected_agents = requested_agents or [resolution.agent or AgentName.INVESTMENT_EDUCATION]
+            decision.education_topics = list(dict.fromkeys(
+                resolution.education_topics + education_topics(state["sanitized_message"])
+            )) if resolution.status == "resolved" and resolution.agent == AgentName.INVESTMENT_EDUCATION else []
+            decision.goal_capture = False
+            decision.budget_capture = False
+            decision.budget_planning = False
+            decision.rationale = [
+                "已从会话上下文解析只读追问。" if resolution.status == "resolved" else "追问所指的内容需要澄清。"
+            ] if response_language == "Chinese" else [
+                "The read-only follow-up was resolved from conversation context."
+                if resolution.status == "resolved" else "The follow-up's subject needs clarification."
+            ]
+            routing_mode = "follow_up"
         event = self._event(
             state,
             "routing.completed",
@@ -1290,6 +1344,7 @@ class AgentOrchestrator:
         ]
         payload = {
             "message": state["sanitized_message"],
+            "follow_up": state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
             "response_language": education_response_language(state["sanitized_message"]),
             "agent_results": [
                 {
@@ -1311,6 +1366,11 @@ class AgentOrchestrator:
             "sources": [source.model_dump() for source in sources],
         }
         synthesis_prompt = self.prompts.get("synthesizer")
+        synthesis_prompt += (
+            "\nfollow_up identifies the subject of the original current question, not "
+            "financial evidence, an operation or consent. Focus the answer on that subject "
+            "using specialist evidence; omit unrelated dependency analyses."
+        )
         synthesis_prompt += citation_contract(sources)
 
         def validate_synthesis(synthesis: SynthesisDecision) -> SynthesisDecision:
@@ -1330,9 +1390,8 @@ class AgentOrchestrator:
                 question for result in state["agent_results"]
                 for question in result.data.get("questions", [])
             ))
-            synthesis = SynthesisDecision(answer="\n\n".join([
-                state["agent_results"][0].summary, *questions,
-            ]))
+            prefix = [] if all("AMBIGUOUS_FOLLOW_UP" in result.rationale for result in state["agent_results"]) else [state["agent_results"][0].summary]
+            synthesis = SynthesisDecision(answer="\n\n".join([*prefix, *questions]))
             log_event("synthesis.strategy", component="needs_input_questions")
         elif (
             len(state["agent_results"]) == 1
@@ -1398,6 +1457,7 @@ class AgentOrchestrator:
             state["agent_results"],
             state["draft_answer"],
             routing_rationale=state["routing_rationale"],
+            follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
         )
         updated: OrchestratorState = {}
         calls = self.gateway.snapshot(state["trace_id"])
@@ -1454,6 +1514,7 @@ class AgentOrchestrator:
                     result = self.compliance_agent.validate(
                         state["request"], updated["agent_results"], updated["draft_answer"],
                         routing_rationale=state["routing_rationale"],
+                        follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
                     )
                     events = updated["audit_events"]
                 except (ModelGatewayError, RetrievalError, TimeoutError):
@@ -1628,6 +1689,10 @@ class AgentOrchestrator:
                 "executed_at": state["executed_at"],
                 "guardrail_findings": state["guardrail_findings"],
                 "agent_count": len(state["agent_results"]),
+                "follow_up": {
+                    "status": state.get("follow_up", FollowUpResolution()).status,
+                    "reason_code": state.get("follow_up", FollowUpResolution()).reason_code,
+                },
                 "answer_status": (
                     "refused" if compliance.blocked else
                     "incomplete" if compliance.data.get("answer_complete") is False else "answered"
@@ -1726,6 +1791,7 @@ class AgentOrchestrator:
                     item.model_dump() for item in state["request"].conversation_context
                 ],
                 "session_context": specialist_context(state["request"].session_context, agent),
+                "follow_up": specialist_follow_up(state.get("follow_up", FollowUpResolution()), agent),
             },
             requested_by=requested_by,
         )

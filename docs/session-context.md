@@ -49,6 +49,20 @@ The AI sanitizes both excerpts before routing and model calls, scopes topic-spec
 
 Summary updates commit atomically with successful replies. Failed, blocked or concurrent rejected replies do not advance the persisted checkpoint. The summary lives in the existing chat JSON state, appears in owner export, and follows chat deletion and retention. It adds no migration beyond `20261002_0014` and no cross-chat memory.
 
+## Follow-up resolution before routing
+
+After boundary sanitization, a deterministic `resolve_follow_up` stage handles supported read-only references before model routing. It produces a typed `follow_up` object containing a status, subject, specialist, canonical education topics and source reference. Recent sources use the index in the supplied eight-message array; summary/fact sources use original chat-message positions. This resolution is request-scoped and does not become a saved record, draft field or model-generated fact. The original current message stays unchanged.
+
+Supported examples include `Explain that more simply.`, `Give an example.`, `What about that goal?`, `Explain the second option.`, `再解释一下` and `解释第二个选项`. Numbered references resolve against the latest assistant response's sequential numbered list. A subsequent example request can retain that selected option while the original list remains in recent context. Missing, duplicated, nonsequential or unrecognized options require clarification; truncated summary excerpts are never used as numbered lists.
+
+Recent concrete subjects take precedence over older context. A unique earlier summary subject can resolve a reference when recent context is unavailable, and an explicit earlier reference can use the older summary. Multiple older subjects clarify. Goal references use recent named context, an unambiguous user-reported goal name, a unique named older exchange or a single saved goal; they never resolve to a record ID. Multiple/duplicate names, uncertain names and missing referenced goals clarify. A new unrelated question starts a new topic. Time words such as `earlier gains` and pronouns inside a complete new question do not hijack semantic routing.
+
+The model router sees the typed resolution. For supported read-only follow-ups, the server constrains specialist/topic selection and clears goal capture, budget capture and budget planning flags even if the model or a pending draft suggests them. Explicit allowlisted caller agent selection remains authoritative. Ambiguous references produce one brief clarification before specialist grounding; they do not run financial calculations or education retrieval. The ordinary policy review still runs. Actions, confirmation replies and fact answers retain their existing governed flows.
+
+Writers, synthesis and Compliance receive the reference outside financial grounding. Education uses only canonical topic labels for retrieval and minimizes personal amounts in the referenced subject. Source text cannot supply calculation inputs or consent. If the referenced saved context is absent, writers must explain that gap rather than substitute another goal or period. Workflow logs and public audit record only resolution status/reason codes, not the subject text. This adds no database migration or extra resolver model call.
+
+This first stage is deliberately bounded: it recognizes explicit reference phrases, known subject patterns and numbered lists, not arbitrary natural-language anaphora. Missing/truncated sources can still need clarification. Live multi-turn evaluation remains necessary to assess real reply quality.
+
 ## Rollout and validation
 
 Apply `alembic upgrade head` in `apps/backend` before running the updated backend, then deploy the backend and AI service together. Compose runs migrations automatically. This change does not require a frontend change.

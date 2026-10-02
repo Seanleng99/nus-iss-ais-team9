@@ -63,6 +63,7 @@ def test_workflow_logs_safe_structured_lifecycle_events(caplog) -> None:
     assert event_types == [
         "workflow.started",
         "guardrail.evaluated",
+        "conversation.follow_up.resolved",
         "routing.completed",
         "task.created",
         "task.started",

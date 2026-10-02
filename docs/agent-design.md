@@ -2,7 +2,7 @@
 
 ## Current Execution Mode
 
-The primary runtime is a model-driven multi-agent workflow. LangGraph executes boundary inspection, model routing, one or more specialist agents, model synthesis, and an independent Risk and Compliance review. The deployed model gateway uses the OpenAI Python SDK and Responses API with GPT-6 Luna at low reasoning effort. The gateway omits temperature because this model does not accept that setting with reasoning enabled.
+The primary runtime is a model-driven multi-agent workflow. LangGraph executes boundary inspection, bounded read-only follow-up resolution, model routing, one or more specialist agents, model synthesis, and an independent Risk and Compliance review. The deployed model gateway uses the OpenAI Python SDK and Responses API with GPT-6 Luna at low reasoning effort. The gateway omits temperature because this model does not accept that setting with reasoning enabled.
 
 The architecture is hybrid rather than unconstrained. Deterministic calculators, retrieval ranking, PII redaction, prompt-injection checks, and tool allowlists produce trusted grounding and hard policy decisions. Models choose agents and interpret that grounding, but cannot name or invoke arbitrary tools. Pydantic validates every model response before the graph advances; invalid output fails closed as a sanitized `503` response.
 

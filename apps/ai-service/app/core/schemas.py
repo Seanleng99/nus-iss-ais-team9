@@ -351,6 +351,18 @@ class SourceCitation(BaseModel):
     content_kind: Literal["source_document", "project_summary"] | None = None
 
 
+class FollowUpResolution(StrictContractModel):
+    status: Literal["standalone", "resolved", "ambiguous"] = "standalone"
+    agent: AgentName | None = None
+    subject: str | None = Field(default=None, max_length=240)
+    education_topics: list[str] = Field(default_factory=list, max_length=12)
+    source_kind: Literal["recent_dialogue", "older_summary", "session_fact", "saved_goal", "active_topic", "explicit_agent"] | None = None
+    source_index: int | None = Field(default=None, ge=0, le=7)
+    source_position: int | None = Field(default=None, ge=1)
+    question: str | None = Field(default=None, max_length=200)
+    reason_code: str = Field(default="NEW_QUESTION", max_length=128)
+
+
 class RouterDecision(BaseModel):
     selected_agents: list[AgentName] = Field(min_length=1, max_length=4)
     rationale: list[str] = Field(min_length=1)
