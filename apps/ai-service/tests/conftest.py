@@ -1,6 +1,10 @@
-"""Opt-in JUnit metadata for investment test questions."""
+"""Opt-in JUnit metadata for investment test questions and responses."""
 
 from __future__ import annotations
+
+import json
+
+import pytest
 
 _QUESTION_PARAMETER_NAMES = ("question", "message", "prompt", "attack", "instruction", "text")
 
@@ -10,7 +14,7 @@ def pytest_addoption(parser):
         "--investment-report",
         action="store_true",
         default=False,
-        help="include safe question/input text in JUnit testcase properties",
+        help="include safe question/input text and agent responses in JUnit testcase properties",
     )
 
 
@@ -33,3 +37,21 @@ def pytest_collection_modifyitems(config, items):
         item.user_properties.extend(
             ("test_question", question) for question in questions if isinstance(question, str)
         )
+
+
+@pytest.fixture
+def record_investment_response(request):
+    """Attach actual workflow responses to JUnit only for explicit investment reports."""
+    if not request.config.getoption("--investment-report"):
+        return lambda question, answer, *, source: None
+
+    def record(question, answer, *, source):
+        if answer is not None and not isinstance(answer, str):
+            return
+        value = json.dumps(
+            {"question": question, "answer": answer, "source": source},
+            ensure_ascii=False,
+        )
+        request.node.user_properties.append(("test_response", value))
+
+    return record

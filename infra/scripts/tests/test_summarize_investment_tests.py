@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import os
 import subprocess
@@ -92,6 +93,101 @@ class InvestmentSummaryTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0)
         self.assertIn("No prompt metadata (see test method)", output.read_text(encoding="utf-8"))
+        self.assertIn("No agent response recorded", output.read_text(encoding="utf-8"))
+
+    def test_response_text_is_escaped_and_workflow_commands_are_prefixed_in_logs(self):
+        fixture_path = (
+            Path(__file__).resolve().parents[3]
+            / "apps/ai-service/tests/fixtures/investment_manual_injection.json"
+        )
+        unicode_prompt = json.loads(fixture_path.read_text(encoding="utf-8"))[
+            "chinese_personal_recommendation"
+        ]
+        response = {
+            "question": f"Explain <ETF> fees? {unicode_prompt} ##[warning]",
+            "answer": "<b>fee</b> | `code` [link] *bold* _word_\n::warning:: leaked-command & more\n##[add-mask]secret",
+            "source": "Offline workflow (mock model)",
+        }
+        encoded = html.escape(json.dumps(response, ensure_ascii=False), quote=True)
+        xml = f'''<testsuites><testsuite><testcase classname="response" name="escaped">
+          <properties><property name="test_response" value="{encoded}" /></properties>
+        </testcase></testsuite></testsuites>'''
+        result, output, _ = self.run_report(xml)
+        report = output.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Agent response", report)
+        self.assertIn("&lt;b&gt;fee&lt;/b&gt; &#124; &#96;code&#96; &#91;link&#93; &#42;bold&#42; &#95;word&#95;<br>::warning:: leaked-command &amp; more", report)
+        self.assertIn(f"Question / test input: Explain <ETF> fees? {unicode_prompt}", result.stdout)
+        self.assertIn("Agent response: Offline workflow (mock model): <b>fee</b>", result.stdout)
+        self.assertIn("Agent response: ::warning:: leaked-command & more", result.stdout)
+        self.assertIn("Agent response: ##\\[add-mask]secret", result.stdout)
+        self.assertIn(f"Question / test input: Explain <ETF> fees? {unicode_prompt} ##\\[warning]", result.stdout)
+        self.assertNotIn("\n::warning::", result.stdout)
+        self.assertNotIn("##[add-mask]", result.stdout)
+
+    def test_three_turn_responses_keep_question_answer_order_even_when_failed(self):
+        responses = [
+            {"question": "first question", "answer": "first answer", "source": "Offline workflow (mock model)"},
+            {"question": "second question", "answer": "second answer", "source": "Deterministic safety response (no model)"},
+            {"question": "third question", "answer": None, "source": "Live workflow (real model enabled)"},
+        ]
+        properties = "".join(
+            f'<property name="test_response" value="{html.escape(json.dumps(item), quote=True)}" />'
+            for item in responses
+        )
+        xml = f'''<testsuites><testsuite><testcase classname="turns" name="three">
+          <failure message="assertion failed" />
+          <properties>{properties}</properties>
+        </testcase></testsuite></testsuites>'''
+        result, output, _ = self.run_report(xml)
+        report = output.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0)
+        for turn, question, answer in (
+            (1, "first question", "Offline workflow (mock model): first answer"),
+            (2, "second question", "Deterministic safety response (no model): second answer"),
+            (3, "third question", "Live workflow (real model enabled): No agent response returned"),
+        ):
+            self.assertIn(f"Turn {turn}: {question}", report)
+            self.assertIn(f"Turn {turn}: {answer}", report)
+        self.assertIn("| FAILED |", report)
+        self.assertIn("Question / test input: Turn 1: first question", result.stdout)
+        self.assertIn("Agent response: Turn 3: Live workflow (real model enabled): No agent response returned", result.stdout)
+
+    def test_partial_multi_turn_failure_shows_only_captured_turn(self):
+        response = {
+            "question": "first actual question",
+            "answer": "first actual answer",
+            "source": "Live workflow (real model enabled)",
+        }
+        encoded = html.escape(json.dumps(response), quote=True)
+        xml = f'''<testsuites><testsuite><testcase classname="turns" name="partial">
+          <failure message="assertion failed" />
+          <properties>
+            <property name="test_question" value="first declared question" />
+            <property name="test_question" value="unreached second question" />
+            <property name="test_question" value="unreached third question" />
+            <property name="test_response" value="{encoded}" />
+          </properties>
+        </testcase></testsuite></testsuites>'''
+        result, output, _ = self.run_report(xml)
+        report = output.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Turn 1: first actual question", report)
+        self.assertIn("Turn 1: Live workflow (real model enabled): first actual answer", report)
+        self.assertNotIn("unreached second question", report)
+        self.assertNotIn("unreached third question", report)
+        self.assertIn("Agent response (captured)", report)
+
+    def test_skipped_case_without_response_has_explicit_fallback(self):
+        xml = '''<testsuites><testsuite><testcase classname="live" name="skipped">
+          <skipped /><properties><property name="test_question" value="live question" /></properties>
+        </testcase></testsuite></testsuites>'''
+        result, output, _ = self.run_report(xml)
+        report = output.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("live question", report)
+        self.assertIn("No agent response recorded", report)
+        self.assertIn("SKIPPED", report)
 
 
 if __name__ == "__main__":

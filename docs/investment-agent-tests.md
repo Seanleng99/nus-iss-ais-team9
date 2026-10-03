@@ -48,6 +48,8 @@ Do not add the model key as a GitHub secret. A push to `main` can trigger the ex
 
 ## Viewing test results
 
-Open a GitHub Actions run's **Summary** tab to read the Markdown table and actual pass, fail, error, and skip counts. Expand **Publish offline test results** or **Publish live test results** in the job log to see each question or test input on its own prefixed line. The Markdown summaries and JUnit XML files are also included under the run's **Artifacts** section.
+Open a GitHub Actions run's **Summary** tab to read the Markdown table, captured agent responses, and actual pass, fail, error, and skip counts. Expand **Publish offline test results** or **Publish live test results** in the job log to see each question and captured response on prefixed lines. The Markdown summaries and JUnit XML files are also included under the run's **Artifacts** section.
 
-The workflow passes `--investment-report` to pytest. It adds question metadata to JUnit only when enabled; default local pytest runs do not include prompt text. Explicit `test_questions` markers cover inputs exercised inside unparameterized methods. For parameterized tests, string parameters named `question`, `message`, `prompt`, `attack`, `instruction`, or `text` are included. Other tests show `No prompt metadata (see test method)`.
+The workflow passes `--investment-report` to pytest. It adds question and response properties to JUnit only when enabled. Explicit `test_questions` markers cover inputs exercised inside unparameterized methods. For parameterized tests, string parameters named `question`, `message`, `prompt`, `attack`, `instruction`, or `text` are included.
+
+Application scenarios in the manual and live suites capture the final user-facing reply before checking assertions. Reports label each response as a mocked offline workflow, a deterministic safety response, or a live workflow. Multi-turn tests show captured question/response pairs in execution order; if a test stops early, later turns have no captured reply. Low-level checks and skipped tests without replies show `No agent response recorded`.

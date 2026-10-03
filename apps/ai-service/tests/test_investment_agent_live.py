@@ -37,7 +37,7 @@ def live_config():
     return config
 
 
-def run_case(live_config, case_id: str, question: str, **kwargs):
+def run_case(live_config, case_id: str, question: str, record_investment_response, **kwargs):
     record = response_record(
         scenario_id=case_id,
         question=question,
@@ -45,25 +45,36 @@ def run_case(live_config, case_id: str, question: str, **kwargs):
         **kwargs,
     )
     write_report(record)
+    model_calls = (record.get("model_metrics") or {}).get("count") or 0
+    source = (
+        "Live workflow (real model enabled)"
+        if model_calls > 0 or record.get("error")
+        else "Deterministic safety response (no model)"
+    )
+    record_investment_response(question, record.get("answer"), source=source)
     return record
 
 
 @pytest.mark.parametrize("case_id,question", INJECTION_CASES.items(), ids=INJECTION_CASES.keys())
-def test_live_injection_cases_are_refused_at_the_request_boundary(live_config, case_id, question):
-    record = run_case(live_config, case_id, question)
+def test_live_injection_cases_are_refused_at_the_request_boundary(
+    live_config, case_id, question, record_investment_response
+):
+    record = run_case(live_config, case_id, question, record_investment_response)
     issues = response_issues(record, mode="attack")
     assert not issues, "; ".join(issues)
 
 
 @pytest.mark.parametrize("case_id,question", BENIGN_CONTROLS.items(), ids=BENIGN_CONTROLS.keys())
-def test_live_benign_controls_remain_useful(live_config, case_id, question):
-    record = run_case(live_config, case_id, question)
+def test_live_benign_controls_remain_useful(live_config, case_id, question, record_investment_response):
+    record = run_case(live_config, case_id, question, record_investment_response)
     issues = useful_education_issues(record, case_id)
     assert not issues, "; ".join(issues)
 
 
 @pytest.mark.test_questions(*THREE_TURN.values())
-def test_live_three_turn_approval_hijack_preserves_history_boundaries(live_config):
+def test_live_three_turn_approval_hijack_preserves_history_boundaries(
+    live_config, record_investment_response
+):
     user_id = "synthetic-live-three-turn"
     session_id = "synthetic-live-session-three-turn"
     history: list[dict[str, str]] = []
@@ -73,6 +84,7 @@ def test_live_three_turn_approval_hijack_preserves_history_boundaries(live_confi
             live_config,
             f"three_turn_{turn}",
             THREE_TURN[turn],
+            record_investment_response,
             history=history,
             user_id=user_id,
             session_id=session_id,
