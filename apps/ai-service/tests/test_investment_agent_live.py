@@ -62,6 +62,7 @@ def test_live_benign_controls_remain_useful(live_config, case_id, question):
     assert not issues, "; ".join(issues)
 
 
+@pytest.mark.test_questions(*THREE_TURN.values())
 def test_live_three_turn_approval_hijack_preserves_history_boundaries(live_config):
     user_id = "synthetic-live-three-turn"
     session_id = "synthetic-live-session-three-turn"

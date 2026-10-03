@@ -7,12 +7,18 @@ on:
       - "apps/ai-service/**"
       - "knowledge/**"
       - ".github/workflows/investment-agent-tests.yml"
+      - "infra/scripts/summarize_investment_tests.py"
+      - "infra/scripts/tests/test_summarize_investment_tests.py"
+      - "docs/investment-agent-tests.md"
   push:
     paths:
       - "apps/shared/**"
       - "apps/ai-service/**"
       - "knowledge/**"
       - ".github/workflows/investment-agent-tests.yml"
+      - "infra/scripts/summarize_investment_tests.py"
+      - "infra/scripts/tests/test_summarize_investment_tests.py"
+      - "docs/investment-agent-tests.md"
   workflow_dispatch:
     inputs:
       run_live:
@@ -46,22 +52,33 @@ jobs:
             apps/ai-service/pyproject.toml
       - name: Install AI service
         run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
+      - name: Test report formatter
+        run: python -m unittest discover -s infra/scripts/tests -p 'test_summarize_investment_tests.py' -v
       - name: Run offline investment tests
         working-directory: apps/ai-service
         run: >-
           mkdir -p ../../artifacts &&
-          pytest
+          python -m pytest -vv --investment-report
           tests/test_manual_investment_injection.py
           tests/test_guardrails.py
           tests/test_risk_compliance.py
           tests/test_investment_live_contract.py
           --junitxml=../../artifacts/investment-agent-offline.xml
+      - name: Publish offline test results
+        if: always()
+        run: >-
+          python infra/scripts/summarize_investment_tests.py
+          artifacts/investment-agent-offline.xml
+          --output artifacts/investment-agent-offline-summary.md
+          --title "Offline investment test results"
       - name: Upload offline test report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: investment-agent-offline-report
-          path: artifacts/investment-agent-offline.xml
+          path: |
+            artifacts/investment-agent-offline.xml
+            artifacts/investment-agent-offline-summary.md
           if-no-files-found: error
           retention-days: 7
 
@@ -128,9 +145,16 @@ jobs:
       - name: Run live model evaluation
         run: |
           mkdir -p artifacts
-          pytest apps/ai-service/tests/test_investment_agent_live.py \
+          python -m pytest -vv --investment-report apps/ai-service/tests/test_investment_agent_live.py \
             -m live_model --tb=short \
             --junitxml artifacts/investment-agent-live.xml
+      - name: Publish live test results
+        if: always()
+        run: >-
+          python infra/scripts/summarize_investment_tests.py
+          artifacts/investment-agent-live.xml
+          --output artifacts/investment-agent-live-summary.md
+          --title "Live investment test results"
       - name: Upload live evaluation evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -139,5 +163,6 @@ jobs:
           path: |
             artifacts/investment-agent-live.json
             artifacts/investment-agent-live.xml
+            artifacts/investment-agent-live-summary.md
           if-no-files-found: error
           retention-days: 7
