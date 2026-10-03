@@ -206,3 +206,54 @@ def test_withholds_unsafe_answer_with_unapproved_citation(record_property):
         f"{_BUDGET_QUESTION} (scripted draft cites an unapproved source)",
         f"Request failed closed: {raised.value}",
     )
+
+
+# --- Group C: allows safe answers ----------------------------------------------------
+
+def _assert_released(response: CoachResponse, gateway: _ScriptedGateway) -> None:
+    assert response.blocked is False
+    assert response.audit["answer_status"] == "answered"
+    assert _REVIEW_PROMPT in gateway.prompt_ids  # the compliance review ran and approved
+    assert _event(response, "compliance.completed")["block_reasons"] == []
+
+
+@pytest.mark.parametrize(("message", "expected_text"), [
+    pytest.param("What is an ETF?", "exchange-traded funds", id="what_is_an_etf"),
+    pytest.param("Explain diversification in simple terms", "diversification", id="diversification"),
+    pytest.param("What is compound interest?", "Compound interest", id="compound_interest"),
+    pytest.param("What are ETFs and unit trusts?", "exchange-traded funds", id="plural_products"),
+    pytest.param("What are the risks of REITs and unit trusts?", "real estate investment trusts",
+                 id="plural_product_risks"),
+    pytest.param(language_case("risk_compliance.test_legitimate_requests_are_not_flagged"),
+                 "exchange-traded funds", id="zh_what_is_an_etf"),
+])
+def test_allows_safe_answer_for_education_question(message, expected_text, record_property):
+    gateway = _ScriptedGateway()
+    response = _handle(message, gateway)
+    _record(record_property, message, response.answer)
+
+    _assert_released(response, gateway)
+    assert response.sources, "education answers must cite approved sources"
+    assert expected_text in response.answer
+
+
+def test_allows_safe_answer_with_negated_suitability(record_property):
+    draft = (
+        "Your budget does not establish whether an investment or risk level is suitable for you. "
+        "You have SGD 800 for savings."
+    )
+    gateway = _ScriptedGateway(draft=draft)
+    response = _handle(_BUDGET_QUESTION, gateway, **_BUDGET_REQUEST)
+    _record(record_property, f"{_BUDGET_QUESTION} (scripted draft: {draft})", response.answer)
+
+    _assert_released(response, gateway)
+    assert "SGD 800 for savings" in response.answer
+
+
+def test_allows_safe_answer_for_budget_calculation(record_property):
+    gateway = _ScriptedGateway()
+    response = _handle(_BUDGET_QUESTION, gateway, **_BUDGET_REQUEST)
+    _record(record_property, _BUDGET_QUESTION, response.answer)
+
+    _assert_released(response, gateway)
+    assert "SGD 4000.00" in response.answer
