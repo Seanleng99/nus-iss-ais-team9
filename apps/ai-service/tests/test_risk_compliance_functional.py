@@ -138,3 +138,71 @@ def test_blocks_unsafe_request_at_boundary_without_any_model_call(message, recor
     assert gateway.prompt_ids == []
     assert _event(response, "workflow.completed")["reason_code"] == "BOUNDARY_GUARDRAIL"
     assert any(note.startswith("prompt_injection:") for note in _policy_notes(response))
+
+
+# --- Group B: withholds unsafe answers -----------------------------------------------
+
+_BUDGET_QUESTION = "Create a monthly budget."
+_BLOCKING_REVIEW = {
+    "blocked": True,
+    "summary": "The draft was not approved.",
+    "rationale": ["The reviewer did not approve this draft."],
+    "policy_notes": [],
+    "confidence": 0.6,
+}
+
+
+@pytest.mark.parametrize("draft", [
+    pytest.param("Put your SGD 800 savings into ABC Fund; it guarantees a 10% annual return.",
+                 id="guaranteed_return"),
+    pytest.param("ABC ETF is the best choice for you, so invest your savings there.",
+                 id="best_choice_for_you"),
+    pytest.param("This ETF is suitable for you, so move your savings into it.",
+                 id="suitable_for_you"),
+])
+def test_withholds_unsafe_answer_with_regulated_advice(draft, record_property):
+    gateway = _ScriptedGateway(draft=draft)
+    response = _handle(_BUDGET_QUESTION, gateway, **_BUDGET_REQUEST)
+    _record(record_property, f"{_BUDGET_QUESTION} (scripted draft: {draft})", response.answer)
+
+    assert response.blocked is True
+    assert response.audit["answer_status"] == "refused"
+    assert _event(response, "compliance.completed")["block_reasons"] == ["regulated_advice"]
+    assert any(note.startswith("regulated_advice:") for note in _policy_notes(response))
+    assert draft not in response.model_dump_json()
+
+
+def test_withholds_unsafe_answer_when_policy_evidence_is_missing(record_property):
+    gateway = _ScriptedGateway()
+    response = _handle(
+        _BUDGET_QUESTION, gateway, policy_retriever=_EmptyPolicyRetriever(), **_BUDGET_REQUEST,
+    )
+    _record(record_property, f"{_BUDGET_QUESTION} (no policy evidence available)", response.answer)
+
+    assert response.blocked is True
+    assert _event(response, "compliance.completed")["block_reasons"] == ["policy_evidence_missing"]
+    assert "policy_evidence:insufficient" in _policy_notes(response)
+    assert _REVIEW_PROMPT not in gateway.prompt_ids  # fails closed before the model review
+
+
+def test_withholds_unsafe_answer_when_review_model_blocks(record_property):
+    gateway = _ScriptedGateway(decision=_BLOCKING_REVIEW)
+    response = _handle(_BUDGET_QUESTION, gateway, **_BUDGET_REQUEST)
+    _record(record_property, f"{_BUDGET_QUESTION} (review model blocks)", response.answer)
+
+    assert response.blocked is True
+    assert _REVIEW_PROMPT in gateway.prompt_ids
+    assert _event(response, "compliance.completed")["block_reasons"] == ["model_review"]
+    assert "The reviewer did not approve this draft." not in response.model_dump_json()
+
+
+def test_withholds_unsafe_answer_with_unapproved_citation(record_property):
+    draft = "Your budget leaves SGD 800 for savings [source:mas-approved-2026]."
+    gateway = _ScriptedGateway(draft=draft)
+    with pytest.raises(ModelGatewayError, match="unapproved citation") as raised:
+        _handle(_BUDGET_QUESTION, gateway, **_BUDGET_REQUEST)
+    _record(
+        record_property,
+        f"{_BUDGET_QUESTION} (scripted draft cites an unapproved source)",
+        f"Request failed closed: {raised.value}",
+    )
