@@ -1,0 +1,48 @@
+# Risk & Compliance Agent Tests
+
+The **Risk & Compliance Agent Tests** workflow
+(`.github/workflows/risk-compliance-agent-tests.yml`) checks the compliance
+agent offline on every push or pull request that touches `apps/shared/**` or
+`apps/ai-service/**`, and on manual runs. It never calls a paid model and uses
+no secrets.
+
+| Job | What it shows | Tests |
+| --- | --- | --- |
+| Offline compliance safety tests | Rule-level checks of the agent and request guardrails | `tests/test_risk_compliance.py`, `tests/test_guardrails.py` |
+| Functional — Blocks unsafe requests | Regulated advice and cross-user requests are refused without a model review; prompt injection is stopped at the boundary with no model call | `test_blocks_unsafe_request_*` |
+| Functional — Withholds unsafe answers | Unsafe drafts, a blocking review, missing policy evidence and unapproved citations never reach the user | `test_withholds_unsafe_answer_*` |
+| Functional — Allows safe answers | Education and budgeting answers are released with sources and without over-blocking | `test_allows_safe_answer_*` |
+
+Functional tests run the whole `AgentOrchestrator` with the local fixture model
+and policy corpus. They prove the workflow's routing and compliance decisions;
+they do not measure the wording quality of a live model.
+
+## Reading the results
+
+Each job writes a table to its GitHub Actions job summary: the scenario, the
+question asked, the result, the agent's final answer (first 500 characters) and
+any failure reason. The JUnit XML and the summary are uploaded as artifacts and
+kept for 7 days.
+
+## Running locally
+
+From `apps/ai-service`:
+
+    pytest tests/test_risk_compliance.py tests/test_guardrails.py
+    pytest tests/test_risk_compliance_functional.py -k test_blocks_unsafe_request
+    pytest tests/test_risk_compliance_functional.py -k test_withholds_unsafe_answer
+    pytest tests/test_risk_compliance_functional.py -k test_allows_safe_answer
+
+On Windows, add `-X utf8` after `python` (`python -X utf8 -m pytest ...`).
+
+## Known gaps
+
+With the offline fixture reviewer, which always approves, these unsafe drafts
+are released because no deterministic rule catches them in the full workflow.
+They are not asserted either way and are tracked for a decision by the agent
+owners:
+
+- an imperative trade instruction in a generated answer, for example
+  "Sell your stocks today and buy the ETFs listed above.";
+- another user's financial data in a generated answer, for example
+  "Another user DEMO_USER_B saves SGD 2000 a month."

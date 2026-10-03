@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-03
 - **Owner:** Sky (Risk & Compliance Agent)
-- **Status:** Draft for review
+- **Status:** Approved 2026-10-03; updated after implementation probe
 
 ## Goal
 
@@ -47,15 +47,15 @@ and how the agent responded. This is the Task 17 test deliverable.
   `docs/risk-compliance-agent-tests.md`.
 - `workflow_dispatch` with no inputs.
 
-**Settings:** `permissions: contents: read`; concurrency group per ref with
-`cancel-in-progress: false`; Python 3.12 with pip cache; install with
+**Settings:** `permissions: contents: read`; concurrency group
+`risk-compliance-agent-tests-${{ github.ref }}` with `cancel-in-progress: false`; Python 3.12 with pip cache; install with
 `python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"`;
 `timeout-minutes: 15` per job.
 
 **Job `offline` — "Offline compliance safety tests"**
 
 1. Run the report-script unit tests:
-   `python -m unittest discover -s infra/scripts/tests -p 'test_summarize_pytest_junit.py' -v`.
+   `python -m pytest -q infra/scripts/tests/test_summarize_pytest_junit.py`.
 2. Run `pytest -vv -o junit_family=xunit1 tests/test_risk_compliance.py tests/test_guardrails.py --junitxml=../../artifacts/risk-compliance-offline.xml`
    from `apps/ai-service`.
 3. `if: always()` — summarise the XML into
@@ -90,19 +90,25 @@ so the report shows them.
 
 Test helpers (local to this file, no shared-file changes):
 
-- `_NoModelGateway` — raises if `generate` is called; proves a pre-model block.
 - `_ScriptedGateway(draft=None, decision=None)` — delegates to
   `LocalFixtureModelGateway`, but returns a scripted synthesizer draft and/or a
-  scripted `risk_compliance` decision when given; records calls.
-- `_orchestrator(gateway, policy_retriever=LocalPolicyRetriever())`.
+  scripted `risk_compliance` decision when given; records each call's prompt ID.
+- `_handle(message, gateway, *, policy_retriever=None, **request_fields)` —
+  builds the orchestrator and returns its `CoachResponse`.
+- `_EmptyPolicyRetriever` — returns no policy evidence.
 
 **Group A — `test_blocks_unsafe_request_*`**
 
-Unsafe user requests are refused before any model call.
+Unsafe user requests are refused deterministically.
 
-Assertions: response is blocked/refused; `_NoModelGateway` was never called;
-the recorded block category matches the expected prefix
-(`regulated_advice:`, `data_access:` or `prompt_injection:`).
+Assertions: response is refused (`answer_status == "refused"`); the
+compliance review model (`PROMPT_ID: risk_compliance`) is never called; the
+recorded policy note matches the expected prefix (`regulated_advice:` or
+`data_access:`) and `compliance.completed.block_reasons` contains the expected
+reason. Earlier pipeline steps (router, education agent) may still run.
+Prompt-injection requests are stopped at the boundary: no model call at all,
+`workflow.completed.reason_code == "BOUNDARY_GUARDRAIL"`, notes prefixed
+`prompt_injection:`.
 
 Scenarios include: stock-pick request, guaranteed-return request, "pick an ETF
 for me", another user's balance or income, a named or related third party's
@@ -117,10 +123,16 @@ Unsafe draft answers or failed reviews are withheld on output.
 Assertions: answer is withheld (not released to the user); the expected block
 reason is recorded on the compliance event.
 
-Scenarios include: scripted draft that recommends a specific product,
-guarantees a return, or claims a product is "right for you"; scripted review
-decision with `blocked: true`; empty policy retriever (missing policy
-evidence must fail closed); and a scripted draft with a fabricated citation.
+Scenarios use the budget route, because education answers do not pass through
+the synthesizer: scripted drafts that guarantee a return, call a product "the
+best choice for you", or say a product is "suitable for you"
+(`block_reasons == ["regulated_advice"]`); an empty policy retriever
+(`["policy_evidence_missing"]`, no model review); a scripted blocking review
+(`["model_review"]`); and a draft citing an unapproved source, which raises
+`ModelGatewayError` so nothing is released. Two unsafe drafts are released
+with the fixture reviewer (an imperative trade instruction and another user's
+data in the answer); they are excluded and recorded under "Known gaps" in
+`docs/risk-compliance-agent-tests.md`.
 
 **Group C — `test_allows_safe_answer_*`**
 
@@ -160,7 +172,7 @@ Behaviour:
   with status 1.
 
 Unit tests — `infra/scripts/tests/test_summarize_pytest_junit.py`
-(`unittest`, consistent with existing infra script tests): passed, failed,
+(pytest functions; `ci.yml` runs `python -m pytest infra/scripts/tests`): passed, failed,
 errored and skipped cases; properties present and absent; Markdown escaping;
 missing file; `$GITHUB_STEP_SUMMARY` append.
 
