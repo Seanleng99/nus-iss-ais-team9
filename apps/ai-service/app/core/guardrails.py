@@ -16,7 +16,7 @@ PII_PATTERNS = {
 }
 
 PROMPT_INJECTION_PATTERNS = [
-    re.compile(r"\bignore (all )?(previous|above|system|developer) instructions\b", re.IGNORECASE),
+    re.compile(r"\bignore (all )?(previous|prior|above|system|developer) instructions\b", re.IGNORECASE),
     re.compile(r"\breveal (the )?(system prompt|hidden instructions|developer message)\b", re.IGNORECASE),
     re.compile(r"\bdisregard (policy|guardrails|safety rules)\b", re.IGNORECASE),
     re.compile(r"\bexfiltrate\b|\bapi[_ -]?key\b|\bpassword\b|\bsecret\b", re.IGNORECASE),
@@ -111,6 +111,9 @@ PROMPT_INJECTION_PATTERNS = [
 ]
 
 ADVISORY_DISCLAIMER = translate("safety.educational_disclaimer", "en")
+PERSONAL_SELECTION_REQUEST = re.compile(
+    input_pattern("ai.core.guardrails.personal_selection_request"), re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -140,7 +143,7 @@ def normalize_for_security_inspection(text: str) -> str:
 
 
 @trace_method
-def inspect_prompt(text: str) -> GuardrailDecision:
+def inspect_prompt(text: str, *, is_request: bool = False) -> GuardrailDecision:
     sanitized, pii_findings = redact_sensitive_text(text)
     inspected = normalize_for_security_inspection(sanitized)
     injection_findings = [
@@ -148,9 +151,15 @@ def inspect_prompt(text: str) -> GuardrailDecision:
         for idx, pattern in enumerate(PROMPT_INJECTION_PATTERNS)
         if pattern.search(inspected)
     ]
-    findings = pii_findings + injection_findings
+    # Financial commands are request scope violations, not injected document
+    # instructions. Do not apply this rule to generated educational quotations.
+    request_findings = (
+        ["regulated_advice:personalized_selection_request"]
+        if is_request and PERSONAL_SELECTION_REQUEST.search(inspected) else []
+    )
+    findings = pii_findings + injection_findings + request_findings
     return GuardrailDecision(
-        allowed=not injection_findings,
+        allowed=not (injection_findings or request_findings),
         sanitized_text=sanitized,
         findings=findings,
     )

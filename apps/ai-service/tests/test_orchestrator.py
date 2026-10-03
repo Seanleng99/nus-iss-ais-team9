@@ -566,3 +566,35 @@ def test_record_concealment_is_blocked_before_routing(question):
     assert response.audit["model_provider"] == "local_fixture"
     assert response.audit["model_id"] == Settings().model_id
     assert response.audit["model_call_count"] == 0
+
+
+@pytest.mark.parametrize("requested_agents", [
+    [], ["spending"], ["budget"], ["goal_strategy"], ["investment_education"],
+])
+@pytest.mark.test_questions(language_case("guardrails.personal_selection_request"))
+def test_personal_selection_request_stops_before_routing_or_model(
+    requested_agents: list[str],
+) -> None:
+    class NoModelGateway:
+        def generate(self, **kwargs):
+            pytest.fail("A personal selection request must stop before any model call")
+
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"), gateway=NoModelGateway(),
+    ).handle(CoachRequest(
+        user_id="u1",
+        session_id="selection-boundary",
+        message=language_case("guardrails.personal_selection_request"),
+        requested_agents=requested_agents,
+        response_locale="en",
+        snapshot={},
+    ))
+    assert response.blocked is True
+    assert response.selected_agents == []
+    assert response.answer == "I cannot process that request because it conflicts with safety controls."
+    assert response.audit["answer_status"] == "refused"
+    assert len(response.agent_results) == 1
+    result = response.agent_results[0]
+    assert result.policy_notes == ["regulated_advice:personalized_selection_request"]
+    assert result.data == {}
+    assert "Prompt-injection" not in " ".join(result.rationale)

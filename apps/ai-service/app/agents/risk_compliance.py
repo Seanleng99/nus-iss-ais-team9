@@ -113,6 +113,10 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
 REQUEST_ONLY_FINANCIAL_ADVICE_REGEXES = (
     (
         "personalized_selection_request",
+        re.compile(input_pattern("ai.core.guardrails.personal_selection_request"), re.IGNORECASE),
+    ),
+    (
+        "personalized_selection_request",
         re.compile(
             r"(?:^|[.!?;,:]\s*|\band\s+|\bthen\s+)"
             r"\s*(?:please\s+)?(?:(?:can|could) you\s+)?"
@@ -260,11 +264,11 @@ def requires_financial_language_review(text: str, finding: str) -> bool:
     # the policy model must explicitly judge their meaning before release.
     direct_claim = re.search(
         r"\b(?:this|that|these|those|your|our)\b[^.!?;:\n]{0,120}"
-        r"\b(?:guarantee(?:d|s)?\s+(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+        r"\b(?:guarantee(?:d|s)?\s+(?:an?\s+)?(?:\d+(?:\.\d+)?%\s+)?"
         r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?|"
         r"returns?\s+(?:is|are|will be)\s+guaranteed|"
         r"(?:best|right|suitable)\b[^.!?;:\n]{0,30}\bfor you)\b|"
-        r"\bguarantees\s+(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+        r"\bguarantees\s+(?:an?\s+)?(?:\d+(?:\.\d+)?%\s+)?"
         r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?\b|"
         r"\breturns?\s+(?:is|are|will be)\s+guaranteed\b|"
         r"\b(?:is|are|will be|would be)\s+(?:the\s+)?(?:best|right|suitable)\s+"
@@ -288,7 +292,7 @@ def contains_return_guarantee(text: str) -> bool:
     )
     for sentence in re.split(r"(?<!\d)\.(?!\d)|[!?;\n]", text.lower()):
         for match in re.finditer(
-            r"\bguarantee(?:d|s)?\s+(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+            r"\bguarantee(?:d|s)?\s+(?:an?\s+)?(?:\d+(?:\.\d+)?%\s+)?"
             r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?\b", sentence,
         ):
             before, after = sentence[:match.start()], sentence[match.end():]
@@ -489,7 +493,7 @@ def is_reported_guarantee_verification(text: str) -> bool:
         r"(?:says?|said|claims?)\s+(?:that\s+)?"
         r"(?:it|this|(?:an?|the|this) (?:investment|fund|offer|product))\s+"
         r"(?:guarantees?|(?:offers?|promises?|provides?|has)\s+(?:a\s+)?guaranteed)\s+"
-        r"(?:a\s+)?(?:\d+(?:\.\d+)?%\s+)?"
+        r"(?:an?\s+)?(?:\d+(?:\.\d+)?%\s+)?"
         r"(?:(?:annual|monthly|yearly|investment)\s+)?returns?"
         r"(?:\s+(?:with no risk|without risk))?[.!?;,]\s*",
         text,

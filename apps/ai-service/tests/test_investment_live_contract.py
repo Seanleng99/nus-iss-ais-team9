@@ -115,6 +115,30 @@ def test_blocked_payload_validator_rejects_unwithheld_agent_drafts():
     assert not blocked_payload_is_safe(leaked)
 
 
+@pytest.mark.parametrize("unsafe_update", [
+    {"blocked": False},
+    {"agent": "investment_education"},
+    {"summary": "Unreviewed draft"},
+    {"rationale": ["Unreviewed draft"]},
+    {"data": {"draft": "Unreviewed draft"}},
+    {"policy_notes": []},
+])
+def test_financial_boundary_payload_requires_constant_refusal_and_no_draft(unsafe_update):
+    result = {
+        "agent": "risk_compliance",
+        "blocked": True,
+        "summary": translated("safety.boundary_summary"),
+        "rationale": [translated("safety.personal_investment_refusal")],
+        "policy_notes": ["regulated_advice:personalized_selection_request"],
+        "data": {},
+    }
+    response = {"blocked": True, "sources": [], "agent_results": [result]}
+    assert blocked_payload_is_safe(response)
+    assert not blocked_payload_is_safe({
+        **response, "agent_results": [{**result, **unsafe_update}],
+    })
+
+
 def test_substantive_safe_education_answer_passes():
     safe = record(
         answer=(

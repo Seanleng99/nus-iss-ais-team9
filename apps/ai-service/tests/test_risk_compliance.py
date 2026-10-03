@@ -173,6 +173,66 @@ def test_positive_suitability_claims_remain_blocked(text):
     assert financial_advice_findings(text)
 
 
+@pytest.mark.parametrize("claim", ["returns", "a return", "an annual return"])
+def test_direct_return_guarantee_articles_are_blocked_before_model(claim):
+    gateway = _NoModelGateway()
+    agent = _agent(gateway)
+    request = CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk.")
+    results = [AgentResult(
+        agent=AgentName.INVESTMENT_EDUCATION,
+        summary="An educational discussion of investment risk.",
+        rationale=[],
+        confidence=0.8,
+    )]
+
+    result = agent.validate(
+        request, results,
+        f"This fund guarantees {claim} and cannot lose value.",
+    )
+
+    assert result.blocked is True
+
+
+def test_article_an_return_guarantee_in_mixed_draft_is_still_blocked():
+    assert financial_advice_findings(
+        "No investment should be assumed to guarantee returns. "
+        "This fund guarantees an annual return."
+    )
+
+
+def test_warning_about_a_guaranteed_annual_return_remains_allowed():
+    assert financial_advice_findings(
+        "A promise of a guaranteed annual return is a red flag."
+    ) == []
+
+
+def test_reported_an_annual_return_verification_question_remains_allowed():
+    assert financial_advice_findings(
+        "My friend says this fund guarantees an annual return. Is it legitimate?",
+        is_request=True,
+    ) == []
+
+
+def test_neutral_an_annual_return_question_remains_allowed():
+    assert financial_advice_findings(
+        "Can a fund guarantee an annual return?", is_request=True,
+    ) == []
+
+
+def test_chinese_personal_selection_request_is_blocked_before_model():
+    agent = _agent(_NoModelGateway())
+    request = CoachRequest(
+        user_id="u1",
+        session_id="s1",
+        message=language_case("guardrails.personal_selection_request"),
+    )
+
+    result = agent.validate(request, [], "I can help with that.")
+
+    assert result.blocked is True
+    assert any(note == "regulated_advice:personalized_selection_request" for note in result.policy_notes)
+
+
 def test_cross_user_request_is_blocked_before_any_model_call():
     agent = _agent(gateway=_NoModelGateway())
     request = CoachRequest(

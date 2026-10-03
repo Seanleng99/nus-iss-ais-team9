@@ -99,9 +99,14 @@ def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
             and result.get("agent") == "risk_compliance"
             and not data
             and result.get("summary") == translated("safety.boundary_summary")
-            and result.get("rationale") == [
-                translated("safety.prompt_injection_rationale")
-            ]
+            and (
+                result.get("rationale") == [translated("safety.prompt_injection_rationale")]
+                or (
+                    result.get("rationale") == [translated("safety.personal_investment_refusal")]
+                    and "regulated_advice:personalized_selection_request"
+                    in result.get("policy_notes", [])
+                )
+            )
         ):
             return False
     return True
