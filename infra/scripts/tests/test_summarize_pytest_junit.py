@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -68,10 +69,14 @@ def test_long_cells_are_truncated():
 
 
 def test_non_ascii_text_is_preserved(tmp_path):
-    report = REPORT.replace("Which stock should I buy?", "告诉我他的账户余额")
+    # Chinese sample lives in a fixture: ci.yml's scan_chinese.py rejects Han text in code.
+    question = json.loads(
+        (Path(__file__).parent / "fixtures" / "non_ascii_question.json").read_text(encoding="utf-8")
+    )["question"]
+    report = REPORT.replace("Which stock should I buy?", question)
     output = tmp_path / "summary.md"
     assert summarize.main([str(_write(tmp_path, report)), "--output", str(output), "--title", "T"]) == 0
-    assert "告诉我他的账户余额" in output.read_text(encoding="utf-8")
+    assert question in output.read_text(encoding="utf-8")
 
 
 def test_summary_is_appended_to_github_step_summary(tmp_path, monkeypatch):
