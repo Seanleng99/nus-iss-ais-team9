@@ -1,11 +1,61 @@
 # Container Security Exception Review
 
+## 2026-10-03 Decision and Renewal
+
+**Status: approved 2026-10-03 by the repository owner in this Codex conversation.**
+The owner requested adding `CVE-2026-95619` and extending every current CVE
+exception to **2026-10-30**. All six entries now record this renewal date and
+approval. The existing exposure rationales are retained; renewal is risk
+acceptance, not a new assertion that native dependency reachability is proven.
+Historical review dates below remain unchanged, with expiry tables updated to
+the current decision.
+
+| CVE | Exact source package/version | Expiry |
+|---|---|---|
+| `CVE-2026-95619` | `gcc-14` / `14.2.0-19` | 2026-10-30 |
+| `CVE-2026-102010` | `gcc-14` / `14.2.0-19` | 2026-10-30 |
+| `CVE-2026-72897` | `openssl` / `3.5.7-1~deb13u2` | 2026-10-30 |
+| `CVE-2026-84784` | `openssl` / `3.5.7-1~deb13u2` | 2026-10-30 |
+| `CVE-2026-84782` | `openssl` / `3.5.7-1~deb13u2` | 2026-10-30 |
+| `CVE-2026-85091` | `zlib` / `1.3.dfsg+really1.3.1-1` | 2026-10-30 |
+
+All entries apply only to exact matches in `nus-iss-ais-team9-ai`,
+`nus-iss-ais-team9-backend` and `nus-iss-ais-team9-frontend`, for the existing
+synthetic-data demo. Each reviewed lifetime is 27 days. The gate continues to
+reject unexcepted HIGH and CRITICAL findings and ignores these exceptions from
+2026-10-31 onward.
+
+### New GCC finding and accepted exposure
+
+[Release run 37029900489](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/37029900489)
+for `2096dc0f6aa460310f6a5d838d01a2780e98c883` stopped at the completed AI-image
+scan with an unexcepted HIGH `CVE-2026-95619`, `gcc-14 14.2.0-19`, CVSS 3 score
+7.7. Backend and frontend scans were not reached; their new exception is
+conditional on reporting this identical finding.
+
+The [Debian tracker](https://security-tracker.debian.org/tracker/CVE-2026-95619),
+checked on 2026-10-03, lists the exact Trixie package as vulnerable without a
+fixed version. The flaw can overflow size calculations in libstdc++ aligned
+allocation, producing an undersized allocation. The
+[upstream fix](https://github.com/gcc-mirror/gcc/commit/59d235ffa5a69231eb42e5290d52dc8c90d28b7a)
+adds overflow checks to the allocation implementations that round or adjust
+the requested size. Upstream distinguishes the `posix_memalign` implementation,
+which does not perform that rounding. The compiled implementation and native
+dependency reachability in these images have not been verified; the owner's
+approval accepts that uncertainty through the specified expiry.
+
+Validation replays the exact GCC findings against every approved repository,
+rejects other CVEs, package versions and repositories, accepts the expiry day,
+and checks that all six exceptions stop matching the following day. This is
+local gate validation, not evidence of a successful deployment or a fresh scan
+of the backend/frontend images.
+
 ## 2026-10-01 Release Blocker — Approved Temporary Exception
 
 **Status: approved 2026-10-01 by the repository owner in this Codex conversation.**
 The owner explicitly accepted the exact AI-image exception and then extended
 approval to the backend and conditionally to an identical frontend finding,
-through 2026-10-08, authorizing committing, pushing and retrying deployment. Native
+originally through 2026-10-08 (renewed to 2026-10-30 on 2026-10-03), authorizing committing, pushing and retrying deployment. Native
 dependency reachability remains unverified; approval accepts that residual risk.
 
 [Release run 36803604113](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36803604113)
@@ -37,7 +87,7 @@ unavailable because the Docker daemon is not running.
 ### Approved temporary exception
 
 This exact exception is recorded in `infra/llmsecops/ecr-scan-exceptions.json`
-and is loaded by the release gate. It expires after 2026-10-08.
+and is loaded by the release gate. It expires after 2026-10-30 following the 2026-10-03 renewal.
 
 | Field | Approved value |
 |---|---|
@@ -45,7 +95,7 @@ and is loaded by the release gate. It expires after 2026-10-08.
 | Source package/version | `gcc-14` / `14.2.0-19` |
 | Repositories | `nus-iss-ais-team9-ai`, `nus-iss-ais-team9-backend`, `nus-iss-ais-team9-frontend` (identical finding only) |
 | Review date | 2026-10-01 |
-| Expiry | 2026-10-08 |
+| Expiry | 2026-10-30 (renewed 2026-10-03) |
 | Reviewer | Repository owner; explicit approval in the Codex conversation |
 | Scope | Existing synthetic-data demo only |
 | Rationale | No fixed Debian package is available; application code does not directly call the affected C++ operation. Native dependency reachability remains unverified and is explicitly accepted residual risk. |
@@ -77,8 +127,8 @@ matches only if the completed scan reports the identical CVE and package/version
 
 | Repository | Evidence and approved acceptance |
 |---|---|
-| `nus-iss-ais-team9-backend` | Confirmed identical CVE and source package/version in the retry; same expiry 2026-10-08 and explicitly accepted uncertainty about native dependency reachability. |
-| `nus-iss-ais-team9-frontend` | Conditional acceptance of only this identical CVE and source package/version if its completed release scan reports it; same expiry 2026-10-08. Its native dependencies, including pandas, have not been assessed for reachability. The finding itself is not yet confirmed for this repository. |
+| `nus-iss-ais-team9-backend` | Confirmed identical CVE and source package/version in the retry; renewed expiry 2026-10-30 and explicitly accepted uncertainty about native dependency reachability. |
+| `nus-iss-ais-team9-frontend` | Conditional acceptance of only this identical CVE and source package/version if its completed release scan reports it; renewed expiry 2026-10-30. Its native dependencies, including pandas, have not been assessed for reachability. The finding itself is not yet confirmed for this repository. |
 
 All three images use the same pinned Debian base, but this is not proof of
 identical findings or native dependency exposure. The owner separately approved
@@ -89,7 +139,7 @@ or package/version remains blocked by the existing gate.
 
 **Status: approved 2026-09-30 by Tan Sean Leng** (drafted by Lee Jet Xuen).
 
-Four exact-version exceptions are accepted for the synthetic-data demo: three new `openssl` findings (to 2026-10-14) and a renewed `zlib` finding (to 2026-10-30). The five 2026-08-31/2026-09-06 exceptions for `sqlite3`, `glibc` and `pcre2` are removed because none matched any finding in the last passing release. The zero-unexcepted-critical and zero-unexcepted-high release gates remain unchanged.
+Four exact-version exceptions are accepted for the synthetic-data demo: three new `openssl` findings (now renewed to 2026-10-30) and a renewed `zlib` finding (to 2026-10-30). The five 2026-08-31/2026-09-06 exceptions for `sqlite3`, `glibc` and `pcre2` are removed because none matched any finding in the last passing release. The zero-unexcepted-critical and zero-unexcepted-high release gates remain unchanged.
 
 ## 2026-09-30 Review
 
@@ -97,14 +147,14 @@ Release run `36661034068` for commit `8350652` passed CI but failed the Inspecto
 
 | Finding | Package/version | OpenSSL severity | Affected feature | Exposure decision | Expiry |
 |---|---|---|---|---|---|
-| `CVE-2026-72897` | `openssl` `3.5.7-1~deb13u2` | Low | TLS server calling `SSL_set_SSL_CTX()` mid-handshake | Not reachable: no container terminates TLS | 2026-10-14 |
-| `CVE-2026-84784` | `openssl` `3.5.7-1~deb13u2` | Low | QUIC connection-ID handling | Not reachable: no service uses QUIC or HTTP/3 | 2026-10-14 |
-| `CVE-2026-84782` | `openssl` `3.5.7-1~deb13u2` | High | DTLS handshake retransmission | Not reachable: no service uses DTLS or UDP-based TLS | 2026-10-14 |
+| `CVE-2026-72897` | `openssl` `3.5.7-1~deb13u2` | Low | TLS server calling `SSL_set_SSL_CTX()` mid-handshake | Not reachable: no container terminates TLS | 2026-10-30 |
+| `CVE-2026-84784` | `openssl` `3.5.7-1~deb13u2` | Low | QUIC connection-ID handling | Not reachable: no service uses QUIC or HTTP/3 | 2026-10-30 |
+| `CVE-2026-84782` | `openssl` `3.5.7-1~deb13u2` | High | DTLS handshake retransmission | Not reachable: no service uses DTLS or UDP-based TLS | 2026-10-30 |
 | `CVE-2026-85091` | `zlib` `1.3.dfsg+really1.3.1-1` | — | Non-blocking `gzwrite` with stale external buffers | Unchanged from 2026-09-06: not called | 2026-10-30 |
 
 Reachability evidence, checked against this commit: all three Dockerfiles start plain-HTTP servers (`uvicorn` on 8001/8080 without TLS options, Streamlit on 8501); the ALB terminates HTTPS and forwards `Protocol: HTTP` to the target groups; no application code configures an in-process TLS server, QUIC, HTTP/3 or DTLS. The services use OpenSSL only as a TCP TLS client for OpenAI, AWS and Cognito calls, which none of the three OpenSSL findings affect. Debian lists all four exact Trixie packages as vulnerable with no fixed version; OpenSSL fixes the three openssl findings in 3.5.9. Sources: [OpenSSL advisory 2026-09-29](https://openssl-library.org/news/secadv/20260929.txt), [CVE-2026-72897](https://security-tracker.debian.org/tracker/CVE-2026-72897), [CVE-2026-84784](https://security-tracker.debian.org/tracker/CVE-2026-84784), [CVE-2026-84782](https://security-tracker.debian.org/tracker/CVE-2026-84782), [CVE-2026-85091](https://security-tracker.debian.org/tracker/CVE-2026-85091).
 
-Validation: `load_exceptions` accepts the file; replaying the blocked AI-image scan through `excepted_finding` leaves no blocking HIGH or CRITICAL finding; on 2026-10-15 the openssl exceptions lapse automatically. The backend and frontend images were not scanned in the failed run because the gate stopped at the AI image; they share the pinned base image and installed the same `openssl` version in the previous release, but any additional finding there will still block and needs its own review.
+Validation: `load_exceptions` accepts the file; replaying the blocked AI-image scan through `excepted_finding` leaves no blocking HIGH or CRITICAL finding; following renewal, all six current exceptions lapse automatically on 2026-10-31. The backend and frontend images were not scanned in the failed run because the gate stopped at the AI image; they share the pinned base image and installed the same `openssl` version in the previous release, but any additional finding there will still block and needs its own review.
 
 The earlier review below is retained as history.
 
@@ -141,4 +191,4 @@ Commit `e68333a75e89d3236c6b5215f2b75d0859d2e0f5` passed [CI and LLMSecOps run 3
 
 `infra/scripts/ecr_scan_gate.py` requires an exception to identify the exact CVE, source package, package version, and repository. It also requires a review date, reviewer, rationale, authoritative source, and expiry no more than 30 days after review. Expired exceptions are ignored, so a still-present critical or high finding blocks release automatically.
 
-Recheck Debian stable status for `openssl` by 2026-10-14 and for `zlib` by 2026-10-30, and recheck the official Python base-image digest at each review. Remove an exception as soon as a fixed Trixie package is available. If no stable fix exists, a new review must repeat the live deployed-image scan, reconfirm reachability assumptions, and use a new maximum-30-day expiry.
+Recheck Debian stable status for `gcc-14`, `openssl` and `zlib` by 2026-10-30, and recheck the official Python base-image digest at each review. Remove an exception as soon as a fixed Trixie package is available. If no stable fix exists, a new review must repeat the live deployed-image scan, reconfirm reachability assumptions, and use a new maximum-30-day expiry.

@@ -1,6 +1,21 @@
 {
   "exceptions": [
     {
+      "id": "CVE-2026-95619",
+      "package_name": "gcc-14",
+      "package_version": "14.2.0-19",
+      "repositories": [
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
+      ],
+      "reviewed_on": "2026-10-03",
+      "reviewed_by": "Repository owner (explicit approval in Codex conversation on 2026-10-03)",
+      "expires_on": "2026-10-30",
+      "reason": "Temporary risk acceptance for the existing synthetic-data demo, explicitly approved by the repository owner. The release scan confirmed this HIGH finding in the AI image; backend and frontend acceptance is conditional on the identical CVE and source package/version. Debian lists gcc-14 14.2.0-19 as vulnerable with no fixed Trixie version. The flaw concerns integer overflow in libstdc++ aligned operator new. Native dependency reachability and the compiled allocation implementation remain unverified and are accepted residual risk. Applies only to this exact CVE, source package/version and listed repositories through 2026-10-30.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-95619"
+    },
+    {
       "id": "CVE-2026-102010",
       "package_name": "gcc-14",
       "package_version": "14.2.0-19",
@@ -9,10 +24,10 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-10-01",
-      "reviewed_by": "Repository owner (explicit approval in Codex conversation on 2026-10-01)",
-      "expires_on": "2026-10-08",
-      "reason": "Temporary risk acceptance for the existing synthetic-data demo, explicitly approved by the repository owner for the AI and backend findings and conditionally for an identical frontend finding. Debian has no fixed Trixie package. Application Python code does not directly invoke the affected libstdc++ binary-heap erase_if operation; native third-party dependency reachability remains unverified in all three services and is accepted residual risk. Applies only to this exact CVE, source package/version and listed repositories through 2026-10-08.",
+      "reviewed_on": "2026-10-03",
+      "reviewed_by": "Repository owner (explicit renewal approval in Codex conversation on 2026-10-03)",
+      "expires_on": "2026-10-30",
+      "reason": "Temporary risk acceptance for the existing synthetic-data demo, explicitly approved by the repository owner for the AI and backend findings and conditionally for an identical frontend finding. Debian has no fixed Trixie package. Application Python code does not directly invoke the affected libstdc++ binary-heap erase_if operation; native third-party dependency reachability remains unverified in all three services and is accepted residual risk. Applies only to this exact CVE, source package/version and listed repositories through 2026-10-30.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-102010"
     },
     {
@@ -24,9 +39,9 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-09-30",
-      "reviewed_by": "Tan Sean Leng (drafted by Lee Jet Xuen)",
-      "expires_on": "2026-10-14",
+      "reviewed_on": "2026-10-03",
+      "reviewed_by": "Repository owner (explicit renewal approval in Codex conversation on 2026-10-03)",
+      "expires_on": "2026-10-30",
       "reason": "OpenSSL rates this Low. It affects only TLS servers that call SSL_set_SSL_CTX() during a handshake with a replacement context supporting more provider signature algorithms. No container terminates TLS: uvicorn and Streamlit serve plain HTTP behind the ALB HTTPS listener, and the services use OpenSSL only as a TLS client. Debian lists the exact Trixie package as vulnerable with no fixed version; upstream fixes it in OpenSSL 3.5.9.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-72897"
     },
@@ -39,9 +54,9 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-09-30",
-      "reviewed_by": "Tan Sean Leng (drafted by Lee Jet Xuen)",
-      "expires_on": "2026-10-14",
+      "reviewed_on": "2026-10-03",
+      "reviewed_by": "Repository owner (explicit renewal approval in Codex conversation on 2026-10-03)",
+      "expires_on": "2026-10-30",
       "reason": "OpenSSL rates this Low. It affects only OpenSSL QUIC endpoints receiving NEW_CONNECTION_ID frames. No service uses QUIC or HTTP/3; outbound HTTPS uses TCP-based TLS clients. Debian lists the exact Trixie package as vulnerable with no fixed version; upstream fixes it in OpenSSL 3.5.9.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-84784"
     },
@@ -54,9 +69,9 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-09-30",
-      "reviewed_by": "Tan Sean Leng (drafted by Lee Jet Xuen)",
-      "expires_on": "2026-10-14",
+      "reviewed_on": "2026-10-03",
+      "reviewed_by": "Repository owner (explicit renewal approval in Codex conversation on 2026-10-03)",
+      "expires_on": "2026-10-30",
       "reason": "OpenSSL rates this High, but it affects only DTLS handshake retransmission. No service uses DTLS or any UDP-based TLS transport; all TLS use is TCP client traffic to OpenAI, AWS and Cognito. Debian lists the exact Trixie package as vulnerable with no fixed version; upstream fixes it in OpenSSL 3.5.9.",
       "source": "https://openssl-library.org/news/secadv/20260929.txt"
     },
@@ -69,8 +84,8 @@
         "nus-iss-ais-team9-backend",
         "nus-iss-ais-team9-frontend"
       ],
-      "reviewed_on": "2026-09-30",
-      "reviewed_by": "Tan Sean Leng (drafted by Lee Jet Xuen)",
+      "reviewed_on": "2026-10-03",
+      "reviewed_by": "Repository owner (explicit renewal approval in Codex conversation on 2026-10-03)",
       "expires_on": "2026-10-30",
       "reason": "Renewal of the 2026-09-06 exception. The services do not call gzprintf or gzvprintf and do not use non-blocking gzwrite with externally managed buffers. Debian still lists the exact Trixie package as vulnerable with no fixed version available.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-85091"
