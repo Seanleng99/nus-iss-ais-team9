@@ -30,7 +30,9 @@ class CaseResult:
 
 def parse_report(path: Path) -> list[CaseResult]:
     cases = []
-    for case in ET.parse(path).getroot().iter("testcase"):
+    # The report is pytest's own output from the same CI job, not external input.
+    tree = ET.parse(path)  # nosec B314 - trusted, locally generated JUnit XML
+    for case in tree.getroot().iter("testcase"):
         properties = {item.get("name"): item.get("value", "") for item in case.iter("property")}
         outcome, reason = "passed", ""
         for tag, label in _FAILURE_TAGS.items():
