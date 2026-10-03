@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Least-privilege GitHub OIDC role for optional live investment-agent evaluation.
+
+Parameters:
+  ExistingGitHubOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: Existing token.actions.githubusercontent.com provider ARN; leave blank to derive its ARN in this account.
+  GitHubRepository:
+    Type: String
+    Default: Seanleng99/nus-iss-ais-team9
+    Description: GitHub owner and repository allowed to request the evaluation role.
+  OpenAiApiKeySecretArn:
+    Type: String
+    Description: Exact ARN of the existing Secrets Manager secret containing the OpenAI API key.
+    AllowedPattern: "^arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:.+$"
+
+Conditions:
+  HasExistingGitHubOidcProvider: !Not [!Equals [!Ref ExistingGitHubOidcProviderArn, ""]]
+
+Resources:
+  InvestmentTestsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ai-financial-wellness-coach-github-investment-tests
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - HasExistingGitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepository}:ref:refs/heads/main
+      Policies:
+        - PolicyName: ReadInvestmentEvaluationApiKey
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref OpenAiApiKeySecretArn
+      Tags:
+        - Key: Project
+          Value: ai-financial-wellness-coach
+        - Key: Purpose
+          Value: investment-agent-evaluation
+
+Outputs:
+  InvestmentTestsRoleArn:
+    Description: Set as the GitHub repository variable AWS_INVESTMENT_TEST_ROLE_ARN.
+    Value: !GetAtt InvestmentTestsRole.Arn
+  OpenAiApiKeySecretArn:
+    Description: Existing secret ARN to store as the GitHub repository variable INVESTMENT_TEST_OPENAI_SECRET_ID.
+    Value: !Ref OpenAiApiKeySecretArn

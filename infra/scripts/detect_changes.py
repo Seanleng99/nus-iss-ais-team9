@@ -36,6 +36,7 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
             if path in {
                 ".github/workflows/aws-operational-validation.yml",
                 ".github/workflows/final-assessment.yml",
+                ".github/workflows/investment-agent-tests.yml",
                 ".github/workflows/model-comparison.yml",
                 ".github/workflows/rag-source-governance.yml",
                 ".github/workflows/policy-rag-source-governance.yml",

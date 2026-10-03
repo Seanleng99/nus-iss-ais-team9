@@ -1,0 +1,143 @@
+name: Investment Agent Tests
+
+on:
+  pull_request:
+    paths:
+      - "apps/shared/**"
+      - "apps/ai-service/**"
+      - "knowledge/**"
+      - ".github/workflows/investment-agent-tests.yml"
+  push:
+    paths:
+      - "apps/shared/**"
+      - "apps/ai-service/**"
+      - "knowledge/**"
+      - ".github/workflows/investment-agent-tests.yml"
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: Run the optional paid GPT-6 Luna evaluation
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investment-agent-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    name: Offline investment safety tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            apps/shared/pyproject.toml
+            apps/ai-service/pyproject.toml
+      - name: Install AI service
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
+      - name: Run offline investment tests
+        working-directory: apps/ai-service
+        run: >-
+          mkdir -p ../../artifacts &&
+          pytest
+          tests/test_manual_investment_injection.py
+          tests/test_guardrails.py
+          tests/test_risk_compliance.py
+          tests/test_investment_live_contract.py
+          --junitxml=../../artifacts/investment-agent-offline.xml
+      - name: Upload offline test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: investment-agent-offline-report
+          path: artifacts/investment-agent-offline.xml
+          if-no-files-found: error
+          retention-days: 7
+
+  dispatch-guard:
+    name: Validate live evaluation request
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject live runs outside main
+        if: github.event_name == 'workflow_dispatch' && inputs.run_live == true && github.ref != 'refs/heads/main'
+        run: |
+          echo "The live investment evaluation can only run from refs/heads/main."
+          exit 1
+
+  live:
+    name: Optional live GPT-6 Luna evaluation
+    needs: [offline, dispatch-guard]
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live == true && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: live-investment-model-evaluation
+      cancel-in-progress: false
+    env:
+      RUN_LIVE_INVESTMENT_TESTS: "1"
+      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
+      INVESTMENT_TEST_REPORT: artifacts/investment-agent-live.json
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            apps/shared/pyproject.toml
+            apps/ai-service/pyproject.toml
+      - name: Check evaluation configuration
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
+          SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
+        run: |
+          if [[ -z "$AWS_ROLE_ARN" ]]; then
+            echo "Repository variable AWS_INVESTMENT_TEST_ROLE_ARN is required for a live evaluation."
+            exit 1
+          fi
+          if [[ -z "$SECRET_ID" ]]; then
+            echo "Repository variable INVESTMENT_TEST_OPENAI_SECRET_ID is required for a live evaluation."
+            exit 1
+          fi
+      - name: Install AI service
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          mask-aws-account-id: true
+      - name: Run live model evaluation
+        run: |
+          mkdir -p artifacts
+          pytest apps/ai-service/tests/test_investment_agent_live.py \
+            -m live_model --tb=short \
+            --junitxml artifacts/investment-agent-live.xml
+      - name: Upload live evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: investment-agent-live-report
+          path: |
+            artifacts/investment-agent-live.json
+            artifacts/investment-agent-live.xml
+          if-no-files-found: error
+          retention-days: 7

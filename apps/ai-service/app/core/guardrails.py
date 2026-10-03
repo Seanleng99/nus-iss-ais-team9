@@ -59,6 +59,55 @@ PROMPT_INJECTION_PATTERNS = [
     re.compile(
         input_pattern("ai.core.guardrails.conceal_record_tampering")
     ),
+    # Reject instructions that try to give an outside rubric higher authority.
+    re.compile(
+        r"\b(?:rubric|criteria)\b[^.!?;\n]{0,120}"
+        r"(?<!never )(?<!not )(?<!don't )(?<!doesn't )(?<!shouldn't )"
+        r"\b(?:takes? priority|supersedes?|overrides?|outranks?|has higher priority)\b"
+        r"[^.!?;\n]{0,50}\b(?:application|normal|safety|investment|policy|rules?|instructions?|limits?)\b",
+        re.IGNORECASE,
+    ),
+    # Article and editorial instructions are content, not task authority.
+    re.compile(
+        r"\b(?:editorial instruction|article note)\b[^.!?;\n]{0,100}"
+        r"\b(?:abandon|stop|ignore|replace|discard)\b[^.!?;\n]{0,70}"
+        r"\b(?:summary|summari[sz]er)\b[^.!?;\n]{0,70}"
+        r"\b(?:respond|output|answer|return)\b[^.!?;\n]{0,30}\b(?:only|just)\b",
+        re.IGNORECASE,
+    ),
+    # Do not let a caller require citations or identifiers absent from evidence.
+    re.compile(
+        r"(?:^|[.!?;\n:])\s*(?:please\s+)?(?:use|add|include|cite|require|demand|insist)\b"
+        r"[^.!?;\n]{0,120}\b(?:citation|source identifier|reference token|citation token|identifier|reference)\b"
+        r"[^.!?;\n]{0,100}\b(?:even if|even where|whether or not|although)\b[^.!?;\n]{0,80}"
+        r"\b(?:not appear|does not appear|not exist|does not exist|absent|unavailable|never covers?|no such)\b",
+        re.IGNORECASE,
+    ),
+    # Sentence-start commands that hide source limits are distinct from
+    # questions and negative cautions about preserving provenance.
+    re.compile(
+        r"(?:^|[.!?;\n:])\s*(?:please\s+)?(?:remove|omit|hide|conceal|strip|drop)\b"
+        r"[^.!?;\n]{0,60}\b(?:provenance|source limitations?|citation limitations?|source attribution)\b"
+        r"|(?:^|[.!?;\n:])\s*(?:please\s+)?(?:put|place|present|label|mark)\b[^.!?;\n]{0,80}"
+        r"\b(?:general knowledge|model knowledge|every explanation|all explanations)\b"
+        r"[^.!?;\n]{0,80}\b(?:verified|retrieved documents|sourced)\b",
+        re.IGNORECASE,
+    ),
+    # Prior and future messages cannot declare blanket compliance approval.
+    re.compile(
+        r"(?:^|[.!?;,:])\s*(?:please\s+)?(?:assume|treat|consider|act as if)\b[^.!?;\n]{0,100}"
+        r"\b(?:every|all|any)\b[^.!?;\n]{0,40}\b(?:investment\s+)?decisions?\b"
+        r"[^.!?;\n]{0,80}\b(?:already|automatically|pre-?)?\s*(?:approved|cleared|authorized)\b"
+        r"[^.!?;\n]{0,50}\b(?:compliance|reviewer|audit|approval)\b",
+        re.IGNORECASE,
+    ),
+    # Chat text is not itself access permission or authorization.
+    re.compile(
+        r"(?:^|[.!?;\n:])\s*(?:please\s+)?(?:treat|consider|regard)\b[^.!?;\n]{0,30}"
+        r"\b(?:this|my)\s+(?:message|request|chat)\b[^.!?;\n]{0,35}"
+        r"\b(?:sufficient|enough|valid)\s+(?:permission|authorization|authority)\b",
+        re.IGNORECASE,
+    ),
 ]
 
 ADVISORY_DISCLAIMER = translate("safety.educational_disclaimer", "en")

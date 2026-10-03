@@ -24,6 +24,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["live_model: opt-in tests that call the configured live model"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

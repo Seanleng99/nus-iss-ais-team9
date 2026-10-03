@@ -110,6 +110,36 @@ BLOCKED_FINANCIAL_ADVICE_REGEXES = (
     ),
 )
 
+REQUEST_ONLY_FINANCIAL_ADVICE_REGEXES = (
+    (
+        "personalized_selection_request",
+        re.compile(
+            r"(?:^|[.!?;,:]\s*|\band\s+|\bthen\s+)"
+            r"\s*(?:please\s+)?(?:(?:can|could) you\s+)?"
+            r"(?:choose|pick|select)\b[^.!?;]{0,70}\b" + INVESTMENT_PRODUCT + r"\b"
+            r"[^.!?;]{0,30}\bfor\s+(?:me|us)\b|"
+            r"(?:^|[.!?;,:]\s*|\band\s+|\bthen\s+)"
+            r"\s*(?:please\s+)?(?:pick|choose|select)\s+(?:me|us)\s+(?:an?\s+)?"
+            + INVESTMENT_PRODUCT + r"\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "personalized_savings_allocation_request",
+        re.compile(
+            r"(?:^|[.!?;,:]\s*|\band\s+|\bthen\s+)"
+            r"\s*(?:please\s+)?(?:(?:can|could) you\s+|i want you to\s+)?"
+            r"(?:tell|show|advise|recommend)\s+(?:me|us)\b[^.!?;]{0,60}"
+            r"\bhow\s+much\b[^.!?;]{0,45}\b(?:my|our)\s+"
+            r"(?:savings|money|cash|funds?)\b[^.!?;]{0,40}\b(?:to\s+)?invest\b|"
+            r"(?:^|[.!?;,:]\s*|\band\s+|\bthen\s+)\s*(?:please\s+)?"
+            r"how\s+much\s+of\s+(?:my|our)\s+(?:savings|money|cash|funds?)\b"
+            r"[^.!?;]{0,35}\b(?:should|can|do)\s+(?:i|we)\s+invest\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
 # Keep in step with the backend privacy guard (apps/backend/app/services/privacy_guard.py).
 _THIRD_PARTY_DATA = (
     r"(?:income|salary|salaries|wage|wages|account|accounts|balance|balances|savings|"
@@ -176,6 +206,17 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
             input_pattern("ai.agents.risk_compliance.third_party_financial_data")
         ),
     ),
+    (
+        "named_user_financial_data",
+        re.compile(
+            r"\b(?:show|tell|give|reveal|display|share|view|access|get|find|look\s*up|"
+            r"pull\s*up)\b[^.!?]{0,100}\b(?:savings?|balances?|income|salary|transactions?|"
+            r"financial records?|investment questions?|account records?)\b[^.!?]{0,100}"
+            r"\b(?:belonging to|owned by)\s+(?:(?:a|the|named|synthetic|demo)\s+)*"
+            r"(?:user|customer|client|member)\s+[a-z0-9][a-z0-9_-]{1,63}\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 
@@ -203,6 +244,7 @@ SAFE_POLICY_NOTES = (
     | {f"prompt_injection:{index}" for index in range(len(PROMPT_INJECTION_PATTERNS))}
     | {f"regulated_advice:{pattern}" for pattern in BLOCKED_FINANCIAL_ADVICE_PATTERNS}
     | {f"regulated_advice:{label}" for label, _ in BLOCKED_FINANCIAL_ADVICE_REGEXES}
+    | {f"regulated_advice:{label}" for label, _ in REQUEST_ONLY_FINANCIAL_ADVICE_REGEXES}
     | {f"data_access:{label}" for label, _ in CROSS_USER_DATA_ACCESS_REGEXES}
     | {"policy_evidence:insufficient", "response_withheld"}
 )
@@ -403,6 +445,12 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
             for match in re.finditer(f"(?=({pattern.pattern}))", normalized, pattern.flags)
         )
     )
+    if is_request:
+        findings.extend(
+            f"regulated_advice:{label}"
+            for label, pattern in REQUEST_ONLY_FINANCIAL_ADVICE_REGEXES
+            if pattern.search(normalized)
+        )
     if is_request and is_reported_guarantee_verification(normalized):
         findings = [f for f in findings if f != "regulated_advice:guaranteed return"]
     return findings
