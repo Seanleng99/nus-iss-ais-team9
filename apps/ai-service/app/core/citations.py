@@ -2,6 +2,8 @@ import re
 from collections.abc import Sequence
 from urllib.parse import quote
 
+from coach_i18n import translate
+
 from app.core.schemas import SourceCitation
 from app.core.telemetry import trace_method
 from app.models.gateway import ModelGatewayError
@@ -42,7 +44,7 @@ def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
 
 
 @trace_method
-def render_citations(text: str, sources: Sequence[SourceCitation]) -> str:
+def render_citations(text: str, sources: Sequence[SourceCitation], locale: object = "en") -> str:
     validate_citations(text, sources)
     approved = {source.source_id: source for source in sources}
 
@@ -52,11 +54,13 @@ def render_citations(text: str, sources: Sequence[SourceCitation]) -> str:
         reference = f"[{label}]({quote(source.canonical_url, safe=':/?#=&%')})"
         if source.document_filename:
             kind = {
-                "project_summary": "Project-written summary",
-                "source_document": "Saved source document",
+                "project_summary": "citation.project_summary_short",
+                "source_document": "citation.source_document",
             }.get(source.content_kind)
-            detail = f"; {kind}" if kind else ""
-            reference += f" (RAG: `{source.document_filename}`{detail})"
+            detail = f"; {translate(kind, locale)}" if kind else ""
+            reference += " (" + translate(
+                "citation.inline", locale, filename=source.document_filename, detail=detail
+            ) + ")"
         return reference
 
     return SOURCE_MARKER.sub(

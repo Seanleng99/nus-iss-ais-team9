@@ -91,7 +91,9 @@ def _matches_expected(response, expected: dict) -> bool:
     if expected.get("answer_language") == "Chinese":
         prose = response.answer
         for source in response.sources:
-            prose = prose.replace(render_citations(f"[source:{source.source_id}]", [source]), "")
+            prose = prose.replace(render_citations(
+                f"[source:{source.source_id}]", [source], response.audit.get("response_locale")
+            ), "")
         letters = re.findall(load_data("scripts")["education_prose_letters"], prose)
         chinese = re.findall(load_data("scripts")["han_basic"], prose)
         checks.append(len(chinese) >= 10 and len(chinese) / max(1, len(letters)) >= 0.4)

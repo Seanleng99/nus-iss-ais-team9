@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Any, Protocol
 from uuid import uuid4
 
-from coach_i18n import load_data
+from coach_i18n import load_data, translate
 
 from app.agents.education_access import education_gap_message, education_topics
 from app.core.config import Settings
@@ -578,7 +578,7 @@ class LocalFixtureModelGateway:
                 )
         response = {
             "summary": summary,
-            "rationale": ["The response is grounded in the supplied, allowlisted tool output."],
+            "rationale": [translate("education.allowlisted_grounding", grounding.get("response_language"))],
             "confidence": 0.8,
         }
         if prompt_id.endswith("investment_education"):
@@ -589,7 +589,7 @@ class LocalFixtureModelGateway:
                         for source in grounding.get("sources", [])
                     ],
                     "uncertainties": [
-                        "Investment outcomes vary and losses are possible."
+                        translate("education.investment_outcomes", grounding.get("response_language"))
                         if grounding.get("contexts") else education_gap_message(grounding)
                     ],
                 }

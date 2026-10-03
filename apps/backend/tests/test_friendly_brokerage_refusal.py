@@ -139,7 +139,8 @@ def test_live_history_export_and_trace_delete_keep_safe_localized_refusal(
     response = client.post(
         "/api/coach",
         headers=HEADERS,
-        json={"user_id": user_id, "session_id": session_id, "message": message},
+        json={"user_id": user_id, "session_id": session_id, "message": message,
+              "response_locale": "zh-Hans" if message == CHINESE_REQUEST else "en"},
     )
     assert response.status_code == 200
     trace_id = response.json()["audit"]["trace_id"]

@@ -14,8 +14,18 @@ from client import build_request
 from ui.budget_methods import METHODS
 from ui.budget_page import render_budget_page
 from ui.budget_timing import render_timing_summary
+from ui.coach_language import current_selection
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.currency_markdown import currency_safe_markdown
+from ui.i18n import (
+    display_frame,
+    month_formatter,
+    month_label,
+    option_formatter,
+    option_label,
+    ui_message,
+    ui_text,
+)
 from ui.response_metadata import response_metadata
 from ui.state import get_client, get_period_start, get_user_id
 from ui.telemetry import call_span, context_fields, log_event, trace_context
@@ -126,21 +136,12 @@ REGION_OPTIONS = [
     "Prefer not to say",
 ]
 COACH_STARTERS = [
-    ("Review my monthly spending", ":material/receipt_long:"),
-    ("Help me build an emergency fund", ":material/savings:"),
-    ("Explain where my budget is tight", ":material/pie_chart:"),
-    ("How can I reach my goal sooner?", ":material/flag:"),
+    ("coach.starter_spending", ":material/receipt_long:"),
+    ("coach.starter_emergency", ":material/savings:"),
+    ("coach.starter_budget", ":material/pie_chart:"),
+    ("coach.starter_goal", ":material/flag:"),
 ]
-AGENT_LABELS = {
-    "spending": "Spending analysis",
-    "budget": "Budget planning",
-    "goal_strategy": "Goal planning",
-    "investment_education": "Investment education",
-    "risk_compliance": "Safety review",
-}
-RATIONALE_LABELS = {
-    "MISSING_REQUIRED_INPUT": "The requested guidance needs more information.",
-}
+AGENT_LABELS = {"spending", "budget", "goal_strategy", "investment_education", "risk_compliance"}
 
 
 def _option_index(options: list[str], value: str | None) -> int | None:
@@ -148,73 +149,85 @@ def _option_index(options: list[str], value: str | None) -> int | None:
 
 
 def _category_label(category: str) -> str:
-    return category.replace("_", " ").title()
+    return option_label(category)
 
 
-def _confidence_band(value: float) -> str:
+def _confidence_band(value: float, locale="en") -> str:
     if value < 0.5:
-        return "Low"
+        return translate("coach.confidence_low", locale)
     if value < 0.8:
-        return "Moderate"
-    return "High"
+        return translate("coach.confidence_moderate", locale)
+    return translate("coach.confidence_high", locale)
 
 
-def _render_coach_explanation(explanation: dict | None) -> None:
+def _agent_label(agent: str, locale) -> str:
+    return (
+        translate(f"coach.agent_{agent}", locale)
+        if agent in AGENT_LABELS else agent.replace("_", " ").title()
+    )
+
+
+def _coach_reference(explanation, locale) -> str:
+    parts = []
+    if explanation.get("trace_id"):
+        parts.append(translate("coach.reference", locale, trace_id=explanation["trace_id"]))
+    if explanation.get("prompt_set_version"):
+        parts.append(translate("coach.prompt_set", locale, version=explanation["prompt_set_version"]))
+    return " · ".join(parts)
+
+
+def _render_coach_explanation(explanation: dict | None, locale="en") -> None:
     with (
         call_span(f"{__name__}._render_coach_explanation")
         if context_fields().get("correlation_id") else nullcontext()
     ):
         if not explanation:
             return
-        with st.expander("Why this answer and how certain it is"):
-            st.caption(
-                "Confidence is each AI component's self-assessment. It is not a "
-                "probability, an accuracy guarantee, or a substitute for checking "
-                "your inputs and the cited sources."
-            )
+        with st.expander(translate("coach.explanation", locale)):
+            st.caption(translate("coach.confidence_help", locale))
             if explanation.get("blocked"):
                 st.warning(
-                    translate('safety.ui_withheld_notice', explanation.get('response_language'))
+                    translate('safety.ui_withheld_notice', locale)
                 )
                 trace_id = explanation.get("trace_id")
-                prompt_version = explanation.get("prompt_set_version")
-                reference = f"Reference ID: {trace_id}" if trace_id else ""
-                if prompt_version:
-                    reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+                reference = _coach_reference(explanation, locale)
                 if reference:
                     st.caption(reference)
-                trace_link(trace_id)
+                trace_link(trace_id, locale)
                 return
             selected_agents = explanation.get("selected_agents", [])
             if selected_agents:
                 labels = [
-                    AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                    _agent_label(agent, locale)
                     for agent in selected_agents
                 ]
-                st.markdown(f"**Areas used:** {', '.join(labels)}")
+                st.markdown(translate("coach.areas", locale, areas=", ".join(labels)))
             routing_rationale = explanation.get("routing_rationale", [])
             if routing_rationale:
-                st.markdown("**Why these areas were used**")
+                st.markdown("**" + translate("coach.routing", locale) + "**")
                 for rationale in routing_rationale:
                     st.markdown(currency_safe_markdown(f"- {rationale}"))
             for result in explanation.get("agent_results", []):
                 agent = result.get("agent", "unknown")
-                label = AGENT_LABELS.get(agent, agent.replace("_", " ").title())
+                label = _agent_label(agent, locale)
                 confidence = min(max(float(result.get("confidence", 0.0)), 0.0), 1.0)
                 st.markdown(
-                    f"**{label} — {_confidence_band(confidence)} confidence "
-                    f"(self-assessed score {confidence:.2f})**"
+                    "**" + translate(
+                        "coach.agent_confidence", locale, agent=label,
+                        band=_confidence_band(confidence, locale), score=f"{confidence:.2f}",
+                    ) + "**"
                 )
                 for rationale in result.get("rationale", []):
-                    st.markdown(currency_safe_markdown(f"- {RATIONALE_LABELS.get(rationale, rationale)}"))
+                    text = (
+                        translate("coach.missing_input", locale)
+                        if rationale == "MISSING_REQUIRED_INPUT" else rationale
+                    )
+                    st.markdown(currency_safe_markdown(f"- {text}"))
             trace_id = explanation.get("trace_id")
-            prompt_version = explanation.get("prompt_set_version")
-            reference = f"Reference ID: {trace_id}" if trace_id else ""
-            if prompt_version:
-                reference = f"{reference} · Prompt set: {prompt_version}".strip(" ·")
+            reference = _coach_reference(explanation, locale)
             if reference:
                 st.caption(reference)
-            trace_link(trace_id)
+            trace_link(trace_id, locale)
 
 
 def _transaction_payload(
@@ -282,10 +295,10 @@ def dashboard_page() -> None:
     client = get_client()
     user_id = get_user_id()
     period_start = get_period_start()
-    page_header("Overview", period_start.strftime("%B %Y"))
+    page_header(ui_text('Overview'), month_label(period_start))
     dashboard = backend_call(lambda: client.get_dashboard(user_id, period_start))
     if not dashboard:
-        st.info("Create a profile to start your financial workspace.")
+        st.info(ui_text('Create a profile to start your financial workspace.'))
         return
 
     currency = dashboard["currency"]
@@ -297,10 +310,7 @@ def dashboard_page() -> None:
         if budget_alert["status"] == "over":
             if budget_alert["over_income"]:
                 st.error(
-                    f"\U0001F6A8 You have spent "
-                    f"{money(budget_alert['total_spent'], currency)} this month — "
-                    f"{money(budget_alert['amount_over_income'], currency)} more than your "
-                    f"monthly income of {money(budget_alert['monthly_income'], currency)}."
+                    ui_text('🚨 You have spent {v0} this month — {v1} more than your monthly income of {v2}.', v0=money(budget_alert['total_spent'], currency), v1=money(budget_alert['amount_over_income'], currency), v2=money(budget_alert['monthly_income'], currency))
                 )
             if (
                 budget_alert["total_budget_limit"] > 0
@@ -312,8 +322,7 @@ def dashboard_page() -> None:
                     else ""
                 )
                 st.error(
-                    f"\U0001F6A8 You are over your monthly budget of "
-                    f"{money(budget_alert['total_budget_limit'], currency)}.{detail}"
+                    ui_text('🚨 You are over your monthly budget of {v0}.{v1}', v0=money(budget_alert['total_budget_limit'], currency), v1=detail)
                 )
             elif budget_alert["categories_over"]:
                 detail = "; ".join(
@@ -321,7 +330,7 @@ def dashboard_page() -> None:
                     f"{money(item['spent'] - item['limit_amount'], currency)} over its limit"
                     for item in budget_alert["categories_over"]
                 )
-                st.warning(f"Category limits exceeded — {detail}.")
+                st.warning(ui_text('Category limits exceeded — {v0}.', v0=detail))
         elif budget_alert["status"] == "approaching":
             usage_parts = []
             if budget_alert["income_usage_percent"] is not None:
@@ -342,29 +351,19 @@ def dashboard_page() -> None:
                 else ""
             )
             st.warning(
-                "\u26A0\uFE0F Approaching your limits: you have used "
-                f"{' and '.join(usage_parts)} this month.{category_detail}"
+                ui_text('⚠️ Approaching your limits: you have used {v0} this month.{v1}', v0=' and '.join(usage_parts), v1=category_detail)
             )
     income, spent = st.columns(2)
-    income.metric("Monthly income", money(dashboard["monthly_income"], currency))
-    spent.metric("Spent", money(dashboard["total_spent"], currency))
+    income.metric(ui_text('Monthly income'), money(dashboard["monthly_income"], currency))
+    spent.metric(ui_text('Spent'), money(dashboard["total_spent"], currency))
     balance, rate = st.columns(2)
-    balance.metric("Available", money(dashboard["available_balance"], currency))
-    rate.metric("Savings rate", percent(dashboard["savings_rate_percent"]))
+    balance.metric(ui_text('Available'), money(dashboard["available_balance"], currency))
+    rate.metric(ui_text('Savings rate'), percent(dashboard["savings_rate_percent"]))
 
-    st.subheader("Spending")
+    st.subheader(ui_text('Spending'))
     
     # Add context description
-    st.markdown(
-        """
-        <div style="margin-bottom: 20px; color: #6b7280; font-size: 14px;">
-            Track your spending patterns and get personalized insights to understand 
-            where your money goes each month. Add transactions regularly to unlock 
-            smarter analysis and recommendations.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.caption(ui_text("Track your spending patterns and get personalized insights to understand where your money goes each month. Add transactions regularly to unlock smarter analysis and recommendations."))
     
     # NEW: Render spending insights if available
     spending_insights = dashboard.get("spending_insights", [])
@@ -380,19 +379,15 @@ def dashboard_page() -> None:
         # Show data quality indicator
         if spending_data_quality in ["limited", "insufficient"]:
             st.info(
-                f"\U0001F4A1 Keep adding transactions! You have {spending_months_analyzed} "
-                f"month(s) of data so far — aim for at least 3 months to unlock more "
-                f"accurate insights and pattern detection."
+                ui_text('💡 Keep adding transactions! You have {v0} month(s) of data so far — aim for at least 3 months to unlock more accurate insights and pattern detection.', v0=spending_months_analyzed)
             )
         elif spending_data_quality == "good":
             st.success(
-                f"\u2705 You have {spending_months_analyzed} months of transaction data. "
-                f"Keep tracking to unlock even deeper insights!"
+                ui_text('✅ You have {v0} months of transaction data. Keep tracking to unlock even deeper insights!', v0=spending_months_analyzed)
             )
         else:  # excellent
             st.success(
-                f"\u2705 You have {spending_months_analyzed}+ months of transaction data — "
-                f"you're getting the most accurate insights possible!"
+                ui_text("✅ You have {v0}+ months of transaction data — you're getting the most accurate insights possible!", v0=spending_months_analyzed)
             )
     
     # Show category charts: Pie chart (distribution) + Bar chart (breakdown)
@@ -404,27 +399,24 @@ def dashboard_page() -> None:
         # Show summary metrics
         metric_cols = st.columns(2)
         metric_cols[0].metric(
-            "Categories",
+            ui_text('Categories'),
             str(len(categories)),
             delta=None
         )
         metric_cols[1].metric(
-            "Average per Category",
+            ui_text('Average per Category'),
             money(sum(amounts) / len(categories), currency) if categories else money(0, currency),
             delta=None
         )
         
         # Chart 1: Pie Chart - Category Distribution
-        st.markdown("#### Category Distribution")
+        st.markdown(ui_text('#### Category Distribution'))
         st.markdown(
             "<div style='color: #6b7280; font-size: 13px; margin-bottom: 10px;'>",
             unsafe_allow_html=True,
         )
         st.markdown(
-            "This chart shows how your spending is distributed across different categories as percentages. "
-            "Each slice represents the proportion of your total spending for that category. "
-            "Larger slices indicate categories where you spend a higher percentage of your budget. "
-            "Hover over any slice to see the exact amount and percentage."
+            ui_text('This chart shows how your spending is distributed across different categories as percentages. Each slice represents the proportion of your total spending for that category. Larger slices indicate categories where you spend a higher percentage of your budget. Hover over any slice to see the exact amount and percentage.')
         )
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -432,18 +424,16 @@ def dashboard_page() -> None:
         if pie_chart:
             st.plotly_chart(pie_chart, use_container_width=True, key="spending_pie_chart")
         else:
-            st.info("📊 Install plotly for pie chart: `pip install plotly`")
+            st.info(ui_text('📊 Install plotly for pie chart: `pip install plotly`'))
         
         # Chart 2: Bar Chart - Category Breakdown
-        st.markdown("#### Category Breakdown")
+        st.markdown(ui_text('#### Category Breakdown'))
         st.markdown(
             "<div style='color: #6b7280; font-size: 13px; margin-bottom: 10px;'>",
             unsafe_allow_html=True,
         )
         st.markdown(
-            "This chart displays the actual spending amounts for each category, making it easy to compare "
-            "where your money is going. Categories are arranged to help you quickly identify your top "
-            "spending areas. Use this view to spot categories that might need attention or budget adjustments."
+            ui_text('This chart displays the actual spending amounts for each category, making it easy to compare where your money is going. Categories are arranged to help you quickly identify your top spending areas. Use this view to spot categories that might need attention or budget adjustments.')
         )
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -454,36 +444,34 @@ def dashboard_page() -> None:
             }
         ).set_index("Category")
         st.bar_chart(
-            spending_frame,
+            display_frame(spending_frame),
             horizontal=True,
             color="#18794e",
             use_container_width=True
         )
     else:
         st.info(
-            "📝 **No transactions recorded yet**  "
-            "Start by adding your transactions in the Transactions tab. As you add more data, "
-            "you'll see your spending patterns visualized here with helpful insights."
+            ui_text("📝 **No transactions recorded yet**  Start by adding your transactions in the Transactions tab. As you add more data, you'll see your spending patterns visualized here with helpful insights.")
         )
 
     if (dashboard.get("review_reminder") or {}).get("due"):
-        st.info(dashboard["review_reminder"]["message"], icon=":material/event:")
+        st.info(ui_message(dashboard["review_reminder"]["message"]), icon=":material/event:")
     _render_overview_budget(dashboard.get("budget"), currency)
     timing = dashboard.get("budget_timing")
     if timing and timing.get("status") in {"within_buffer", "shortfall"}:
         render_timing_summary(timing)
 
-    st.subheader("Goals")
+    st.subheader(ui_text('Goals'))
     goals = dashboard.get("goals", [])
     if not goals:
-        st.caption("No active goals.")
+        st.caption(ui_text('No active goals.'))
     for goal in goals:
         left, right = st.columns([3, 1])
         left.write(f"**{goal['name']}**")
         right.write(money(goal["current_amount"], currency))
         st.progress(
             clamp_progress(goal["progress_percent"] / 100),
-            text=f"{goal['progress_percent']:.0f}% of {money(goal['target_amount'], currency)}",
+            text=ui_text('{v0:.0f}% of {v1}', v0=goal['progress_percent'], v1=money(goal['target_amount'], currency)),
         )
 
 
@@ -494,27 +482,24 @@ def _render_budget_plan_summary(budget: dict) -> None:
     currency = budget.get("currency", "SGD")
     expenses = sum(float(item["limit_amount"]) for item in budget.get("categories", []))
     unallocated = round(planning["take_home_income"] - expenses - planning["savings_target"], 2)
-    st.markdown("**Plan affordability**")
-    st.caption("Budgeting method: " + METHODS.get(planning.get("method", {}).get("name", "flexible"), "Flexible category plan"))
+    st.markdown(ui_text('**Plan affordability**'))
+    st.caption(ui_text("Budgeting method: {v0}", v0=ui_text(METHODS.get(planning.get("method", {}).get("name", "flexible"), "Flexible category plan"))))
     columns = st.columns(3)
-    columns[0].metric("Take-home income", money(planning["take_home_income"], currency))
-    columns[1].metric("Savings allocation", money(planning["savings_target"], currency))
-    columns[2].metric("Unallocated income", money(unallocated, currency))
-    st.caption("Savings are a planned allocation, separate from expense limits—not a recorded savings balance or transfer. "
-               "Affordability depends on the income and expense coverage you confirmed.")
+    columns[0].metric(ui_text('Take-home income'), money(planning["take_home_income"], currency))
+    columns[1].metric(ui_text('Savings allocation'), money(planning["savings_target"], currency))
+    columns[2].metric(ui_text('Unallocated income'), money(unallocated, currency))
+    st.caption(ui_text('Savings are a planned allocation, separate from expense limits—not a recorded savings balance or transfer. Affordability depends on the income and expense coverage you confirmed.'))
 
 
 def _render_overview_budget(budget: dict | None, currency: str) -> None:
-    st.subheader(":material/account_balance_wallet: Budget", anchor=False)
+    st.subheader(":material/account_balance_wallet: " + ui_text("Budget"), anchor=False)
     st.caption(
-        "Your monthly plan and the categories that need attention. Edit your plan in Budget. "
-        "Ask Coach for spending reviews or pace illustrations."
+        ui_text('Your monthly plan and the categories that need attention. Edit your plan in Budget. Ask Coach for spending reviews or pace illustrations.')
     )
     rows = (budget or {}).get("categories", [])
     if not rows:
         st.info(
-            "No category limits set for this month. Add suggested or custom categories in Budget, "
-            "or ask Coach to prepare a plan for your confirmation.",
+            ui_text('No category limits set for this month. Add suggested or custom categories in Budget, or ask Coach to prepare a plan for your confirmation.'),
             icon=":material/pie_chart:",
         )
     else:
@@ -528,17 +513,16 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
         over = [item for item in rows if item["spent_amount"] > item["limit_amount"]]
         with st.container(border=True):
             metrics = st.columns(3)
-            metrics[0].metric("Planned", money(planned, currency))
-            metrics[1].metric("Spent", money(spent, currency))
+            metrics[0].metric(ui_text('Planned'), money(planned, currency))
+            metrics[1].metric(ui_text('Spent'), money(spent, currency))
             metrics[2].metric(
-                "Over budget" if remaining < 0 else "Remaining", money(abs(remaining), currency)
+                ui_text('Over budget') if remaining < 0 else ui_text('Remaining'), money(abs(remaining), currency)
             )
             unbudgeted = max(0.0, round(spent - sum(float(item["spent_amount"]) for item in rows), 2))
-            st.caption("Totals include all spending for the selected month.")
+            st.caption(ui_text('Totals include all spending for the selected month.'))
             if unbudgeted > 0:
                 st.info(
-                    f"{money(unbudgeted, currency)} was spent in categories without budget limits. "
-                    "Add limits in Budget to track these categories.",
+                    ui_text('{v0} was spent in categories without budget limits. Add limits in Budget to track these categories.', v0=money(unbudgeted, currency)),
                     icon=":material/info:",
                 )
             chart_column, category_column = st.columns([1, 2])
@@ -547,7 +531,7 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
                     usage = spent / planned
                     chart = go.Figure(
                         go.Pie(
-                            labels=["Within plan", "Remaining", "Over budget"],
+                            labels=[ui_text(v) for v in ["Within plan", "Remaining", "Over budget"]],
                             values=[min(spent, planned), max(remaining, 0), max(-remaining, 0)],
                             hole=0.76,
                             sort=False,
@@ -564,7 +548,7 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
                         paper_bgcolor="rgba(0,0,0,0)",
                         annotations=[
                             {
-                                "text": f"<b>{usage:.0%}</b><br>of plan spent",
+                                "text": f"<b>{usage:.0%}</b><br>" + ui_text("of plan spent"),
                                 "x": 0.5,
                                 "y": 0.5,
                                 "showarrow": False,
@@ -577,23 +561,24 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
                     )
                     st.plotly_chart(chart, use_container_width=True, key="overview-budget-usage")
                     if usage > 1:
-                        st.caption(f"Over the monthly plan by {money(-remaining, currency)}.")
+                        st.caption(ui_text('Over the monthly plan by {v0}.', v0=money(-remaining, currency)))
                     elif usage == 1:
-                        st.caption("The monthly plan is fully used.")
+                        st.caption(ui_text('The monthly plan is fully used.'))
                     else:
-                        st.caption(f"{money(remaining, currency)} left in the monthly plan.")
+                        st.caption(ui_text('{v0} left in the monthly plan.', v0=money(remaining, currency)))
                 else:
                     st.info(
-                        "All category limits are zero. Set positive limits to see budget usage."
+                        ui_text('All category limits are zero. Set positive limits to see budget usage.')
                     )
             with category_column:
-                st.markdown("**Category limits**")
+                st.markdown(ui_text('**Category limits**'))
                 if over:
                     st.warning(
-                        f"{len(over)} {'category is' if len(over) == 1 else 'categories are'} over the limit.",
+                        ui_text('{v0} category is over the limit.', v0=len(over))
+                        if len(over) == 1 else ui_text('{v0} categories are over the limit.', v0=len(over)),
                         icon=":material/warning:",
                     )
-                st.caption("Highest usage first · up to 5 categories")
+                st.caption(ui_text('Highest usage first · up to 5 categories'))
 
                 def usage_rank(item):
                     limit = float(item["limit_amount"])
@@ -606,56 +591,56 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
                     actual = float(item["spent_amount"])
                     difference = limit - actual
                     status = (
-                        f"Over by {money(-difference, currency)}"
+                        ui_text("Over by {v0}", v0=money(-difference, currency))
                         if difference < 0
-                        else "At limit"
+                        else ui_text("At limit")
                         if difference == 0
-                        else f"{money(difference, currency)} left"
+                        else ui_text("{v0} left", v0=money(difference, currency))
                     )
                     st.text(f"{_category_label(item['category'])} · {status}")
                     st.progress(
                         clamp_progress(actual / limit)
                         if limit > 0
                         else (1.0 if actual > 0 else 0.0),
-                        text=f"{money(actual, currency)} spent / {money(limit, currency)} planned",
+                        text=ui_text('{v0} spent / {v1} planned', v0=money(actual, currency), v1=money(limit, currency)),
                     )
                 if len(rows) > 5:
-                    st.caption(f"View all {len(rows)} categories in Budget.")
+                    st.caption(ui_text('View all {v0} categories in Budget.', v0=len(rows)))
     if st.button(
-        "View budget" if rows else "Set up budget",
+        ui_text('View budget') if rows else ui_text('Set up budget'),
         icon=":material/edit:",
         key="overview-manage-budget",
     ):
-        st.switch_page(st.Page(budget_page, title="Budget", url_path="budget"))
+        st.switch_page(st.Page(budget_page, title=ui_text('Budget'), url_path="budget"))
 
 
 def transactions_page() -> None:
     client = get_client()
     user_id = get_user_id()
     period_start = get_period_start()
-    page_header("Transactions", period_start.strftime("%B %Y"))
+    page_header(ui_text('Transactions'), month_label(period_start))
     transactions = backend_call(lambda: client.list_transactions(user_id, period_start)) or []
-    ledger_tab, add_tab = st.tabs(["Ledger", "Add transaction"])
+    ledger_tab, add_tab = st.tabs([ui_text('Ledger'), ui_text('Add transaction')])
 
     with add_tab:
         with st.form("add-transaction", clear_on_submit=True):
             description = st.text_input(
-                "Description",
+                ui_text('Description'),
                 max_chars=255,
                 key=f"add-transaction-{user_id}-description-v2",
             )
-            transaction_type = st.selectbox("Transaction type", ["expense", "income", "transfer", "refund"], key=f"add-transaction-{user_id}-type")
+            transaction_type = st.selectbox(ui_text('Transaction type'), ["expense", "income", "transfer", "refund"], format_func=option_formatter(), key=f"add-transaction-{user_id}-type")
             first, second = st.columns(2)
             category = first.selectbox(
-                "Category",
+                ui_text('Category'),
                 CATEGORIES,
                 index=None,
-                format_func=_category_label,
+                format_func=option_formatter(),
                 key=f"add-transaction-{user_id}-category-v2",
                 accept_new_options=True,
             )
             amount = second.number_input(
-                "Amount (SGD)",
+                ui_text('Amount (SGD)'),
                 min_value=0.0,
                 value=0.0,
                 step=10.0,
@@ -663,23 +648,23 @@ def transactions_page() -> None:
             )
             third, fourth = st.columns(2)
             occurred_on = third.date_input(
-                "Date", value=None, key=f"add-transaction-{user_id}-date-v2"
+                ui_text('Date'), value=None, key=f"add-transaction-{user_id}-date-v2"
             )
             recurring = fourth.toggle(
-                "Recurring expense", key=f"add-transaction-{user_id}-recurring-v2"
+                ui_text('Recurring expense'), key=f"add-transaction-{user_id}-recurring-v2"
             )
             add_submitted = st.form_submit_button(
-                "Add transaction", type="primary", icon=":material/add:"
+                ui_text('Add transaction'), type="primary", icon=":material/add:"
             )
         if add_submitted:
             if not description.strip():
-                st.warning("Enter a transaction description.")
+                st.warning(ui_text('Enter a transaction description.'))
             elif category is None:
-                st.warning("Select a transaction category.")
+                st.warning(ui_text('Select a transaction category.'))
             elif amount <= 0:
-                st.warning("Enter a transaction amount greater than zero.")
+                st.warning(ui_text('Enter a transaction amount greater than zero.'))
             elif occurred_on is None:
-                st.warning("Select a transaction date.")
+                st.warning(ui_text('Select a transaction date.'))
             else:
                 result = backend_call(
                     lambda: client.create_transaction(
@@ -688,19 +673,19 @@ def transactions_page() -> None:
                     )
                 )
                 if result:
-                    st.success("Transaction added.")
+                    st.success(ui_text('Transaction added.'))
                     st.rerun()
 
     with ledger_tab:
         if not transactions:
-            st.info("No transactions recorded for this month.")
+            st.info(ui_text('No transactions recorded for this month.'))
             return
         frame = pd.DataFrame(
             [
                 {
                     "Date": item["occurred_on"],
                     "Description": item["description"],
-                    "Type": item.get("transaction_type", "expense"),
+                    "Type": option_label(item.get("transaction_type", "expense")),
                     "Category": _category_label(item["category"]),
                     "Amount": item["amount"]["amount"],
                     "Recurring": item["recurring"],
@@ -709,18 +694,18 @@ def transactions_page() -> None:
             ]
         )
         st.dataframe(
-            frame,
+            display_frame(frame),
             hide_index=True,
             use_container_width=True,
             column_config={
-                "Amount": st.column_config.NumberColumn("Amount (SGD)", format="%.2f"),
+                ui_text("Amount"): st.column_config.NumberColumn(ui_text("Amount (SGD)"), format="%.2f"),
             },
         )
 
-        st.subheader("Manage transaction")
+        st.subheader(ui_text('Manage transaction'))
         
         # Month filter for viewing historical transactions
-        st.caption("View transactions from different months")
+        st.caption(ui_text('View transactions from different months'))
         
         # Get ALL transactions (no period filter) to extract available months
         all_transactions = backend_call(lambda: client.list_transactions(user_id, None)) or []
@@ -739,10 +724,11 @@ def transactions_page() -> None:
         else:
             transaction_months = [period_start.strftime("%Y-%m")]
 
+        format_month = month_formatter()
         selected_month = st.selectbox(
-            "Filter by month",
+            ui_text('Filter by month'),
             options=transaction_months,
-            format_func=lambda x: datetime.strptime(x + "-01", "%Y-%m-%d").replace(tzinfo=UTC).strftime("%B %Y"),
+            format_func=lambda x: format_month(datetime.strptime(x + "-01", "%Y-%m-%d").replace(tzinfo=UTC)),
             index=0,
             key=f"transactions-{user_id}-month-filter"
         )
@@ -758,7 +744,7 @@ def transactions_page() -> None:
         display_transactions = filtered_transactions if filtered_transactions else transactions
         
         selected_id = st.selectbox(
-            "Transaction",
+            ui_text('Transaction'),
             [item["id"] for item in display_transactions],
             index=None,
             format_func=lambda value: next(
@@ -780,75 +766,74 @@ def transactions_page() -> None:
             )
             if not editable:
                 st.info(
-                    "Transactions from previous or future months are read-only. "
-                    "You can still delete them."
+                    ui_text('Transactions from previous or future months are read-only. You can still delete them.')
                 )
-                st.text_input("Description", value=selected["description"], disabled=True)
+                st.text_input(ui_text('Description'), value=selected["description"], disabled=True)
                 detail_left, detail_right = st.columns(2)
                 detail_left.text_input(
-                    "Category", value=_category_label(selected["category"]), disabled=True
+                    ui_text('Category'), value=_category_label(selected["category"]), disabled=True
                 )
                 detail_right.number_input(
-                    "Amount (SGD)",
+                    ui_text('Amount (SGD)'),
                     value=float(selected["amount"]["amount"]),
                     disabled=True,
                 )
                 detail_left.date_input(
-                    "Date", value=selected_occurred, disabled=True,
+                    ui_text('Date'), value=selected_occurred, disabled=True,
                     key=f"manage-transaction-{selected_id}-readonly-date",
                 )
                 detail_right.toggle(
-                    "Recurring expense",
+                    ui_text('Recurring expense'),
                     value=selected["recurring"],
                     disabled=True,
                     key=f"manage-transaction-{selected_id}-readonly-recurring",
                 )
                 if st.button(
-                    "Delete", icon=":material/delete:", key=f"manage-transaction-{selected_id}-delete-readonly"
+                    ui_text('Delete'), icon=":material/delete:", key=f"manage-transaction-{selected_id}-delete-readonly"
                 ):
                     backend_call(lambda: client.delete_transaction(user_id, selected_id))
-                    st.success("Transaction deleted.")
+                    st.success(ui_text('Transaction deleted.'))
                     st.rerun()
                 return
             with st.form("manage-transaction"):
                 edit_description = st.text_input(
-                    "Description",
+                    ui_text('Description'),
                     value=selected["description"],
                     key=f"manage-transaction-{selected_id}-description",
                 )
                 first, second = st.columns(2)
                 edit_category = first.selectbox(
-                    "Category",
+                    ui_text('Category'),
                     edit_categories,
                     index=edit_categories.index(selected_category),
-                    format_func=_category_label,
+                    format_func=option_formatter(),
                     key=f"manage-transaction-{selected_id}-category",
                     accept_new_options=True,
                 )
                 edit_amount = second.number_input(
-                    "Amount (SGD)",
+                    ui_text('Amount (SGD)'),
                     min_value=0.01,
                     value=float(selected["amount"]["amount"]),
                     key=f"manage-transaction-{selected_id}-amount",
                 )
                 third, fourth = st.columns(2)
                 edit_date = third.date_input(
-                    "Date",
+                    ui_text('Date'),
                     value=date.fromisoformat(selected["occurred_on"]),
                     key=f"manage-transaction-{selected_id}-date",
                 )
                 edit_recurring = fourth.toggle(
-                    "Recurring expense",
+                    ui_text('Recurring expense'),
                     value=selected["recurring"],
                     key=f"manage-transaction-{selected_id}-recurring",
                 )
-                edit_type = st.selectbox("Transaction type", ["expense", "income", "transfer", "refund"], index=["expense", "income", "transfer", "refund"].index(selected.get("transaction_type", "expense")), key=f"manage-transaction-{selected_id}-type")
+                edit_type = st.selectbox(ui_text('Transaction type'), ["expense", "income", "transfer", "refund"], format_func=option_formatter(), index=["expense", "income", "transfer", "refund"].index(selected.get("transaction_type", "expense")), key=f"manage-transaction-{selected_id}-type")
                 save, delete = st.columns(2)
                 save_submitted = save.form_submit_button(
-                    "Save changes", type="primary", icon=":material/save:"
+                    ui_text('Save changes'), type="primary", icon=":material/save:"
                 )
                 delete_submitted = delete.form_submit_button(
-                    "Delete", icon=":material/delete:"
+                    ui_text('Delete'), icon=":material/delete:"
                 )
             if save_submitted:
                 result = backend_call(
@@ -859,11 +844,11 @@ def transactions_page() -> None:
                     )
                 )
                 if result:
-                    st.success("Transaction updated.")
+                    st.success(ui_text('Transaction updated.'))
                     st.rerun()
             if delete_submitted:
                 backend_call(lambda: client.delete_transaction(user_id, selected_id))
-                st.success("Transaction deleted.")
+                st.success(ui_text('Transaction deleted.'))
                 st.rerun()
 
 
@@ -876,7 +861,7 @@ def budget_page() -> None:
 def goals_page() -> None:
     client = get_client()
     user_id = get_user_id()
-    page_header("Goals", "Savings targets")
+    page_header(ui_text('Goals'), ui_text('Savings targets'))
     goals = backend_call(lambda: client.list_goals(user_id)) or []
 
     for goal in goals:
@@ -885,47 +870,47 @@ def goals_page() -> None:
         st.write(f"**{goal['name']}**")
         st.progress(
             clamp_progress(current / target if target else 1.0),
-            text=f"{money(current)} of {money(target)}",
+            text=ui_text('{v0} of {v1}', v0=money(current), v1=money(target)),
         )
 
-    add_tab, manage_tab = st.tabs(["Add goal", "Manage goals"])
+    add_tab, manage_tab = st.tabs([ui_text('Add goal'), ui_text('Manage goals')])
     with add_tab:
         with st.form("add-goal", clear_on_submit=True):
             name = st.text_input(
-                "Goal name", max_chars=120, key=f"add-goal-{user_id}-name-v2"
+                ui_text('Goal name'), max_chars=120, key=f"add-goal-{user_id}-name-v2"
             )
             first, second = st.columns(2)
             target_amount = first.number_input(
-                "Target (SGD)",
+                ui_text('Target (SGD)'),
                 min_value=0.0,
                 value=0.0,
                 step=100.0,
                 key=f"add-goal-{user_id}-target-v2",
             )
             current_amount = second.number_input(
-                "Saved (SGD)",
+                ui_text('Saved (SGD)'),
                 min_value=0.0,
                 value=0.0,
                 step=100.0,
                 key=f"add-goal-{user_id}-current-v2",
             )
             target_months = st.number_input(
-                "Time horizon (months)",
+                ui_text('Time horizon (months)'),
                 min_value=0,
                 max_value=600,
                 value=0,
                 key=f"add-goal-{user_id}-months-v2",
             )
             add_submitted = st.form_submit_button(
-                "Add goal", type="primary", icon=":material/add:"
+                ui_text('Add goal'), type="primary", icon=":material/add:"
             )
         if add_submitted:
             if not name.strip():
-                st.warning("Enter a goal name.")
+                st.warning(ui_text('Enter a goal name.'))
             elif target_amount <= 0:
-                st.warning("Enter a target amount greater than zero.")
+                st.warning(ui_text('Enter a target amount greater than zero.'))
             elif target_months <= 0:
-                st.warning("Enter a time horizon greater than zero.")
+                st.warning(ui_text('Enter a time horizon greater than zero.'))
             else:
                 payload = {
                     "name": name.strip(),
@@ -935,15 +920,15 @@ def goals_page() -> None:
                 }
                 result = backend_call(lambda: client.create_goal(user_id, payload))
                 if result:
-                    st.success("Goal added.")
+                    st.success(ui_text('Goal added.'))
                     st.rerun()
 
     with manage_tab:
         if not goals:
-            st.caption("No goals to manage.")
+            st.caption(ui_text('No goals to manage.'))
             return
         goal_id = st.selectbox(
-            "Goal", [goal["id"] for goal in goals],
+            ui_text('Goal'), [goal["id"] for goal in goals],
             index=None,
             format_func=lambda value: next(goal["name"] for goal in goals if goal["id"] == value),
             key=f"manage-goal-{user_id}-selection-v2",
@@ -952,25 +937,25 @@ def goals_page() -> None:
             selected = next(goal for goal in goals if goal["id"] == goal_id)
             with st.form("manage-goal"):
                 edit_name = st.text_input(
-                    "Goal name",
+                    ui_text('Goal name'),
                     value=selected["name"],
                     key=f"manage-goal-{goal_id}-name",
                 )
                 first, second = st.columns(2)
                 edit_target = first.number_input(
-                    "Target (SGD)",
+                    ui_text('Target (SGD)'),
                     min_value=1.0,
                     value=float(selected["target_amount"]["amount"]),
                     key=f"manage-goal-{goal_id}-target",
                 )
                 edit_current = second.number_input(
-                    "Saved (SGD)",
+                    ui_text('Saved (SGD)'),
                     min_value=0.0,
                     value=float(selected["current_amount"]["amount"]),
                     key=f"manage-goal-{goal_id}-current",
                 )
                 edit_months = st.number_input(
-                    "Time horizon (months)",
+                    ui_text('Time horizon (months)'),
                     min_value=1,
                     max_value=600,
                     value=int(selected["target_months"]),
@@ -978,10 +963,10 @@ def goals_page() -> None:
                 )
                 save, delete = st.columns(2)
                 save_submitted = save.form_submit_button(
-                    "Save changes", type="primary", icon=":material/save:"
+                    ui_text('Save changes'), type="primary", icon=":material/save:"
                 )
                 delete_submitted = delete.form_submit_button(
-                    "Delete", icon=":material/delete:"
+                    ui_text('Delete'), icon=":material/delete:"
                 )
             payload = {
                 "name": edit_name.strip(),
@@ -992,11 +977,11 @@ def goals_page() -> None:
             if save_submitted:
                 result = backend_call(lambda: client.update_goal(user_id, goal_id, payload))
                 if result:
-                    st.success("Goal updated.")
+                    st.success(ui_text('Goal updated.'))
                     st.rerun()
             if delete_submitted:
                 backend_call(lambda: client.delete_goal(user_id, goal_id))
-                st.success("Goal deleted.")
+                st.success(ui_text('Goal deleted.'))
                 st.rerun()
 
 
@@ -1005,7 +990,7 @@ def _user_message_markdown(content: str) -> str:
     return "  \n".join(currency_safe_markdown(content).replace("\r\n", "\n").split("\n"))
 
 
-def _render_coach_message(message: dict) -> None:
+def _render_coach_message(message: dict, locale="en") -> None:
     with (
         call_span(f"{__name__}._render_coach_message")
         if context_fields().get("correlation_id") else nullcontext()
@@ -1024,9 +1009,9 @@ def _render_coach_message(message: dict) -> None:
             sources = message.get("sources", [])
             if sources:
                 if any(source.get("document_filename") for source in sources):
-                    st.caption("RAG knowledge base references — no live web search")
+                    st.caption(translate("citation.rag_references", locale))
                 if any(not source.get("document_filename") for source in sources):
-                    st.caption("Retrieved reference sources")
+                    st.caption(translate("citation.references", locale))
                 for source in sources:
                     title = _escape_markdown_text(source["title"])
                     organization = _escape_markdown_text(source["issuing_organization"])
@@ -1035,19 +1020,19 @@ def _render_coach_message(message: dict) -> None:
                     filename = source.get("document_filename")
                     content_kind = source.get("content_kind")
                     provenance = {
-                        "source_document": "Saved source document",
-                        "project_summary": "Project-written summary based on the linked source",
+                        "source_document": "citation.source_document",
+                        "project_summary": "citation.project_summary",
                     }.get(content_kind)
                     details = f"{organization}, {published_at}"
                     if filename:
                         details += f" · {_escape_markdown_text(filename)}"
                     if provenance:
-                        details = f"{provenance} · {details}"
+                        details = f"{translate(provenance, locale)} · {details}"
                     st.markdown(
                         f"- [{title}]({url}) — {details} · "
-                        f"Source ID: {_escape_markdown_text(source['source_id'])}"
+                        + translate("citation.source_id", locale, source_id=_escape_markdown_text(source['source_id']))
                     )
-            _render_coach_explanation(message.get("explanation"))
+            _render_coach_explanation(message.get("explanation"), locale)
         if context_fields().get("correlation_id"):
             log_event("coach.response_rendered", **response_metadata(message))
 
@@ -1060,18 +1045,27 @@ def _escape_markdown_text(value: str) -> str:
 def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
+    selection = current_selection(user_id)
+    ui_locale = selection
+
+    def label(key, **values):
+        return translate(key, ui_locale, **values)
     
     # Check if there's a pending question from insight cards with navigation flag
     pending_question = st.session_state.pop("pending_coach_question", None)
     should_navigate = st.session_state.pop("navigate_to_coach", False)
     
     with st.container(key="coach-page-header"):
-        page_header("Coach", "Financial education", marker_class="coach-shell")
-        st.caption(f"Budget capacity uses the selected month: {get_period_start():%B %Y}.")
+        page_header(label("coach.title"), label("coach.subtitle"), marker_class="coach-shell")
+        period = (
+            get_period_start().strftime("%Y-%m") if ui_locale == "zh-Hans"
+            else get_period_start().strftime("%B %Y")
+        )
+        st.caption(label("coach.period", period=period))
     
     # If we have a pending question and navigation was triggered, auto-submit it
     if pending_question and should_navigate:
-        st.info(f"💬 **Asking Coach:** \"{pending_question}\"")
+        st.info(label("coach.asking", question=pending_question))
         # Set the question to be sent
         st.session_state.coach_pending_question = pending_question
         # Trigger the send
@@ -1083,22 +1077,19 @@ def coach_page() -> None:
     if "coach_active_session_id" not in st.session_state:
         st.session_state.coach_active_session_id = sessions[0]["id"] if sessions else None
     active_session_id = st.session_state.get("coach_active_session_id")
-    response_locale = st.selectbox(
-        "Coach response language", [None, "en", "zh-Hans"],
-        format_func=lambda value: {None: "Automatic / profile preference", "en": "English", "zh-Hans": "Chinese (Simplified)"}[value],
-        key=f"coach-response-locale-{user_id}",
-    )
+    response_locale = selection
     if active_session_id not in session_by_id:
         active_session_id = None
         st.session_state.coach_active_session_id = None
 
     with st.sidebar:
         st.markdown(
-            '<div class="sidebar-section coach-conversation-section">CONVERSATIONS</div>',
+            '<div class="sidebar-section coach-conversation-section">'
+            + html.escape(label("coach.conversations")) + '</div>',
             unsafe_allow_html=True,
         )
         if st.button(
-            "New chat",
+            label("coach.new_chat"),
             icon=":material/edit_square:",
             disabled=active_session_id is None,
             key="coach-new-chat",
@@ -1112,7 +1103,7 @@ def coach_page() -> None:
             st.rerun()
 
         if not sessions:
-            st.caption("No saved conversations")
+            st.caption(label("coach.no_conversations"))
         for chat_session in sessions:
             session_id = chat_session["id"]
             title = chat_session["title"]
@@ -1142,9 +1133,9 @@ def coach_page() -> None:
                         st.rerun()
                 with rename_column:
                     if st.button(
-                        "Rename",
+                        label("coach.rename"),
                         icon=":material/edit:",
-                        help=f"Rename {title}",
+                        help=label("coach.rename_title", title=title),
                         key=f"coach-rename-action-{session_id}",
                         type="tertiary",
                         use_container_width=True,
@@ -1153,9 +1144,9 @@ def coach_page() -> None:
                         st.session_state.pop("coach_delete_open", None)
                 with delete_column:
                     if st.button(
-                        "Delete",
+                        label("coach.delete"),
                         icon=":material/delete:",
-                        help=f"Delete {title}",
+                        help=label("coach.delete_title", title=title),
                         key=f"coach-delete-action-{session_id}",
                         type="tertiary",
                         use_container_width=True,
@@ -1166,14 +1157,15 @@ def coach_page() -> None:
             if st.session_state.get("coach_rename_open") == session_id:
                 with st.form(f"coach-rename-form-{session_id}"):
                     renamed_title = st.text_input(
-                        "Conversation title",
+                        label("coach.conversation_title"),
                         value=title,
                         max_chars=120,
+                        key=f"coach-rename-title-{session_id}",
                     )
                     rename_submitted = st.form_submit_button(
-                        "Save", icon=":material/check:", use_container_width=True
+                        label("coach.save"), icon=":material/check:", use_container_width=True
                     )
-                    if st.form_submit_button("Cancel", use_container_width=True):
+                    if st.form_submit_button(label("coach.cancel"), use_container_width=True):
                         st.session_state.pop("coach_rename_open", None)
                         st.rerun()
                 if rename_submitted and renamed_title.strip():
@@ -1186,9 +1178,9 @@ def coach_page() -> None:
                     st.rerun()
 
             if st.session_state.get("coach_delete_open") == session_id:
-                st.warning("Delete this conversation and all of its messages?")
+                st.warning(label("coach.delete_question"))
                 if st.button(
-                    "Delete conversation",
+                    label("coach.delete_conversation"),
                     icon=":material/delete:",
                     type="primary",
                     key=f"coach-confirm-delete-{session_id}",
@@ -1205,7 +1197,7 @@ def coach_page() -> None:
                     st.session_state.pop("coach_delete_open", None)
                     st.rerun()
                 if st.button(
-                    "Cancel",
+                    label("coach.cancel"),
                     key=f"coach-cancel-delete-{session_id}",
                     use_container_width=True,
                 ):
@@ -1253,11 +1245,11 @@ def coach_page() -> None:
         )
         if matches_pending:
             with trace_context(**{key: value for key, value in pending_render.items() if key != "trace_id"}):
-                _render_coach_message(message)
+                _render_coach_message(message, ui_locale)
             st.session_state.pop("coach_pending_render", None)
             pending_render = None
         else:
-            _render_coach_message(message)
+            _render_coach_message(message, ui_locale)
 
     if pending_question and active_session_id:
         with st.chat_message("user", avatar=":material/person:"):
@@ -1268,7 +1260,7 @@ def coach_page() -> None:
             log_event("coach.request.submitted", input_characters=len(pending_question))
             with st.chat_message(
                 "assistant", avatar=":material/account_balance_wallet:"
-            ), st.spinner("Thinking"):
+            ), st.spinner(label("coach.thinking")):
                 response = backend_call(
                     lambda: client.ask_coach(
                         {**build_request(user_id, pending_question, active_session_id, response_locale=response_locale), "budget_period_start": get_period_start().isoformat()}
@@ -1293,12 +1285,13 @@ def coach_page() -> None:
     starter_question = None
     if not history:
         st.markdown(
-            '<div class="coach-empty"><h2>What can I help with?</h2>'
-            '<p>Ask about your spending, budget, savings, or goals.</p></div>',
+            '<div class="coach-empty"><h2>' + html.escape(label("coach.empty_title"))
+            + '</h2><p>' + html.escape(label("coach.empty_help")) + '</p></div>',
             unsafe_allow_html=True,
         )
         first, second = st.columns(2)
-        for index, (starter, icon) in enumerate(COACH_STARTERS):
+        for index, (starter_key, icon) in enumerate(COACH_STARTERS):
+            starter = label(starter_key)
             column = first if index % 2 == 0 else second
             if column.button(
                 starter,
@@ -1309,12 +1302,12 @@ def coach_page() -> None:
                 starter_question = starter
 
     question = st.chat_input(
-        "Message your financial coach",
+        label("coach.input"),
         max_chars=5000,
         key=f"coach-input-{user_id}",
     )
     st.markdown(
-        '<div class="coach-disclaimer">Educational guidance, not financial advice.</div>',
+        '<div class="coach-disclaimer">' + html.escape(label("coach.disclaimer")) + '</div>',
         unsafe_allow_html=True,
     )
     submitted_question = question or starter_question
@@ -1329,18 +1322,18 @@ def coach_page() -> None:
 def profile_page() -> None:
     client = get_client()
     user_id = get_user_id()
-    page_header("Profile settings", "Financial baseline")
-    st.caption(f"Profile ID · {user_id}")
+    page_header(ui_text('Profile settings'), ui_text('Financial baseline'))
+    st.caption(ui_text('Profile ID · {v0}', v0=user_id))
     saved_notice = st.session_state.pop("profile_saved_notice", None)
     if saved_notice:
-        st.success(saved_notice)
+        st.success(ui_text(saved_notice))
 
     profile = backend_call(lambda: client.get_profile(user_id))
     if not profile:
-        st.info("This profile has not been created yet.")
+        st.info(ui_text('This profile has not been created yet.'))
         return
     context_tab, fairness_tab, privacy_tab = st.tabs(
-        ["Financial context", "Fairness data", "Privacy & data"]
+        [ui_text('Financial context'), ui_text('Fairness data'), ui_text('Privacy & data')]
     )
 
     with context_tab:
@@ -1349,100 +1342,108 @@ def profile_page() -> None:
         current_risk = profile.get("risk_tolerance")
         with st.form("profile"):
             display_name = st.text_input(
-                "Display name", value=preferences.get("display_name", ""), max_chars=80
+                ui_text('Display name'), value=preferences.get("display_name", ""), max_chars=80,
+                key=f"profile-{user_id}-display-name",
             )
             first, second = st.columns(2)
             monthly_income = first.number_input(
-                "Monthly income (SGD)",
+                ui_text('Monthly income (SGD)'),
                 min_value=0.0,
                 value=float(income["amount"]),
                 step=100.0,
+                key=f"profile-{user_id}-monthly-income",
             )
             income_frequency = second.selectbox(
-                "Income frequency",
+                ui_text('Income frequency'),
                 INCOME_FREQUENCY_OPTIONS,
+                format_func=option_formatter(),
                 index=_option_index(INCOME_FREQUENCY_OPTIONS, profile.get("income_frequency")),
                 key=f"profile-{user_id}-income-frequency-v2",
             )
             third, fourth = st.columns(2)
             employment_status = third.selectbox(
-                "Employment status",
+                ui_text('Employment status'),
                 EMPLOYMENT_OPTIONS,
                 index=_option_index(EMPLOYMENT_OPTIONS, profile.get("employment_status")),
-                format_func=str.title,
+                format_func=option_formatter(),
                 key=f"profile-{user_id}-employment-status-v2",
             )
             occupation_category = fourth.selectbox(
-                "Occupation category",
+                ui_text('Occupation category'),
                 OCCUPATION_OPTIONS,
                 index=_option_index(OCCUPATION_OPTIONS, profile.get("occupation_category")),
-                format_func=str.title,
+                format_func=option_formatter(),
                 key=f"profile-{user_id}-occupation-category-v2",
             )
             fifth, sixth = st.columns(2)
             income_stability = fifth.selectbox(
-                "Income stability",
+                ui_text('Income stability'),
                 INCOME_STABILITY_OPTIONS,
                 index=_option_index(INCOME_STABILITY_OPTIONS, profile.get("income_stability")),
-                format_func=str.title,
+                format_func=option_formatter(),
                 key=f"profile-{user_id}-income-stability-v2",
             )
             housing_status = sixth.selectbox(
-                "Housing status",
+                ui_text('Housing status'),
                 HOUSING_OPTIONS,
                 index=_option_index(HOUSING_OPTIONS, profile.get("housing_status")),
-                format_func=str.title,
+                format_func=option_formatter(),
                 key=f"profile-{user_id}-housing-status-v2",
             )
             seventh, eighth = st.columns(2)
             household_size = seventh.number_input(
-                "Household size",
+                ui_text('Household size'),
                 min_value=0,
                 max_value=30,
                 value=profile.get("household_size") or 0,
+                key=f"profile-{user_id}-household-size",
             )
             dependants = eighth.number_input(
-                "Dependants",
+                ui_text('Dependants'),
                 min_value=0,
                 max_value=20,
                 value=profile.get("dependants") or 0,
+                key=f"profile-{user_id}-dependants",
             )
             ninth, tenth = st.columns(2)
             financial_literacy = ninth.selectbox(
-                "Financial literacy",
+                ui_text('Financial literacy'),
                 LITERACY_OPTIONS,
                 index=_option_index(LITERACY_OPTIONS, profile.get("financial_literacy")),
-                format_func=str.title,
+                format_func=option_formatter(),
                 key=f"profile-{user_id}-financial-literacy-v2",
             )
             preferred_language = tenth.selectbox(
-                "Preferred language",
+                ui_text('Preferred language'),
                 LANGUAGE_OPTIONS,
+                format_func=option_formatter(),
                 index=_option_index(LANGUAGE_OPTIONS, profile.get("preferred_language")),
                 key=f"profile-{user_id}-preferred-language-v2",
             )
+            st.caption(ui_text("The application language controls Coach replies; this profile preference does not override it."))
             accessibility_preferences = st.multiselect(
-                "Accessibility preferences",
+                ui_text('Accessibility preferences'),
                 ACCESSIBILITY_OPTIONS,
                 default=profile.get("accessibility_preferences", []),
-                format_func=str.title,
+                format_func=option_formatter(),
+                key=f"profile-{user_id}-accessibility-preferences",
             )
             risk_tolerance = st.segmented_control(
-                "Risk comfort",
+                ui_text('Risk comfort'),
                 RISK_OPTIONS,
                 default=current_risk,
-                format_func=str.title,
+                format_func=option_formatter(),
                 selection_mode="single",
                 key=f"profile-{user_id}-risk-comfort-v2",
             )
             saved = st.form_submit_button(
-                "Save profile", type="primary", icon=":material/save:"
+                ui_text('Save profile'), type="primary", icon=":material/save:"
             )
         if saved:
             if dependants and not household_size:
-                st.warning("Enter a household size when dependants are provided.")
+                st.warning(ui_text('Enter a household size when dependants are provided.'))
             elif household_size and dependants > household_size:
-                st.warning("Dependants cannot exceed household size.")
+                st.warning(ui_text('Dependants cannot exceed household size.'))
             else:
                 normalized_name = display_name.strip()
                 payload = {
@@ -1476,16 +1477,16 @@ def profile_page() -> None:
             consent = fairness["consent"]
             demographics = fairness.get("demographics") or {}
             st.info(
-                "Optional demographic data is stored separately for fairness evaluation. "
-                "It is never included in normal coaching requests."
+                ui_text('Optional demographic data is stored separately for fairness evaluation. It is never included in normal coaching requests.')
             )
             with st.form("fairness-consent"):
                 granted = st.toggle(
-                    "Allow my demographic data to be stored for fairness testing",
+                    ui_text('Allow my demographic data to be stored for fairness testing'),
                     value=consent["granted"],
+                    key=f"fairness-{user_id}-consent",
                 )
                 consent_saved = st.form_submit_button(
-                    "Update consent", icon=":material/privacy_tip:"
+                    ui_text('Update consent'), icon=":material/privacy_tip:"
                 )
             if consent_saved:
                 result = backend_call(
@@ -1503,25 +1504,30 @@ def profile_page() -> None:
             if consent["granted"]:
                 with st.form("demographics"):
                     age_band = st.selectbox(
-                        "Age band",
+                        ui_text('Age band'),
                         AGE_BANDS,
+                        format_func=option_formatter(),
                         index=_option_index(AGE_BANDS, demographics.get("age_band")),
                         key=f"fairness-{user_id}-age-band-v2",
                     )
                     gender_identity = st.selectbox(
-                        "Gender identity",
+                        ui_text('Gender identity'),
                         GENDER_OPTIONS,
+                        format_func=option_formatter(),
                         index=_option_index(GENDER_OPTIONS, demographics.get("gender_identity")),
                         key=f"fairness-{user_id}-gender-identity-v2",
                     )
                     race_ethnicity = st.multiselect(
-                        "Race or ethnicity",
+                        ui_text('Race or ethnicity'),
                         RACE_ETHNICITY_OPTIONS,
+                        format_func=option_formatter(),
                         default=demographics.get("race_ethnicity", []),
+                        key=f"fairness-{user_id}-race-ethnicity",
                     )
                     nationality_residency = st.selectbox(
-                        "Nationality or residency",
+                        ui_text('Nationality or residency'),
                         RESIDENCY_OPTIONS,
+                        format_func=option_formatter(),
                         index=_option_index(
                             RESIDENCY_OPTIONS,
                             demographics.get("nationality_residency"),
@@ -1529,27 +1535,30 @@ def profile_page() -> None:
                         key=f"fairness-{user_id}-nationality-residency-v2",
                     )
                     disability_status = st.selectbox(
-                        "Disability status",
+                        ui_text('Disability status'),
                         DISABILITY_OPTIONS,
+                        format_func=option_formatter(),
                         index=_option_index(
                             DISABILITY_OPTIONS, demographics.get("disability_status")
                         ),
                         key=f"fairness-{user_id}-disability-status-v2",
                     )
                     marital_status = st.selectbox(
-                        "Marital or family status",
+                        ui_text('Marital or family status'),
                         MARITAL_OPTIONS,
+                        format_func=option_formatter(),
                         index=_option_index(MARITAL_OPTIONS, demographics.get("marital_status")),
                         key=f"fairness-{user_id}-marital-status-v2",
                     )
                     residential_region = st.selectbox(
-                        "Broad residential region",
+                        ui_text('Broad residential region'),
                         REGION_OPTIONS,
+                        format_func=option_formatter(),
                         index=_option_index(REGION_OPTIONS, demographics.get("residential_region")),
                         key=f"fairness-{user_id}-residential-region-v2",
                     )
                     demographics_saved = st.form_submit_button(
-                        "Save fairness data", type="primary", icon=":material/save:"
+                        ui_text('Save fairness data'), type="primary", icon=":material/save:"
                     )
                 if demographics_saved:
                     payload = {
@@ -1562,34 +1571,31 @@ def profile_page() -> None:
                         "residential_region": residential_region,
                     }
                     if backend_call(lambda: client.save_demographics(user_id, payload)):
-                        st.success("Fairness data saved.")
+                        st.success(ui_text('Fairness data saved.'))
 
     with privacy_tab:
         lifecycle = backend_call(lambda: client.get_data_lifecycle(user_id))
         if not lifecycle:
             return
         retention = lifecycle["retention"]
-        st.subheader("Data lifecycle")
-        st.caption(f"Policy version · {lifecycle['policy_version']}")
+        st.subheader(ui_text('Data lifecycle'))
+        st.caption(ui_text('Policy version · {v0}', v0=lifecycle['policy_version']))
         st.write(
-            "Your financial workspace is kept until you delete it. "
-            f"Conversation history is kept for {retention['chat_history_days']} days, "
-            f"and detailed AI decision traces for {retention['orchestration_traces_days']} days."
+            ui_text('Your financial workspace is kept until you delete it. Conversation history is kept for {v0} days, and detailed AI decision traces for {v1} days.', v0=retention['chat_history_days'], v1=retention['orchestration_traces_days'])
         )
 
         memory = lifecycle["durable_memory"]
         if not memory["feature_enabled"]:
             st.info(
-                "Durable agent memory is currently disabled. Your preference is recorded "
-                "for a future release, but granting consent does not activate memory."
+                ui_text('Durable agent memory is currently disabled. Your preference is recorded for a future release, but granting consent does not activate memory.')
             )
         with st.form("durable-memory-consent"):
             memory_granted = st.toggle(
-                "Allow durable agent memory when the feature becomes available",
+                ui_text('Allow durable agent memory when the feature becomes available'),
                 value=memory["granted"],
             )
             memory_saved = st.form_submit_button(
-                "Update memory consent", icon=":material/privacy_tip:"
+                ui_text('Update memory consent'), icon=":material/privacy_tip:"
             )
         if memory_saved:
             result = backend_call(
@@ -1602,14 +1608,13 @@ def profile_page() -> None:
                 st.rerun()
 
         st.divider()
-        st.subheader("Export your data")
+        st.subheader(ui_text('Export your data'))
         st.write(
-            "Prepare a portable JSON copy of your profile, financial records, "
-            "conversations, consents, and available AI decision traces."
+            ui_text('Prepare a portable JSON copy of your profile, financial records, conversations, consents, and available AI decision traces.')
         )
         export_key = f"profile-data-export-{user_id}"
         if st.button(
-            "Prepare data export",
+            ui_text('Prepare data export'),
             icon=":material/download:",
             key=f"prepare-data-export-{user_id}",
         ):
@@ -1619,7 +1624,7 @@ def profile_page() -> None:
         prepared_export = st.session_state.get(export_key)
         if prepared_export:
             st.download_button(
-                "Download JSON export",
+                ui_text('Download JSON export'),
                 data=json.dumps(prepared_export, indent=2),
                 file_name=f"{user_id}-data-export.json",
                 mime="application/json",
@@ -1628,18 +1633,16 @@ def profile_page() -> None:
             )
 
         st.divider()
-        st.subheader("Delete your workspace")
+        st.subheader(ui_text('Delete your workspace'))
         st.warning(
-            "This permanently deletes the profile, transactions, goals, budgets, "
-            "fairness data, consent records, conversations, and available AI decision "
-            "traces. This action cannot be undone."
+            ui_text('This permanently deletes the profile, transactions, goals, budgets, fairness data, consent records, conversations, and available AI decision traces. This action cannot be undone.')
         )
         confirmed = st.checkbox(
-            "I understand that all data for this workspace will be deleted",
+            ui_text('I understand that all data for this workspace will be deleted'),
             key=f"delete-profile-confirmed-{user_id}",
         )
         delete_requested = st.button(
-            "Delete workspace data",
+            ui_text('Delete workspace data'),
             icon=":material/delete_forever:",
             disabled=not confirmed,
             key=f"delete-profile-{user_id}",
@@ -1665,31 +1668,32 @@ def profile_page() -> None:
 
 def create_profile_page() -> None:
     client = get_client()
-    page_header("Create profile", "New financial workspace")
+    page_header(ui_text('Create profile'), ui_text('New financial workspace'))
     created_notice = st.session_state.pop("profile_created_notice", None)
     if created_notice:
-        st.success(created_notice)
+        st.success(ui_text(created_notice))
 
     with st.form("create-profile", clear_on_submit=False):
         profile_id = st.text_input(
-            "Profile ID",
+            ui_text('Profile ID'),
             max_chars=128,
-            help="Letters, numbers, dots, underscores, and hyphens.",
+            help=ui_text('Letters, numbers, dots, underscores, and hyphens.'),
+            key="create-profile-id",
         )
-        display_name = st.text_input("Display name", max_chars=80)
+        display_name = st.text_input(ui_text('Display name'), max_chars=80, key="create-profile-display-name")
         monthly_income = st.number_input(
-            "Monthly income (SGD)", min_value=0.0, step=100.0
+            ui_text('Monthly income (SGD)'), min_value=0.0, step=100.0, key="create-profile-monthly-income"
         )
         risk_tolerance = st.segmented_control(
-            "Risk comfort",
+            ui_text('Risk comfort'),
             RISK_OPTIONS,
             default=None,
-            format_func=str.title,
+            format_func=option_formatter(),
             selection_mode="single",
             key="create-profile-risk-comfort-v2",
         )
         created = st.form_submit_button(
-            "Create profile", type="primary", icon=":material/person_add:"
+            ui_text('Create profile'), type="primary", icon=":material/person_add:"
         )
 
     if not created:
@@ -1698,10 +1702,10 @@ def create_profile_page() -> None:
     normalized_id = profile_id.strip()
     normalized_name = display_name.strip()
     if not PROFILE_ID_PATTERN.fullmatch(normalized_id):
-        st.warning("Enter a valid profile ID.")
+        st.warning(ui_text('Enter a valid profile ID.'))
         return
     if not normalized_name:
-        st.warning("Enter a display name.")
+        st.warning(ui_text('Enter a display name.'))
         return
 
     payload = {
@@ -1714,12 +1718,12 @@ def create_profile_page() -> None:
         result = client.create_profile(payload)
     except httpx.HTTPStatusError as error:
         if error.response.status_code == 409:
-            st.error("That profile ID is already in use.")
+            st.error(ui_text('That profile ID is already in use.'))
         else:
-            st.error(f"The request could not be completed ({error.response.status_code}).")
+            st.error(ui_text('The request could not be completed ({v0}).', v0=error.response.status_code))
         return
     except httpx.HTTPError:
-        st.error("The application service is temporarily unavailable.")
+        st.error(ui_text('The application service is temporarily unavailable.'))
         return
 
     st.session_state.active_user_id = result["user_id"]

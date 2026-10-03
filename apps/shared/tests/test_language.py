@@ -19,25 +19,25 @@ from language_fixtures import language_case
 @pytest.mark.parametrize(
     "message,expected",
     [
-        ("Explain diversification in Chinese.", "zh-Hans"),
-        ("Please answer in Mandarin.", "zh-Hans"),
-        ("Explain ETFs in English, then answer in Chinese.", "zh-Hans"),
+        ("Explain diversification in Chinese.", "en"),
+        ("Please answer in Mandarin.", "en"),
+        ("Explain ETFs in English, then answer in Chinese.", "en"),
         (language_case("language.test_explicit_request_and_bounded_detection"), "en"),
         (language_case("language.test_explicit_request_and_bounded_detection_2"), "en"),
         (
             language_case("language.test_explicit_request_and_bounded_detection_3"),
-            "zh-Hans",
+            "en",
         ),
         (language_case("language.test_explicit_request_and_bounded_detection_4"), "en"),
         (language_case("language.test_explicit_request_and_bounded_detection_5"), "en"),
         ("Compare ETFs and bonds.", "en"),
     ],
 )
-def test_explicit_request_and_bounded_detection(message, expected):
+def test_dialogue_never_selects_output_language(message, expected):
     assert resolve_locale(message) == expected
 
 
-def test_explicit_request_selection_session_preference_and_detection_precedence():
+def test_application_selection_overrides_dialogue_and_profile_preference():
     history = [{"role": "user", "content": "Answer in Chinese."}]
     assert (
         resolve_locale(
@@ -48,7 +48,7 @@ def test_explicit_request_selection_session_preference_and_detection_precedence(
             preferred="Mandarin",
             history=history,
         )
-        == "en"
+        == "zh-Hans"
     )
     assert (
         resolve_locale(
@@ -58,7 +58,7 @@ def test_explicit_request_selection_session_preference_and_detection_precedence(
     )
     assert (
         resolve_locale("Give an example.", preferred="English", history=history)
-        == "zh-Hans"
+        == "en"
     )
     assert resolve_locale("Explain ETFs.", preferred="Mandarin") == "zh-Hans"
     # Assistant text must not change the user's language preference.

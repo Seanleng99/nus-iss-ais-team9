@@ -1,11 +1,11 @@
 """A single method choice in the monthly editor; amounts remain user-controlled."""
-
 from decimal import ROUND_HALF_UP, Decimal
 
 import pandas as pd
 import streamlit as st
 
 from ui.components import money
+from ui.i18n import display_frame, option_label, text_formatter, ui_text
 
 METHODS = {
     "flexible": "Flexible category plan",
@@ -30,7 +30,7 @@ def render_method_choice(prior, scope):
     prior = prior or {}
     choices = list(METHODS)
     chosen = st.selectbox(
-        "Budgeting method", choices, format_func=METHODS.get,
+        ui_text('Budgeting method'), choices, format_func=text_formatter(METHODS),
         index=choices.index(prior.get("name", "flexible")), key=scope + "-method",
     )
     method = {"name": chosen, "category_groups": {}}
@@ -40,7 +40,7 @@ def render_method_choice(prior, scope):
         saved = prior.get("percentages") or {}
         percentages = {
             group: columns[index].number_input(
-                f"{group.title()} (%)", min_value=0.0, max_value=100.0,
+                f"{option_label(group)} (%)", min_value=0.0, max_value=100.0,
                 value=float(saved[group]) if saved.get(group) is not None else None,
                 step=1.0, format="%.2f", key=f"{scope}-{group}-percentage",
             )
@@ -51,11 +51,11 @@ def render_method_choice(prior, scope):
         else:
             method["percentages"] = percentages
             total = sum(Decimal(str(value)) for value in percentages.values())
-            st.caption(f"Percentage total: {total:g}% of take-home income.")
+            st.caption(ui_text('Percentage total: {v0:g}% of take-home income.', v0=total))
             if total != 100:
                 questions.append("Adjust the percentages so they total 100%.")
     for question in questions:
-        st.caption(question)
+        st.caption(ui_text(question))
     return method, questions
 
 
@@ -78,7 +78,7 @@ def render_method_guide(method, income, savings, categories, *, scope=None):
             ), income - needs,
         )
         targets = {"needs": needs, "wants": wants, "savings": income - needs - wants}
-        st.caption("Monthly guide: " + " · ".join(f"{g.title()} {money(v)}" for g, v in targets.items()))
+        st.caption(ui_text("Monthly guide: {v0}", v0=" · ".join(f"{option_label(g)} {money(v)}" for g, v in targets.items())))
         complete = all(c in method["category_groups"] and v is not None for c, v in categories.items())
         actual = {
             group: sum(Decimal(str(v)) for c, v in categories.items() if method["category_groups"].get(c) == group) if complete else None
@@ -86,23 +86,23 @@ def render_method_guide(method, income, savings, categories, *, scope=None):
         }
         actual["savings"] = savings
         render_targets(targets, actual)
-        st.caption("These targets are guidance. Your entered amounts stay unchanged.")
+        st.caption(ui_text('These targets are guidance. Your entered amounts stay unchanged.'))
         suggest_savings(targets["savings"], scope)
     elif name == "80_20":
         target = (income * Decimal("0.20")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        st.caption(f"Monthly guide: expenses {money(income - target)} · savings {money(target)}. Your entered amounts stay unchanged.")
+        st.caption(ui_text('Monthly guide: expenses {v0} · savings {v1}. Your entered amounts stay unchanged.', v0=money(income - target), v1=money(target)))
         expenses = sum(Decimal(str(v)) for v in categories.values()) if all(v is not None for v in categories.values()) else None
         render_targets({"expenses": income - target, "savings": target}, {"expenses": expenses, "savings": savings})
         suggest_savings(target, scope)
     elif name == "pay_yourself_first" and savings is not None:
-        st.caption(f"After your savings allocation, {money(income - Decimal(str(savings)))} is available for expenses.")
+        st.caption(ui_text('After your savings allocation, {v0} is available for expenses.', v0=money(income - Decimal(str(savings)))))
 
 
 def render_targets(targets, actual):
-    st.table(pd.DataFrame([
-        {"Group": group.title(), "Suggested": money(target), "Your plan": money(actual[group]) if actual[group] is not None else "Needs input"}
+    st.table(display_frame(pd.DataFrame([
+        {"Group": option_label(group), "Suggested": money(target), "Your plan": money(actual[group]) if actual[group] is not None else ui_text("Needs input")}
         for group, target in targets.items()
-    ]))
+    ])))
 
 
 def suggest_savings(target, scope):
@@ -112,5 +112,5 @@ def suggest_savings(target, scope):
     def apply():
         st.session_state[f"{scope}-plan-savings"] = float(target)
 
-    st.button("Use suggested savings amount", key=scope + "-suggest-savings", on_click=apply)
-    st.caption("This fills the savings field only. Review the plan and confirm before saving.")
+    st.button(ui_text('Use suggested savings amount'), key=scope + "-suggest-savings", on_click=apply)
+    st.caption(ui_text('This fills the savings field only. Review the plan and confirm before saving.'))

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import streamlit as st
 
+from ui.i18n import ui_text
 from ui.telemetry import call_span, context_fields, log_event, trace_context
 
 
@@ -58,9 +59,9 @@ def require_authenticated_user() -> None:
             ):
                 log_event("auth.session_ended", authenticated=False, reason_code="not_logged_in")
         _clear_authenticated_session()
-        st.title("Financial Wellness Coach")
-        st.caption("Sign in to access your private financial workspace.")
-        if st.button("Sign in", type="primary"):
+        st.title(ui_text('Financial Wellness Coach'))
+        st.caption(ui_text('Sign in to access your private financial workspace.'))
+        if st.button(ui_text('Sign in'), type="primary"):
             # OIDC redirects create a new Streamlit session. Pre-login session_state
             # cannot reliably link to the return; start the journey after login.
             with (
@@ -91,7 +92,7 @@ def require_authenticated_user() -> None:
             f"{__name__}.require_authenticated_user"
         ):
             log_event("auth.session_expired", authenticated=False, reason_code="expired")
-            st.warning("Your session has expired. Please sign in again.")
+            st.warning(ui_text('Your session has expired. Please sign in again.'))
             logout(reason_code="expired")
         st.stop()
 
@@ -104,8 +105,8 @@ def require_authenticated_user() -> None:
             _clear_authenticated_session()
             st.session_state.auth_identity = identity
             st.session_state.auth_status = "missing_token"
-        st.error("The identity provider did not return a usable identity token.")
-        if st.button("Sign out"):
+        st.error(ui_text('The identity provider did not return a usable identity token.'))
+        if st.button(ui_text('Sign out')):
             logout(reason_code="missing_token")
         st.stop()
 

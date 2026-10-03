@@ -4,6 +4,8 @@ from typing import Any
 import httpx
 import streamlit as st
 
+from ui.i18n import ui_text
+
 
 def apply_styles() -> None:
     st.markdown(
@@ -18,6 +20,22 @@ def apply_styles() -> None:
         }
         [data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid var(--line); }
         [data-testid="stMainBlockContainer"] { padding-top: 1.5rem; }
+        [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"]
+        > [data-testid="stLayoutWrapper"]:has(> .st-key-workspace-language-header) {
+            position: fixed; top: 0; right: 2.75rem; width: 2.5rem;
+            z-index: 1000001;
+        }
+        .st-key-workspace-language-header [data-testid="stPopoverButton"] {
+            width: 2.5rem; height: 2.5rem; min-height: 2.5rem; padding: 0;
+        }
+        .st-key-workspace-language-header [data-testid="stPopoverButton"]
+        [data-testid="stMarkdownContainer"] {
+            position: absolute; width: 1px; height: 1px; overflow: hidden;
+            clip-path: inset(50%); white-space: nowrap;
+        }
+        .st-key-workspace-language-header [data-testid="stPopoverButton"] [aria-hidden="true"] { display: none; }
+        /* The deployed workspace exposes viewer controls, not Streamlit deployment. */
+        [data-testid="stAppDeployButton"] { display: none; }
         [data-testid="stSidebarContent"] { gap: 0; }
         [data-testid="stSidebarHeader"] {
             height: 2.5rem; position: absolute; right: 0.5rem; top: 0.5rem; z-index: 1;
@@ -140,7 +158,7 @@ def backend_call(operation: Callable[[], Any]) -> Any:
     try:
         return operation()
     except httpx.HTTPStatusError as error:
-        st.error(f"The request could not be completed ({error.response.status_code}).")
+        st.error(ui_text('The request could not be completed ({v0}).', v0=error.response.status_code))
     except httpx.HTTPError:
-        st.error("The application service is temporarily unavailable.")
+        st.error(ui_text('The application service is temporarily unavailable.'))
     return None

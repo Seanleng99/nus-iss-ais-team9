@@ -2,6 +2,8 @@ from typing import Literal
 
 import streamlit as st
 
+from ui.i18n import ui_message, ui_text
+
 InsightType = Literal["trend", "pattern", "anomaly", "opportunity"]
 
 
@@ -29,7 +31,7 @@ def render_spending_insights_section(insights: list[dict]) -> None:
         insights: List of SpendingInsight dicts from backend
     """
     if not insights:
-        st.info("No spending insights available yet. Add transactions to get started.")
+        st.info(ui_text('No spending insights available yet. Add transactions to get started.'))
         return
     
     # Split insights by type for prioritized display
@@ -45,7 +47,7 @@ def render_spending_insights_section(insights: list[dict]) -> None:
     st.markdown(
         '<div class="spending-insights-header">'
         '<span style="font-size: 20px; margin-right: 8px;">📊</span>'
-        '<span>Spending Insights</span>'
+        '<span>' + ui_text("Spending Insights") + '</span>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -76,6 +78,13 @@ def render_insight_card(insight: dict) -> None:
             - explanation: str | None (why this matters)
             - educational_context: str | None (learning info)
     """
+    # These fields are deterministic analyzer messages. Historical Coach prose
+    # and user-authored descriptions are rendered separately without translation.
+    insight = {**insight, **{
+        field: ui_message(insight[field]) for field in (
+            "title", "description", "explanation", "suggested_action", "educational_context"
+        ) if insight.get(field)
+    }}
     # Type-specific styling with enhanced metadata (using emoji icons for reliability)
     type_config = {
         "trend": {
@@ -109,6 +118,7 @@ def render_insight_card(insight: dict) -> None:
     }
     
     config = type_config.get(insight["insight_type"], type_config["trend"])
+    config = {**config, "label": ui_text(config["label"])}
     
     # Card container with custom styling
     with st.container():
@@ -137,7 +147,7 @@ def render_insight_card(insight: dict) -> None:
                 </p>
                 <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">
                     <span style="display: inline-block; padding: 2px 8px; background: rgba(0,0,0,0.05); border-radius: 12px;">
-                        Confidence: {insight['confidence']:.0%}
+                        {ui_text('Confidence')}: {insight['confidence']:.0%}
                     </span>
                 </div>
             </div>
@@ -147,16 +157,16 @@ def render_insight_card(insight: dict) -> None:
         
         # Section 1: Why this matters (Explanation)
         if insight.get("explanation"):
-            with st.expander("📖 Why this matters", expanded=False):
+            with st.expander(ui_text('📖 Why this matters'), expanded=False):
                 st.info(insight["explanation"])
         
         # Section 2: What you can do (Actionable suggestions)
         if insight.get("suggested_action"):
-            with st.expander("💡 What you can do", expanded=False):
+            with st.expander(ui_text('💡 What you can do'), expanded=False):
                 st.success(insight["suggested_action"])
                 
                 # Create clickable button that navigates to Coach with the question
-                prompt_text = config['prompt_suggestion'].replace("Ask: '", "").replace("'", "")
+                prompt_text = ui_text(config['prompt_suggestion'].replace("Ask: '", "").replace("'", ""))
                 button_key = f"coach-prompt-{insight['insight_id']}"
                 
                 if st.button(
@@ -192,10 +202,10 @@ def render_insight_card(insight: dict) -> None:
         
         # Section 3: Learn more (Educational context)
         if insight.get("educational_context"):
-            with st.expander("🎓 Learn more", expanded=False):
+            with st.expander(ui_text('🎓 Learn more'), expanded=False):
                 st.markdown(insight["educational_context"])
         
         # Quick action buttons (if no expanders shown, show at least one action)
         if not any([insight.get("explanation"), insight.get("suggested_action"), insight.get("educational_context")]):
             # Default prompt for insights without extra metadata
-            st.caption(f"💬 **Ask the Coach:** {config['prompt_suggestion']}")
+            st.caption(ui_text('💬 **Ask the Coach:** {v0}', v0=config['prompt_suggestion']))

@@ -1,5 +1,4 @@
 """Everyday budget monitoring and an explicit, cancellable monthly editor."""
-
 import json
 from hashlib import sha256
 
@@ -14,6 +13,7 @@ from ui.budget_editor import (
 from ui.budget_methods import DESCRIPTIONS, render_method_choice, render_method_guide
 from ui.budget_spending import render_spending
 from ui.components import backend_call, money, page_header
+from ui.i18n import month_label, option_formatter, ui_text
 from ui.styles import BUDGET_CSS
 
 
@@ -23,10 +23,10 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
     draft_key = f"budget-edit-draft-{user_id}-{period.isoformat()}"
     budget = backend_call(lambda: client.get_budget(user_id, period))
     currency = (budget or {}).get("currency", "SGD")
-    page_header("Budget", period.strftime("%B %Y"))
+    page_header(ui_text('Budget'), month_label(period))
     feedback = st.session_state.get(base + "-saved-feedback")
     if feedback:
-        st.success(feedback)
+        st.success(ui_text(feedback))
 
     def close_editor():
         for key in list(st.session_state):
@@ -37,14 +37,14 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
 
     draft = st.session_state.get(draft_key)
     editing = not budget or bool(draft) or st.session_state.get(base + "-editing", False)
-    if budget and not editing and st.button("Edit budget", icon=":material/edit:"):
+    if budget and not editing and st.button(ui_text('Edit budget'), icon=":material/edit:"):
         st.session_state[base + "-editing"] = True
         st.rerun()
     if budget and not editing:
         render_spending(budget, currency, base, create_pie_chart)
     elif not budget:
         st.info(
-            "Create your budget for this month. Enter your own amounts, then review and confirm before saving."
+            ui_text('Create your budget for this month. Enter your own amounts, then review and confirm before saving.')
         )
 
     existing = {
@@ -52,7 +52,7 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
     }
     planning = (budget or {}).get("planning")
     if editing:
-        st.subheader("Edit budget" if budget else "Create your budget", anchor=False)
+        st.subheader(ui_text('Edit budget') if budget else ui_text('Create your budget'), anchor=False)
         status = st.empty()
         if draft:
             existing = {
@@ -69,7 +69,7 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
             edited_planning = None
             questions = []
             include_planning = currency == "SGD" and st.checkbox(
-                "Include take-home income and savings",
+                ui_text('Include take-home income and savings'),
                 value=bool(planning),
                 disabled=bool(planning),
                 key=scope + "-include-planning",
@@ -78,7 +78,7 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
                 prior = planning or {}
                 income_column, savings_column = st.columns(2)
                 income = income_column.number_input(
-                    "Monthly take-home income (SGD)",
+                    ui_text('Monthly take-home income (SGD)'),
                     min_value=0.0,
                     value=float(prior["take_home_income"])
                     if prior.get("take_home_income") is not None
@@ -88,7 +88,7 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
                     key=scope + "-plan-income",
                 )
                 savings = savings_column.number_input(
-                    "Monthly savings allocation (SGD)",
+                    ui_text('Monthly savings allocation (SGD)'),
                     min_value=0.0,
                     value=float(prior["savings_target"])
                     if prior.get("savings_target") is not None
@@ -99,11 +99,11 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
                 )
                 if income is None:
                     income_column.caption(
-                        "Enter actual monthly take-home income, including 0 if applicable."
+                        ui_text('Enter actual monthly take-home income, including 0 if applicable.')
                     )
                 if savings is None:
                     savings_column.caption(
-                        "Enter a savings allocation, including 0 if that is your choice."
+                        ui_text('Enter a savings allocation, including 0 if that is your choice.')
                     )
                 method, questions = render_method_choice(prior.get("method"), scope)
                 edited_planning = {k: v for k, v in prior.items() if k != "use_recorded_spending"}
@@ -114,7 +114,7 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
                     income_basis="take_home",
                     expenses_confirmed=True,
                 )
-            st.markdown("**Category limits**")
+            st.markdown(ui_text('**Category limits**'))
             categories_key = scope + "-category-list"
             if categories_key not in st.session_state:
                 st.session_state[categories_key] = (
@@ -143,8 +143,8 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
             with summary:
                 balance = render_plan_summary(values, edited_planning, currency)
             if edited_planning:
-                with st.expander("How this method works", icon=":material/info:"):
-                    st.caption(DESCRIPTIONS[method["name"]])
+                with st.expander(ui_text('How this method works'), icon=":material/info:"):
+                    st.caption(ui_text(DESCRIPTIONS[method["name"]]))
                     render_method_guide(method, income, savings, values, scope=scope)
                 if method["name"] == "zero_based" and balance is not None and balance != 0:
                     questions.append(
@@ -159,17 +159,17 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
             }
             changed = render_save_review(budget, values, edited_planning, currency)
             if changed or draft:
-                status.info("Unsaved changes — recorded spending still uses your saved budget.")
+                status.info(ui_text('Unsaved changes — recorded spending still uses your saved budget.'))
             else:
-                status.caption("Editing your saved budget. No amounts have changed.")
+                status.caption(ui_text('Editing your saved budget. No amounts have changed.'))
             signature = sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
             confirmation_key = scope + "-confirmed-" + signature
             if st.session_state.pop(scope + "-rejected-confirmation", None) == confirmation_key:
                 st.session_state[confirmation_key] = False
             approved = st.checkbox(
-                "This is my actual take-home income and these limits include all my expenses."
+                ui_text('This is my actual take-home income and these limits include all my expenses.')
                 if edited_planning
-                else f"I have reviewed these category limits for {period:%B %Y}.",
+                else ui_text('I have reviewed these category limits for {v0:%B %Y}.', v0=period),
                 key=confirmation_key,
             )
             if not values:
@@ -183,14 +183,14 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
             if budget and not changed and not draft:
                 questions.append("No changes to save.")
             for question in dict.fromkeys(questions):
-                st.caption(question)
+                st.caption(ui_text(question))
             if not questions and not approved:
-                st.caption("Review the changes and confirm the plan above before saving.")
+                st.caption(ui_text('Review the changes and confirm the plan above before saving.'))
             if st.button(
-                "Save budget", type="primary", icon=":material/save:", disabled=bool(questions)
+                ui_text('Save budget'), type="primary", icon=":material/save:", disabled=bool(questions)
             ):
                 if not approved:
-                    st.warning("Review the changes and confirm the plan before saving.")
+                    st.warning(ui_text('Review the changes and confirm the plan before saving.'))
                 else:
                     result = save_budget_with_feedback(client, user_id, payload)
                     if result:
@@ -201,13 +201,12 @@ def render_budget_page(client, user_id, period, category_options, create_pie_cha
                         st.rerun()
                     else:
                         st.session_state[scope + "-rejected-confirmation"] = confirmation_key
-            st.button("Cancel changes", key=scope + "-cancel", on_click=close_editor)
+            st.button(ui_text('Cancel changes'), key=scope + "-cancel", on_click=close_editor)
     if budget and editing:
         render_spending(budget, currency, base, create_pie_chart)
     if currency == "SGD":
         st.caption(
-            "Ask Coach to compare changes to your saved plan, savings amounts or category limits. "
-            "Manage savings targets on the Goals page."
+            ui_text('Ask Coach to compare changes to your saved plan, savings amounts or category limits. Manage savings targets on the Goals page.')
         )
 
 
@@ -218,15 +217,15 @@ def _render_add_category(options, scope, categories_key):
     )
     choices = [c for c in options if c not in categories]
     choice = st.selectbox(
-        "Category to add",
+        ui_text('Category to add'),
         [*choices, "Custom category"],
         index=None,
-        format_func=str.title,
-        placeholder="Choose a category or Custom category",
+        format_func=option_formatter(),
+        placeholder=ui_text('Choose a category or Custom category'),
         key=choice_key,
     )
     if choice == "Custom category":
-        st.text_input("Custom category name", max_chars=64, key=name_key)
+        st.text_input(ui_text('Custom category name'), max_chars=64, key=name_key)
 
     def add():
         value = (
@@ -252,13 +251,13 @@ def _render_add_category(options, scope, categories_key):
             st.session_state.pop(error_key, None)
 
     st.button(
-        "Add category",
+        ui_text('Add category'),
         key=scope + "-add",
         disabled=choice is None or len(categories) >= 50,
         icon=":material/add:",
         on_click=add,
     )
     if len(categories) >= 50:
-        st.caption("50-category limit reached. Remove a category before adding another.")
+        st.caption(ui_text('50-category limit reached. Remove a category before adding another.'))
     if st.session_state.get(error_key):
-        st.warning(st.session_state[error_key])
+        st.warning(ui_text(st.session_state[error_key]))

@@ -39,39 +39,16 @@ def input_pattern(key: str, **parts: str) -> str:
     return pattern.format(**parts) if parts else pattern
 
 
-def explicit_locale(message: str) -> SupportedLocale | None:
-    """Recognize bounded output-language requests; the latest request wins."""
-    matches = []
-    for locale, patterns in load_data("language_requests").items():
-        for pattern in patterns:
-            matches.extend(
-                (m.end(), locale) for m in re.finditer(pattern, message, re.IGNORECASE)
-            )
-    return max(matches, default=(0, None), key=lambda item: item[0])[1]
-
-
 def resolve_locale(
     message: str, *, selected: object = None, preferred: object = None, history=()
 ) -> SupportedLocale:
-    explicit = explicit_locale(message)
-    if explicit:
-        return explicit
-    selection = normalize_locale(selected)
-    if selection:
-        return selection
-    for item in reversed(history):
-        role = item.get("role") if isinstance(item, dict) else item.role
-        content = item.get("content", "") if isinstance(item, dict) else item.content
-        if role == "user" and (previous := explicit_locale(content)):
-            return previous
-    preference = normalize_locale(preferred)
-    if preference:
-        return preference
-    # Han characters alone cannot distinguish Chinese from Japanese. Exclude
-    # kana/Hangul; unsupported languages fall back to English. Preference wins.
-    if re.search(load_data("scripts")["non_chinese_fallback_scripts"], message):
-        return "en"
-    return "zh-Hans" if re.search(load_data("scripts")["han_basic"], message) else "en"
+    """Only application settings select output language; dialogue never does.
+
+    Keep message/history arguments for existing callers. Input recognition and
+    safety checks still support both languages independently of output selection.
+    API callers without a selection use their saved preference, then English.
+    """
+    return normalize_locale(selected) or normalize_locale(preferred) or "en"
 
 
 def request_locale(request) -> SupportedLocale:

@@ -1,13 +1,14 @@
 """Profile-authorized decision trace browsing; retain only selections in UI state."""
-
 import json
 import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import streamlit as st
+from coach_i18n import translate
 
 from ui.components import backend_call, page_header
+from ui.i18n import display_frame, text_formatter, ui_text
 from ui.state import get_client, get_user_id
 
 STATUSES = {
@@ -80,7 +81,7 @@ def local_time(value):
     return (
         parsed.astimezone(ZoneInfo("Asia/Singapore")).strftime("%d %b %Y, %H:%M:%S SGT")
         if parsed
-        else "Not recorded"
+        else ui_text("Not recorded")
     )
 
 
@@ -190,26 +191,26 @@ def render_trace(trace):
         if status == "completed"
         else st.info
     )
-    display(status_text)
-    st.caption(f"Reference ID: {trace_id}")
+    display(ui_text(status_text))
+    st.caption(ui_text('Reference ID: {v0}', v0=trace_id))
     events = events_for(trace)
     calls = model_calls_for(trace)
     first, second, third = st.columns(3)
-    first.metric("Recorded events", len(events))
-    second.metric("Model calls", len(calls))
+    first.metric(ui_text('Recorded events'), len(events))
+    second.metric(ui_text('Model calls'), len(calls))
     duration = audit.get("workflow_duration_ms")
     third.metric(
-        "AI duration",
-        f"{duration / 1000:.2f} s" if isinstance(duration, (float, int)) else "Not recorded",
+        ui_text('AI duration'),
+        f"{duration / 1000:.2f} s" if isinstance(duration, (float, int)) else ui_text("Not recorded"),
     )
     if trace.get("error_code"):
-        st.caption(f"Failure code: {trace['error_code']}")
+        st.caption(ui_text('Failure code: {v0}', v0=trace['error_code']))
     st.caption(
-        f"Started {local_time(trace.get('created_at'))} · Finished {local_time(trace.get('finished_at'))}"
+        ui_text('Started {v0} · Finished {v1}', v0=local_time(trace.get('created_at')), v1=local_time(trace.get('finished_at')))
     )
 
     decisions, timeline, dependencies, models = st.tabs(
-        ["Decisions & evidence", "Timeline", "Dependencies", "Model calls"]
+        [ui_text('Decisions & evidence'), ui_text('Timeline'), ui_text('Dependencies'), ui_text('Model calls')]
     )
     with decisions:
         agents = trace.get("selected_agents", [])
@@ -218,25 +219,25 @@ def render_trace(trace):
         )
         if trace.get("blocked") or status == "blocked":
             st.info(
-                "Generated explanations are withheld for this run. You can inspect execution metadata in the other tabs."
+                ui_text('Generated explanations are withheld for this run. You can inspect execution metadata in the other tabs.')
             )
         else:
             rationales = audit.get("routing_rationale", [])
             if rationales:
-                st.markdown("**Why these agents were selected**")
+                st.markdown(ui_text('**Why these agents were selected**'))
                 for rationale in rationales:
                     st.text(rationale)
             results = trace.get("agent_results", [])
             for result in results:
                 with st.expander(label(result.get("agent"))):
                     if result.get("blocked"):
-                        st.info("This agent's generated explanation was withheld.")
+                        st.info(ui_text("This agent's generated explanation was withheld."))
                         continue
                     for rationale in result.get("rationale", []):
                         st.text(rationale)
             if not rationales and not results:
                 st.info(
-                    "No final explanation was saved. The timeline shows the decisions recorded before execution stopped."
+                    ui_text('No final explanation was saved. The timeline shows the decisions recorded before execution stopped.')
                 )
             for title, key in (
                 ("Education evidence", "retrieval_sources"),
@@ -244,9 +245,9 @@ def render_trace(trace):
             ):
                 sources = audit.get(key, [])
                 if sources:
-                    st.markdown(f"**{title}**")
+                    st.markdown(f"**{ui_text(title)}**")
                     st.dataframe(
-                        [
+                        display_frame([
                             {
                                 "Source": source.get("source_id"),
                                 "Title": source.get("title"),
@@ -254,26 +255,27 @@ def render_trace(trace):
                                 or source.get("corpus_version"),
                             }
                             for source in sources
-                        ],
+                        ]),
                         hide_index=True,
                     )
         st.caption(
-            "These are recorded decisions and stated reasons. They do not expose hidden model reasoning."
+            ui_text('These are recorded decisions and stated reasons. They do not expose hidden model reasoning.')
         )
 
     with timeline:
         if "durable_events" not in audit:
             st.caption(
-                "Legacy trace: showing the final audit events; incremental history may be unavailable."
+                ui_text('Legacy trace: showing the final audit events; incremental history may be unavailable.')
             )
         if not events:
-            st.info("No events have been recorded for this run.")
+            st.info(ui_text('No events have been recorded for this run.'))
         else:
             rows = event_rows(events)
             components = sorted({row["Component"] for row in rows})
             component = st.selectbox(
-                "Component",
+                ui_text('Component'),
                 ["All components", *components],
+                format_func=text_formatter({value: value for value in ["All components", *components]}),
                 key=f"coach-trace-component-{trace_id}",
             )
             visible = (
@@ -283,23 +285,25 @@ def render_trace(trace):
             )
             tasks = sorted({row["Task"] for row in visible if row["Task"]})
             task = st.selectbox(
-                "Task", ["All tasks", *tasks], key=f"coach-trace-task-{trace_id}-{component}"
+                ui_text('Task'), ["All tasks", *tasks],
+                format_func=text_formatter({value: value for value in ["All tasks", *tasks]}),
+                key=f"coach-trace-task-{trace_id}-{component}"
             )
             if task != "All tasks":
                 visible = [row for row in visible if row["Task"] == task]
-            st.dataframe(visible, hide_index=True, width="stretch")
+            st.dataframe(display_frame(visible), hide_index=True, width="stretch")
             st.caption(
-                "Steps follow saved event order. Parallel tasks can overlap; task and parent IDs establish relationships."
+                ui_text('Steps follow saved event order. Parallel tasks can overlap; task and parent IDs establish relationships.')
             )
             step = st.selectbox(
-                "Inspect event",
+                ui_text('Inspect event'),
                 [row["Step"] for row in visible],
                 format_func=lambda n: f"{n} · {rows[n - 1]['Event']}",
                 key=f"coach-trace-event-{trace_id}-{component}",
             )
             if step is not None:
                 event = events[step - 1]
-                with st.expander("Event identifiers and metadata"):
+                with st.expander(ui_text('Event identifiers and metadata')):
                     st.json(
                         {
                             **{
@@ -338,16 +342,16 @@ def render_trace(trace):
                     f"{json.dumps(row['Requester task'])} -> {json.dumps(row['Provider task'])} [label={json.dumps(row['Capability'])}];"
                 )
             st.graphviz_chart("\n".join([*dot, "}"]), width="stretch")
-            st.caption("Arrows point from the requesting task to the task providing a capability.")
-            st.dataframe(edges, hide_index=True)
+            st.caption(ui_text('Arrows point from the requesting task to the task providing a capability.'))
+            st.dataframe(display_frame(edges), hide_index=True)
         else:
             st.info(
-                "No dependency edges were saved. This does not prove that every task ran independently."
+                ui_text('No dependency edges were saved. This does not prove that every task ran independently.')
             )
         resolutions = audit.get("dependency_resolutions", [])
         if resolutions:
             st.dataframe(
-                [
+                display_frame([
                     {
                         "Capability": r.get("capability"),
                         "Resolution": r.get("resolution"),
@@ -356,17 +360,17 @@ def render_trace(trace):
                         "Reason": r.get("reason_code"),
                     }
                     for r in resolutions
-                ],
+                ]),
                 hide_index=True,
             )
     with models:
         if not calls:
             st.info(
-                "No model calls were recorded. The request may have stopped before a model was invoked."
+                ui_text('No model calls were recorded. The request may have stopped before a model was invoked.')
             )
         else:
             st.dataframe(
-                [
+                display_frame([
                     {
                         "Component": c.get("component", "Unknown"),
                         "Status": c.get("status", "unknown"),
@@ -380,13 +384,13 @@ def render_trace(trace):
                         "Error": c.get("error_code"),
                     }
                     for c in calls
-                ],
+                ]),
                 hide_index=True,
             )
             st.caption(
-                "Missing token counts are unknown, not zero. A call still marked running may have continued after the run ended."
+                ui_text('Missing token counts are unknown, not zero. A call still marked running may have continued after the run ended.')
             )
-    with st.expander("Run metadata"):
+    with st.expander(ui_text('Run metadata')):
         st.json(
             {
                 key: trace.get(key)
@@ -403,9 +407,9 @@ def render_trace(trace):
         )
 
 
-def trace_link(trace_id):
+def trace_link(trace_id, locale="en"):
     if trace_id and st.button(
-        "View decision trace", key=f"coach-open-trace-{trace_id}", icon=":material/account_tree:"
+        translate("coach.trace", locale), key=f"coach-open-trace-{trace_id}", icon=":material/account_tree:"
     ):
         st.session_state.coach_trace_target = {"user_id": get_user_id(), "trace_id": trace_id}
         st.query_params["page"] = "traces"
@@ -414,7 +418,7 @@ def trace_link(trace_id):
 
 def trace_page():
     client, user_id = get_client(), get_user_id()
-    page_header("Decision traces", "Inspect saved decisions, evidence, and execution outcomes")
+    page_header(ui_text('Decision traces'), ui_text('Inspect saved decisions, evidence, and execution outcomes'))
     prefix = f"coach_trace_{user_id}"
     offset_key, open_key = f"{prefix}_offset", f"{prefix}_open"
     target = st.session_state.pop("coach_trace_target", None)
@@ -427,20 +431,20 @@ def trace_page():
 
     controls, refresh = st.columns([4, 1], vertical_alignment="bottom")
     status = controls.selectbox(
-        "Run status",
+        ui_text('Run status'),
         ["all", *STATUSES],
-        format_func=lambda s: "All statuses" if s == "all" else STATUSES[s],
+        format_func=text_formatter({"all": "All statuses", **STATUSES}),
         key=f"{prefix}_status",
         on_change=reset_list,
     )
-    refresh.button("Refresh", key=f"{prefix}_refresh", use_container_width=True)
-    with st.expander("Find by reference ID"), st.form(f"{prefix}_lookup"):
-        trace_id = st.text_input("Find by reference ID", max_chars=128)
-        if st.form_submit_button("Open trace"):
+    refresh.button(ui_text('Refresh'), key=f"{prefix}_refresh", use_container_width=True)
+    with st.expander(ui_text('Find by reference ID')), st.form(f"{prefix}_lookup"):
+        trace_id = st.text_input(ui_text('Find by reference ID'), max_chars=128)
+        if st.form_submit_button(ui_text('Open trace')):
             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", trace_id.strip()):
                 st.session_state[open_key] = trace_id.strip()
             else:
-                st.warning("Enter a valid reference ID.")
+                st.warning(ui_text('Enter a valid reference ID.'))
     offset = st.session_state.get(offset_key, 0)
     page = backend_call(
         lambda: client.list_traces(
@@ -461,10 +465,10 @@ def trace_page():
         # The selected ID is metadata only. Always reload its authorized record.
         st.session_state[picker_key] = current if current in options else None
         st.selectbox(
-            "Recent runs",
+            ui_text('Recent runs'),
             list(options),
             index=None,
-            placeholder="Choose a run",
+            placeholder=ui_text('Choose a run'),
             format_func=lambda id: (
                 f"{STATUSES.get(options[id]['status'], 'Unknown')} · {local_time(options[id]['created_at'])} · {options[id]['conversation_title'][:70]} · {id[:8]}"
             ),
@@ -473,27 +477,27 @@ def trace_page():
         )
     else:
         st.info(
-            "No runs match this filter. Traces appear after a coaching request and may expire under the retention policy."
+            ui_text('No runs match this filter. Traces appear after a coaching request and may expire under the retention policy.')
         )
     previous, next_page = st.columns(2)
-    if previous.button("Newer runs", disabled=offset == 0, key=f"{prefix}_previous"):
+    if previous.button(ui_text('Newer runs'), disabled=offset == 0, key=f"{prefix}_previous"):
         st.session_state[offset_key] = max(0, offset - 25)
         st.rerun()
     if next_page.button(
-        "Older runs", disabled=page.get("next_offset") is None, key=f"{prefix}_next"
+        ui_text('Older runs'), disabled=page.get("next_offset") is None, key=f"{prefix}_next"
     ):
         st.session_state[offset_key] = page["next_offset"]
         st.rerun()
     selected = st.session_state.get(open_key)
     if not selected:
-        st.caption("Choose a recent run or enter a reference ID to inspect it.")
+        st.caption(ui_text('Choose a recent run or enter a reference ID to inspect it.'))
         return
     trace = backend_call(lambda: client.get_trace(user_id, selected) or {"missing": True})
     if trace is None:
         return
     if trace.get("missing"):
         st.warning(
-            "This trace is unavailable for the active profile. It may have expired or been deleted."
+            ui_text('This trace is unavailable for the active profile. It may have expired or been deleted.')
         )
         return
     st.divider()

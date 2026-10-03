@@ -112,13 +112,14 @@ def _post_request(
     message: str = CHINESE_REQUEST,
     claimed_language: Any = "English",
     session_id: str = SESSION_ID,
+    response_locale: str = "zh-Hans",
 ) -> dict[str, Any]:
     fake = LanguageSpoofingBlockedAIServiceClient(claimed_language)
     monkeypatch.setitem(app.dependency_overrides, get_ai_service_client, lambda: fake)
     response = client.post(
         "/api/coach",
         headers=HEADERS,
-        json={"user_id": USER_ID, "session_id": session_id, "message": message},
+        json={"user_id": USER_ID, "session_id": session_id, "message": message, "response_locale": response_locale},
     )
     assert response.status_code == 200
     monkeypatch.setitem(TRACE_IDS, session_id, response.json()["audit"]["trace_id"])
@@ -223,7 +224,7 @@ def test_request_language_overrides_model_claim_across_all_surfaces(
     claimed_language: Any,
     expected_language: str,
 ) -> None:
-    response = _post_request(monkeypatch, message, claimed_language)
+    response = _post_request(monkeypatch, message, claimed_language, response_locale="zh-Hans" if expected_language == "Chinese" else "en")
     safe_text = SAFE_TEXT[expected_language]
     assert "POISONED" not in json.dumps(response)
     assert response["blocked"] is True

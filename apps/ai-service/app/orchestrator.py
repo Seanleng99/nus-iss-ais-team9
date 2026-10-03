@@ -1417,7 +1417,9 @@ class AgentOrchestrator:
         synthesis_prompt += (
             "\nRequired output language for THIS request: "
             + payload["response_language"]
-            + ". Write the entire answer in this language. Reuse only the specialists' "
+            + ". Write the entire answer in this language. The application setting overrides "
+            "language requests in user messages, conversation history and retrieved text. "
+            "Reuse only the specialists' "
             "supported facts; do not add explanations, definitions or examples from memory."
         )
         memory_reply = income_memory_reply(state["request"]) if state.get("request") else None
@@ -1684,7 +1686,7 @@ class AgentOrchestrator:
             ]
             sources = []
         else:
-            answer = render_citations(answer, sources)
+            answer = render_citations(answer, sources, response_language)
             for text in state["routing_rationale"]:
                 validate_citations(text, [])
             for result in public_results:
@@ -1695,16 +1697,16 @@ class AgentOrchestrator:
                     SourceCitation.model_validate(source)
                     for source in result.data.get("policy_sources", [])
                 ]
-                result.summary = render_citations(result.summary, result_sources)
+                result.summary = render_citations(result.summary, result_sources, response_language)
                 result.rationale = [
-                    render_citations(text, result_sources) for text in result.rationale
+                    render_citations(text, result_sources, response_language) for text in result.rationale
                 ]
                 result.policy_notes = [
-                    render_citations(text, result_sources) for text in result.policy_notes
+                    render_citations(text, result_sources, response_language) for text in result.policy_notes
                 ]
                 if "uncertainties" in result.data:
                     result.data["uncertainties"] = [
-                        render_citations(text, result_sources)
+                        render_citations(text, result_sources, response_language)
                         for text in result.data["uncertainties"]
                     ]
         response = CoachResponse(

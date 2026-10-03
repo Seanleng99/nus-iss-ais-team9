@@ -50,6 +50,7 @@ def test_chinese_answer_check_rejects_an_english_answer_with_chinese_metadata() 
             user_id="eval",
             session_id="language-check",
             message=language_case("evaluation_runner.response"),
+            response_locale="zh-Hans",
             requested_agents=["investment_education"],
         )
     )

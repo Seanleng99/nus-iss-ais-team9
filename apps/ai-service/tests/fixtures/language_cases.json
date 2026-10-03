@@ -1,4 +1,5 @@
 {
+  "language_selection.request_chinese": "请用中文解释 ETF 的风险。",
   "budget_review.result": "请设置2026年10月的每月预算：宠物护理120新加坡元。保存之前请先让我确认。",
   "chinese_safety_explanations.rationale": "最终安全审查已拦截此回复。",
   "chinese_safety_explanations.test_legacy_evidence_gap_is_localized_without_generation": "请解释分散投资。",
@@ -87,5 +88,10 @@
   "v7_response_contract.summary": "分散投资可减少集中风险，但仍可能亏损。",
   "v7_response_contract.result": "解释分散投资",
   "v7_response_contract.test_v7_fails_after_one_unsuccessful_citation_correction": "解释分散投资",
-  "v7_response_contract.generate": "解释依据提供的教育资料。"
+  "v7_response_contract.generate": "解释依据提供的教育资料。",
+  "language_selection.compound_question": "请简单解释复利。",
+  "language_selection.incomplete_notice": "此解释可能尚未涵盖你问题的所有部分。",
+  "language_selection.source_document": "已保存的来源文档",
+  "language_selection.source_summary": "项目撰写的摘要",
+  "language_selection.inline_citation": "知识库："
 }

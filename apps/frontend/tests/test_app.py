@@ -123,6 +123,9 @@ class CoachClient:
         self.questions: list[str] = []
         self.sessions: dict[str, dict] = {}
 
+    def get_profile(self, user_id: str) -> dict:
+        return {"preferred_language": "English"}
+
     def list_chat_sessions(self, user_id: str) -> list[dict]:
         return [
             {
@@ -208,6 +211,7 @@ def test_multipage_app_renders_without_runtime_errors() -> None:
     app.run(timeout=30)
 
     assert not app.exception
+    assert [item.label for item in app.main.selectbox] == ["Language"]
     assert "Currency: SGD (fixed)" in [item.value for item in app.sidebar.caption]
     assert app.sidebar.selectbox[0].label == "Active profile"
     assert app.sidebar.selectbox[0].options == ["Alex Lee · alex", "Sam Tan · sam"]
@@ -432,6 +436,7 @@ def test_coach_answer_and_reopened_history_display_approved_source_links() -> No
     app.session_state["backend_client"] = CoachClient()
     app.session_state["active_user_id"] = "coach-user"
     app.run(timeout=30)
+    assert not app.selectbox  # The selector is supplied by the shared application header.
 
     app.button(key="coach-starter-0").click().run(timeout=30)
 
@@ -588,7 +593,7 @@ def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
         f"'response_language': {language!r}, "
         "'routing_rationale': ['POISONED_MODEL_RATIONALE'], "
         "'agent_results': [{'agent': 'budget', 'rationale': ['POISONED_MODEL_RATIONALE']}]"
-        "})"
+        f"}}, {'zh-Hans' if language == 'Chinese' else 'en'!r})"
     )
     app.run(timeout=30)
 
@@ -598,7 +603,10 @@ def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
     assert "POISONED_MODEL_RATIONALE" not in rendered_markdown
     assert "POISONED_MODEL_RATIONALE" not in rendered_warnings
     assert warning in rendered_warnings
-    assert "Reference ID: trace-blocked · Prompt set: v9" in rendered_captions
+    if language != "Chinese":
+        assert "Reference ID: trace-blocked · Prompt set: v9" in rendered_captions
+    else:
+        assert language_case("coach.reference") in rendered_captions
 
 def test_budget_charts_custom_category_and_save_round_trip() -> None:
     class CustomBudgetClient(WorkspaceDefaultsClient):

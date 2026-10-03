@@ -328,6 +328,8 @@ def test_app_rerun_renders_only_matching_reply_once(caplog, defer_history):
     def handler(request):
         nonlocal hidden_reads
         requests.append(request)
+        if request.url.path.endswith("/profile"):
+            return httpx.Response(200, json={"preferred_language": "English"})
         if request.url.path == "/api/coach":
             question = json.loads(request.content)["message"]
             explanation = {"trace_id": new_trace, "selected_agents": ["budget"], "blocked": False}

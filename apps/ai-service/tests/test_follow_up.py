@@ -364,7 +364,7 @@ def test_demonstrative_references_are_resolved_in_both_languages(message):
 
 def test_explicit_education_agent_alone_does_not_invent_a_concept():
     result = resolve_follow_up(
-        request(language_case("follow_up.result"), requested_agents=["investment_education"])
+        request(language_case("follow_up.result"), requested_agents=["investment_education"], response_locale="zh-Hans")
     )
     assert result.status == "ambiguous" and result.question == language_case(
         "follow_up.test_explicit_education_agent_alone_does_not_invent_a_concept"
@@ -612,7 +612,7 @@ def test_clarification_stays_concise_when_reviewer_marks_it_incomplete(message, 
             return super().generate(**kwargs)
 
     gateway, retriever = IncompleteReviewer(), RecordingRetriever()
-    response = handle(request(message), gateway, retriever)
+    response = handle(request(message, response_locale="en" if question.startswith("Which") else "zh-Hans"), gateway, retriever)
     assert response.blocked == blocked
     assert response.audit["answer_status"] == ("refused" if blocked else "needs_input")
     assert (response.answer == question) == (not blocked)

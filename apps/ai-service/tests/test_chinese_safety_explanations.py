@@ -53,17 +53,17 @@ def workflow(gateway, education_retriever=None):
     )
 
 
-def request(message, agents=None):
+def request(message, agents=None, *, locale="en"):
     return CoachRequest(
         user_id="synthetic-language", session_id="synthetic-language",
-        message=message, requested_agents=agents,
+        message=message, requested_agents=agents, response_locale=locale,
         snapshot={"monthly_income": {"amount": 5000}},
     )
 
 
-def route_state(message, agents=None):
+def route_state(message, agents=None, *, locale="en"):
     return {
-        "request": request(message, agents), "sanitized_message": message,
+        "request": request(message, agents, locale=locale), "sanitized_message": message,
         "trace_id": "synthetic-language", "executed_at": "2026-09-15T00:00:00Z",
     }
 
@@ -95,6 +95,7 @@ def test_legacy_evidence_gap_is_localized_without_generation(message, summary, r
     )
     outcome = agent.run_task(AgentTask(
         agent="investment_education", sanitized_message=message, input_data={},
+        context_features={"response_locale": "en" if summary.startswith("The approved") else "zh-Hans"},
     ))
     assert isinstance(outcome, CompletedInvocation)
     assert not outcome.result.blocked
@@ -137,6 +138,7 @@ def test_base_language_contract_uses_request_instead_of_grounding_language(
         })
     outcome = agent.run_task(AgentTask(
         agent="spending", sanitized_message=message, input_data={},
+        context_features={"response_locale": "zh-Hans" if expected_language == "Chinese" else "en"},
     ))
     assert not outcome.result.blocked
     assert len(gateway.calls) == 1
@@ -176,7 +178,9 @@ def test_base_language_contract_uses_request_instead_of_grounding_language(
 def test_boundary_block_is_localized_and_withholds_input(
     message, answer, summary, rationale, policy_note,
 ):
-    response = workflow(NoGenerationGateway()).handle(request(message))
+    response = workflow(NoGenerationGateway()).handle(request(
+        message, locale="en" if answer.startswith("I cannot") else "zh-Hans",
+    ))
     assert response.blocked and response.selected_agents == [] and response.sources == []
     assert response.answer == answer
     assert response.disclaimers == [localize_reviewed(ADVISORY_DISCLAIMER, response.audit["response_language"])]
@@ -277,7 +281,9 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
             )
             return [poisoned, *clean]
 
-    response = workflow(PoisonedGateway(), MixedRetriever()).handle(request(message))
+    response = workflow(PoisonedGateway(), MixedRetriever()).handle(request(
+        message, locale="zh-Hans" if chinese else "en",
+    ))
     assert response.blocked and response.sources == []
     assert response.selected_agents == [AgentName.INVESTMENT_EDUCATION, AgentName.SPENDING]
     assert response.answer == (
@@ -325,6 +331,7 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
 def test_explicit_selection_explanation_is_localized_without_router(message, chinese):
     result = workflow(NoGenerationGateway())._route(route_state(
         message, ["spending", "risk_compliance", "spending"],
+        locale="zh-Hans" if chinese else "en",
     ))
     assert result["selected_agents"] == [AgentName.SPENDING]
     assert result["routing_rationale"] == [
@@ -358,7 +365,7 @@ def test_fallback_explanation_and_router_language_contract(message, language):
             return json.dumps({"selected_agents": ["spending"], "rationale": ["MODEL_RATIONALE"]})
 
     gateway = SpendingRouter()
-    result = workflow(gateway)._route(route_state(message))
+    result = workflow(gateway)._route(route_state(message, locale="zh-Hans" if language == "Chinese" else "en"))
     assert result["selected_agents"] == [AgentName.SPENDING, AgentName.INVESTMENT_EDUCATION]
     assert result["routing_rationale"] == [
         "MODEL_RATIONALE",
@@ -397,7 +404,7 @@ def test_fallback_explanation_and_router_language_contract(message, language):
 )
 def test_no_evidence_dependency_warning_is_localized(message, warning):
     orchestrator = workflow(NoGenerationGateway(), EmptyEducationRetriever())
-    state = route_state(message, ["budget"])
+    state = route_state(message, ["budget"], locale="en" if warning.startswith("No relevant") else "zh-Hans")
     state.update(orchestrator._route(state))
     state.update(orchestrator._initialize_tasks(state))
     state.update(orchestrator._run_ready_tasks(state))
@@ -436,6 +443,7 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
     response = workflow(gateway, EmptyEducationRetriever()).handle(CoachRequest(
         user_id="synthetic-language", session_id="missing-education-calculations",
         message=message, requested_agents=[agent_name],
+        response_locale="zh-Hans" if chinese else "en",
         snapshot={
             "monthly_income": {"amount": 5000},
             "recurring_expenses": [{
@@ -519,6 +527,7 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
 def test_allowed_chinese_request_preserves_source_titles_and_disclaimer():
     response = workflow(LocalFixtureModelGateway()).handle(request(
         language_case("chinese_safety_explanations.response"), ["investment_education"],
+        locale="zh-Hans",
     ))
     assert not response.blocked and response.sources
     originals = {

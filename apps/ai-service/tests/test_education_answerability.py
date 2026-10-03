@@ -213,7 +213,9 @@ def test_observed_claim_references_are_not_promises_and_cannot_mask_one(text):
 )
 def test_unsupported_education_explains_scope_and_offers_a_supported_topic(question, limitation, alternative):
     gateway = HybridGateway()
-    response = workflow(gateway, FixedRetriever()).handle(request(question))
+    response = workflow(gateway, FixedRetriever()).handle(request(question).model_copy(
+        update={"response_locale": "en" if limitation == "outside this version" else "zh-Hans"},
+    ))
     assert not response.blocked
     assert limitation in response.answer
     assert alternative in response.answer
@@ -269,6 +271,8 @@ def test_incomplete_safe_answer_gets_only_one_repair_and_a_new_review(fixed):
     assert repair_input['grounding']['contexts']
     assert response.audit["answer_status"] == ("answered" if fixed else "incomplete")
     assert not response.blocked
+    assert "Please name the concept" not in response.answer
+    assert ("may not cover every part" in response.answer) is not fixed
 
 
 def test_safe_repair_fits_observed_token_usage_without_repeating_the_draft():

@@ -9,13 +9,14 @@ from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 
 
-def ask(message, gateway=None, *, requested_agents=None):
+def ask(message, gateway=None, *, requested_agents=None, response_locale="en"):
     return AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture"),
         gateway=gateway or LocalFixtureModelGateway(),
     ).handle(CoachRequest(
         user_id="synthetic-review", session_id="synthetic-review",
         message=message,
+        response_locale=response_locale,
         requested_agents=(
             requested_agents if requested_agents is not None else ["investment_education"]
         ),
@@ -226,7 +227,7 @@ def test_existing_corpus_concepts_can_be_retrieved(question):
 
 
 def test_chinese_evidence_gap_is_in_chinese():
-    response = ask(language_case("investment_review_regressions.response"))
+    response = ask(language_case("investment_review_regressions.response"), response_locale="zh-Hans")
     assert (
         language_case("investment_review_regressions.test_chinese_evidence_gap_is_in_chinese")
         in response.answer

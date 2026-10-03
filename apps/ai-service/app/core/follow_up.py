@@ -6,7 +6,7 @@ confirmation or calculation input. Unsupported or ambiguous references clarify.
 
 import re
 
-from coach_i18n import input_pattern, language_name, load_data, resolve_locale, translate
+from coach_i18n import input_pattern, load_data, request_locale, translate
 
 from app.agents.education_access import (
     education_model_question,
@@ -46,6 +46,13 @@ GOAL_REFERENCE = re.compile(
 
 
 def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
+    resolution = _resolve_follow_up(request)
+    if resolution.status == "ambiguous":
+        resolution.question = translate("conversation.choose_subject", request_locale(request))
+    return resolution
+
+
+def _resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
     message = request.message.strip()
     ordinal = ORDINAL.search(message)
     if ACTION.search(message) or SWITCH.search(message):
@@ -354,5 +361,5 @@ def _ambiguous(message, reason):
     return FollowUpResolution(
         status="ambiguous",
         reason_code=reason,
-        question=translate('conversation.choose_subject', language_name(resolve_locale(message))),
+        question=translate('conversation.choose_subject', "en"),
     )

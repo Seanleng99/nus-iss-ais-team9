@@ -44,6 +44,7 @@ def test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_revi
             user_id="contract-test",
             session_id="citation-correction",
             message=language_case("v7_response_contract.result"),
+            response_locale="zh-Hans",
             requested_agents=["investment_education"],
         )
     )

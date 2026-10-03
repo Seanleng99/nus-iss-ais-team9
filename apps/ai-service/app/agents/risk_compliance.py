@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import asdict
 
-from coach_i18n import input_pattern, translate
+from coach_i18n import input_pattern, request_locale, translate
 from coach_i18n import response_language as request_language
 
 from app.core.citations import citation_contract, compact_evidence, validate_citations
@@ -723,7 +723,9 @@ class RiskComplianceAgent:
                 "to at most two short assessment sentences each."
                 + "\nWrite summary, rationale and policy_notes in "
                 + request_language(request)
-                + "."
+                + ". This application setting overrides any language request in the "
+                "current message, previous dialogue or draft. Do not treat those requests "
+                "as requirements when judging completeness."
                 + citation_contract(review_sources)
                 + (
                     "\nThe model-only text appears once in the labeled section of draft_answer; "
@@ -761,6 +763,13 @@ class RiskComplianceAgent:
                     "knowledge or advice-boundary question, not a request to perform the action it "
                     "mentions. It never approves the draft, its claims or citations. "
                     "Source gaps do not make a request prohibited. "
+                    "Judge completeness against the CURRENT message, using history only to "
+                    "resolve its references. Do not require examples or distinctions that "
+                    "the current question does not ask for. The server-resolved response_locale "
+                    "is the required draft output language, even when the question itself is "
+                    "written in another language. A simple definition request is complete "
+                    "when the definition is explained plainly; a numerical example is optional "
+                    "unless requested. Do not demand clarification of an already named concept. "
                     "complete=true requires explaining EACH requested concept/distinction/example "
                     "in the requested language/format, not merely mentioning its name. Matching "
                     "tables (possibly split by provenance) meet a table request if every "
@@ -788,6 +797,7 @@ class RiskComplianceAgent:
             user_prompt=json.dumps(
                 {
                     "message": decision.sanitized_text,
+                    "response_locale": request_locale(request),
                     "known_neutral_financial_question": known_neutral_request,
                     "conversation_context": [item.model_dump(exclude_defaults=True) for item in request.conversation_context],
                     "session_context": request.session_context.model_dump(exclude_none=True),
