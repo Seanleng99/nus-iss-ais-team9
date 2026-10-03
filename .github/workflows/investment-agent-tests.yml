@@ -54,7 +54,7 @@ jobs:
         run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
       - name: Test report formatter
         run: python -m unittest discover -s infra/scripts/tests -p 'test_summarize_investment_tests.py' -v
-      - name: Run offline investment tests
+      - name: Run offline investment safety tests
         working-directory: apps/ai-service
         run: >-
           mkdir -p ../../artifacts &&
@@ -64,14 +64,14 @@ jobs:
           tests/test_risk_compliance.py
           tests/test_investment_live_contract.py
           --junitxml=../../artifacts/investment-agent-offline.xml
-      - name: Publish offline test results
+      - name: Publish offline safety test results
         if: always()
         run: >-
           python infra/scripts/summarize_investment_tests.py
           artifacts/investment-agent-offline.xml
           --output artifacts/investment-agent-offline-summary.md
-          --title "Offline investment test results"
-      - name: Upload offline test report
+          --title "Offline investment safety test results"
+      - name: Upload offline safety test report
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -79,6 +79,61 @@ jobs:
           path: |
             artifacts/investment-agent-offline.xml
             artifacts/investment-agent-offline-summary.md
+          if-no-files-found: error
+          retention-days: 7
+
+  functional:
+    name: Functional investment tests — ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - level: beginner
+            label: Beginner investor
+            selector: test_beginner_investor_functional
+          - level: intermediate
+            label: Intermediate investor
+            selector: test_intermediate_investor_functional
+          - level: specialist
+            label: Senior specialist investor
+            selector: test_specialist_investor_functional
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            apps/shared/pyproject.toml
+            apps/ai-service/pyproject.toml
+      - name: Install AI service
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
+      - name: Run offline functional tests
+        working-directory: apps/ai-service
+        run: >-
+          mkdir -p ../../artifacts &&
+          python -m pytest -k "${{ matrix.selector }}" -vv --investment-report
+          tests/test_investment_functional.py
+          --junitxml=../../artifacts/investment-agent-functional-${{ matrix.level }}.xml
+      - name: Publish functional test results
+        if: always()
+        run: >-
+          python infra/scripts/summarize_investment_tests.py
+          artifacts/investment-agent-functional-${{ matrix.level }}.xml
+          --output artifacts/investment-agent-functional-${{ matrix.level }}-summary.md
+          --title "Functional tests — ${{ matrix.label }} (offline)"
+      - name: Upload functional test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: investment-agent-functional-${{ matrix.level }}-report
+          path: |
+            artifacts/investment-agent-functional-${{ matrix.level }}.xml
+            artifacts/investment-agent-functional-${{ matrix.level }}-summary.md
           if-no-files-found: error
           retention-days: 7
 
@@ -96,7 +151,7 @@ jobs:
 
   live:
     name: Optional live GPT-6 Luna evaluation
-    needs: [offline, dispatch-guard]
+    needs: [offline, functional, dispatch-guard]
     if: github.event_name == 'workflow_dispatch' && inputs.run_live == true && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
