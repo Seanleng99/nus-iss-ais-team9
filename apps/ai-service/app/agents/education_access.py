@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 
 from coach_i18n import (
     input_pattern,
@@ -14,6 +15,9 @@ EDUCATION_TOPIC_PHRASES = load_data("education_vocabulary")["EDUCATION_TOPIC_PHR
 # Canonical concepts preserve educational detail without embedding the user's
 # amounts, identifiers, or unrestricted text in retrieval queries.
 EDUCATION_DETAIL_PHRASES = load_data("education_vocabulary")["EDUCATION_DETAIL_PHRASES"]
+PUBLIC_EDUCATION_SEARCH_ALIASES = load_data("education_vocabulary").get(
+    "PUBLIC_EDUCATION_SEARCH_ALIASES", {},
+)
 
 CANONICAL_EDUCATION_TOPICS: tuple[str, ...] = tuple(dict.fromkeys(
     [topic for _, topic in EDUCATION_TOPIC_PHRASES]
@@ -30,7 +34,7 @@ GENERIC_EDUCATION_QUESTION = re.compile(
 UNSUPPORTED_EDUCATION_TOPIC_PHRASES = load_data("education_vocabulary")["UNSUPPORTED_EDUCATION_TOPIC_PHRASES"]
 
 DETAILED_EDUCATION_TOPICS = {
-    "bond duration", "zero-coupon bonds", "treasury bills",
+    "bond duration", "bond convexity", "zero-coupon bonds", "treasury bills",
     "Singapore Savings Bonds", "dollar-cost averaging",
     "compound interest", "inflation", "fixed deposits", "investment scams",
 }
@@ -112,7 +116,7 @@ def education_topics(message: str) -> list[str]:
     )
     broad_text = normalized
     for phrase, topic in EDUCATION_TOPIC_PHRASES:
-        if topic in {"bond duration", "zero-coupon bonds", "Singapore Savings Bonds"}:
+        if topic in {"bond duration", "bond convexity", "zero-coupon bonds", "Singapore Savings Bonds"}:
             broad_text = broad_text.replace(phrase, " ")
     topics: list[str] = []
     for phrase, topic in EDUCATION_TOPIC_PHRASES:
@@ -165,6 +169,8 @@ def education_topics(message: str) -> list[str]:
             topics.append(topic)
     if unsupported_education_topics(message) and "investment basics" in topics:
         topics.remove("investment basics")
+    if topics and _contains_phrase(normalized, "risk") and not any("risk" in topic for topic in topics):
+        topics.append("investment risk")
     if not topics and any(
         _contains_phrase(normalized, phrase)
         for phrase in GENERIC_EDUCATION_TOPIC_PHRASES
@@ -179,8 +185,14 @@ def missing_education_topics(topics: list[str], contexts: list[dict]) -> list[st
     return [topic for topic in topics if topic in DETAILED_EDUCATION_TOPICS - evidenced]
 
 
-def apply_education_scope(grounding: dict, message: str, topics: list[str]) -> None:
-    missing_topics = missing_education_topics(topics, grounding["contexts"])
+def apply_education_scope(
+    grounding: dict, message: str, topics: list[str], *, semantic_assessment: bool = False,
+) -> None:
+    # Runtime semantic assessment checks the carried passages directly. Do not
+    # discard them first because a concept's exact phrase was absent.
+    missing_topics = [] if semantic_assessment else missing_education_topics(topics, grounding["contexts"])
+    if not semantic_assessment:
+        missing_topics = list(dict.fromkeys(missing_topics + grounding.get("topics_without_context", [])))
     grounding["query_topics"] = list(topics)
     grounding["unanswered_topics"] = list(dict.fromkeys(
         unsupported_education_topics(message) + missing_topics
@@ -205,6 +217,8 @@ def education_gap_message(grounding: dict) -> str:
             "education.outside_scope", locale,
             topics=separator.join(topic_label(topic, locale) for topic in excluded),
         )
+    if grounding.get("coverage_assessment") == "semantic_contract_unverified":
+        return translate("education.verification_unavailable", locale)
     message = translate("education.insufficient_evidence", locale)
     if topics:
         message += translate(
@@ -241,6 +255,7 @@ def should_request_education_context(message: str) -> bool:
 
 def build_minimal_education_query(
     message: str, *, additional_topics: tuple[str, ...] | list[str] = (),
+    additional_search_terms: tuple[str, ...] | list[str] = (),
 ) -> tuple[str, list[str]]:
     invalid_topics = [topic for topic in additional_topics if topic not in CANONICAL_EDUCATION_TOPICS]
     if invalid_topics:
@@ -250,4 +265,44 @@ def build_minimal_education_query(
         topics.remove("investment basics")
     if not topics:
         raise ValueError("No allowlisted education topic was identified.")
-    return f"General investment education about {', '.join(topics)}", topics
+    query = f"General investment education about {', '.join(topics)}"
+    concepts = public_education_search_terms(additional_search_terms)
+    if concepts:
+        query += "; concepts: " + ", ".join(concepts)
+    return query, topics
+
+
+@lru_cache(maxsize=1)
+def _public_education_words() -> frozenset[str]:
+    # Retrieval terms can only contain words already present in the governed
+    # public corpus. Never concatenate the user's free text into a query.
+    from app.rag.local_documents import DEFAULT_CORPUS_ROOT, load_documents
+
+    _, documents = load_documents(
+        DEFAULT_CORPUS_ROOT / "source_manifest.json", DEFAULT_CORPUS_ROOT / "documents",
+    )
+    return frozenset(re.findall(
+        r"[a-z]+", " ".join(text for _, text in documents).casefold(),
+    ))
+
+
+def public_education_search_terms(candidates: tuple[str, ...] | list[str]) -> list[str]:
+    if not candidates:
+        return []
+    vocabulary = _public_education_words()
+    forbidden = {"my", "your", "account", "password", "secret", "ignore", "instruction",
+                 "system", "email", "phone", "name", "user", "salary"}
+    result = []
+    for candidate in candidates[:12]:
+        if not isinstance(candidate, str):
+            continue
+        # Exact governed aliases admit public account/scam concepts without
+        # accepting arbitrary credential values or the user's account details.
+        candidate = " ".join(candidate.casefold().split())
+        candidate = PUBLIC_EDUCATION_SEARCH_ALIASES.get(candidate, candidate)
+        if not re.fullmatch(r"[A-Za-z][A-Za-z -]{1,79}", candidate):
+            continue
+        words = set(re.findall(r"[a-z]+", candidate.casefold()))
+        if words and words.issubset(vocabulary) and not words.intersection(forbidden):
+            result.append(candidate.casefold().strip())
+    return list(dict.fromkeys(result))

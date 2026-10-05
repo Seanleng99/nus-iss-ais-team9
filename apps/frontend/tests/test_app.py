@@ -326,9 +326,13 @@ def test_transaction_inputs_start_empty_or_zero() -> None:
         "Transaction type": "expense",
         "Filter by month": "2026-08",
         "Transaction": None,
+        "Repeat frequency": "unknown",
     }
-    assert [(item.label, item.value) for item in app.number_input] == [("Amount (SGD)", 0.0)]
-    assert [(item.label, item.value) for item in app.date_input] == [("Date", None)]
+    assert [(item.label, item.value) for item in app.number_input] == [("Amount (SGD)", 0.0), ("Every", 1)]
+    assert {item.label: item.value for item in app.date_input} == {
+        "Date": None, "First scheduled date": None, "Next due date": None,
+        "Last scheduled date (optional)": None,
+    }
     assert app.toggle[0].value is False
 
 

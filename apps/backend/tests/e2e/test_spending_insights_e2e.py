@@ -232,11 +232,8 @@ def test_data_quality_indicators(client: TestClient, test_user_with_transactions
     quality = dashboard["spending_data_quality"]
     months = dashboard["spending_months_analyzed"]
 
-    if months >= 6:
-        assert quality == "excellent"
-    elif months >= 3:
-        assert quality == "good"
-    elif months >= 1:
-        assert quality == "limited"
-    else:
-        assert quality == "insufficient"
+    # Month count alone does not establish coverage. This fixture creates
+    # scattered records, so the sampling-aware classification stays below
+    # excellent even when it spans six calendar months.
+    assert months >= 3
+    assert quality == "good"

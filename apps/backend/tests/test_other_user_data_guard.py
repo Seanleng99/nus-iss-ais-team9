@@ -24,7 +24,9 @@ class StubAIServiceClient:
             answer="Stub guidance",
             agent_results=[],
             disclaimers=[],
-            audit={"source": "stub"},
+            audit={"source": "stub", "turn_decision": {
+                "budget_status_query": request.message == "is my spending okay this month?",
+            }},
         )
 
 
@@ -175,4 +177,4 @@ def test_own_data_queries_are_not_blocked(
         assert body["answer"] == expected_answer
         assert stub_ai.last_request is not None
     else:
-        assert stub_ai.last_request is None
+        assert stub_ai.last_request is not None

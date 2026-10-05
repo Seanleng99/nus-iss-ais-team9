@@ -31,7 +31,11 @@ class StubAIServiceClient:
             answer="Stub guidance",
             agent_results=[],
             disclaimers=["Educational guidance only."],
-            audit={"source": "stub"},
+            audit={"source": "stub", "turn_decision": {
+                "budget_status_query": request.message in {
+                    "am I over budget?", "how am I doing with my spending this month?",
+                },
+            }},
         )
 
 
@@ -216,11 +220,11 @@ def test_status_reply_without_data_guides_setup(db_session_factory) -> None:
     [
         "am I over budget?",
         "Am I overspending?",
-        "how am I doing this month?",
+        "how am I doing with my spending this month?",
         "is my spending ok?",
         "am I exceeding my income?",
         "have I gone over my budget?",
-        "am I on track this month?",
+        "am I on track with my spending this month?",
         "is my spending too high?",
     ],
 )
@@ -297,7 +301,7 @@ def test_coach_over_budget_question_answered_locally(
     add_spending("ba-chat", "food", 1300.0)
 
     body = post_coach("ba-chat", "am I over budget?")
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
     lowered = body["answer"].lower()
     assert "over" in lowered
     assert "1,300.00" in body["answer"]
@@ -312,8 +316,8 @@ def test_coach_on_track_question_answered_locally(
     set_income("ba-chat2", 1000.0)
     add_spending("ba-chat2", "food", 200.0)
 
-    body = post_coach("ba-chat2", "how am I doing this month?")
-    assert stub_ai.last_request is None
+    body = post_coach("ba-chat2", "how am I doing with my spending this month?")
+    assert stub_ai.last_request is not None
     assert "on track" in body["answer"].lower()
 
 
@@ -324,7 +328,7 @@ def test_coach_status_question_without_spending_data(
 
     monkeypatch.setattr(routes, "_current_period_start", lambda: PERIOD)
     body = post_coach("ba-chat3", "am I over budget?")
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
     lowered = body["answer"].lower()
     assert "income" in lowered or "budget" in lowered
 

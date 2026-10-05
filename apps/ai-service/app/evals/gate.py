@@ -8,7 +8,12 @@ from app.evals.runner import run_dataset
 
 def evaluate_policy(policy_path: Path) -> tuple[dict, bool]:
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
-    report = {"policy_version": policy["version"], "datasets": [], "passed": True}
+    report = {
+        "policy_version": policy["version"],
+        "measurement": "offline_fixture_contract",
+        "datasets": [],
+        "passed": True,
+    }
 
     for suite in policy["suites"]:
         metrics = run_dataset(Path(suite["dataset"]))
@@ -60,6 +65,8 @@ def write_job_summary(report: dict) -> None:
         return
     lines = [
         "## LLMSecOps evaluation gate",
+        "",
+        "Offline fixture contract checks; generated answer quality requires separate live review.",
         "",
         "| Suite | Check | Metric | Actual | Requirement | Result |",
         "|---|---|---|---:|---:|---|",

@@ -95,3 +95,53 @@ def test_backfill_is_bounded_and_retained_summary_is_not_lost():
     summary = roll_summary(None, messages, 409, {})
     assert all(note["source_position"] >= 273 for note in summary["notes"])
     assert roll_summary(summary, messages, 409, {}) == summary
+
+
+def test_distinct_preferences_do_not_have_a_two_note_limit():
+    preferences = [
+        "Please use short answers.", "I prefer plain English.",
+        "Please use examples.", "I prefer tables for comparisons.",
+    ]
+    messages = [item for position, message in zip(range(1, 9, 2), preferences) for item in exchange(position, message)]
+    messages += [item for position in range(9, 25, 2) for item in exchange(position, f"Explain bonds {position}.")]
+    notes = roll_summary(None, messages, 33, {})["notes"]
+    assert set(preferences) <= {note["user_excerpt"] for note in notes}
+    assert len(notes) == 6
+
+
+def test_fact_and_preference_in_same_turn_keep_preference_without_duplicating_amount():
+    messages = exchange(1, "My income is $5000; please use short answers.")
+    state = build_session_context(SimpleNamespace(conversation_state=None, messages=messages), "Explain ETFs.", 11)
+    assert state["facts"]["monthly_income"]["value"] == "5000"
+    note = state["older_summary"]["notes"][0]
+    assert note["user_excerpt"] == "please use short answers."
+    assert "5000" not in note["user_excerpt"]
+
+
+def test_long_context_preserves_preference_at_the_end_of_the_message():
+    messages = exchange(1, "Earlier examples. " * 40 + "Please use a table for comparisons.")
+    note = roll_summary(None, messages, 11, {})["notes"][0]
+    assert "Please use a table for comparisons." in note["user_excerpt"]
+    assert len(note["user_excerpt"]) <= 240
+
+
+def test_validated_local_response_with_persisted_provenance_enters_summary():
+    messages = exchange(1, "Show recorded spending for September.", "Recorded expenses total SGD 180.")
+    messages[1].orchestration_trace.audit = {"reviewed_response": True, "response_provenance": "backend_validated_local"}
+    note = roll_summary(None, messages, 11, {})["notes"][0]
+    assert note["assistant_excerpt"] == "Recorded expenses total SGD 180."
+
+
+def test_corrected_fact_turn_preserves_its_separate_preference_when_backfilled():
+    messages = exchange(1, "My income is 5000; please use short answers.")
+    messages += exchange(3, "Actually, it's 4200.")
+    facts = {"monthly_income": {"value": "4200", "source_position": 3, "supersedes_position": 1}}
+    notes = roll_summary(None, messages, 13, facts)["notes"]
+    assert len(notes) == 1
+    assert notes[0]["user_excerpt"] == "please use short answers."
+    assert notes[0]["assistant_excerpt"] == ""
+
+
+def test_correction_to_presentation_preference_is_retained():
+    notes = roll_summary(None, exchange(1, "Actually, please use tables."), 11, {})["notes"]
+    assert notes[0]["user_excerpt"] == "please use tables."

@@ -154,7 +154,11 @@ CROSS_USER_DATA_ACCESS_REGEXES = (
     ),
     (
         "third_party_request",
-        re.compile(r"\b" + _RELATION + _POSSESSIVE + r"?\s+" + _THIRD_PARTY_DATA, re.IGNORECASE),
+        re.compile(
+            r"\b(?:show|reveal|access|retrieve|look\s*up|get|tell me|what is|how much|is|are)\b"
+            r"[^.?!]{0,40}\b" + _RELATION + _POSSESSIVE + r"?\s+" + _THIRD_PARTY_DATA,
+            re.IGNORECASE,
+        ),
     ),
     (
         "third_party_request",
@@ -374,6 +378,9 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
                     normalized[:match.start()],
                 )
             ) and not (
+                label == "personalized_allocation"
+                and is_budgeting_allocation(normalized[match.start():])
+            ) and not (
                 label in {"product_recommendation", "personalized_allocation", "personalized_transaction"}
                 and is_educational_recommendation(match.group(1))
             ) and not (
@@ -406,6 +413,15 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
     if is_request and is_reported_guarantee_verification(normalized):
         findings = [f for f in findings if f != "regulated_advice:guaranteed return"]
     return findings
+
+
+def is_budgeting_allocation(text: str) -> bool:
+    """A savings/expense budget is distinct from an investment allocation."""
+    clause = re.split(r"[.!?;\n]", text, maxsplit=1)[0]
+    without_reserve = re.sub(r"\bemergency funds?\b|\bsavings accounts?\b", "savings", clause)
+    if re.search(r"\b(?:invest\w*|stocks?|shares?|bonds?|etfs?|funds?|reits?|products?|portfolio)\b", without_reserve):
+        return False
+    return bool(re.search(r"\b(?:put|allocate)\b.{0,100}\b(?:savings|budget|rent|expenses|debt repayments?)\b", without_reserve))
 
 
 def is_neutral_financial_question(text: str) -> bool:
@@ -723,8 +739,8 @@ class RiskComplianceAgent:
                 "to at most two short assessment sentences each."
                 + "\nWrite summary, rationale and policy_notes in "
                 + request_language(request)
-                + ". This application setting overrides any language request in the "
-                "current message, previous dialogue or draft. Do not treat those requests "
+                + ". This server-resolved locale includes the current language request and overrides "
+                "previous dialogue or draft. Do not treat earlier requests "
                 "as requirements when judging completeness."
                 + citation_contract(review_sources)
                 + (
@@ -811,7 +827,7 @@ class RiskComplianceAgent:
                             "agent": result.agent.value,
                             "summary": (
                                 "Same as draft_answer above."
-                                if len(results) == 1 and draft_answer.startswith(result.summary)
+                                if result.summary and result.summary in draft_answer
                                 else result.summary
                             ),
                             "rationale": result.rationale,
@@ -856,8 +872,22 @@ class RiskComplianceAgent:
                                     "anomalies",
                                     "data_quality",
                                     "months_analyzed",
+                                    # The writer and reviewer need the same
+                                    # deterministic record totals and time scope.
+                                    # These aggregates omit raw receipts and IDs.
+                                    "analysis_coverage",
+                                    "selected_month_coverage",
+                                    "analysis_period_start",
+                                    "analysis_period_end",
+                                    "temporal_pattern_scope",
+                                    "currency",
+                                    "excluded_currencies",
+                                    "calculation_scope",
+                                    "calculation_status",
+                                    "transaction_context",
                                     "needs_input",
                                     "questions",
+                                    "authoritative_outcomes",
                                 )
                                 if key in result.data
                             }),
@@ -897,7 +927,21 @@ class RiskComplianceAgent:
             compliance_data["request_allowed"] = review.request_allowed
             compliance_data["review_block_categories"] = list(dict.fromkeys(review.block_categories))
             compliance_data["answer_complete"] = review.complete
-            compliance_data["repairable"] = review.repairable and review.request_allowed and not output_findings
+            correction_categories = set(review.block_categories)
+            bounded_qualification_repair = bool(correction_categories) and correction_categories <= {
+                "citation_attribution", "factual_qualification",
+            }
+            # The original draft remains withheld. A typed qualification or
+            # attribution defect may request a correction despite contextual
+            # financial wording, but never despite unsafe review output. The
+            # corrected draft still needs a new independent full review.
+            output_allows_repair = not output_findings or (
+                bounded_qualification_repair
+                and all(finding == "response_withheld" for finding in output_findings)
+            )
+            compliance_data["repairable"] = (
+                review.repairable and review.request_allowed and output_allows_repair
+            )
             compliance_data["missing_points"] = [
                 point for point in review.missing_points
                 if not inspect_prompt(point).findings and not financial_advice_findings(point)

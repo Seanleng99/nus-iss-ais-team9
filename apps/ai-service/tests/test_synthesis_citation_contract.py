@@ -155,7 +155,11 @@ def assert_one_correction(gateway):
     assert "CORRECTION:" not in first["system_prompt"]
     assert "CORRECTION:" in correction["system_prompt"]
     assert correction["system_prompt"].startswith(first["system_prompt"])
-    assert correction["user_prompt"] == first["user_prompt"]
+    corrected_payload = json.loads(correction["user_prompt"])
+    feedback = corrected_payload.pop("correction_feedback")
+    assert corrected_payload == json.loads(first["user_prompt"])
+    assert feedback["previous_response"]
+    assert "citation contract" in feedback["validation_issues"]
     assert correction["temperature"] == min(first["temperature"], 0.1)
     assert correction["max_tokens"] == first["max_tokens"]
 
@@ -183,7 +187,7 @@ def test_no_source_budget_repairs_once_without_changing_numbers(version, kind, c
     prompt = first["system_prompt"].casefold()
     assert "no approved sources" in prompt
     assert "without citation markers" in prompt
-    assert "urls" in prompt and "square brackets" in prompt
+    assert "urls" in prompt and "ordinary brackets" in prompt
     issues = correction["system_prompt"].split("Validation issues:", 1)[1].casefold()
     assert "no approved sources" in issues and "use no citation markers" in issues
     assert "and add [source:source-id] markers" not in issues

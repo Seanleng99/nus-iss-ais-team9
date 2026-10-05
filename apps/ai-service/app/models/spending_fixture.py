@@ -64,10 +64,15 @@ def fixture_spending_draft(payload):
     pending = dict(payload.get("pending_draft") or {})
 
     if SPEND_QUERY_PATTERN.search(message):
+        selected_aggregate = bool(payload.get("selected_record_scope") and _absolute_date(message) is None
+            and re.search(r"\b(?:total|sum|aggregate)\b", message, re.IGNORECASE)
+            and not re.search(r"\b(?:this|last|next)\s+(?:month|week|year)\b|\b(?:today|yesterday|all[- ]history|all[- ]time)\b", message, re.IGNORECASE))
         return {
             "is_spending_request": True,
             "action": "query",
             "query_date": _absolute_date(message),
+            "query_scope": "selected_period" if selected_aggregate else "specified",
+            "query_categories": ["dining"] if re.search(r"\bdining\b", message, re.IGNORECASE) else [],
             "transactions": [],
             "questions": [],
         }

@@ -16,13 +16,39 @@ def current_selection(user_id: str = "") -> str:
     if key not in st.session_state:
         # A URL can select an allowlisted output locale, never supply profile data.
         st.session_state[key] = normalize_locale(st.query_params.get(QUERY_KEY)) or "en"
+        st.session_state["workspace-language-explicit"] = bool(
+            normalize_locale(st.query_params.get(QUERY_KEY))
+        )
     return normalize_locale(st.session_state[key]) or "en"
 
 
 def save_selection(user_id: str, widget_key: str) -> None:
     value = normalize_locale(st.session_state.get(widget_key))
     st.session_state[selection_key(user_id)] = value or "en"
+    st.session_state["workspace-language-explicit"] = True
     _sync_url(value or "en")
+
+
+def explicit_selection(user_id: str = "") -> str | None:
+    value = current_selection(user_id)
+    return value if st.session_state.get("workspace-language-explicit") else None
+
+
+def sync_response_locale(user_id: str, locale: str) -> None:
+    value = normalize_locale(locale)
+    if value:
+        st.session_state[selection_key(user_id)] = value
+        st.session_state["workspace-language-explicit"] = True
+        _sync_url(value)
+
+
+def apply_profile_default(user_id: str, locale: str) -> bool:
+    """Align controls with a profile default until the user makes a choice."""
+    value = normalize_locale(locale)
+    if value and explicit_selection(user_id) is None and current_selection(user_id) != value:
+        st.session_state[selection_key(user_id)] = value
+        return True
+    return False
 
 
 def _sync_url(value: str | None) -> None:

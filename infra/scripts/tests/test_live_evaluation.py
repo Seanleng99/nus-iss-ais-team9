@@ -1,4 +1,7 @@
+import json
 import urllib.error
+import urllib.parse
+from uuid import UUID
 
 import pytest
 
@@ -11,6 +14,14 @@ from infra.scripts.live_evaluation import (
     evaluate_response,
     run_live_evaluation,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_owned_fixture_apis(monkeypatch):
+    """Most harness tests isolate coach responses; owned API tests override this."""
+    def owned(_url, _key, _method, _payload, _timeout):
+        return {"policy_version": "test-policy"} if _url.endswith("/data-lifecycle") else {}
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", owned)
 
 
 def test_chat_session_delete_url_preserves_api_prefix_and_encodes_ids() -> None:
@@ -620,3 +631,438 @@ def test_budget_acceptance_checks_extraction_and_missing_inputs(fault):
     )
     budget_checks = [item for item in checks if item["check"].startswith("budget_")]
     assert all(item["passed"] for item in budget_checks) is (fault is None)
+
+
+def conversation_run(monkeypatch, request, cases, provider="openai", cleanup=None):
+    monkeypatch.setattr(live_evaluation, "request_json", request)
+    monkeypatch.setattr(live_evaluation, "cleanup_session", cleanup or (lambda *_args: True))
+    return run_live_evaluation(
+        url="https://example.test/api/coach", api_key="private-api-key", cases=cases,
+        repeats=1, timeout_seconds=1, expected_model_provider=provider,
+        expected_model_id="model", expected_prompt_version="v6",
+        input_cost_per_million=1, output_cost_per_million=2, commit_sha="abc123",
+    )
+
+
+def turn_response(answer="Synthetic answer", *, blocked=False, input_tokens=10):
+    return {
+        "answer": answer, "blocked": blocked, "agent_results": [],
+        "audit": {"model_provider": "openai", "model_id": "model", "prompt_set_version": "v6",
+            "model_calls": [{"component": "router", "input_tokens": input_tokens, "output_tokens": 5}], "model_call_count": 1,
+            "model_input_tokens": input_tokens, "model_output_tokens": 5},
+    }
+
+
+def test_multi_turn_live_evaluation_preserves_session_and_counts_every_turn(monkeypatch):
+    sent = []
+    cleanups = []
+
+    def request(_url, _key, payload, _timeout):
+        sent.append(payload)
+        return turn_response("Private model answer", input_tokens=10 * len(sent)), "correlation"
+
+    report = conversation_run(monkeypatch, request, [{
+        "id": "reference", "category": "continuity", "rubric": ["Resolve the reference"],
+        "setup_turns": [{"message": "Private setup turn"}, {"message": "Private second turn"}],
+        "request": {"message": "Private final turn", "session_id": "untrusted", "user_id": "other"},
+        "expected": {"blocked": False},
+    }], cleanup=lambda *args: cleanups.append(args) or True)
+    assert len(sent) == 3
+    assert len({payload["session_id"] for payload in sent}) == 1
+    assert len({payload["user_id"] for payload in sent}) == 1
+    assert live_evaluation.SYNTHETIC_USER_PATTERN.fullmatch(sent[0]["user_id"])
+    assert sent[0]["session_id"] != "untrusted"
+    assert len(cleanups) == 1
+    assert cleanups[0][2:4] == (sent[0]["user_id"], sent[0]["session_id"])
+    assert report["records"][0]["model_call_count"] == 3
+    assert report["token_usage"] == {"input": 60, "output": 15, "total": 75}
+    assert report["cost_estimate"]["estimated_total"] == 0.00009
+    assert report["records"][0]["setup_turn_count"] == 2
+    assert report["measurement"] == "live_generated_contract_checks"
+    assert report["semantic_quality_review"] == "required"
+    assert "Private" not in json.dumps(report)
+    assert "private-api-key" not in json.dumps(report)
+
+
+def test_cases_seed_owned_records_in_isolation_and_delete_complete_user_data(monkeypatch):
+    actors, created, sent, deleted = {}, [], [], []
+    def owned(url, _key, method, payload, _timeout):
+        if url.endswith("/profiles"):
+            actor = payload["user_id"]
+            assert actor not in actors
+            actors[actor] = {"profile": payload, "transactions": [], "goals": []}
+            created.append(actor)
+            return payload
+        actor = url.split("/users/")[1].split("/")[0]
+        collection = url.rsplit("/", 1)[1]
+        if collection in {"transactions", "goals"}:
+            actors[actor][collection].append(payload.copy())
+            return {"id": "seed-record"}
+        if collection == "data-lifecycle":
+            assert method == "GET"
+            return {"policy_version": "reviewed-policy"}
+        assert collection == "data" and method == "DELETE"
+        assert payload == {"confirm_user_id": actor, "policy_version": "reviewed-policy"}
+        deleted.append(actor)
+        del actors[actor]
+        return {"completed_at": "now"}
+    def request(_url, _key, payload, _timeout):
+        sent.append(payload)
+        state = actors[payload["user_id"]]
+        income = state["profile"]["monthly_income"]["amount"]
+        assert len(state["transactions"]) == 1 and len(state["goals"]) == 1
+        return turn_response(str(income)), None
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", owned)
+    cases = [{"id": str(income), "category": "isolated", "setup_turns": [{"message": "Setup"}],
+        "request": {"message": "Final", "snapshot": {"monthly_income": {"amount": income},
+            "preferences": {"preferred_language": "English"},
+            "recent_transactions": [{"description": "Meal", "category": "food", "amount": {"amount": 10}, "occurred_on": "2026-09-01"}],
+            "goals": [{"name": "Reserve", "target_amount": {"amount": 100}, "target_months": 2}]}},
+        "expected": {"answer_contains": [str(income)]}} for income in (4000, 1000)]
+    report = conversation_run(monkeypatch, request, cases)
+    assert report["passed_runs"] == 2 and not actors
+    assert len(set(created)) == 2 and deleted == created
+    assert sent[0]["user_id"] == sent[1]["user_id"] != sent[2]["user_id"] == sent[3]["user_id"]
+    assert all(live_evaluation.SYNTHETIC_USER_PATTERN.fullmatch(actor) for actor in created)
+    assert all(record["cleanup_succeeded"] for record in report["records"])
+
+
+def test_overlapping_snapshot_views_preserve_duplicate_records_without_duplicate_seeding():
+    item = {"description": "Meal", "category": "food", "amount": {"amount": 10}, "occurred_on": "2026-09-01"}
+    _, records, _ = live_evaluation._fixture_payloads({"recent_transactions": [item, item],
+        "historical_transactions": [item, item], "recurring_expenses": [item]})
+    assert len(records) == 2 and sum(record.get("recurring", False) for record in records) == 1
+
+
+def test_fixture_limits_are_validated_before_any_owned_writes(monkeypatch):
+    calls = []
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", lambda *args: calls.append(args))
+    with pytest.raises(ValueError, match="at most 200"):
+        live_evaluation.seed_case_snapshot("https://example.test/api/coach", "key", "live-evaluation-" + "a" * 32,
+                                          {"recent_transactions": [{}] * 201}, 1)
+    assert not calls
+
+
+def test_complete_user_cleanup_refuses_non_generated_identifiers(monkeypatch):
+    calls = []
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", lambda *args: calls.append(args))
+    assert not live_evaluation.cleanup_user_data("https://example.test/api/coach", "key", "live-evaluation", 1)
+    assert not live_evaluation.cleanup_user_data("https://example.test/api/coach", "key", "real-user", 1)
+    assert not calls
+
+
+def test_partial_fixture_seed_failure_cleans_generated_user_and_stops_coach(monkeypatch):
+    deleted, coach_calls = [], []
+    def owned(url, _key, method, payload, _timeout):
+        if url.endswith("/transactions"):
+            raise LiveEndpointError(422, "seed-failure")
+        if url.endswith("/data-lifecycle"):
+            return {"policy_version": "reviewed-policy"}
+        if method == "DELETE":
+            deleted.append(payload["confirm_user_id"])
+        return {}
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", owned)
+    report = conversation_run(monkeypatch, lambda *args: coach_calls.append(args), [{
+        "id": "seed-failure", "category": "fixtures", "request": {"message": "Never sent", "snapshot": {
+            "recent_transactions": [{"description": "Meal", "category": "food", "amount": {"amount": 10}, "occurred_on": "2026-09-01"}]}}}])
+    assert not coach_calls and len(deleted) == 1
+    assert report["passed_runs"] == 0 and report["records"][0]["cleanup_succeeded"]
+    assert report["records"][0]["http_status"] == 422
+
+
+def test_invalid_setup_stops_final_request_and_still_counts_usage_and_cleanup(monkeypatch):
+    sent = []
+    cleanup_calls = []
+
+    def request(_url, _key, payload, _timeout):
+        sent.append(payload)
+        return turn_response(blocked=True), None
+
+    monkeypatch.setattr(live_evaluation, "request_json", request)
+    monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: cleanup_calls.append(args) or True)
+    report = run_live_evaluation(
+        url="https://example.test/api/coach", api_key="key",
+        cases=[{"id": "failed-setup", "category": "continuity",
+            "setup_turns": [{"message": "Setup"}], "request": {"message": "Do not send this"},
+            "expected": {"blocked": False}}],
+        repeats=1, timeout_seconds=1, expected_model_provider="openai", expected_model_id="model",
+        expected_prompt_version="v6", input_cost_per_million=1, output_cost_per_million=2, commit_sha="abc123",
+    )
+    assert len(sent) == len(cleanup_calls) == 1
+    assert cleanup_calls[0][2:4] == (sent[0]["user_id"], sent[0]["session_id"])
+    assert report["passed_runs"] == 0
+    assert report["token_usage"]["total"] == 15
+    assert {check["check"] for check in report["records"][0]["checks"] if not check["passed"]} == {"setup[0].blocked"}
+
+
+def test_setup_token_usage_survives_final_http_failure(monkeypatch):
+    calls = []
+
+    def request(_url, _key, payload, _timeout):
+        calls.append(payload)
+        if len(calls) == 2:
+            raise LiveEndpointError(503, "final-failure")
+        return turn_response(), "setup-correlation"
+
+    report = conversation_run(monkeypatch, request, [{"id": "failure", "category": "continuity",
+        "setup_turns": [{"message": "Setup"}], "request": {"message": "Final"}}])
+    assert report["token_usage"]["total"] == 15
+    assert report["records"][0]["cleanup_succeeded"] is True
+    assert report["records"][0]["http_status"] == 503
+    assert report["records"][0]["correlation_id"] == "final-failure"
+    assert report["token_usage_complete"] is False
+
+
+def test_oversized_setup_is_rejected_before_endpoint_call(monkeypatch):
+    calls = []
+    with pytest.raises(ValueError, match="at most six"):
+        conversation_run(monkeypatch, lambda *args: calls.append(args), [{
+            "id": "too-many", "category": "continuity", "setup_turns": [{"message": "Setup"}] * 7,
+            "request": {"message": "Final"},
+        }])
+    assert calls == []
+
+
+@pytest.mark.parametrize("expected,answer,data", [
+    ({"answer_excludes": ["automatically saved"]}, "It was automatically saved", {}),
+    ({"maximum_answer_words": 3}, "This has too many words", {}),
+    ({"answer_language": "Chinese"}, "An English answer only", {}),
+    ({"no_draft": True}, "A proposal", {"budget_draft": {"action": "set"}}),
+])
+def test_conversational_expectations_are_enforced(expected, answer, data):
+    response = turn_response(answer)
+    response["agent_results"] = [{"agent": "budget", "data": data}]
+    passed, checks = evaluate_response(response, expected, expected_model_provider="openai",
+        expected_model_id="model", expected_prompt_version="v6")
+    assert not passed
+    assert any(not check["passed"] for check in checks)
+
+
+def test_conversational_dataset_contains_bounded_turns_and_review_rubrics():
+    from pathlib import Path
+    cases = live_evaluation.load_cases(Path(__file__).resolve().parents[2] / "llmsecops/conversational-live-evaluation-cases.jsonl")
+    assert len(cases) >= 16
+    assert all(case["expected"] and case["rubric"] for case in cases)
+    assert sum(bool(case.get("setup_turns")) for case in cases) >= 4
+    assert all(case["expected"].get("minimum_model_calls", 0) >= 1 for case in cases if case["expected"]["blocked"] is False)
+
+
+def test_live_model_call_requirement_rejects_missing_provider_telemetry():
+    passed, checks = evaluate_response(
+        {"answer": "A canned response", "blocked": False},
+        {"blocked": False, "minimum_model_calls": 1},
+        expected_model_provider="openai", expected_model_id="model", expected_prompt_version="v6",
+    )
+    assert not passed
+    failed = {check["check"] for check in checks if not check["passed"]}
+    assert {"model_provider", "model_execution_or_deterministic_safety_evidence", "minimum_model_calls"}.issubset(failed)
+
+
+@pytest.mark.parametrize("unknown_usage", [False, True])
+def test_live_spend_cap_stops_future_calls_and_cleans_current_session(monkeypatch, unknown_usage):
+    requests, cleanups = [], []
+    def request(*args):
+        requests.append(args)
+        if unknown_usage:
+            raise LiveEndpointError(503, "failed-call")
+        return turn_response(), None
+    monkeypatch.setattr(live_evaluation, "request_json", request)
+    monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: cleanups.append(args) or True)
+    report = run_live_evaluation(
+        url="https://example.test/api/coach", api_key="key",
+        cases=[{"id": str(index), "category": "budget", "request": {"message": "Synthetic question"}}
+               for index in range(2)], repeats=1, timeout_seconds=1,
+        expected_model_provider="openai", expected_model_id="model", expected_prompt_version="v6",
+        input_cost_per_million=1, output_cost_per_million=2, commit_sha="test",
+        maximum_estimated_cost_usd=0.00002,
+    )
+    assert len(requests) == len(cleanups) == 1
+    assert report["spending_stopped"] is True
+    assert report["completed_requested_runs"] is False
+    assert report["usage_unknown"] is unknown_usage
+    assert any("all requested runs" in failure for failure in enforce_thresholds(report,
+        minimum_pass_rate=0, maximum_p95_ms=1000, maximum_estimated_cost_usd=1))
+
+
+@pytest.mark.parametrize("header,expected", [(str(UUID(int=100)), str(UUID(int=100))),
+                                           ("../../private-token", None), (None, None)])
+def test_http_failure_preserves_only_a_valid_trace_uuid(monkeypatch, header, expected):
+    def unavailable(*args, **kwargs):
+        raise urllib.error.HTTPError("https://example.test/api/coach", 503, "Private error",
+                                     {"X-Correlation-ID": "correlation", "X-Trace-ID": header}, None)
+    monkeypatch.setattr(live_evaluation.urllib.request, "urlopen", unavailable)
+    with pytest.raises(LiveEndpointError) as failed:
+        live_evaluation.request_json("https://example.test/api/coach", "private-key", {"message": "Private"}, 1)
+    assert failed.value.trace_id == expected
+    assert "private-token" not in str(failed.value)
+    assert LiveEndpointError(503, None).trace_id is None
+
+
+def failed_sdk_trace(trace_id, session_id, fault=None):
+    events = []
+    for index, (input_tokens, output_tokens) in enumerate(((100, 20), (200, 40))):
+        call_id = str(UUID(int=index + 1))
+        start = {"trace_id": trace_id, "event_type": "model.generation.started",
+                 "details": {"call_id": call_id, "prompt": "Private prompt"}}
+        finish = {"trace_id": trace_id, "event_type": "model.generation.finished", "details": {
+            "call_id": call_id, "status": "completed", "input_tokens": input_tokens,
+            "output_tokens": output_tokens, "answer": "Private answer", "error_code": None}}
+        if index == 1:
+            if fault == "provider_failed":
+                finish["details"].update(status="failed", error_code="OPENAI_INVOCATION_FAILED")
+            elif fault == "missing_usage":
+                finish["details"]["output_tokens"] = None
+            elif fault == "invalid_usage":
+                finish["details"]["input_tokens"] = True
+            elif fault == "other_trace_event":
+                finish["trace_id"] = str(UUID(int=999))
+            if fault != "missing_start":
+                events.append(start)
+            if fault != "missing_finish":
+                events.append(finish)
+            if fault == "conflicting_finish":
+                events.append({**finish, "details": {**finish["details"], "output_tokens": 999}})
+        else:
+            events.extend((start, finish, finish))
+    events.append({"trace_id": trace_id, "event_type": "workflow.failed",
+                   "details": {"error_code": "MODEL_TOKEN_BUDGET_EXCEEDED", "error": "Private diagnostic"}})
+    return {"trace_id": trace_id, "session_id": "other-chat" if fault == "other_session" else session_id,
+            "status": "running" if fault == "running_trace" else "failed", "error_code": "AI_SERVICE_UNAVAILABLE",
+            "audit": {"durable_events": events, "prompt": "Private prompt", "answer": "Private answer"}}
+
+
+def failed_trace_run(monkeypatch, *, fault=None, cap=0.01):
+    sent, lifecycle, ordering = [], [], []
+    trace_id = str(UUID(int=100))
+
+    def owned(url, key, method, payload, timeout):
+        if "/coach/traces/" in url:
+            ordering.append("trace_fetch")
+            assert key == "private-key" and method == "GET" and payload is None
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            assert query == {"user_id": [sent[0]["user_id"]]}
+            assert url.split("?")[0].endswith("/coach/traces/" + trace_id)
+            if fault == "fetch_failed":
+                raise OSError("Private fetch diagnostic")
+            return {} if fault == "missing_trace" else failed_sdk_trace(trace_id, sent[0]["session_id"], fault)
+        if url.endswith("/data-lifecycle"):
+            return {"policy_version": "reviewed-policy"}
+        if method == "DELETE":
+            ordering.append("user_cleanup")
+            lifecycle.append(payload["confirm_user_id"])
+            assert payload["policy_version"] == "reviewed-policy"
+        return {}
+
+    def request(url, key, payload, timeout):
+        sent.append(payload)
+        if len(sent) == 1:
+            raise LiveEndpointError(503, "failed-correlation", None if fault == "no_trace_header" else trace_id)
+        return turn_response(), "next-correlation"
+
+    def cleanup(*args):
+        ordering.append("session_cleanup")
+        return True
+
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", owned)
+    monkeypatch.setattr(live_evaluation, "request_json", request)
+    monkeypatch.setattr(live_evaluation, "cleanup_session", cleanup)
+    report = run_live_evaluation(
+        url="https://example.test/api/coach", api_key="private-key",
+        cases=[{"id": str(index), "category": "routing", "request": {"message": "Private request"}}
+               for index in range(2)], repeats=1, timeout_seconds=1,
+        expected_model_provider="openai", expected_model_id="model", expected_prompt_version="v6",
+        input_cost_per_million=1, output_cost_per_million=2, commit_sha="test",
+        maximum_estimated_cost_usd=cap,
+    )
+    assert lifecycle == [request["user_id"] for request in sent]
+    assert all(live_evaluation.SYNTHETIC_USER_PATTERN.fullmatch(actor) for actor in lifecycle)
+    assert len(set(lifecycle)) == len(lifecycle)
+    assert "Private" not in json.dumps(report) and "private-key" not in json.dumps(report)
+    assert "durable_events" not in json.dumps(report)
+    return report, sent, ordering
+
+
+@pytest.mark.parametrize("cap,continued", [(0.01, True), (0.0004, False)])
+def test_failed_http_case_recovers_completed_sdk_usage_before_cleanup_and_obeys_cap(monkeypatch, cap, continued):
+    report, sent, ordering = failed_trace_run(monkeypatch, cap=cap)
+    first = report["records"][0]
+    assert first["passed"] is False and first["http_status"] == 503
+    assert first["input_tokens"] == 300 and first["output_tokens"] == 60
+    assert first["model_call_count"] == first["recovered_completed_model_call_count"] == 2
+    assert first["token_usage_complete"] is True
+    assert first["error_code"] == "MODEL_TOKEN_BUDGET_EXCEEDED"
+    assert first["turns"][0]["model_call_count"] == 2
+    assert len(first["recovered_model_call_ids"]) == 2
+    assert ordering.index("trace_fetch") < ordering.index("session_cleanup") < ordering.index("user_cleanup")
+    assert report["usage_unknown"] is False
+    assert report["spending_stopped"] is not continued
+    assert report["token_usage"]["total"] == (375 if continued else 360)
+    assert len(sent) == (2 if continued else 1)
+
+
+@pytest.mark.parametrize("fault,known_input,known_output", [
+    ("no_trace_header", 0, 0), ("fetch_failed", 0, 0), ("missing_trace", 0, 0), ("other_session", 0, 0),
+    ("missing_finish", 100, 20), ("provider_failed", 100, 20), ("missing_usage", 100, 20),
+    ("invalid_usage", 100, 20), ("other_trace_event", 100, 20), ("conflicting_finish", 100, 20),
+    ("missing_start", 300, 60), ("running_trace", 300, 60),
+])
+def test_failed_usage_recovery_preserves_known_lower_bound_and_stops_on_unknown_calls(
+    monkeypatch, fault, known_input, known_output,
+):
+    report, sent, _ = failed_trace_run(monkeypatch, fault=fault)
+    assert len(sent) == 1
+    assert report["spending_stopped"] is True and report["usage_unknown"] is True
+    assert report["token_usage_complete"] is False
+    assert report["token_usage"] == {"input": known_input, "output": known_output,
+                                      "total": known_input + known_output}
+    assert report["records"][0]["cleanup_succeeded"] is True
+
+
+def test_failure_trace_lookup_never_uses_an_existing_user(monkeypatch):
+    calls = []
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", lambda *args: calls.append(args))
+    assert live_evaluation.failed_turn_usage("https://example.test/api/coach", "key", "real-user",
+                                             "session", str(UUID(int=100)), 1) is None
+    assert live_evaluation.failed_turn_usage("https://example.test/api/coach", "key", "live-evaluation-" + "a" * 32,
+                                             "session", "../../private-token", 1) is None
+    assert calls == []
+
+
+@pytest.mark.parametrize("usage_complete", [False, True])
+def test_composition_transport_unknown_usage_stops_even_when_backend_answer_has_known_prior_tokens(
+    monkeypatch, usage_complete,
+):
+    sent, deleted = [], []
+
+    def request(url, key, payload, timeout):
+        sent.append(payload)
+        response = turn_response("Validated backend preview")
+        response["audit"].update(post_action_composed=False,
+                                 composition_fallback_code="COMPOSITION_UNAVAILABLE" if not usage_complete
+                                 else "ACTION_COMPOSITION_UNGROUNDED")
+        if not usage_complete:
+            response["audit"]["composition_usage_complete"] = False
+        return response, "correlation"
+
+    monkeypatch.setattr(live_evaluation, "request_json", request)
+    monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: deleted.append(args[2]) or True)
+    report = run_live_evaluation(
+        url="https://example.test/api/coach", api_key="private-key",
+        cases=[{"id": str(i), "category": "action", "request": {"message": "Private synthetic preview"}}
+               for i in range(2)], repeats=1, timeout_seconds=1,
+        expected_model_provider="openai", expected_model_id="model", expected_prompt_version="v6",
+        input_cost_per_million=1, output_cost_per_million=2, commit_sha="test",
+        maximum_estimated_cost_usd=0.01,
+    )
+    assert len(sent) == len(deleted) == (2 if usage_complete else 1)
+    assert report["token_usage"]["total"] == (30 if usage_complete else 15)
+    assert report["token_usage_complete"] is usage_complete
+    assert report["usage_unknown"] is not usage_complete
+    assert report["spending_stopped"] is not usage_complete
+    assert report["records"][0]["turns"][0]["token_usage_complete"] is usage_complete
+    if not usage_complete:
+        assert report["records"][0]["composition_usage_complete"] is False
+        assert report["records"][0]["composition_fallback_code"] == "COMPOSITION_UNAVAILABLE"
+        assert any("account for model usage" in failure for failure in enforce_thresholds(
+            report, minimum_pass_rate=0, maximum_p95_ms=1000, maximum_estimated_cost_usd=1))
+    assert "Private" not in json.dumps(report)

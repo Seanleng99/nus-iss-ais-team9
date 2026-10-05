@@ -4,6 +4,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+from coach_i18n import translate
 from fastapi.testclient import TestClient
 
 from app.api.routes import get_ai_service_client
@@ -51,13 +52,24 @@ class RecordingAI:
                 "confidence": 1,
                 "data": {"spending_draft": self.spending_draft},
             }]
+        # This mock emits typed interpreted intent; production behavior no
+        # longer depends on a backend regex before the AI call.
+        message = request.message.casefold()
+        recall = message.startswith("what did i tell you about")
+        budget_status = "over budget" in message or request.session_context.get("pending_action") == "budget_status"
+        fields = []
+        if self.question and ("income" in self.question or "earn each month" in self.question):
+            fields = ["monthly_income"]
         return CoachResponse(
             session_id=request.session_id,
             selected_agents=["spending" if self.spending_draft is not None else "goal_strategy"],
             answer=self.question or "A synthetic explanation.",
             agent_results=results,
             disclaimers=[],
-            audit={"trace_id": str(uuid4())},
+            audit={"trace_id": str(uuid4()), "turn_decision": {
+                "memory_question": recall, "memory_fields": ["monthly_income"] if recall and "income" in message else [],
+                "budget_status_query": budget_status, "missing_fields": fields,
+            }},
             blocked=self.blocked,
         )
 
@@ -254,7 +266,7 @@ def test_local_spending_follow_up_uses_active_topic_and_owned_records(ai, monkey
     ai.spending_draft = None
     second = send("What about 21/9?")
     assert second.json()["audit"]["source"] == "spending_date_query"
-    assert "21 September 2026" in second.json()["answer"]
+    assert "2026-09-21" in second.json()["answer"]
     assert len(ai.requests) == 1
     assert send("Explain diversification.").status_code == 200
     assert send("What about 21/9?").json()["audit"].get("source") != "spending_date_query"
@@ -347,8 +359,97 @@ def test_unresolved_budget_month_is_clarified_and_short_answer_resumes_query(ai,
     assert "Which month and year" in question.json()["answer"]
     assert periods == []
     answer = send("September 2026")
-    assert answer.json()["audit"]["source"] == "budget_alert"
+    assert any(item["operation"] == "budget_status" for item in answer.json()["audit"]["backend_outcomes"])
     assert periods == [date(2026, 9, 1)]
     ambiguous = send("Am I over budget in September 2026 or October 2026?")
     assert "Which single month" in ambiguous.json()["answer"]
     assert len(periods) == 1
+
+
+@pytest.mark.parametrize("message,income,expenses", [
+    ("For context, my income is SGD 5,000 and my monthly expenses are SGD 2,100. Please keep it brief.", "5000", "2100"),
+    ("I take home roughly $4.2k per month, and I usually spend about $2200 a month.", "4200.0", "2200"),
+    ("My take-home pay comes to about SGD 4,800 monthly; my expenses total $2300.", "4800", "2300"),
+])
+def test_paraphrased_compound_reports_retain_attributed_financial_facts(message, income, expenses):
+    state = advance_state(None, message, 9)
+    assert state["facts"]["monthly_income"] == {
+        "value": income, "source_position": 9, "status": "user_reported",
+    }
+    assert state["facts"]["monthly_expenses"]["value"] == expenses
+    assert set(state["last_stated_fields"]) == {"monthly_income", "monthly_expenses"}
+
+
+def test_goal_amount_savings_and_duration_in_natural_compound_statement():
+    state = advance_state(None, "I've already saved $2500, and I want to save $12000 within 24 months.", 3)
+    assert {key: fact["value"] for key, fact in state["facts"].items()} == {
+        "goal_target_amount": "12000", "goal_current_amount": "2500", "goal_target_months": "24",
+    }
+
+
+@pytest.mark.parametrize("message", [
+    "I earn $5000 per year.", "I spend $50 today.",
+    "If I earn $5000, my monthly expenses are $2000.",
+    "Is my monthly income $5000?", '"My income is $5000."',
+    "My friend's income is $5000 per month.",
+])
+def test_embedded_detection_preserves_attribution_and_cadence_boundaries(message):
+    assert advance_state(None, message, 1)["facts"] == {}
+
+
+def test_multiple_values_in_one_clause_are_uncertain_instead_of_first_match_winning():
+    state = advance_state(None, "My income is $5000 or my income is $4200.", 1)
+    assert state["facts"] == {}
+    assert state["uncertain_fields"] == ["monthly_income"]
+
+
+def test_correction_inside_a_compound_turn_uses_the_only_explicit_field():
+    state = advance_state(None, "My income is $5000, actually it is $4200.", 7)
+    assert state["facts"]["monthly_income"]["value"] == "4200"
+    assert state["facts"]["monthly_income"]["source_position"] == 7
+
+
+@pytest.mark.parametrize("correction", ["No, I meant 4200.", "I meant 4200.", "Make that 4200."])
+def test_natural_correction_does_not_require_one_fixed_phrase(correction):
+    previous = advance_state(None, "My income is 5000.", 1)
+    state = advance_state(previous, correction, 3)
+    assert state["facts"]["monthly_income"]["value"] == "4200"
+    assert state["facts"]["monthly_income"]["supersedes_position"] == 1
+
+
+def test_natural_income_clarification_accepts_attributed_bare_answer(ai):
+    ai.question = "How much do you earn each month?"
+    assert send("Can I reach my goal?").status_code == 200
+    ai.question = None
+    assert send("4200").status_code == 200
+    fact = ai.requests[-1].session_context["facts"]["monthly_income"]
+    assert fact["value"] == "4200" and fact["source_position"] == 3
+
+
+def test_deterministic_recall_uses_selected_locale(ai):
+    assert send("My income is 5000.").status_code == 200
+    response = send("What did I tell you about my income?", response_locale="zh-Hans")
+    assert response.status_code == 200
+    answer = response.json()["answer"]
+    assert translate("session_fact.label.monthly_income", "zh-Hans") in answer
+    assert "SGD 5000" in answer
+
+
+def test_validated_local_budget_reply_survives_recent_context_and_older_summary(ai, monkeypatch, db_session_factory):
+    from app.api import routes
+    monkeypatch.setattr(routes, "build_status_reply", lambda db, user, period: "Recorded budget spending: SGD 180.")
+    assert send("Am I over budget in September 2026?").status_code == 200
+    with db_session_factory() as db:
+        chat = db.get(ChatSessionRecord, "session-facts")
+        trace = next(item for item in chat.messages if item.role == "assistant").orchestration_trace
+        assert trace and not trace.blocked
+        assert trace.audit["reviewed_action_outcome"] is True
+        assert any(item["operation"] == "budget_status" for item in trace.audit["backend_outcomes"])
+    assert send("Explain diversification.").status_code == 200
+    assistant = ai.requests[-1].conversation_context[-1]
+    assert assistant.get("answer_status", "available") == "available"
+    assert "SGD 180" in assistant["content"]
+    for _ in range(5):
+        assert send("Explain diversification.").status_code == 200
+    notes = ai.requests[-1].session_context["older_summary"]["notes"]
+    assert any("SGD 180" in note["assistant_excerpt"] for note in notes)

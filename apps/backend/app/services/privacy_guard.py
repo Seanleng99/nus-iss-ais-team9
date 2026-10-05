@@ -122,8 +122,38 @@ def _other_username(message: str, own: set[str]) -> str | None:
         token = match.group(0).strip(".,!?;:'\"").lower()
         if not token or token in own or CURRENCY_AMOUNT_TOKEN.match(token):
             continue
-        return token
+        before, after = message[max(0, match.start() - 40):match.start()], message[match.end():]
+        # Compact date/amount/product tokens are not requests for an account.
+        if re.fullmatch(r"on\d{1,2}", token) and re.match(r"/\d{1,2}\b", after):
+            continue
+        owned_item = re.search(r"\b(?:my|our)\s+$", before, re.IGNORECASE)
+        identifier_context = re.search(r"\b(?:user|account|profile|member|customer)\s*[:=]?\s*$", before, re.IGNORECASE)
+        if not identifier_context and re.fullmatch(r"(?:over|under|above|below|min|max)\d+(?:k)?", token):
+            continue
+        financial_subject = re.match(rf"(?:'s)?\s+{GAP}(?:{DATA_NOUN}|{FINANCIAL_VERB})", after, re.IGNORECASE)
+        if identifier_context or (financial_subject and not owned_item):
+            return token
     return None
+
+
+HOUSEHOLD_FACT = re.compile(
+    r"\b(?:my|our)\s+(?:wife|husband|spouse|partner)(?:'s)?\s+"
+    r"(?:(?:monthly|net|gross|take.home|regular)\s+)?"
+    r"(?:income|salary|earnings|expenses|spending|debts|savings)\s*"
+    r"(?:is|are|was|were|equals|of|:)?\s*(?:SGD|S\$|\$)?\s*"
+    r"\d+(?:[,.]\d+)*(?:k)?\b", re.IGNORECASE,
+)
+
+
+def _without_supplied_household_facts(message):
+    def supplied(match):
+        prefix = message[max(0, match.start() - 80):match.start()]
+        prefix = re.split(r"[.?!;\n]", prefix)[-1]
+        # An explicit lookup stays guarded even if an amount appears later.
+        direct_lookup = re.search(r"\b(?:show|tell|give|get|find)\s+(?:me\s+)?(?:the\s+)?$", prefix, re.IGNORECASE)
+        fetch = re.search(r"\b(?:fetch|access|retrieve|look\s*up|pull\s*up|download|reveal|query)\b", prefix, re.IGNORECASE)
+        return match.group() if direct_lookup or fetch else " "
+    return HOUSEHOLD_FACT.sub(supplied, message)
 
 
 def _named_person(message: str, own: set[str]) -> str | None:
@@ -141,7 +171,7 @@ def find_other_user_reference(message: str, user_id: str) -> str | None:
     The backend only ever loads the signed-in user's own records; this stops the
     coach from answering as though it could see someone else's.
     """
-    text = _normalize(message)
+    text = _without_supplied_household_facts(_normalize(message))
     own = _own_name_tokens(user_id)
     username = _other_username(text, own)
     if username is not None:

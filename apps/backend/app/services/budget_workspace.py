@@ -37,6 +37,7 @@ def context(session, user_id, *, search="", offset=0, operations=None, period=No
             {"id": str(g.id), "name": g.name, "currency": g.currency}
             for g in (session.scalars(
                 select(FinancialGoalRecord).where(FinancialGoalRecord.user_id == user_id)
+                .order_by(FinancialGoalRecord.id).limit(101)
             ) if operations is None or set(operations) & {"commitments", "debt_compare", "reserves"} else [])
         ],
         "budget_history": [{"period_start": k.removeprefix("history:"), "id": v["id"], "saved_at": v["saved_at"], "reason": v["reason"]}
@@ -58,16 +59,72 @@ def context(session, user_id, *, search="", offset=0, operations=None, period=No
             data.pop("goals")
         if "restore" not in operations:
             data.pop("budget_history")
-    return data
+    return _bounded_context(data, period)
+
+
+def _bounded_context(data, period):
+    """Retain every operation's evidence with explicit limits, not noun matching."""
+    settings = data.get("settings", {})
+    common = {key: value for key, value in settings.items() if ":" not in key}
+    dated = sorted((key for key in settings if ":" in key), reverse=True)
+    if period is not None:
+        dated = sorted(dated, key=lambda key: key.endswith(str(period)), reverse=True)
+    selected = dated[:16]
+    data["settings"] = {**common, **{key: settings[key] for key in selected}}
+    limited = []
+    remaining = 24000
+
+    def bound(value, path, depth=0):
+        nonlocal remaining
+        if remaining <= 0 or depth > 8:
+            limited.append(path)
+            return None
+        if isinstance(value, str):
+            size = min(remaining, 240)
+            remaining -= min(len(value), size)
+            if len(value) > size:
+                limited.append(path)
+            return value[:size]
+        if isinstance(value, list):
+            if len(value) > 100:
+                limited.append(path)
+            return [bound(item, path + f"[{index}]", depth + 1)
+                    for index, item in enumerate(value[:100])]
+        if isinstance(value, dict):
+            if len(value) > 100:
+                limited.append(path)
+            result = {}
+            for key, item in list(value.items())[:100]:
+                remaining -= len(str(key))
+                result[key] = bound(item, path + "." + str(key), depth + 1)
+            return result
+        remaining -= len(str(value))
+        return value
+
+    bounded = bound(data, "workspace")
+    if len(dated) > len(selected):
+        limited.append("workspace.settings.older_periods")
+    bounded["context_bounds"] = {
+        "dated_settings_total": len(dated), "dated_settings_included": len(selected),
+        "truncated": bool(limited), "truncated_paths": list(dict.fromkeys(limited))[:40],
+        "scope": "Owned evidence for all planning operations; partial context never authorizes a write.",
+    }
+    return bounded
 
 
 def evidence(session, user_id):
     from app.services.budget_capture import _snapshot
     from app.services.budget_continuity import fingerprint, local_today
 
+    preferences = session.get(PlanningPreferencesRecord, user_id)
     return fingerprint(
         {
             "context": context(session, user_id),
+            "complete_planning_preferences": {
+                key: value for key, value in (preferences.data if preferences else {}).items()
+                if key in {"cashflow", "review_preferences", "reserves", "reconciliation"}
+                or key.startswith(("constraints:", "timing:", "history:"))
+            },
             "date": local_today(),
             "budgets": {
                 str(b.period_start): _snapshot(b)

@@ -5,14 +5,18 @@ from coach_i18n import input_pattern, task_language, topic_label, translate
 
 from app.agents.base import BaseAgent
 from app.agents.education_access import (
+    CANONICAL_EDUCATION_TOPICS,
     apply_education_scope,
     build_minimal_education_query,
     education_gap_message,
     education_model_question,
+    education_topics,
     ordered_education_topics,
+    public_education_search_terms,
     unsupported_education_topics,
 )
-from app.core.citations import SOURCE_MARKER, validate_citations
+from app.core.citations import SOURCE_MARKER, normalize_citation_markers, validate_citations
+from app.core.education_grounding import EducationGroundingSnapshot
 from app.core.guardrails import validate_tool_permission
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
@@ -26,6 +30,14 @@ from app.core.schemas import (
 )
 from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGateway, ModelGatewayError
+from app.rag.answerability import (
+    assess_answerability,
+    build_query_plan,
+    fixture_query_plan,
+    is_fixture_gateway,
+    unassessed_answerability,
+    unverified_answerability,
+)
 from app.rag.retriever import EducationRetriever, build_education_context
 
 
@@ -40,9 +52,12 @@ class InvestmentEducationAgent(BaseAgent):
         temperature: float,
         max_tokens: int,
         education_retriever: EducationRetriever,
+        *,
+        semantic_grounding: bool = True,
     ) -> None:
         super().__init__(gateway, prompts, temperature, max_tokens)
         self.education_retriever = education_retriever
+        self.semantic_grounding = semantic_grounding
         if prompts.version in {"v5", "v6", "v7"}:
             self.narrative_type = GroundedEducationNarrative
         if prompts.version in {"v6", "v7"}:
@@ -51,15 +66,57 @@ class InvestmentEducationAgent(BaseAgent):
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         validate_tool_permission(self.name, "education_retriever")
+        snapshot = task._education_grounding_snapshot
+        if isinstance(snapshot, EducationGroundingSnapshot):
+            grounding = snapshot.for_repair(
+                task, sanitized_message=sanitized_message, prompt_version=self.prompts.version,
+                expected_corpus_version=getattr(
+                    self.education_retriever, "expected_corpus_version",
+                    getattr(self.education_retriever, "corpus_version", None),
+                ),
+            )
+            log_event("education.grounding.reused", component=self.name.value)
+            return grounding
         response_language = task_language(task)
         unsupported_topics = unsupported_education_topics(sanitized_message)
+        semantic_assessment = self.semantic_grounding and self.prompts.version in {"v6", "v7"} and not is_fixture_gateway(self.gateway)
+        plan = None
+        semantic_failure = None
+        if self.prompts.version in {"v6", "v7"}:
+            recognized_topics = list(dict.fromkeys(
+                topic for topic in education_topics(sanitized_message) + task.context_features.get("education_topics", [])
+                if topic in CANONICAL_EDUCATION_TOPICS
+            ))
+            try:
+                plan = build_query_plan(
+                    self.gateway, sanitized_message,
+                    recognized_topics,
+                    unsupported_topics, temperature=self.temperature, max_tokens=self.max_tokens,
+                    reference_context=task.context_features.get("conversation_context", []),
+                ) if self.semantic_grounding else fixture_query_plan(recognized_topics)
+            except ModelGatewayError as exc:
+                if exc.code not in {"INVALID_EDUCATION_PROVENANCE", "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_EDUCATION_TOPIC"}:
+                    raise
+                # The planner already received its one correction attempt.
+                # Discard the rejected plan; canonical hints may permit stable
+                # model knowledge, but cannot establish any source support.
+                semantic_failure = exc.code
+                plan = fixture_query_plan(recognized_topics)
+        plan_topics = [question.topic for question in plan.subquestions] if plan else []
+        plan_terms = [term for question in plan.subquestions for term in question.query_terms] if semantic_assessment and plan else []
         try:
+            if semantic_assessment and plan and not plan.subquestions and not semantic_failure:
+                raise ValueError("No in-scope educational subquestion was identified.")
             query, query_topics = build_minimal_education_query(
-                sanitized_message,
-                additional_topics=task.context_features.get("education_topics", []),
+                # Production intent comes from the validated semantic plan.
+                # Keyword hints must not add adjacent topics or override a
+                # narrowed mechanism, negation or comparison in that plan.
+                "" if semantic_assessment else sanitized_message,
+                additional_topics=plan_topics if semantic_assessment else list(dict.fromkeys(task.context_features.get("education_topics", []) + plan_topics)),
+                additional_search_terms=list(dict.fromkeys(task.context_features.get("education_search_terms", []) + plan_terms)),
             )
         except ValueError:
-            return {
+            grounding = {
                 "scope": (
                     "General investment education from approved sources without "
                     "product advice."
@@ -78,13 +135,22 @@ class InvestmentEducationAgent(BaseAgent):
                 "response_language": response_language,
                 "retrieval_consumer": self.name.value,
             }
-        independent_topics = [topic for topic in query_topics if topic in {
-            "shares", "bonds", "funds", "exchange-traded funds", "index funds",
-            "real estate investment trusts", "fixed deposits", "treasury bills",
-            "Singapore Savings Bonds", "compound interest", "inflation",
-            "market orders", "limit orders", "bid-ask spread", "tracking difference",
-        }]
-        grounding = build_education_context(
+            if semantic_failure:
+                grounding.update({
+                    "coverage_assessment": "semantic_contract_unverified",
+                    "semantic_failure_code": semantic_failure,
+                    "retrieval_strategy": "semantic_plan_unverified",
+                    "coverage_source_ids": [], "subquestions": [], "subquestion_coverage": [],
+                })
+            return self._capture_grounding(task, grounding, sanitized_message)
+        # Specific subquestions get the first share of the bounded evidence
+        # budget; broad concepts still receive their own retrieval opportunity.
+        independent_topics = sorted(query_topics, key=lambda topic: len(topic.split()), reverse=True)
+        grounding = {
+            "scope": "General investment education without product advice.",
+            "evidence_status": "insufficient", "contexts": [], "sources": [],
+            "corpus_version": getattr(self.education_retriever, "expected_corpus_version", None),
+        } if semantic_failure else build_education_context(
             self.education_retriever,
             # A provenance question needs actual source records, not a search
             # for documents containing the words "source verification".
@@ -92,8 +158,53 @@ class InvestmentEducationAgent(BaseAgent):
             if query_topics == ["source verification"] else query,
             scope="General investment education from approved sources without product advice.",
             topics=independent_topics if self.prompts.version in {"v6", "v7"} else (),
+            search_terms=public_education_search_terms(list(dict.fromkeys(task.context_features.get("education_search_terms", []) + plan_terms))),
+            subquestion_queries=[
+                (question.topic, "General investment education about " + question.topic
+                 + "; concepts: " + ", ".join(question.query_terms))
+                for question in plan.subquestions
+            ] if semantic_assessment and plan else (),
         )
-        apply_education_scope(grounding, sanitized_message, query_topics)
+        apply_education_scope(grounding, sanitized_message, query_topics, semantic_assessment=semantic_assessment)
+        grounding["response_language"] = response_language
+        if plan:
+            try:
+                coverage = unverified_answerability(plan) if semantic_failure else assess_answerability(
+                    self.gateway, plan, grounding["contexts"],
+                    temperature=self.temperature, max_tokens=self.max_tokens, sources=grounding["sources"],
+                ) if semantic_assessment else unassessed_answerability(plan, grounding["contexts"])
+            except ModelGatewayError as exc:
+                if exc.code not in {"INVALID_EDUCATION_PROVENANCE", "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_EDUCATION_TOPIC"}:
+                    raise
+                semantic_failure = exc.code
+                coverage = unverified_answerability(plan)
+                # An invalid semantic decision cannot authorize the writer to
+                # cite retrieved passages, even if their topic keywords match.
+                grounding["unverified_source_count"] = len(grounding["sources"])
+                grounding["sources"] = []
+                grounding["contexts"] = []
+                grounding["evidence_status"] = "insufficient"
+            grounding["subquestions"] = [question.model_dump() for question in plan.subquestions]
+            grounding["subquestion_coverage"] = [item.model_dump() for item in coverage.coverage]
+            grounding["coverage_assessment"] = "semantic_contract_unverified" if semantic_failure else "model_semantic_with_exact_quotes" if semantic_assessment else "offline_contract_unassessed"
+            grounding["retrieval_strategy"] = "semantic_plan_unverified" if semantic_failure else "model_public_concept_plan" if semantic_assessment else "canonical_fixture_queries"
+            if semantic_failure:
+                grounding["semantic_failure_code"] = semantic_failure
+            if semantic_assessment:
+                topic_coverage = {}
+                for question, item in zip(plan.subquestions, coverage.coverage, strict=True):
+                    topic_coverage.setdefault(question.topic, []).append(item.status)
+                unanswered = [topic for topic, statuses in topic_coverage.items()
+                              if all(status == "unsupported" for status in statuses)]
+                # Twelve is an explicit resource bound, not permission to claim
+                # complete coverage of additional topics omitted from the plan.
+                unanswered.extend(topic for topic in query_topics if topic not in topic_coverage)
+                grounding["unanswered_topics"] = list(dict.fromkeys(grounding["unanswered_topics"] + unanswered))
+                grounding["coverage_source_ids"] = list(dict.fromkeys(
+                    passage.source_id for item in coverage.coverage for passage in item.supporting_passages
+                ))
+                if any(item.status != "supported" for item in coverage.coverage):
+                    grounding["evidence_status"] = "partial" if grounding["coverage_source_ids"] else "insufficient"
         grounding["excluded_topics"] = unsupported_topics
         grounding["table_requested"] = bool(
             re.search(
@@ -115,6 +226,21 @@ class InvestmentEducationAgent(BaseAgent):
                 and not (topic == "general investment concepts" and unsupported_topics)
                 and topic not in {"source verification", "investment limits"}
             ]
+        # Preserve source coverage independently of a later hybrid writer's
+        # model-only fallback. Conditional Budget/Goal consumers may reuse this
+        # context but do not inherit permission to answer from model memory.
+        grounding["sourced_evidence_status"] = grounding["evidence_status"]
+        grounding["source_unanswered_topics"] = list(grounding.get("unanswered_topics", []))
+        return self._capture_grounding(task, grounding, sanitized_message)
+
+    def _capture_grounding(self, task: AgentTask, grounding: dict, sanitized_message: str) -> dict:
+        task._education_grounding_snapshot = EducationGroundingSnapshot.capture(
+            task, grounding, sanitized_message=sanitized_message, prompt_version=self.prompts.version,
+            expected_corpus_version=getattr(
+                self.education_retriever, "expected_corpus_version",
+                getattr(self.education_retriever, "corpus_version", None),
+            ),
+        )
         return grounding
 
     @trace_method
@@ -126,43 +252,70 @@ class InvestmentEducationAgent(BaseAgent):
         if not isinstance(narrative, GroundedEducationNarrative):
             return narrative
         original_narrative = narrative
+        carried_sources = [SourceCitation.model_validate(source) for source in grounding["sources"]]
+
+        def validate_field_citations(text: str, sources: list[SourceCitation], field: str) -> None:
+            try:
+                validate_citations(text, sources)
+            except ModelGatewayError as exc:
+                # Locations and carried public IDs identify the repair without
+                # repeating rejected prose, links or invented source labels.
+                allowed = json.dumps([source.source_id for source in sources], ensure_ascii=True)
+                raise ModelGatewayError(
+                    f"{field} contains an unapproved citation, malformed marker or generated link. "
+                    f"Permitted citation IDs for this field: {allowed}. "
+                    "Use exact [source:ID] markers for those IDs only; no URLs or links.",
+                    code=exc.code, component=self.name.value,
+                ) from None
+
+        narrative.summary = normalize_citation_markers(narrative.summary, carried_sources)
+        if isinstance(narrative, HybridEducationNarrative):
+            for option in narrative.ordered_options:
+                option.sourced_text = normalize_citation_markers(option.sourced_text, carried_sources)
         if isinstance(narrative, HybridEducationNarrative):
             expected = grounding.get("ordered_topics", [])
             options = narrative.ordered_options
             if expected or options:
-                if (
-                    [option.topic for option in options] != expected
-                    or not expected
-                    or narrative.summary
-                    or narrative.general_knowledge
-                    or narrative.source_ids
-                    or any(
-                        not (option.sourced_text.strip() or option.model_text.strip())
-                        or bool(option.sourced_text.strip()) != bool(option.source_ids)
-                        or re.search(
-                            input_pattern("ai.agents.investment_education.numbered_answer"),
-                            text,
-                            re.MULTILINE,
-                        )
-                        for option in options
-                        for text in (option.sourced_text, option.model_text)
+                option_issues = []
+                if [option.topic for option in options] != expected or not expected:
+                    option_issues.append(
+                        "ordered_options topics must exactly match grounding.ordered_topics in order: "
+                        + json.dumps(expected, ensure_ascii=True) + "."
                     )
-                ):
+                if narrative.summary or narrative.general_knowledge or narrative.source_ids:
+                    option_issues.append(
+                        'For ordered_options, set summary="", source_ids=[] and general_knowledge=[].'
+                    )
+                for index, option in enumerate(options):
+                    if not (option.sourced_text.strip() or option.model_text.strip()):
+                        option_issues.append(f"ordered_options[{index}] needs sourced_text or model_text.")
+                    if bool(option.sourced_text.strip()) != bool(option.source_ids):
+                        option_issues.append(
+                            f"ordered_options[{index}].sourced_text and source_ids must both be populated or both empty."
+                        )
+                    for field in ("sourced_text", "model_text"):
+                        if re.search(
+                            input_pattern("ai.agents.investment_education.numbered_answer"),
+                            getattr(option, field), re.MULTILINE,
+                        ):
+                            option_issues.append(f"ordered_options[{index}].{field} must not contain numbered lists.")
+                if option_issues:
                     raise ModelGatewayError(
-                        "Numbered education must preserve the requested options and provenance.",
+                        " ".join(option_issues),
                         code="INVALID_EDUCATION_OPTIONS", component=self.name.value,
                     )
                 narrative = narrative.model_copy(deep=True)
                 # Reuse every existing scope and citation check on the combined
                 # evidence, while keeping topic ownership for presentation.
-                for option in options:
-                    validate_citations(option.sourced_text, [
+                for index, option in enumerate(options):
+                    validate_field_citations(option.sourced_text, [
                         SourceCitation.model_validate(source) for source in grounding["sources"]
                         if source["source_id"] in option.source_ids
-                    ])
+                    ], f"ordered_options[{index}].sourced_text")
                     if option.sourced_text and not SOURCE_MARKER.search(option.sourced_text):
                         raise ModelGatewayError(
-                            "Each sourced option needs a supporting citation.",
+                            f"ordered_options[{index}].sourced_text needs an inline [source:ID] marker "
+                            "for its declared supporting source_ids.",
                             code="MISSING_CITATION", component=self.name.value,
                         )
                 narrative.summary = "\n\n".join(option.sourced_text for option in options if option.sourced_text)
@@ -177,22 +330,41 @@ class InvestmentEducationAgent(BaseAgent):
             str(source["source_id"])
             for source in grounding.get("sources", [])
         }
+        if grounding.get("coverage_assessment") == "semantic_contract_unverified" and narrative.uncertainties:
+            raise ModelGatewayError(
+                "Set uncertainties=[] when semantic source verification is unavailable. "
+                "The application supplies that status once. Preserve distinct stable-concept "
+                "assumptions and scope in general_knowledge, without claims about unverified passages.",
+                code="INVALID_EDUCATION_PROVENANCE", component=self.name.value,
+            )
         cited_source_ids = list(dict.fromkeys(narrative.source_ids))
         if not set(cited_source_ids).issubset(approved_source_ids):
             raise ModelGatewayError(
-                "The investment-education response cited an unapproved source.",
+                "source_ids contains an unapproved source. Use only the carried approved IDs: "
+                + json.dumps(sorted(approved_source_ids), ensure_ascii=True) + ".",
                 code="UNAPPROVED_CITATION",
                 component=self.name.value,
+            )
+        if grounding.get("coverage_assessment") == "model_semantic_with_exact_quotes" and not set(cited_source_ids).issubset(grounding.get("coverage_source_ids", [])):
+            raise ModelGatewayError(
+                "source_ids must come from passages assessed as supporting a requested subquestion. "
+                "Permitted supporting source IDs: "
+                + json.dumps(grounding.get("coverage_source_ids", []), ensure_ascii=True)
+                + '. If this list is empty, set summary="" and source_ids=[]; explain only '
+                "permitted stable concepts through general_knowledge and preserve the source limitation.",
+                code="INVALID_EDUCATION_PROVENANCE", component=self.name.value,
             )
         sources = [
             SourceCitation.model_validate(source) for source in grounding["sources"]
             if source["source_id"] in cited_source_ids
         ]
-        for text in (narrative.summary, *narrative.rationale, *narrative.uncertainties):
-            validate_citations(text, sources)
+        validate_field_citations(narrative.summary, sources, "summary")
+        for field in ("rationale", "uncertainties"):
+            for index, text in enumerate(getattr(narrative, field)):
+                validate_field_citations(text, sources, f"{field}[{index}]")
         if self.prompts.version == "v7" and narrative.summary and not SOURCE_MARKER.search(narrative.summary):
             raise ModelGatewayError(
-                "The investment-education summary has no citation marker.",
+                "summary needs an inline [source:ID] marker for its declared supporting source_ids.",
                 code="MISSING_CITATION",
                 component=self.name.value,
             )
@@ -200,31 +372,50 @@ class InvestmentEducationAgent(BaseAgent):
         grounding["uncertainties"] = narrative.uncertainties
         if isinstance(narrative, HybridEducationNarrative):
             topics = [section.topic for section in narrative.general_knowledge]
-            if topics and any(
-                paragraph.strip() and not SOURCE_MARKER.search(paragraph)
-                for paragraph in re.split(r"\n(?=\s*(?:[-*]|\d+[.)])\s)|\n\s*\n", narrative.summary)
-            ):
-                raise ModelGatewayError(
-                    "Each sourced paragraph in a hybrid answer needs a supporting citation.",
-                    code="MISSING_CITATION", component=self.name.value,
+            # A table header, introductory line or qualification may share the
+            # following citation. Review checks factual attribution; paragraph
+            # splitting is not a reliable claim or presentation boundary.
+            provenance_issues = []
+            if len(topics) != len(set(topics)):
+                provenance_issues.append(
+                    "general_knowledge has duplicate topic entries. Combine their explanations into one entry per topic."
                 )
-            if (
-                len(topics) != len(set(topics))
-                or not set(topics).issubset(grounding.get("fallback_topics", []))
-                or bool(narrative.summary.strip()) != bool(cited_source_ids)
-            ):
+            invalid_topic_fields = [
+                f"general_knowledge[{index}].topic" for index, topic in enumerate(topics)
+                if topic not in grounding.get("fallback_topics", [])
+            ]
+            if invalid_topic_fields:
+                provenance_issues.append(
+                    ", ".join(invalid_topic_fields)
+                    + " must exactly match a permitted grounding.fallback_topics label: "
+                    + json.dumps(grounding.get("fallback_topics", []), ensure_ascii=True)
+                    + ". These are metadata labels; keep the requested mechanism and natural explanation "
+                    "in text. Do not answer an excluded subject under a permitted label."
+                )
+            if narrative.summary.strip() and not cited_source_ids:
+                provenance_issues.append(
+                    "summary contains text but source_ids is empty. summary is reserved for sourced claims. "
+                    'Set summary="" for a model-only answer and put permitted explanations in general_knowledge.'
+                )
+            elif cited_source_ids and not narrative.summary.strip():
+                provenance_issues.append(
+                    'summary is empty but source_ids is populated. Set source_ids=[] when summary=""; '
+                    "do not declare sources unused by the answer."
+                )
+            if provenance_issues:
                 raise ModelGatewayError(
-                    "Education content did not preserve its permitted scope and provenance.",
+                    " ".join(provenance_issues),
                     code="INVALID_EDUCATION_PROVENANCE", component=self.name.value,
                 )
-            for section in narrative.general_knowledge:
-                validate_citations(section.text, [])
+            for index, section in enumerate(narrative.general_knowledge):
+                validate_field_citations(section.text, [], f"general_knowledge[{index}].text")
                 if re.search(
                     input_pattern("ai.agents.investment_education.attributed_evidence_claim"),
                     section.text, re.IGNORECASE,
                 ):
                     raise ModelGatewayError(
-                        "Model-only education must not attribute claims to retrieved evidence.",
+                        f"general_knowledge[{index}].text attributes model-only claims to retrieved evidence. "
+                        "Remove that attribution; retain the explanation as model knowledge only if its topic is permitted.",
                         code="UNAPPROVED_CITATION", component=self.name.value,
                     )
             if not narrative.summary.strip() and not topics:
@@ -253,21 +444,20 @@ class InvestmentEducationAgent(BaseAgent):
                 label = topic_label(option.topic, grounding.get("response_language"), capitalize=True)
                 parts.append(f"{index}. {label}")
                 if option.sourced_text:
-                    parts.append(
-                        (translate('education.rag_heading', grounding.get("response_language")))
-                        + "\n" + option.sourced_text
-                    )
+                    parts.append(option.sourced_text)
                 if option.model_text:
                     parts.append(
-                        (translate('education.model_knowledge_heading', grounding.get("response_language")))
+                        translate('education.model_knowledge_label', grounding.get("response_language"))
                         + "\n" + option.model_text
                     )
             if narrative.uncertainties:
                 parts.extend(narrative.uncertainties)
                 grounding["uncertainties_visible"] = True
+            if grounding.get("coverage_assessment") == "semantic_contract_unverified":
+                parts.append(education_gap_message(grounding))
             return "\n\n".join(parts)
         sourced_summary = narrative.summary
-        if sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
+        if self.prompts.version not in {"v6", "v7"} and sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
             sourced_summary = (
                 translate('education.rag_section', grounding.get("response_language"))
             ) + sourced_summary
@@ -276,29 +466,30 @@ class InvestmentEducationAgent(BaseAgent):
             # including when a supported portion precedes it.
             if getattr(narrative, "uncertainties", []):
                 grounding["uncertainties_visible"] = True
-                return "\n\n".join(part for part in [sourced_summary, *narrative.uncertainties] if part)
+                parts = [sourced_summary, *narrative.uncertainties]
+                if grounding.get("coverage_assessment") == "semantic_contract_unverified":
+                    parts.append(education_gap_message(grounding))
+                return "\n\n".join(part for part in parts if part)
             return sourced_summary or education_gap_message(grounding)
-        parts = []
-        if narrative.summary.strip():
-            parts.append(sourced_summary)
         sections = []
         for section in narrative.general_knowledge:
-            text = section.text
-            if grounding.get("table_requested") and not text.lstrip().startswith("|"):
-                # Preserve source separation while keeping the requested table
-                # format for stable concepts supplied only by the model.
-                headings = translate('education.table_columns', grounding.get("response_language"))
-                explanation = " ".join(text.splitlines()).replace("|", "\\|")
-                label = topic_label(section.topic, grounding.get("response_language"))
-                text = f"| {headings} |\n|---|---|\n| {label} | {explanation} |"
-            sections.append(text if text.lstrip().startswith("|") else "- " + text)
-        parts.append(
-            (translate('education.model_knowledge_section', grounding.get("response_language")))
-            + "\n\n".join(sections)
+            # Presentation belongs to the writer. Never flatten an explanation
+            # or fabricate a one-row table after generation.
+            sections.append(section.text)
+        model_summary = (
+            translate('education.model_knowledge_label', grounding.get("response_language"))
+            + "\n" + "\n\n".join(sections)
         )
+        # The writer selects the useful lead while the structured fields keep
+        # independent source and model attribution intact for policy review.
+        blocks = ([model_summary, sourced_summary] if narrative.lead_section == "model"
+                  else [sourced_summary, model_summary])
+        parts = [block for block in blocks if block.strip()]
         if narrative.uncertainties:
             parts.extend(narrative.uncertainties)
             grounding["uncertainties_visible"] = True
+        if grounding.get("coverage_assessment") == "semantic_contract_unverified":
+            parts.append(education_gap_message(grounding))
         log_event("education.answer.provenance", component="hybrid" if narrative.summary else "general_knowledge")
         return "\n\n".join(parts)
 
@@ -324,6 +515,25 @@ class InvestmentEducationAgent(BaseAgent):
                 "knowledge scope; never answer them through a generic fallback label. "
                 "If passages address a narrower or different question, state that exact limitation "
                 "instead of presenting those passages as the requested answer."
+                + (
+                    "\nSemantic source verification did not complete successfully. No supplied "
+                    "source is approved for citation. Do not claim the corpus contains no answer. "
+                    "Explain only stable concepts explicitly allowed by fallback_topics as "
+                    "model knowledge. Set uncertainties=[]: the application displays source "
+                    "verification status and any retry request once. Do not repeat that status "
+                    "or retry request in summary, rationale, general_knowledge, or ordered_options. "
+                    "Keep distinct conceptual assumptions and scope inside general_knowledge. "
+                    "Current rules and other excluded portions remain unanswered."
+                    if grounding.get("coverage_assessment") == "semantic_contract_unverified" else ""
+                )
+                + (
+                    "\nsubquestion_coverage assesses the requested meaning using exact carried "
+                    "quotes. Use only its supported portions as sourced evidence; a partial "
+                    "decision is not a complete answer. Preserve each precise limitation in "
+                    "the visible answer or uncertainties. Explain missing stable concepts "
+                    "through general_knowledge only where fallback_topics permits them."
+                    if grounding.get("coverage_assessment") == "model_semantic_with_exact_quotes" else ""
+                )
                 + (
                     "\nFor this numbered request, return ordered_options in exactly this topic order: "
                     + json.dumps(grounding["ordered_topics"], ensure_ascii=False)

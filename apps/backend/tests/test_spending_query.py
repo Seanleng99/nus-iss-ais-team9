@@ -159,14 +159,14 @@ def test_date_query_no_transactions_on_day(stub_ai: type[StubAIServiceClient]) -
     add_transaction("dq-u2", "Chicken rice", "food", 5.0, "2026-09-20")
     stub_ai.draft = query_draft("2026-09-21")
     body = post_coach("dq-u2", "what is my spending on 21/9/2026?")
-    assert "no transactions" in body["answer"].lower()
+    assert "no matching" in body["answer"].lower()
 
 
 def test_date_query_without_any_data(stub_ai: type[StubAIServiceClient]) -> None:
     # The model leaves relative dates null; the backend resolves "yesterday".
     stub_ai.draft = query_draft(None)
     body = post_coach("dq-u3", "how much did I spend yesterday?")
-    assert "no transactions" in body["answer"].lower()
+    assert "no matching" in body["answer"].lower()
 
 
 def test_non_date_spending_questions_still_go_to_ai(

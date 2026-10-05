@@ -45,7 +45,10 @@ class Settings(BaseSettings):
         default="change-me-locally", alias="AI_SERVICE_API_KEY"
     )
     ai_service_timeout_seconds: float = Field(
-        default=45.0, gt=0, le=120, alias="AI_SERVICE_TIMEOUT_SECONDS"
+        default=90.0, gt=0, le=120, alias="AI_SERVICE_TIMEOUT_SECONDS"
+    )
+    ai_service_composition_timeout_seconds: float = Field(
+        default=25.0, gt=0, le=120, alias="AI_SERVICE_COMPOSITION_TIMEOUT_SECONDS"
     )
     trace_retention_days: int = Field(
         default=30, ge=1, le=365, alias="TRACE_RETENTION_DAYS"

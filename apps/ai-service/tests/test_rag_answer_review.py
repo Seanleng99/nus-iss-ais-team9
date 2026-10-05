@@ -697,6 +697,9 @@ def test_capture_answerability_forwards_bounded_multiturn_context_without_forcin
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
         POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
         EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        MAX_MODEL_TOKENS_PER_RUN=20000,
+        AGENT_TIMEOUT_SECONDS=20,
+        MODEL_READ_TIMEOUT_SECONDS=15,
     )
     case = answer_review.AnswerabilityCase(
         id="long-en", kind="quality", family="long", split="development", language="en",
@@ -844,6 +847,9 @@ def test_capture_answerability_omits_blocked_assistant_from_followup_context(tmp
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
         POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
         EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        MAX_MODEL_TOKENS_PER_RUN=20000,
+        AGENT_TIMEOUT_SECONDS=20,
+        MODEL_READ_TIMEOUT_SECONDS=15,
     )
     case = answer_review.AnswerabilityCase(
         id="safe-en", kind="safety", family="safe", split="development", language="en",

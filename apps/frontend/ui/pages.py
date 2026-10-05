@@ -8,13 +8,18 @@ from urllib.parse import quote
 import httpx
 import pandas as pd
 import streamlit as st
-from coach_i18n import translate
+from coach_i18n import resolve_locale, translate
 
 from client import build_request
 from ui.budget_methods import METHODS
 from ui.budget_page import render_budget_page
 from ui.budget_timing import render_timing_summary
-from ui.coach_language import current_selection
+from ui.coach_language import (
+    apply_profile_default,
+    current_selection,
+    explicit_selection,
+    sync_response_locale,
+)
 from ui.components import backend_call, clamp_progress, money, page_header, percent
 from ui.currency_markdown import currency_safe_markdown
 from ui.i18n import (
@@ -90,7 +95,7 @@ HOUSING_OPTIONS = [
     "prefer not to say",
 ]
 LITERACY_OPTIONS = ["beginner", "intermediate", "advanced"]
-LANGUAGE_OPTIONS = ["English", "Mandarin", "Malay", "Tamil", "Other"]
+LANGUAGE_OPTIONS = ["English", "Mandarin"]
 ACCESSIBILITY_OPTIONS = [
     "plain language",
     "shorter responses",
@@ -236,6 +241,7 @@ def _transaction_payload(
     amount: float,
     occurred_on: date,
     recurring: bool,
+    recurrence: dict | None = None,
 ) -> dict:
     return {
         "description": description.strip(),
@@ -243,7 +249,39 @@ def _transaction_payload(
         "amount": {"currency": "SGD", "amount": amount},
         "occurred_on": occurred_on.isoformat(),
         "recurring": recurring,
+        "recurrence": recurrence if recurring else None,
     }
+
+
+def _recurrence_fields(key, existing=None):
+    existing = existing or {}
+    options = ["unknown", "once", "weekly", "fortnightly", "monthly", "yearly"]
+    with st.expander(ui_text("Recurring schedule (optional)")):
+        frequency = st.selectbox(ui_text("Repeat frequency"), options,
+            index=options.index(existing.get("frequency", "unknown")),
+            format_func=option_formatter(), key=f"{key}-frequency")
+        interval = st.number_input(ui_text("Every"), min_value=1, max_value=120,
+            value=int(existing.get("interval", 1)), step=1, key=f"{key}-interval")
+        first_on = st.date_input(ui_text("First scheduled date"),
+            value=date.fromisoformat(existing["first_on"]) if existing.get("first_on") else None,
+            key=f"{key}-first")
+        next_due = st.date_input(ui_text("Next due date"),
+            value=date.fromisoformat(existing["next_due_on"]) if existing.get("next_due_on") else None,
+            key=f"{key}-next")
+        last_on = st.date_input(ui_text("Last scheduled date (optional)"),
+            value=date.fromisoformat(existing["last_on"]) if existing.get("last_on") else None,
+            key=f"{key}-last")
+        month_end = st.checkbox(ui_text("On the last day of the month"),
+            value=bool(existing.get("month_end", False)),
+            key=f"{key}-month-end")
+        if frequency == "unknown":
+            st.caption(ui_text("Frequency is unknown until you provide a schedule."))
+            return None
+        return {"frequency": frequency, "interval": interval,
+                "month_end": bool(month_end) if frequency in {"monthly", "yearly"} else False,
+                "first_on": first_on.isoformat() if first_on else None,
+                "next_due_on": next_due.isoformat() if next_due else None,
+                "last_on": last_on.isoformat() if last_on else None}
 
 
 def _create_pie_chart(categories: list[str], amounts: list[float], currency: str):
@@ -653,6 +691,7 @@ def transactions_page() -> None:
             recurring = fourth.toggle(
                 ui_text('Recurring expense'), key=f"add-transaction-{user_id}-recurring-v2"
             )
+            recurrence = _recurrence_fields(f"add-transaction-{user_id}")
             add_submitted = st.form_submit_button(
                 ui_text('Add transaction'), type="primary", icon=":material/add:"
             )
@@ -665,11 +704,13 @@ def transactions_page() -> None:
                 st.warning(ui_text('Enter a transaction amount greater than zero.'))
             elif occurred_on is None:
                 st.warning(ui_text('Select a transaction date.'))
+            elif recurring and recurrence and (not recurrence["first_on"] or not recurrence["next_due_on"]):
+                st.warning(ui_text('Enter the first scheduled date and next due date.'))
             else:
                 result = backend_call(
                     lambda: client.create_transaction(
                         user_id,
-                        {**_transaction_payload(description, category, amount, occurred_on, recurring), "transaction_type": transaction_type},
+                        {**_transaction_payload(description, category, amount, occurred_on, recurring, recurrence), "transaction_type": transaction_type},
                     )
                 )
                 if result:
@@ -827,6 +868,7 @@ def transactions_page() -> None:
                     value=selected["recurring"],
                     key=f"manage-transaction-{selected_id}-recurring",
                 )
+                edit_recurrence = _recurrence_fields(f"manage-transaction-{selected_id}", selected.get("recurrence"))
                 edit_type = st.selectbox(ui_text('Transaction type'), ["expense", "income", "transfer", "refund"], format_func=option_formatter(), index=["expense", "income", "transfer", "refund"].index(selected.get("transaction_type", "expense")), key=f"manage-transaction-{selected_id}-type")
                 save, delete = st.columns(2)
                 save_submitted = save.form_submit_button(
@@ -836,11 +878,15 @@ def transactions_page() -> None:
                     ui_text('Delete'), icon=":material/delete:"
                 )
             if save_submitted:
+                if edit_recurring and edit_recurrence and (not edit_recurrence["first_on"] or not edit_recurrence["next_due_on"]):
+                    st.warning(ui_text('Enter the first scheduled date and next due date.'))
+                    return
                 result = backend_call(
                     lambda: client.update_transaction(
                         user_id,
                         selected_id,
-                        {**_transaction_payload(edit_description, edit_category, edit_amount, edit_date, edit_recurring), "transaction_type": edit_type},
+                        {**_transaction_payload(edit_description, edit_category, edit_amount, edit_date, edit_recurring, edit_recurrence), "transaction_type": edit_type,
+                         "obligation_id": selected.get("obligation_id") if edit_recurring else None},
                     )
                 )
                 if result:
@@ -1006,6 +1052,9 @@ def _render_coach_message(message: dict, locale="en") -> None:
                 if message["role"] == "user"
                 else currency_safe_markdown(message["content"])
             )
+            explanation = message.get("explanation") or message.get("audit") or {}
+            if explanation.get("model_provider") == "local_fixture":
+                st.caption(translate("coach.offline_fixture", locale))
             sources = message.get("sources", [])
             if sources:
                 if any(source.get("document_filename") for source in sources):
@@ -1046,6 +1095,11 @@ def coach_page() -> None:
     client = get_client()
     user_id = get_user_id()
     selection = current_selection(user_id)
+    profile = backend_call(lambda: client.get_profile(user_id)) or {}
+    if explicit_selection(user_id) is None:
+        selection = resolve_locale("", preferred=profile.get("preferred_language"))
+        if apply_profile_default(user_id, selection):
+            st.rerun()
     ui_locale = selection
 
     def label(key, **values):
@@ -1252,6 +1306,13 @@ def coach_page() -> None:
             _render_coach_message(message, ui_locale)
 
     if pending_question and active_session_id:
+        response_locale = resolve_locale(
+            pending_question,
+            selected=explicit_selection(user_id),
+            preferred=profile.get("preferred_language"),
+            history=history,
+        )
+        sync_response_locale(user_id, response_locale)
         with st.chat_message("user", avatar=":material/person:"):
             st.markdown(_user_message_markdown(pending_question))
         with trace_context(journey_id=st.session_state.get("journey_id")), call_span(
@@ -1420,7 +1481,7 @@ def profile_page() -> None:
                 index=_option_index(LANGUAGE_OPTIONS, profile.get("preferred_language")),
                 key=f"profile-{user_id}-preferred-language-v2",
             )
-            st.caption(ui_text("The application language controls Coach replies; this profile preference does not override it."))
+            st.caption(translate("coach.language_preference_help", current_selection(user_id)))
             accessibility_preferences = st.multiselect(
                 ui_text('Accessibility preferences'),
                 ACCESSIBILITY_OPTIONS,

@@ -72,6 +72,20 @@ class UserRecord(TimestampMixin, Base):
     )
 
 
+class CoachActionStateRecord(TimestampMixin, Base):
+    """Private, durable references for one user's conversation actions."""
+
+    __tablename__ = "coach_action_states"
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    last_saved: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    pending_edit: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
 class FinancialProfileRecord(TimestampMixin, Base):
     __tablename__ = "financial_profiles"
     __table_args__ = (
@@ -139,6 +153,7 @@ class TransactionRecord(TimestampMixin, Base):
         CheckConstraint("amount >= 0", name="amount_non_negative"),
         Index("ix_transactions_user_occurred", "user_id", "occurred_on"),
         Index("ix_transactions_user_category", "user_id", "category"),
+        Index("ix_transactions_user_obligation", "user_id", "obligation_id"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -151,6 +166,8 @@ class TransactionRecord(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), default="SGD", nullable=False)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    recurrence: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    obligation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     transaction_type: Mapped[str] = mapped_column(String(16), default="expense", server_default="expense", nullable=False)
     user: Mapped[UserRecord] = relationship(back_populates="transactions")
 
@@ -233,6 +250,9 @@ class ChatSessionRecord(TimestampMixin, Base):
     pending_budget: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     conversation_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     pending_transaction: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    action_state: Mapped["CoachActionStateRecord | None"] = relationship(
+        cascade="all, delete-orphan", uselist=False,
+    )
     user: Mapped[UserRecord] = relationship(back_populates="chat_sessions")
     traces: Mapped[list["OrchestrationTraceRecord"]] = relationship(
         cascade="all, delete-orphan",

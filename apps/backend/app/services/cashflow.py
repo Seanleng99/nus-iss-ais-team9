@@ -1,30 +1,28 @@
 """Calendar-based cash flow from explicit schedules, opening balance and typed records."""
 
-import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+from coach_math.recurrence import occurs
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 
 from app.domain.currency import ApplicationCurrency
+from app.domain.recurrence import RecurrenceTerms
 from app.infrastructure.models import TransactionRecord
 from app.services.financial_workspace import read_section
 
 
-class Schedule(BaseModel):
+class Schedule(RecurrenceTerms):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=100)
     category: str = Field(min_length=1, max_length=64)
     kind: Literal["income", "expense"]
     amount: float = Field(gt=0, le=999999999999.99, multiple_of=0.01, allow_inf_nan=False)
-    first_on: date
-    last_on: date | None = None
-    frequency: Literal["once", "weekly", "fortnightly", "monthly", "yearly"]
     settled_dates: list[date] = Field(default_factory=list, max_length=366)
 
     @model_validator(mode="after")
@@ -49,19 +47,6 @@ class CashflowSettings(BaseModel):
         if len({item.id for item in self.schedules}) != len(self.schedules):
             raise ValueError("Schedule identifiers must be unique")
         return self
-
-
-def occurs(schedule, day):
-    if day < schedule.first_on or (schedule.last_on and day > schedule.last_on):
-        return False
-    delta = (day - schedule.first_on).days
-    if schedule.frequency == "once":
-        return delta == 0
-    if schedule.frequency in {"weekly", "fortnightly"}:
-        return delta % (7 if schedule.frequency == "weekly" else 14) == 0
-    if schedule.frequency == "yearly" and day.month != schedule.first_on.month:
-        return False
-    return day.day == min(schedule.first_on.day, calendar.monthrange(day.year, day.month)[1])
 
 
 def project_cashflow(session, user_id, through, *, today=None):

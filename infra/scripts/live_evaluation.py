@@ -2,27 +2,48 @@ import argparse
 import json
 import math
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+MAX_SETUP_TURNS = 6
+SYNTHETIC_USER_PATTERN = re.compile(r"live-evaluation-[0-9a-f]{32}")
+MAX_SEEDED_TRANSACTIONS = 200
+MAX_SEEDED_GOALS = 50
 
 
 class LiveEndpointError(OSError):
     """Privacy-safe live endpoint failure retained in evaluation evidence."""
 
-    def __init__(self, status_code: int, correlation_id: str | None) -> None:
+    def __init__(self, status_code: int, correlation_id: str | None, trace_id: str | None = None) -> None:
         self.status_code = status_code
         self.correlation_id = correlation_id or "missing"
+        self.trace_id = _safe_uuid(trace_id)
         super().__init__(
             f"live endpoint returned HTTP {status_code}; "
             f"correlation_id={self.correlation_id}"
         )
+
+
+def _safe_uuid(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        return str(UUID(value))
+    except ValueError:
+        return None
+
+
+def _safe_error_code(value):
+    return value if isinstance(value, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value) else None
 
 
 def require_http_url(url: str) -> str:
@@ -58,7 +79,8 @@ def request_json(
             return body, response.headers.get("X-Correlation-ID")
     except urllib.error.HTTPError as exc:
         correlation_id = exc.headers.get("X-Correlation-ID") if exc.headers else None
-        raise LiveEndpointError(exc.code, correlation_id) from exc
+        trace_id = exc.headers.get("X-Trace-ID") if exc.headers else None
+        raise LiveEndpointError(exc.code, correlation_id, trace_id) from exc
 
 
 def chat_session_delete_url(url: str, user_id: str, session_id: str) -> str:
@@ -101,6 +123,194 @@ def cleanup_session(
         return False
 
 
+def owned_api_url(url: str, suffix: str) -> str:
+    parsed = urllib.parse.urlparse(require_http_url(url))
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/coach"):
+        raise ValueError("live-evaluation URL path must end with /coach")
+    return urllib.parse.urlunparse(parsed._replace(path=path[:-6] + suffix, query="", fragment=""))
+
+
+def _owned_api_request_json(url, api_key, method, payload, timeout_seconds):
+    request = urllib.request.Request(
+        require_http_url(url),
+        data=json.dumps(payload).encode("utf-8") if payload is not None else None,
+        headers={"Accept": "application/json", "Content-Type": "application/json", "X-API-Key": api_key},
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # nosec B310
+            body = response.read()
+            return json.loads(body.decode("utf-8")) if body else {}
+    except urllib.error.HTTPError as exc:
+        correlation_id = exc.headers.get("X-Correlation-ID") if exc.headers else None
+        trace_id = exc.headers.get("X-Trace-ID") if exc.headers else None
+        raise LiveEndpointError(exc.code, correlation_id, trace_id) from exc
+
+
+def failed_turn_usage(url, api_key, user_id, session_id, trace_id, timeout_seconds):
+    """Reduce an owned failed trace to usage metadata before deleting its actor."""
+    trace_id = _safe_uuid(trace_id)
+    if not trace_id or not SYNTHETIC_USER_PATTERN.fullmatch(user_id):
+        return None
+    query = urllib.parse.urlencode({"user_id": user_id})
+    trace_url = owned_api_url(url, f"/coach/traces/{trace_id}") + "?" + query
+    try:
+        trace = _owned_api_request_json(trace_url, api_key, "GET", None, timeout_seconds)
+        if (not isinstance(trace, dict) or _safe_uuid(trace.get("trace_id")) != trace_id
+                or trace.get("session_id") != session_id or not isinstance(trace.get("audit"), dict)):
+            return None
+        events = trace["audit"].get("durable_events")
+        if not isinstance(events, list) or len(events) > 2000:
+            return None
+        started = set()
+        finished = defaultdict(list)
+        malformed = False
+        error_codes = set()
+        backend_error = _safe_error_code(trace.get("error_code"))
+        workflow_error = None
+        if backend_error:
+            error_codes.add(backend_error)
+        for event in events:
+            if not isinstance(event, dict):
+                malformed = True
+                continue
+            event_type = event.get("event_type")
+            if event_type not in {"model.generation.started", "model.generation.finished", "workflow.failed"}:
+                continue
+            details = event.get("details")
+            if _safe_uuid(event.get("trace_id")) != trace_id or not isinstance(details, dict):
+                malformed = True
+                continue
+            code = _safe_error_code(details.get("error_code"))
+            if code:
+                error_codes.add(code)
+                if event_type == "workflow.failed":
+                    workflow_error = code
+            if event_type == "workflow.failed":
+                continue
+            call_id = _safe_uuid(details.get("call_id"))
+            if not call_id:
+                malformed = True
+                continue
+            if event_type == "model.generation.started":
+                started.add(call_id)
+            else:
+                # Replayed identical metadata must not count or charge twice.
+                completion = {key: details.get(key) for key in ("status", "input_tokens", "output_tokens")}
+                completion["error_code"] = code
+                if completion not in finished[call_id]:
+                    finished[call_id].append(completion)
+        call_ids = started | finished.keys()
+        input_tokens = output_tokens = completed_calls = 0
+        known_paired_calls = 0
+        for call_id in call_ids:
+            endings = finished.get(call_id, [])
+            if len(endings) != 1:
+                continue
+            completion = endings[0]
+            if (completion["status"] != "completed" or completion["error_code"] is not None
+                    or any(type(completion[key]) is not int or completion[key] < 0
+                           for key in ("input_tokens", "output_tokens"))):
+                continue
+            input_tokens += completion["input_tokens"]
+            output_tokens += completion["output_tokens"]
+            completed_calls += 1
+            if call_id in started:
+                known_paired_calls += 1
+        complete = (bool(call_ids) and not malformed and known_paired_calls == len(call_ids)
+                    and trace.get("status") in {"failed", "timed_out", "abandoned", "completed", "blocked"})
+        return {
+            "input_tokens": input_tokens, "output_tokens": output_tokens,
+            "model_call_count": len(call_ids), "completed_model_call_count": completed_calls,
+            "model_call_ids": sorted(call_ids), "token_usage_complete": complete,
+            "error_code": workflow_error or backend_error or next(iter(sorted(error_codes)), None),
+            "error_codes": sorted(error_codes),
+        }
+    except (OSError, TypeError, ValueError, KeyError):
+        return None
+
+
+def _fixture_payloads(snapshot):
+    """Persist explicit fixture facts, deduplicating overlapping snapshot views."""
+    if not isinstance(snapshot, dict) or len(json.dumps(snapshot)) > 100_000:
+        raise ValueError("snapshot fixtures must be bounded objects")
+    profile = {key: snapshot[key] for key in ("monthly_income", "risk_tolerance", "preferences") if key in snapshot}
+    if "preferences" in profile and (not isinstance(profile["preferences"], dict) or len(profile["preferences"]) > 50):
+        raise ValueError("snapshot preferences must have at most 50 entries")
+    records = {}
+    for view in ("recent_transactions", "historical_transactions", "recurring_expenses"):
+        items = snapshot.get(view, [])
+        if not isinstance(items, list) or len(items) > MAX_SEEDED_TRANSACTIONS:
+            raise ValueError("snapshot transaction views must contain at most 200 records")
+        counts = defaultdict(int)
+        for item in items:
+            if not isinstance(item, dict):
+                raise TypeError("snapshot transactions must be objects")
+            payload = {key: item[key] for key in ("description", "category", "amount", "occurred_on", "recurring", "transaction_type", "recurrence", "obligation_id") if key in item}
+            if view == "recurring_expenses":
+                payload["recurring"] = True
+            if any(key not in payload for key in ("description", "category", "amount", "occurred_on")):
+                raise ValueError("fixture records require their explicit description, category, amount and date")
+            identity = json.dumps({key: payload.get(key) for key in ("description", "category", "amount", "occurred_on", "transaction_type", "recurrence", "obligation_id")}, sort_keys=True)
+            counts[identity] += 1
+            ordinal = counts[identity] - 1
+            prior = records.setdefault(identity, [])
+            if ordinal >= len(prior):
+                prior.append(payload)
+            else:
+                prior[ordinal]["recurring"] = prior[ordinal].get("recurring", False) or payload.get("recurring", False)
+    transactions = [payload.copy() for rows in records.values() for payload in rows]
+    goals = snapshot.get("goals", [])
+    if len(transactions) > MAX_SEEDED_TRANSACTIONS or not isinstance(goals, list) or len(goals) > MAX_SEEDED_GOALS:
+        raise ValueError("a fixture may seed at most 200 transactions and 50 goals")
+    goal_payloads = []
+    for goal in goals:
+        if not isinstance(goal, dict) or any(key not in goal for key in ("name", "target_amount", "target_months")):
+            raise ValueError("fixture goals require explicit name, target amount and duration")
+        goal_payloads.append({key: goal[key] for key in ("name", "target_amount", "current_amount", "target_months") if key in goal})
+    return profile, transactions, goal_payloads
+
+
+def seed_case_snapshot(url, api_key, user_id, snapshot, timeout_seconds):
+    if not SYNTHETIC_USER_PATTERN.fullmatch(user_id):
+        raise ValueError("Only a freshly generated evaluation actor may be seeded")
+    profile, transactions, goals = _fixture_payloads(snapshot)
+    _owned_api_request_json(owned_api_url(url, "/profiles"), api_key, "POST",
+                            {"user_id": user_id, **profile}, timeout_seconds)
+    obligation_ids = {}
+    transactions.sort(key=lambda item: item["occurred_on"])
+    for collection, items in (("transactions", transactions), ("goals", goals)):
+        for payload in items:
+            original_id = payload.pop("obligation_id", None) if collection == "transactions" else None
+            if original_id in obligation_ids:
+                payload["obligation_id"] = obligation_ids[original_id]
+            result = _owned_api_request_json(owned_api_url(url, f"/users/{user_id}/{collection}"),
+                                             api_key, "POST", payload, timeout_seconds)
+            if original_id and result.get("obligation_id"):
+                obligation_ids[original_id] = result["obligation_id"]
+    return {"transactions": len(transactions), "goals": len(goals)}
+
+
+def cleanup_user_data(url, api_key, user_id, timeout_seconds):
+    """Delete only this run's generated actor, with the server's reviewed policy."""
+    if not SYNTHETIC_USER_PATTERN.fullmatch(user_id):
+        return False
+    try:
+        policy = _owned_api_request_json(owned_api_url(url, f"/users/{user_id}/data-lifecycle"),
+                                         api_key, "GET", None, timeout_seconds)
+        version = policy.get("policy_version")
+        if not isinstance(version, str) or not version:
+            return False
+        _owned_api_request_json(owned_api_url(url, f"/users/{user_id}/data"), api_key, "DELETE",
+                                {"confirm_user_id": user_id, "policy_version": version}, timeout_seconds)
+        return True
+    except LiveEndpointError as error:
+        return error.status_code == 404
+    except (OSError, ValueError):
+        return False
+
+
 def load_cases(path: Path) -> list[dict[str, Any]]:
     cases = []
     with path.open("r", encoding="utf-8") as handle:
@@ -114,10 +324,35 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
                 or not case.get("request")
             ):
                 raise ValueError(f"invalid live evaluation case at line {line_number}")
+            _case_turns(case)
             cases.append(case)
     if not cases:
         raise ValueError("live evaluation dataset is empty")
     return cases
+
+
+def _case_turns(case: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Bound setup requests and keep their results in the same synthetic session."""
+    setup = case.get("setup_turns", [])
+    if not isinstance(setup, list) or len(setup) > MAX_SETUP_TURNS:
+        raise ValueError("setup_turns must contain at most six requests")
+    turns = []
+    for item in setup:
+        if not isinstance(item, dict):
+            raise TypeError("each setup turn must be a request object")
+        request = item.get("request", item)
+        expected = item.get("expected", {"blocked": False})
+        if not isinstance(request, dict) or not isinstance(expected, dict):
+            raise TypeError("setup turn requests and expectations must be objects")
+        turns.append((request, expected))
+    turns.append((case["request"], case.get("expected", {})))
+    for request, expected in turns:
+        message = request.get("message") if isinstance(request, dict) else None
+        if not isinstance(message, str) or not message.strip() or len(message) > 5000:
+            raise ValueError("each evaluation turn requires a 1-5000 character message")
+        if not isinstance(expected, dict):
+            raise TypeError("evaluation expectations must be objects")
+    return turns
 
 
 def _agent_data(response: dict[str, Any], agent: str) -> dict[str, Any]:
@@ -134,6 +369,26 @@ def _policy_findings(response: dict[str, Any]) -> list[str]:
         for result in response.get("agent_results", [])
         for finding in result.get("policy_notes", [])
     ]
+
+
+def _same_decimal(actual: Any, expected: Any) -> bool:
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return False
+    try:
+        value, target = Decimal(str(actual)), Decimal(str(expected))
+    except (InvalidOperation, ValueError):
+        return False
+    return value.is_finite() and target.is_finite() and value == target
+
+
+def _answer_has_amount(answer: str, currency: str, amount: Any) -> bool:
+    # Decimal equality permits normal thousands formatting without accepting
+    # substrings of a different amount or silently changing its currency.
+    pattern = re.compile(
+        rf"\b{re.escape(currency)}\s*([+-]?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)"
+        r"(?:\.\d{1,2})?)(?!\d|[,.]\d)", re.IGNORECASE,
+    )
+    return any(_same_decimal(match.group(1).replace(",", ""), amount) for match in pattern.finditer(answer))
 
 
 def evaluate_response(
@@ -185,6 +440,68 @@ def evaluate_response(
             "answer_contains",
             all(term.casefold() in answer for term in expected["answer_contains"]),
         )
+    if "answer_excludes" in expected:
+        answer = response.get("answer", "").casefold()
+        add_check(
+            "answer_excludes",
+            all(term.casefold() not in answer for term in expected["answer_excludes"]),
+        )
+    if "answer_amounts" in expected:
+        add_check("answer_amounts", all(
+            _answer_has_amount(response.get("answer", ""), item["currency"], item["amount"])
+            for item in expected["answer_amounts"]
+        ))
+    if "action_status" in expected:
+        audit = response.get("audit", {})
+        allowed = expected["action_status"]
+        allowed = allowed if isinstance(allowed, list) else [allowed]
+        status = audit.get("action_status")
+        add_check("action_status", isinstance(status, str) and status in allowed and any(
+            isinstance(outcome, dict) and outcome.get("authority") == "authenticated_backend"
+            and outcome.get("status") == status
+            for outcome in audit.get("backend_outcomes", [])
+        ))
+    if "recurring_forecast" in expected:
+        audit = response.get("audit", {})
+        forecast = audit.get("recurring_forecast")
+        add_check("recurring_forecast_source", audit.get("source") == "recurring_forecast"
+                  and audit.get("forecast_available") is True)
+        for field, value in expected["recurring_forecast"].items():
+            actual = forecast.get(field) if isinstance(forecast, dict) else None
+            add_check("recurring_forecast." + field,
+                      _same_decimal(actual, value) if field == "total"
+                      else type(actual) is type(value) and actual == value)
+    if "maximum_answer_words" in expected:
+        add_check(
+            "maximum_answer_words",
+            len(response.get("answer", "").split()) <= int(expected["maximum_answer_words"]),
+        )
+    if "answer_language" in expected:
+        answer = response.get("answer", "")
+        scripts_path = Path(__file__).resolve().parents[2] / "apps/shared/coach_i18n/data/scripts.json"
+        scripts = json.loads(scripts_path.read_text(encoding="utf-8"))
+        chinese = len(re.findall(scripts["han_basic"], answer))
+        latin = len(re.findall(r"[A-Za-z]", answer))
+        language = expected["answer_language"]
+        add_check(
+            "answer_language",
+            (language == "Chinese" and chinese >= 2)
+            or (language == "English" and latin >= 10 and chinese == 0),
+        )
+    if "no_draft" in expected or "draft_present" in expected:
+        draft_present = any(
+            (result.get("data") or {}).get(field)
+            for result in response.get("agent_results", [])
+            for field in ("goal_draft", "budget_draft", "spending_draft", "transaction_draft")
+        )
+        audit = response.get("audit", {})
+        draft_present = draft_present or any(
+            audit.get(field) for field in ("goal_capture", "budget_capture", "spending_capture")
+        )
+        if "no_draft" in expected:
+            add_check("no_draft", bool(not draft_present) is expected["no_draft"])
+        if "draft_present" in expected:
+            add_check("draft_present", bool(draft_present) is expected["draft_present"])
     if "blocked" in expected:
         add_check("blocked", response.get("blocked") is expected["blocked"])
     if "selected_agents" in expected:
@@ -325,7 +642,8 @@ def evaluate_response(
                 for source in audit.get("policy_sources", [])
             ),
         )
-    if audit.get("model_provider") is not None or response.get("selected_agents"):
+    if (audit.get("model_provider") is not None or response.get("selected_agents")
+            or "minimum_model_calls" in expected or "maximum_model_calls" in expected):
         add_check(
             "model_provider",
             audit.get("model_provider") == expected_model_provider,
@@ -337,15 +655,34 @@ def evaluate_response(
         )
         policy_prefixes = expected.get("policy_finding_prefixes", [])
         policy_findings = _policy_findings(response)
+        guard_prefixes = expected.get("guardrail_finding_prefixes", [])
+        guard_findings = audit.get("guardrail_findings", [])
+        input_guard_evidence = (
+            expected.get("deterministic_input_guard") is True
+            and bool(guard_prefixes)
+            and _safe_uuid(audit.get("trace_id")) is not None
+            and all(prefix and any(str(finding).startswith(prefix) for finding in guard_findings)
+                    for prefix in guard_prefixes)
+            and any(isinstance(event, dict) and event.get("event_type") == "guardrail.evaluated"
+                    and event.get("actor") == "orchestrator"
+                    and event.get("trace_id") == audit.get("trace_id")
+                    and event.get("details", {}).get("allowed") is False
+                    and type(event.get("details", {}).get("finding_count")) is int
+                    and event["details"]["finding_count"] > 0
+                    for event in audit.get("events", []))
+            and any(isinstance(event, dict) and event.get("event_type") == "workflow.completed"
+                    and event.get("trace_id") == audit.get("trace_id")
+                    and event.get("details", {}).get("reason_code") == "BOUNDARY_GUARDRAIL"
+                    for event in audit.get("events", []))
+        )
         deterministic_safety_evidence = (
             expected.get("blocked") is True
             and response.get("blocked") is True
-            and bool(policy_prefixes)
-            and all(
+            and (input_guard_evidence or (bool(policy_prefixes) and all(
                 prefix
                 and any(finding.startswith(prefix) for finding in policy_findings)
                 for prefix in policy_prefixes
-            )
+            )))
             and audit.get("model_calls") == []
             and type(audit.get("model_call_count")) is int
             and audit["model_call_count"] == 0
@@ -390,95 +727,164 @@ def run_live_evaluation(
     input_cost_per_million: float,
     output_cost_per_million: float,
     commit_sha: str,
+    maximum_estimated_cost_usd: float | None = None,
 ) -> dict[str, Any]:
     if repeats < 1:
         raise ValueError("repeats must be positive")
+    if not cases:
+        raise ValueError("live evaluation dataset is empty")
+    # Reject an oversized conversation before any endpoint calls or charges.
+    case_turns = [_case_turns(case) for case in cases]
     target = urllib.parse.urlparse(require_http_url(url))
-    synthetic_user_id = "live-evaluation"
     records: list[dict[str, Any]] = []
     category_results: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     latencies: list[float] = []
     total_input_tokens = 0
     total_output_tokens = 0
+    spending_stopped = False
+    usage_unknown = False
+
+    def cannot_start_turn():
+        estimated = (total_input_tokens * input_cost_per_million
+                     + total_output_tokens * output_cost_per_million) / 1_000_000
+        return usage_unknown or (maximum_estimated_cost_usd is not None
+                                 and estimated >= maximum_estimated_cost_usd)
 
     for repeat in range(1, repeats + 1):
-        for case in cases:
-            payload = json.loads(json.dumps(case["request"]))
-            payload["user_id"] = synthetic_user_id
+        for case, turns in zip(cases, case_turns, strict=True):
+            if cannot_start_turn():
+                spending_stopped = True
+                break
             session_id = f"live-{case['id'][:48]}-{repeat}-{uuid4().hex[:10]}"
-            payload["session_id"] = session_id
+            synthetic_user_id = "live-evaluation-" + uuid4().hex
             started = time.perf_counter()
             record: dict[str, Any] = {
                 "case_id": case["id"],
                 "category": case["category"],
                 "repeat": repeat,
+                "passed": True,
+                "checks": [],
+                "turns": [],
+                "setup_turn_count": len(turns) - 1,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "model_call_count": 0,
+                "token_usage_complete": True,
+                "rubric_review": "required" if case.get("rubric") else "not_requested",
             }
+            active_turn_index = None
             try:
-                response, correlation_id = request_json(
-                    url,
-                    api_key,
-                    payload,
-                    timeout_seconds,
-                )
-                latency_ms = round((time.perf_counter() - started) * 1000, 2)
-                passed, checks = evaluate_response(
-                    response,
-                    case.get("expected", {}),
-                    expected_model_provider=expected_model_provider,
-                    expected_model_id=expected_model_id,
-                    expected_prompt_version=expected_prompt_version,
-                )
-                if "budget_draft" in case.get("expected", {}):
-                    data = _agent_data(response, "budget")
-                    draft = data.get("budget_draft") or {}
-                    terms = ("income", "currency", "month", "year", "category", "categories", "expenses", "method", "savings", "confirm")
-                    questions = " ".join(str(q) for q in draft.get("questions", [])).lower()
-                    record["budget_diagnostics"] = {
-                        "draft_present": bool(draft),
-                        "action": draft.get("action"),
-                        "income_basis": (draft.get("planning") or {}).get("income_basis"),
-                        "needs_input": data.get("needs_input"),
-                        "question_count": len(draft.get("questions", [])),
-                        "question_topics": [term for term in terms if term in questions],
-                        "answer_checks": {term: term.casefold() in response.get("answer", "").casefold() for term in case["expected"].get("answer_contains", [])},
-                        "blocked_agents": [r.get("agent") for r in response.get("agent_results", []) if r.get("blocked")],
-                        "block_reasons": [str(reason)[:100] for r in response.get("agent_results", []) for reason in (r.get("data") or {}).get("block_reasons", [])],
-                        "local_handler": response.get("audit", {}).get("source"),
-                    }
-                audit = response.get("audit", {})
-                input_tokens = int(audit.get("model_input_tokens") or 0)
-                output_tokens = int(audit.get("model_output_tokens") or 0)
-                total_input_tokens += input_tokens
-                total_output_tokens += output_tokens
-                latencies.append(latency_ms)
-                record.update(
-                    {
+                # The authenticated backend snapshot overrides request snapshots
+                # after a profile exists. Seed its owned source records once,
+                # then preserve the same actor throughout this conversation.
+                snapshots = [request.get("snapshot", {}) for request, _ in turns if request.get("snapshot")]
+                fixture = snapshots[0] if snapshots else {}
+                if any(snapshot != fixture for snapshot in snapshots[1:]):
+                    raise ValueError("A conversation fixture must use one consistent starting snapshot")
+                record["seeded_records"] = seed_case_snapshot(url, api_key, synthetic_user_id, fixture, timeout_seconds)
+                record["fixture_seed_latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
+                started = time.perf_counter()
+                for turn_index, (request, expected) in enumerate(turns):
+                    if cannot_start_turn():
+                        spending_stopped = True
+                        record["passed"] = False
+                        record["checks"].append({"check": "spending_budget_available", "passed": False})
+                        break
+                    payload = json.loads(json.dumps(request))
+                    payload["user_id"] = synthetic_user_id
+                    payload["session_id"] = session_id
+                    turn_started = time.perf_counter()
+                    active_turn_index = turn_index
+                    response, correlation_id = request_json(
+                        url, api_key, payload, timeout_seconds,
+                    )
+                    audit = response.get("audit", {})
+                    if audit.get("composition_usage_complete") is False:
+                        record["token_usage_complete"] = False
+                        record["composition_usage_complete"] = False
+                        record["composition_fallback_code"] = _safe_error_code(audit.get("composition_fallback_code"))
+                    if audit.get("model_call_count") and not {
+                        "model_input_tokens", "model_output_tokens",
+                    }.issubset(audit):
+                        record["token_usage_complete"] = False
+                    if (expected_model_provider != "local_fixture" and audit.get("model_call_count")
+                            and any(not isinstance(call.get(field), int)
+                                    for call in audit.get("model_calls", [])
+                                    for field in ("input_tokens", "output_tokens"))):
+                        record["token_usage_complete"] = False
+                    input_tokens = int(audit.get("model_input_tokens") or 0)
+                    output_tokens = int(audit.get("model_output_tokens") or 0)
+                    total_input_tokens += input_tokens
+                    total_output_tokens += output_tokens
+                    record["input_tokens"] += input_tokens
+                    record["output_tokens"] += output_tokens
+                    call_count = int(audit.get("model_call_count") or 0)
+                    record["model_call_count"] += call_count
+                    passed, checks = evaluate_response(
+                        response, expected,
+                        expected_model_provider=expected_model_provider,
+                        expected_model_id=expected_model_id,
+                        expected_prompt_version=expected_prompt_version,
+                    )
+                    has_answer = isinstance(response.get("answer"), str) and bool(response["answer"].strip())
+                    checks.append({"check": "nonempty_answer", "passed": has_answer})
+                    passed = bool(passed and has_answer)
+                    prefix = f"setup[{turn_index}]." if turn_index < len(turns) - 1 else ""
+                    record["checks"].extend(
+                        {"check": prefix + check["check"], "passed": check["passed"]}
+                        for check in checks
+                    )
+                    record["turns"].append({
+                        "turn_index": turn_index,
+                        "is_setup": turn_index < len(turns) - 1,
                         "passed": passed,
-                        "checks": checks,
-                        "latency_ms": latency_ms,
+                        "latency_ms": round((time.perf_counter() - turn_started) * 1000, 2),
                         "correlation_id": correlation_id,
                         "trace_id": audit.get("trace_id"),
-                        "model_call_count": int(audit.get("model_call_count") or 0),
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
-                        "source_ids": [
-                            source.get("source_id")
-                            for source in response.get("sources", [])
-                            if source.get("source_id")
-                        ],
-                        "policy_source_ids": [
-                            source.get("source_id")
-                            for source in audit.get("policy_sources", [])
-                            if source.get("source_id")
-                        ],
-                    }
-                )
-            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                        "model_call_count": call_count,
+                        "token_usage_complete": record["token_usage_complete"],
+                    })
+                    record.update({
+                        "correlation_id": correlation_id,
+                        "trace_id": audit.get("trace_id"),
+                        "source_ids": [source["source_id"] for source in response.get("sources", []) if source.get("source_id")],
+                        "policy_source_ids": [source["source_id"] for source in audit.get("policy_sources", []) if source.get("source_id")],
+                    })
+                    record["passed"] = bool(record["passed"] and passed)
+                    if maximum_estimated_cost_usd is not None and not record["token_usage_complete"]:
+                        usage_unknown = True
+                    if not passed and turn_index < len(turns) - 1:
+                        # An invalid setup cannot establish the state under test.
+                        break
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                recovered = None
+                if isinstance(exc, LiveEndpointError) and exc.trace_id and active_turn_index is not None:
+                    recovered = failed_turn_usage(
+                        url, api_key, synthetic_user_id, session_id, exc.trace_id, timeout_seconds,
+                    )
+                if recovered is not None:
+                    total_input_tokens += recovered["input_tokens"]
+                    total_output_tokens += recovered["output_tokens"]
+                    record["input_tokens"] += recovered["input_tokens"]
+                    record["output_tokens"] += recovered["output_tokens"]
+                    record["model_call_count"] += recovered["model_call_count"]
+                    record["token_usage_complete"] = (record["token_usage_complete"]
+                                                       and recovered["token_usage_complete"])
+                    record.update(
+                        usage_recovery="durable_trace",
+                        recovered_model_call_ids=recovered["model_call_ids"],
+                        recovered_completed_model_call_count=recovered["completed_model_call_count"],
+                        error_code=recovered["error_code"], error_codes=recovered["error_codes"],
+                    )
+                else:
+                    record["token_usage_complete"] = False
+                if maximum_estimated_cost_usd is not None and not record["token_usage_complete"]:
+                    usage_unknown = True
                 record.update(
                     {
                         "passed": False,
-                        "checks": [],
-                        "latency_ms": round((time.perf_counter() - started) * 1000, 2),
                         "error_type": type(exc).__name__,
                     }
                 )
@@ -489,21 +895,38 @@ def run_live_evaluation(
                             "correlation_id": exc.correlation_id,
                         }
                     )
-            cleaned_up = cleanup_session(
-                url,
-                api_key,
-                synthetic_user_id,
-                session_id,
-                timeout_seconds,
-            )
+                    if exc.trace_id:
+                        record["trace_id"] = exc.trace_id
+                    if active_turn_index is not None:
+                        record["turns"].append({
+                            "turn_index": active_turn_index, "is_setup": active_turn_index < len(turns) - 1,
+                            "passed": False, "http_status": exc.status_code,
+                            "latency_ms": round((time.perf_counter() - turn_started) * 1000, 2),
+                            "trace_id": exc.trace_id, "correlation_id": exc.correlation_id,
+                            "input_tokens": recovered["input_tokens"] if recovered else 0,
+                            "output_tokens": recovered["output_tokens"] if recovered else 0,
+                            "model_call_count": recovered["model_call_count"] if recovered else 0,
+                            "token_usage_complete": bool(recovered and recovered["token_usage_complete"]),
+                        })
+            finally:
+                record["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
+                # Setup and final turns share one disposable owned session.
+                cleaned_up = cleanup_session(
+                    url, api_key, synthetic_user_id, session_id, timeout_seconds,
+                )
+                user_cleaned_up = cleanup_user_data(url, api_key, synthetic_user_id, timeout_seconds)
+            latencies.append(record["latency_ms"])
             record["checks"].append(
                 {"check": "synthetic_session_cleanup", "passed": cleaned_up}
             )
-            record["cleanup_succeeded"] = cleaned_up
-            record["passed"] = bool(record["passed"] and cleaned_up)
+            record["checks"].append({"check": "synthetic_user_cleanup", "passed": user_cleaned_up})
+            record["cleanup_succeeded"] = cleaned_up and user_cleaned_up
+            record["passed"] = bool(record["passed"] and cleaned_up and user_cleaned_up)
             category_results[case["category"]][0] += int(record["passed"])
             category_results[case["category"]][1] += 1
             records.append(record)
+        if spending_stopped:
+            break
 
     passed_runs = sum(int(record["passed"]) for record in records)
     estimated_cost = (
@@ -516,6 +939,12 @@ def run_live_evaluation(
     }
     return {
         "schema_version": 1,
+        "measurement": (
+            "offline_fixture_contract" if expected_model_provider == "local_fixture"
+            else "live_generated_contract_checks"
+        ),
+        "semantic_quality_review": "required" if any(case.get("rubric") for case in cases) else "not_requested",
+        "latency_unit": "complete_conversation_excluding_cleanup",
         "generated_at": datetime.now(UTC).isoformat(),
         "commit_sha": commit_sha,
         "target_host": target.hostname,
@@ -525,7 +954,11 @@ def run_live_evaluation(
         "repeats": repeats,
         "total_runs": len(records),
         "passed_runs": passed_runs,
-        "pass_rate": round(passed_runs / len(records), 4),
+        "pass_rate": round(passed_runs / len(records), 4) if records else 0,
+        "requested_runs": len(cases) * repeats,
+        "completed_requested_runs": len(records) == len(cases) * repeats and not spending_stopped,
+        "spending_stopped": spending_stopped,
+        "usage_unknown": usage_unknown,
         "category_pass_rates": category_metrics,
         "latency_ms": {
             "p50": _percentile(latencies, 0.5),
@@ -537,6 +970,7 @@ def run_live_evaluation(
             "output": total_output_tokens,
             "total": total_input_tokens + total_output_tokens,
         },
+        "token_usage_complete": all(record["token_usage_complete"] for record in records),
         "cost_estimate": {
             "currency": "USD",
             "input_per_million_tokens": input_cost_per_million,
@@ -555,6 +989,10 @@ def enforce_thresholds(
     maximum_estimated_cost_usd: float,
 ) -> list[str]:
     failures = []
+    if report.get("completed_requested_runs") is False:
+        failures.append("live evaluation stopped before all requested runs completed")
+    if report.get("usage_unknown"):
+        failures.append("live evaluation could not account for model usage")
     if float(report["pass_rate"]) < minimum_pass_rate:
         failures.append("live evaluation pass rate was below threshold")
     p95 = report["latency_ms"]["p95"]
@@ -577,7 +1015,9 @@ def write_job_summary(report: dict[str, Any], failures: list[str]) -> None:
         "## Live OpenAI and RAG evaluation",
         "",
         f"- Result: **{result}**",
-        f"- Pass rate: {report['pass_rate']:.1%}",
+        f"- Measurement: {report['measurement']}",
+        f"- Semantic rubric review: {report['semantic_quality_review']}",
+        f"- Contract pass rate: {report['pass_rate']:.1%}",
         f"- Categories: {categories}",
         (
             f"- P50/P95/P99: {report['latency_ms']['p50']} / "
@@ -630,6 +1070,7 @@ def main() -> None:
         input_cost_per_million=args.input_cost_per_million,
         output_cost_per_million=args.output_cost_per_million,
         commit_sha=args.commit_sha,
+        maximum_estimated_cost_usd=args.maximum_estimated_cost_usd,
     )
     failures = enforce_thresholds(
         report,

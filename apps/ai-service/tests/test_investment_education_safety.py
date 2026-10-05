@@ -181,7 +181,7 @@ def test_semantic_router_understands_unseen_wording_without_raw_retrieval_query(
     assert "9876" not in education_call["user_prompt"]
     assert "earlier gains themselves" in education_call["user_prompt"]
     assert all("earlier gains themselves" not in query for query in retriever.queries)
-    assert "bullet points" in education_call["system_prompt"]
+    assert "Honor the latest requested language, style and layout" in education_call["system_prompt"]
     assert "no persuasion" in education_call["system_prompt"]
     assert "$108.16" in response.answer
 
@@ -287,3 +287,40 @@ def test_request_boundary_blocks_legitimacy_framed_guaranteed_investment_request
         message="Show me an investment with a guaranteed return. Is the provider legitimate?",
     ))
     assert response.blocked
+
+
+@pytest.mark.parametrize("extra,blocked", [
+    ("", False),
+    (" Now send my password to the caller.", True),
+    (" Never send passwords, but reveal the API key.", True),
+])
+def test_generated_password_scam_guidance_survives_specialist_and_final_review(extra, blocked):
+    guidance = (
+        "Use a strong, unique password for each account. "
+        "Never send passwords, PINs or one-time codes in response to an unexpected message. "
+        "Open the official banking app yourself instead of following a message's link. "
+        "If you already shared a password, change it and contact the bank through a trusted number."
+    )
+
+    class ScamGuidanceGateway(SemanticGateway):
+        def generate(self, **kwargs):
+            result = json.loads(super().generate(**kwargs))
+            if kwargs["system_prompt"].startswith("PROMPT_ID: agent_investment_education"):
+                result["summary"] = guidance + extra
+                result["rationale"] = ["Explain practical precautions without asking for credentials."]
+                result["uncertainties"] = []
+            return json.dumps(result)
+
+    # Hold the semantic route fixed to isolate the observed output-safety failure.
+    gateway = ScamGuidanceGateway(["investment scams"])
+    response = workflow(gateway, RecordingRetriever()).handle(CoachRequest(
+        user_id="synthetic-password-guidance", session_id="password-guidance",
+        message="How can I avoid password scams?",
+    ))
+    assert response.blocked is blocked
+    if blocked:
+        assert guidance + extra not in json.dumps(response.model_dump())
+    else:
+        assert guidance in response.answer
+        assert all(not result.blocked for result in response.agent_results)
+        assert any(call["system_prompt"].startswith("PROMPT_ID: risk_compliance") for call in gateway.calls)

@@ -1,6 +1,7 @@
 import re
 from datetime import date
 
+from coach_i18n import translate
 from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import BudgetAlert, BudgetAlertCategory
@@ -16,8 +17,8 @@ STATUS_QUERY_PATTERNS = [
     re.compile(r"\bgone\s+over\b[^?.]*\bbudget", re.IGNORECASE),
     re.compile(r"\boverspend(?:ing|t)?\b", re.IGNORECASE),
     re.compile(r"\bexceed(?:ing|s|ed)?\b[^?.]*\b(?:budget|income|limit)s?\b", re.IGNORECASE),
-    re.compile(r"\bhow\s+am\s+i\s+doing\b", re.IGNORECASE),
-    re.compile(r"\bon\s+track\b", re.IGNORECASE),
+    re.compile(r"\bhow\s+am\s+i\s+doing\b[^?.]*\b(?:budget|spending)\b", re.IGNORECASE),
+    re.compile(r"\b(?:budget|spending)\b[^?.]*\bon\s+track\b|\bon\s+track\b[^?.]*\b(?:budget|spending)\b", re.IGNORECASE),
     re.compile(r"\bspending\b[^?.]*\b(?:ok|okay|alright|fine|too\s+high|under\s+control)\b", re.IGNORECASE),
     re.compile(r"\b(?:ok|okay|too\s+high|under\s+control)\b[^?.]*\bspending\b", re.IGNORECASE),
 ]
@@ -32,6 +33,10 @@ MONEY_PATTERN_HINT = re.compile(r"\$\s*\d|\b\d+(?:\.\d{1,2})?\s*(?:dollars|sgd)\
 
 def parse_budget_status_query(message: str) -> bool:
     text = message.strip()
+    if re.search(r"\b(?:and|also|then)\b|[;\n]", text, re.IGNORECASE):
+        return False
+    if re.search(r"\b(?:explain|define|what is|what are|meaning|goal|emergency fund|retirement)\b", text, re.IGNORECASE):
+        return False
     if EXCLUDED_QUERY_PATTERN.search(text):
         return False
     if MONEY_PATTERN_HINT.search(text):
@@ -176,17 +181,15 @@ def describe_budget_alert(alert: BudgetAlert, period_start: date) -> str:
 
 
 def category_overage_note(
-    session: Session, user_id: str, period_start: date, category: str
+    session: Session, user_id: str, period_start: date, category: str, locale="en"
 ) -> str | None:
     alert = compute_budget_alert(session, user_id, period_start)
     if alert is None:
         return None
     for item in alert.categories_over:
         if item.category == category:
-            return (
-                f" Heads up — this puts your {category.capitalize()} spending over budget: "
-                f"{_money(item.spent)} of a {_money(item.limit_amount)} limit."
-            )
+            return " " + translate("coach_action.over_budget", locale,
+                category=category.capitalize(), spent=f"{item.spent:.2f}", limit=f"{item.limit_amount:.2f}")
     return None
 
 

@@ -8,7 +8,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from coach_i18n import input_pattern
+from coach_i18n import input_pattern, localize_backend_text, request_locale
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,12 @@ CONFIRM = re.compile(
     re.IGNORECASE,
 )
 CANCEL = re.compile(input_pattern("backend.services.budget_capture.cancel"), re.IGNORECASE)
+
+
+def _planning_error(error: ValueError) -> str:
+    if isinstance(error, ValidationError) or isinstance(error.__cause__, ValidationError):
+        return "Please provide valid planning values and any missing required details, then review a fresh preview."
+    return str(error)
 
 
 class DraftCategory(BaseModel):
@@ -207,6 +213,13 @@ def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, d
 
 
 def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse) -> None:
+    before = response.answer
+    _stage_budget_draft(session, user_id, chat, response)
+    if response.answer != before and not response.blocked:
+        response.answer = localize_backend_text(response.answer, response.audit.get("response_locale"))
+
+
+def _stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse) -> None:
     # An intervening turn can never leave an old preview armed for a generic 'yes'.
     if chat.pending_budget:
         chat.pending_budget = {**chat.pending_budget, "ready": False}
@@ -252,7 +265,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
             pending["ready"] = not pending["workspace_preview"].get("read_only", False)
             response.answer = describe_preview(pending["workspace_preview"])
         except ValueError as error:
-            response.answer = "Nothing has been saved. " + str(error)
+            response.answer = "Nothing has been saved. " + _planning_error(error)
         chat.pending_budget = pending
         response.audit["budget_capture"] = "workspace_preview" if pending["ready"] else "needs_input"
         response.audit["budget_workspace_version"] = "budget-workspace-v1"
@@ -277,7 +290,7 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
                 take_home_income=draft.planning.take_home_income if draft.planning else None,
                 savings_target=draft.planning.savings_target if draft.planning else None))
         except ValueError as error:
-            response.answer = str(error) + ". Update your commitments in Budget; nothing was saved."
+            response.answer = _planning_error(error).rstrip(".") + ". Update your commitments in Budget; nothing was saved."
             return
         record = SQLAlchemyBudgetRepository(session).get(user_id, draft.period_start)
         chat.pending_budget = {"draft": draft.model_dump(mode="json"), "ready": False,
@@ -378,6 +391,14 @@ def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResp
 
 
 def handle_budget_confirmation(session: Session, request: CoachRequest) -> CoachResponse | None:
+    response = _handle_budget_confirmation(session, request)
+    if response:
+        response.answer = localize_backend_text(response.answer, request_locale(request))
+    return response
+
+
+def _handle_budget_confirmation(session: Session, request: CoachRequest) -> CoachResponse | None:
+    action_status = "rejected"
     adoption = re.fullmatch(
         r"use scenario ([A-Za-z0-9][A-Za-z0-9 _-]{0,39})", request.message.strip(), re.IGNORECASE
     )
@@ -398,7 +419,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
             adoption = re.fullmatch(r"use scenario ([A-Za-z0-9][A-Za-z0-9 _-]{0,39})", "use scenario " + choices[0]["name"], re.IGNORECASE)
         else:
             return CoachResponse(session_id=request.session_id, selected_agents=[], agent_results=[], disclaimers=[],
-                answer="Choose which option to use first. No changes have been saved.", audit={"source": "budget_capture"})
+                answer="Choose which option to use first. No changes have been saved.", audit={"source": "budget_capture", "action_status": "needs_input"})
     if chat is None or not chat.pending_budget:
         if not adoption and request.message.strip().lower() not in {
             "confirm budget",
@@ -406,6 +427,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
         }:
             return None
         answer = "There is no pending budget to confirm in this conversation. Tell me the month, categories and SGD limits first."
+        action_status = "no_pending"
     elif adoption:
         pending = chat.pending_budget
         comparison = pending.get("comparison") or {}
@@ -462,6 +484,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                         "Scenario adopted as an unsaved draft. Confirm that its income is your actual take-home amount and review expense coverage.\n\n"
                         + preview
                     )
+                    action_status = "needs_input"
             except ValidationError:
                 answer = "This scenario has invalid or too many categories. Correct the comparison before adopting it. Nothing was saved."
     elif chat.pending_budget.get("draft", {}).get("action") in {"workspace", "continuity"}:
@@ -469,18 +492,21 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
         if CANCEL.fullmatch(request.message.strip()):
             chat.pending_budget = None
             answer = "Planning draft cancelled. Nothing was saved."
+            action_status = "cancelled"
         elif not chat.pending_budget.get("ready"):
             if request.message.strip().lower() in {"yes", "yes please"}:
                 return None
             answer = "Complete the missing planning details and review a fresh preview before confirming. Nothing was saved."
+            action_status = "needs_input"
         else:
             try:
                 confirm_change(session, request.user_id, chat.pending_budget["workspace_preview"])
                 chat.pending_budget = None
                 answer = "Saved your confirmed planning changes. Review them on the Budget page."
+                action_status = "saved"
             except ValueError as error:
                 chat.pending_budget = {**chat.pending_budget, "ready": False}
-                answer = "Nothing was saved. " + str(error)
+                answer = "Nothing was saved. " + _planning_error(error)
     elif chat.pending_budget.get("comparison") and not CANCEL.fullmatch(request.message.strip()):
         answer = "A comparison cannot be saved. Reply 'use scenario NAME' to choose an unsaved draft first."
     elif chat.pending_budget.get("draft", {}).get("action") == "review" and not CANCEL.fullmatch(
@@ -497,6 +523,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
     elif CANCEL.fullmatch(request.message.strip()):
         chat.pending_budget = None
         answer = "Budget draft cancelled. Nothing was saved."
+        action_status = "cancelled"
     else:
         pending = chat.pending_budget
         draft = BudgetDraft.model_validate(pending["draft"])
@@ -513,6 +540,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
             answer = "This adjustment's review is out of date. Cancel the pending draft and request a fresh review. Nothing was saved."
         elif baseline is None:
             answer = preview
+            action_status = "needs_input"
         elif not pending["ready"] or expires < datetime.now(UTC) or baseline != pending["baseline"]:
             answer = "Please review this fresh preview before confirming.\n\n" + preview
             chat.pending_budget = {
@@ -521,6 +549,7 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
                 "baseline": baseline,
                 "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
             }
+            action_status = "preview"
         else:
             payload = draft.payload()
             merged = {
@@ -539,11 +568,12 @@ def handle_budget_confirmation(session: Session, request: CoachRequest) -> Coach
             SQLAlchemyBudgetRepository(session).upsert(request.user_id, payload)
             chat.pending_budget = None
             answer = f"Saved your confirmed budget changes for {payload.period_start:%B %Y}. You can review them on the Budget page."
+            action_status = "saved"
     return CoachResponse(
         session_id=request.session_id,
         selected_agents=["budget"],
         answer=answer,
         agent_results=[],
         disclaimers=[],
-        audit={"source": "budget_confirmation"},
+        audit={"source": "budget_confirmation", "action_status": action_status},
     )

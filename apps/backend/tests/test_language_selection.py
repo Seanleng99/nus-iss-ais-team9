@@ -37,7 +37,7 @@ class BlockedAI:
                 "language_selection.test_owned_profile_selection_and_explicit_instruction_reach_ai_and_saved_history"
             ),
             "zh-Hans",
-            "zh-Hans",
+            "en",
         ),
     ],
 )
@@ -80,15 +80,15 @@ def test_owned_profile_selection_and_explicit_instruction_reach_ai_and_saved_his
     assert saved.json()["messages"][-1]["content"] == body["answer"]
 
 
-def test_language_requests_in_history_cannot_change_the_default_language(monkeypatch):
+def test_user_language_request_in_history_is_a_default_without_a_current_selection(monkeypatch):
     fake = BlockedAI()
     monkeypatch.setitem(app.dependency_overrides, get_ai_service_client, lambda: fake)
     payload = {"user_id": "locale-history", "session_id": "locale-history-session"}
     for message in ["Explain ETFs in Chinese.", "Give an example."]:
         response = client.post("/api/coach", headers=HEADERS, json={**payload, "message": message})
         assert response.status_code == 200
-        assert fake.last_request.response_locale == "en"
-        assert response.json()["audit"]["response_language"] == "English"
+        assert fake.last_request.response_locale == "zh-Hans"
+        assert response.json()["audit"]["response_language"] == "Chinese"
 
 
 def test_unsupported_explicit_response_locale_is_rejected_before_ai(monkeypatch):

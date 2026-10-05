@@ -159,6 +159,8 @@ def _transaction_response(record: TransactionRecord) -> TransactionResponse:
         amount=MoneyAmount(currency=record.currency, amount=float(record.amount)),
         occurred_on=record.occurred_on,
         recurring=record.recurring,
+        recurrence=record.recurrence,
+        obligation_id=record.obligation_id,
         transaction_type=record.transaction_type,
     )
 
@@ -693,7 +695,10 @@ def create_transaction(
     transaction: TransactionCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> TransactionResponse:
-    record = SQLAlchemyTransactionRepository(session).create(user_id, transaction)
+    try:
+        record = SQLAlchemyTransactionRepository(session).create(user_id, transaction)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     session.commit()
     log_event(
         "transaction.added",
@@ -901,9 +906,12 @@ def get_dashboard(
     
     try:
         # Fetch 6 months of transactions
-        six_months_ago = period_start - timedelta(days=180)
+        six_months_ago = period_start
+        for _ in range(6):
+            six_months_ago = (six_months_ago - timedelta(days=1)).replace(day=1)
+        from app.infrastructure.repositories import next_month
         historical_transactions = budget_repository.get_transactions_in_range(
-            user_id, six_months_ago, period_start, currency=currency
+            user_id, six_months_ago, next_month(period_start) - timedelta(days=1), currency=currency
         )
         
         if len(historical_transactions) >= 10:

@@ -21,11 +21,14 @@ class StubAIServiceClient:
 
     async def coach(self, request: CoachRequest) -> CoachResponse:
         StubAIServiceClient.last_request = request
+        forecast = "recurring" in request.message.lower() and "what is a" not in request.message.lower() and not request.message.lower().startswith("explain")
         return CoachResponse(
             session_id=request.session_id,
             selected_agents=["spending"],
             answer="Stub guidance",
-            agent_results=[],
+            agent_results=[{"agent": "spending", "summary": "Proposed forecast lookup", "data": {
+                "spending_draft": {"action": "forecast", "query_start": "2026-10-01", "query_end": "2026-10-31"}}}]
+                if forecast else [],
             disclaimers=[],
             audit={"source": "stub"},
         )
@@ -89,7 +92,7 @@ def test_add_subscription_request_is_not_forecast_intent() -> None:
     )
 
 
-def test_recurring_forecast_sums_latest_recurring_per_item(
+def test_recurring_forecast_preserves_unknown_legacy_records_without_inventing_cadence(
     stub_ai: type[StubAIServiceClient],
 ) -> None:
     add_transaction("rf-u1", "Netflix subscription", "entertainment", 15.0, "2026-07-20", True)
@@ -100,9 +103,11 @@ def test_recurring_forecast_sums_latest_recurring_per_item(
         "rf-u1",
         "would you be able to estimate my upcoming spendings based on my recurring spendings",
     )
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
     answer = body["answer"]
-    assert "148.00" in answer
+    assert "163.00" in answer
+    assert "not a monthly total or a forecast" in answer
+    assert body["audit"]["spending_capture"] == "read_only_forecast"
     assert "Netflix subscription" in answer
     assert "Electric bill" in answer
     assert "Kopi" not in answer
@@ -113,21 +118,21 @@ def test_recurring_forecast_without_recurring_records(
 ) -> None:
     add_transaction("rf-u2", "Kopi", "food", 2.0, "2026-09-24")
     body = post_coach("rf-u2", "estimate my monthly recurring expenses")
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
     lowered = body["answer"].lower()
-    assert "no recurring" in lowered or "haven't recorded any recurring" in lowered
+    assert "no recorded recurring" in lowered
 
 
-def test_recurring_forecast_dedupes_subscription_name_variants(
+def test_recurring_forecast_preserves_distinct_subscription_names(
     stub_ai: type[StubAIServiceClient],
 ) -> None:
     add_transaction("rf-u5", "Netflix", "entertainment", 48.0, "2026-09-01", True)
     add_transaction("rf-u5", "Netflix subscription", "entertainment", 15.0, "2026-07-20", True)
     body = post_coach("rf-u5", "estimate my monthly recurring expenses")
-    assert stub_ai.last_request is None
-    assert "63.00" not in body["answer"]
+    assert stub_ai.last_request is not None
+    assert "63.00" in body["answer"]
     assert "48.00" in body["answer"]
-    assert body["answer"].count("Netflix") == 1
+    assert body["answer"].count("Netflix") == 2
 
 
 @pytest.mark.parametrize(
@@ -135,20 +140,21 @@ def test_recurring_forecast_dedupes_subscription_name_variants(
     [
         "estimate my upcoming spendings based on my recurring spendings",
         "what are my recurring expenses?",
-        "forecast my monthly spending",
-        "project my upcoming expenses",
         "how much will I spend monthly with my recurring bills?",
     ],
 )
 def test_forecast_intent_detected(message: str, stub_ai: type[StubAIServiceClient]) -> None:
     body = post_coach("rf-u3", message)
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
+    assert body["audit"]["spending_capture"] == "read_only_forecast"
     assert body["answer"] != "Stub guidance"
 
 
 @pytest.mark.parametrize(
     "message",
     [
+        "forecast my monthly spending",
+        "project my upcoming expenses",
         "what is a recurring expense?",
         "explain recurring costs in a budget",
         "how much did I spend on 20/9?",

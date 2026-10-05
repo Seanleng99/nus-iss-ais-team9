@@ -1,8 +1,9 @@
 """Backend-owned spending capture and queries.
 
 Models may propose transaction drafts; only this authenticated backend path
-writes transactions. A complete record saves immediately in the same turn (no
-pre-save confirmation); only missing fields are clarified. Named edits and
+writes transactions. A complete ordinary record saves immediately unless its
+typed intent requests a preview. Supplied schedules also require confirmation.
+Missing fields are clarified before saving or previewing. Named edits and
 deletions keep their own confirmation path in ``transaction_capture``.
 """
 
@@ -10,24 +11,27 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from coach_i18n import input_pattern
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from coach_i18n import input_pattern, translate
+from coach_math.recurrence import next_occurrence
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import TransactionCreate
 from app.core.telemetry import log_event
+from app.domain.recurrence import LedgerRecurrence, RecurrenceTerms
 from app.domain.schemas import ApplicationMoneyAmount, CoachRequest, CoachResponse
 from app.infrastructure.repositories import (
     SQLAlchemyChatRepository,
     SQLAlchemyTransactionRepository,
+    next_month,
 )
 from app.services import transaction_capture as capture
+from app.services.coach_action_state import DurableLastSavedStore
 from app.services.transaction_capture import (
     LastSavedRecord,
     classify_category,
     extract_date_from_text,
-    last_saved_store,
     mentions_future_date,
     parse_date_expression,
 )
@@ -40,6 +44,19 @@ CONFIRM_OR_CANCEL = re.compile(
     input_pattern("backend.services.transaction_staging.confirm_or_cancel"),
     re.IGNORECASE,
 )
+PREVIEW_CONFIRM = re.compile(
+    input_pattern("backend.services.transaction_staging.preview_confirm"), re.IGNORECASE,
+)
+
+
+class DraftRecurrence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    frequency: Literal["once", "weekly", "fortnightly", "monthly", "yearly"]
+    interval: int = Field(default=1, ge=1, le=120, strict=True)
+    month_end: bool = False
+    first_on: date | None = None
+    next_due_on: date | None = None
+    last_on: date | None = None
 
 
 class TransactionDraftItem(BaseModel):
@@ -51,15 +68,29 @@ class TransactionDraftItem(BaseModel):
     category: str | None = Field(default=None, max_length=64)
     occurred_on: date | None = None
     recurring: bool = False
+    recurrence: DraftRecurrence | None = None
     booking: bool = False
 
 
 class SpendingDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_spending_request: bool = True
-    action: Literal["record", "query"] = "record"
+    action: Literal["record", "query", "forecast"] = "record"
+    persistence_intent: Literal["save", "preview"] = "save"
     transactions: list[TransactionDraftItem] = Field(default_factory=list, max_length=20)
     query_date: date | None = None
+    query_start: date | None = None
+    query_end: date | None = None
+    query_categories: list[str] = Field(default_factory=list, max_length=20)
+    query_description: str | None = Field(default=None, max_length=255)
+    query_min_amount: float | None = Field(default=None, ge=0, le=999999999999.99, allow_inf_nan=False,
+                                          validation_alias=AliasChoices("query_min_amount", "min_amount"))
+    query_max_amount: float | None = Field(default=None, ge=0, le=999999999999.99, allow_inf_nan=False,
+                                          validation_alias=AliasChoices("query_max_amount", "max_amount"))
+    query_all_history: bool = False
+    query_scope: Literal["specified", "selected_period"] = "specified"
+    query_include_details: bool = True
+    query_group_by: Literal["category", "merchant"] | None = None
     questions: list[str] = Field(default_factory=list, max_length=8)
 
 
@@ -94,77 +125,64 @@ def _resolve_period(message: str, today: date) -> tuple[date, date, str] | None:
     return date(year, 1, 1), date(year, 12, 31), str(year)
 
 
-def _query_resolved(draft: SpendingDraft, message: str) -> bool:
+def _selected_query_period(draft: SpendingDraft, selected_period_start: date | None) -> tuple[date, date] | None:
+    if draft.query_scope != "selected_period" or selected_period_start is None or draft.questions:
+        return None
+    start = selected_period_start.replace(day=1)
+    return start, next_month(start) - timedelta(days=1)
+
+
+def _query_resolved(draft: SpendingDraft, message: str, selected_period_start: date | None = None) -> bool:
     return (
-        _query_date(draft, message) is not None
+        draft.query_all_history or draft.query_start is not None or draft.query_end is not None
+        or _query_date(draft, message) is not None
         or _resolve_period(message, capture._today()) is not None
+        or _selected_query_period(draft, selected_period_start) is not None
     )
 
 
-def _answer_query(session: Session, user_id: str, draft: SpendingDraft, message: str) -> str:
+def _answer_query(session: Session, user_id: str, draft: SpendingDraft, message: str, locale="en", *, selected_period_start: date | None = None) -> str:
     # A query is answered from owned records; the model never supplies numbers.
-    when = _query_date(draft, message)
-    if when is None:
+    start, end = draft.query_start, draft.query_end
+    if start is None and end is None and not draft.query_all_history:
         period = _resolve_period(message, capture._today())
-        if period is None:
-            return (
-                "Which day should I look up? Say for example 'on 21/9' or 'yesterday'. "
-                "Nothing was saved."
-            )
-        start, end, label = period
-        records = SQLAlchemyTransactionRepository(session).list_records(
-            user_id, period_start=start
-        )
-        period_records = [
-            record
-            for record in records
-            if start <= record.occurred_on <= end and record.transaction_type == "expense"
-        ]
-        if not period_records:
-            return (
-                f"You have no transactions in {label}. Would you like to log one? "
-                "For example: 'I have spent $5 on chicken rice today'."
-            )
-        total = sum(float(record.amount) for record in period_records)
-        lines = ", ".join(
-            f"{record.description} ({record.category.capitalize()}) "
-            f"SGD {float(record.amount):.2f}"
-            for record in period_records
-        )
-        return (
-            f"In {label} you had {len(period_records)} transaction"
-            f"{'s' if len(period_records) != 1 else ''}: {lines}. "
-            f"Total: SGD {total:.2f}."
-        )
-    records = SQLAlchemyTransactionRepository(session).list_records(
-        user_id, period_start=when.replace(day=1)
+        when = draft.query_date or (None if period else _query_date(draft, message))
+        if when is not None:
+            start = end = when
+        elif period:
+            start, end, _ = period
+        elif selected := _selected_query_period(draft, selected_period_start):
+            start, end = selected
+        else:
+            return translate("coach_action.query_ask", locale)
+    if start is not None and end is not None and start > end:
+        return translate("coach_action.query_ask", locale)
+    records, count, total, groups = SQLAlchemyTransactionRepository(session).search_expenses(
+        user_id, start=start, end=end, categories=draft.query_categories,
+        description=draft.query_description, minimum=draft.query_min_amount,
+        maximum=draft.query_max_amount, group_by=draft.query_group_by,
     )
-    day_records = [
-        record
-        for record in records
-        if record.occurred_on == when and record.transaction_type == "expense"
-    ]
-    label = f"{when.strftime('%A, %d %B %Y')}".replace(" 0", " ")
-    if not day_records:
-        return (
-            f"You have no transactions on {label}. Would you like to log one? "
-            "For example: 'I have spent $5 on chicken rice today'."
-        )
-    total = sum(float(record.amount) for record in day_records)
-    lines = ", ".join(
-        f"{record.description} ({record.category.capitalize()}) "
-        f"SGD {float(record.amount):.2f}"
-        for record in day_records
-    )
-    return (
-        f"On {label} you had {len(day_records)} transaction"
-        f"{'s' if len(day_records) != 1 else ''}: {lines}. "
-        f"Total: SGD {total:.2f}."
-    )
+    label = (translate("coach_action.query_all", locale) if start is None and end is None
+             else str(start or "…") + (" – " + str(end or "…") if start != end else ""))
+    if count == 0:
+        return translate("coach_action.query_empty", locale, period=label)
+    if not draft.query_include_details and not groups:
+        return translate("coach_action.query_result", locale, period=label, count=count,
+                         total=f"{total:.2f}", detail="")
+    if groups:
+        items = "\n".join(f"- {name}: SGD {amount:.2f}" for name, amount in groups.items())
+    else:
+        items = "\n".join(f"- {record.occurred_on}: {record.description} ({record.category}) SGD {float(record.amount):.2f}"
+                          for record in records)
+    detail = translate("coach_action.query_details", locale, items=items)
+    if count > len(records) and not groups:
+        detail += translate("coach_action.query_truncated", locale, shown=len(records), count=count)
+    return translate("coach_action.query_result", locale, period=label, count=count, total=f"{total:.2f}", detail=detail)
 
 
 def _save_dated(
-    session: Session, user_id: str, dated: list[tuple[TransactionDraftItem, date]]
+    session: Session, user_id: str, dated: list[tuple[TransactionDraftItem, date]], session_id: str, locale="en",
+    *, saved_schedules: list[dict] | None = None,
 ) -> tuple[CoachResponse | None, str]:
     saved_parts: list[str] = []
     for item, when in dated:
@@ -180,9 +198,9 @@ def _save_dated(
                     amount=ApplicationMoneyAmount(amount=item.amount),
                     occurred_on=when,
                     recurring=item.recurring,
+                    recurrence=_validated_recurrence(item, when),
                 ),
             )
-            session.commit()
         except SQLAlchemyError:
             session.rollback()
             return (
@@ -192,7 +210,7 @@ def _save_dated(
                     answer="Sorry, I couldn't save that transaction. Please try again.",
                     agent_results=[],
                     disclaimers=[],
-                    audit={"source": "spending_capture"},
+                    audit={"source": "spending_capture", "action_status": "rejected"},
                 ),
                 "",
             )
@@ -208,11 +226,11 @@ def _save_dated(
                     ),
                     agent_results=[],
                     disclaimers=[],
-                    audit={"source": "spending_capture"},
+                    audit={"source": "spending_capture", "action_status": "rejected"},
                 ),
                 "",
             )
-        last_saved_store.remember(
+        DurableLastSavedStore(session, user_id, session_id).remember(
             user_id,
             LastSavedRecord(
                 transaction_id=record.id,
@@ -221,13 +239,21 @@ def _save_dated(
                 amount=item.amount,
                 when=when,
                 recurring=item.recurring,
+                recurrence=record.recurrence,
+                obligation_id=record.obligation_id,
             ),
         )
         log_event("transaction.added", source="coach_capture", category=category)
-        saved_parts.append(
-            f"{item.description} for SGD {item.amount:.2f} on {when.day} "
-            f"{when.strftime('%b %Y')} under {category.capitalize()}"
-        )
+        saved_parts.append(translate("coach_action.saved_item", locale,
+            description=item.description, amount=f"{item.amount:.2f}",
+            date=when.isoformat(), category=category.capitalize()))
+        if record.recurrence:
+            recurrence = LedgerRecurrence.model_validate(record.recurrence)
+            saved_parts[-1] += " " + _recurrence_item(record.description, float(record.amount), recurrence, locale)
+            if saved_schedules is not None:
+                saved_schedules.append({"description": record.description,
+                    "amount": {"currency": record.currency, "amount": float(record.amount)},
+                    "recurrence": recurrence.model_dump(mode="json")})
     from app.services.budget_alert import category_overage_note
 
     flagged: list[str] = []
@@ -235,11 +261,21 @@ def _save_dated(
         category = " ".join((item.category or "").split()).lower() or classify_category(
             item.description or ""
         )
-        note = category_overage_note(session, user_id, when.replace(day=1), category)
+        note = category_overage_note(session, user_id, when.replace(day=1), category, locale)
         flagged.append(part + (" " + note.strip() if note else ""))
     body = "; ".join(flagged)
-    answer = f"Saved: {body}" + ("" if body.endswith((".", "!")) else ".")
+    answer = translate("coach_action.saved", locale, items=body)
     return None, answer
+
+
+def _recurrence_item(description: str, amount: float, recurrence: LedgerRecurrence, locale: str) -> str:
+    frequency = translate("coach_action.frequency_" + recurrence.frequency, locale)
+    if recurrence.month_end:
+        frequency += " (" + translate("ui.text.on_the_last_day_of_the_month", locale) + ")"
+    return translate("coach_action.recurrence_item", locale, description=description,
+        amount=f"{amount:.2f}", frequency=frequency, interval=recurrence.interval,
+        first=recurrence.first_on.isoformat(), next=recurrence.next_due_on.isoformat(),
+        last=recurrence.last_on.isoformat() if recurrence.last_on else translate("coach_action.no_end", locale))
 
 
 def _message_segments(message: str) -> list[str]:
@@ -287,7 +323,7 @@ def _item_date(item: TransactionDraftItem, message: str, segments: list[str]) ->
 
 
 def _resolve_record(
-    session: Session, user_id: str, draft: SpendingDraft, message: str
+    session: Session, user_id: str, draft: SpendingDraft, message: str, session_id: str, locale="en", *, save_complete=True
 ) -> tuple[str, list[TransactionDraftItem]]:
     """Validate draft items, saving the complete ones immediately.
 
@@ -347,8 +383,8 @@ def _resolve_record(
         dated.append((item, when))
     questions = list(dict.fromkeys(questions))
     saved_answer = ""
-    if dated:
-        error, saved_answer = _save_dated(session, user_id, dated)
+    if dated and save_complete:
+        error, saved_answer = _save_dated(session, user_id, dated, session_id, locale)
         if error is not None:
             # A failed write keeps the whole record draft pending for a retry.
             return error.answer, list(draft.transactions)
@@ -360,10 +396,31 @@ def _resolve_record(
     return saved_answer, []
 
 
+def _validated_recurrence(item: TransactionDraftItem, when: date) -> LedgerRecurrence | None:
+    if item.recurrence is None:
+        return None
+    terms = RecurrenceTerms.model_validate({**item.recurrence.model_dump(),
+                                          "first_on": item.recurrence.first_on or when})
+    due = terms.next_due_on or next_occurrence(terms, when)
+    return LedgerRecurrence.model_validate({**terms.model_dump(), "next_due_on": due})
+
+
+def preserves_transaction_preview(pending: dict | None) -> bool:
+    """Keep explicit previews across read-only turns without extending approval."""
+    if not isinstance(pending, dict):
+        return False
+    draft = pending.get("draft")
+    return pending.get("kind") in {"transaction_confirmation", "recurrence_confirmation"} or (
+        isinstance(draft, dict) and draft.get("action") == "record"
+        and draft.get("persistence_intent") == "preview"
+    )
+
+
 def stage_transaction_draft(
-    session: Session, user_id: str, chat, response: CoachResponse, message: str
+    session: Session, user_id: str, chat, response: CoachResponse, message: str, *, selected_period_start: date | None = None,
 ) -> None:
-    if chat.pending_transaction:
+    preserve_preview = preserves_transaction_preview(chat.pending_transaction)
+    if chat.pending_transaction and not preserve_preview:
         chat.pending_transaction = {**chat.pending_transaction, "ready": False}
     if response.blocked:
         return
@@ -377,42 +434,136 @@ def stage_transaction_draft(
     )
     if result is None:
         # No spending extraction this turn: the conversation moved on, so an
-        # unfinished record draft is dropped rather than silently saved later.
-        chat.pending_transaction = None
+        # implicit unfinished record is dropped. Explicit previews retain
+        # their original approval state and expiry and cannot auto-save.
+        if not preserve_preview:
+            chat.pending_transaction = None
         return
     try:
         draft = SpendingDraft.model_validate(result.data["spending_draft"])
     except ValidationError:
+        if preserve_preview:
+            chat.pending_transaction = {**chat.pending_transaction, "ready": False}
         response.answer = (
             "Nothing has been saved. Please provide what you spent, the SGD amount and the date again."
         )
         response.audit["spending_capture"] = "invalid_draft"
+        response.audit["action_status"] = "rejected"
         return
     if not draft.is_spending_request:
         # A non-spending message abandons any unfinished record draft so a later
-        # bare reply cannot silently save stale spending.
-        chat.pending_transaction = None
+        # bare reply cannot silently save stale spending. Explicit previews
+        # remain subject to owned, unexpired confirmation.
+        if not preserve_preview:
+            chat.pending_transaction = None
+        return
+    if draft.action == "forecast":
+        from app.services.recurring_forecast import handle_recurring_forecast_query
+        start, end = draft.query_start, draft.query_end
+        period = _resolve_period(message, capture._today()) if start is None and end is None else None
+        if period:
+            start, end, _ = period
+        next_period = re.search(r"\bnext\s+(week|month|year)\b", message, re.IGNORECASE)
+        if start is None and end is None and next_period:
+            from app.services.recurring_forecast import next_month_range
+            today = capture._today()
+            if next_period[1].lower() == "month":
+                start, end = next_month_range(today)
+            elif next_period[1].lower() == "week":
+                start = today - timedelta(days=today.weekday()) + timedelta(days=7)
+                end = start + timedelta(days=6)
+            else:
+                start, end = date(today.year + 1, 1, 1), date(today.year + 1, 12, 31)
+        try:
+            answer = handle_recurring_forecast_query(session, user_id, chat.id,
+                response.audit.get("response_locale", "en"), start=start, end=end,
+                categories=draft.query_categories, description=draft.query_description,
+                minimum=draft.query_min_amount, maximum=draft.query_max_amount)
+        except ValueError:
+            response.answer = translate("coach_action.forecast_range_ask", response.audit.get("response_locale", "en"))
+            response.audit["action_status"] = "needs_input"
+        else:
+            response.answer = answer.answer
+            response.audit.update(answer.audit)
+            response.audit["action_status"] = "read_only_forecast" if answer.audit.get("recurring_forecast") else "needs_input"
+            result.data["recurring_forecast"] = answer.audit.get("recurring_forecast", {})
+        if not preserve_preview:
+            chat.pending_transaction = None
+        response.audit["spending_capture"] = "read_only_forecast"
         return
     if draft.action == "query":
-        response.answer = _answer_query(session, user_id, draft, message)
+        response.answer = _answer_query(session, user_id, draft, message, response.audit.get("response_locale", "en"),
+                                       selected_period_start=selected_period_start)
         # A resolved lookup clears any older record draft; an unresolved lookup
         # stays pending so a follow-up date (e.g. "3rd Oct") can complete it.
-        if _query_resolved(draft, message):
-            chat.pending_transaction = None
+        if _query_resolved(draft, message, selected_period_start):
+            if not preserve_preview:
+                chat.pending_transaction = None
             response.audit["spending_capture"] = "read_only_query"
+            response.audit["action_status"] = "read_only_query"
         else:
-            chat.pending_transaction = _pending(draft)
+            if preserve_preview:
+                locale = response.audit.get("response_locale", "en")
+                response.answer = translate("coach_action.query_with_pending_preview", locale, **_preview_commands(locale))
+            else:
+                chat.pending_transaction = _pending(draft)
             response.audit["spending_capture"] = "needs_input"
+            response.audit["action_status"] = "needs_input"
         return
+    if preserve_preview:
+        # A record amendment cannot bypass the confirmation requested for
+        # an explicit preview merely by omitting its persistence intent.
+        draft = draft.model_copy(update={"persistence_intent": "preview"})
     leftover = _merge_pending(chat, draft)
-    answer, incomplete = _resolve_record(session, user_id, leftover, message)
+    has_recurrence = any(item.recurrence is not None for item in leftover.transactions)
+    if leftover.persistence_intent == "preview" or has_recurrence:
+        locale = response.audit.get("response_locale", "en")
+        answer, incomplete = _resolve_record(session, user_id, leftover, message, chat.id, locale, save_complete=False)
+        if incomplete or not leftover.transactions:
+            chat.pending_transaction = _pending(leftover) if incomplete else None
+            response.answer = answer
+            response.audit["spending_capture"] = "needs_input"
+            response.audit["action_status"] = "needs_input"
+            response.audit["action_status"] = "needs_input"
+            response.audit["action_status"] = "needs_input"
+            return
+        try:
+            parts = []
+            for item in leftover.transactions:
+                recurrence = _validated_recurrence(item, item.occurred_on)
+                # Validate the exact proposed expense and schedule before showing approval.
+                TransactionCreate(description=item.description, category=item.category or classify_category(item.description),
+                                  amount=ApplicationMoneyAmount(amount=item.amount), occurred_on=item.occurred_on,
+                                  recurring=item.recurring, recurrence=recurrence)
+                if recurrence:
+                    item.recurring = True
+                    item.recurrence = DraftRecurrence.model_validate(recurrence.model_dump())
+                    parts.append(_recurrence_item(item.description, item.amount, recurrence, locale))
+                else:
+                    parts.append(translate("coach_action.saved_item", locale, description=item.description,
+                        amount=f"{item.amount:.2f}", date=item.occurred_on.isoformat(), category=item.category or classify_category(item.description)))
+        except (ValueError, TypeError):
+            chat.pending_transaction = None
+            response.answer = translate("coach_action.recurrence_invalid" if has_recurrence else "coach_action.transaction_invalid", locale)
+            response.audit["spending_capture"] = "invalid_recurrence" if has_recurrence else "invalid_draft"
+            response.audit["action_status"] = "rejected"
+            return
+        chat.pending_transaction = {**_pending(leftover), "ready": True, "kind": "transaction_confirmation", "locale": locale}
+        response.answer = translate("coach_action.recurrence_preview" if has_recurrence else "coach_action.transaction_preview", locale,
+                                    items="\n".join(parts), **_preview_commands(locale))
+        response.audit["spending_capture"] = "awaiting_confirmation"
+        response.audit["action_status"] = "preview"
+        return
+    answer, incomplete = _resolve_record(session, user_id, leftover, message, chat.id, response.audit.get("response_locale", "en"))
     response.answer = answer
     if incomplete:
         chat.pending_transaction = _pending(leftover.model_copy(update={"transactions": incomplete}))
         response.audit["spending_capture"] = "needs_input"
+        response.audit["action_status"] = "needs_input"
     else:
         chat.pending_transaction = None
-        response.audit["spending_capture"] = "saved"
+        response.audit["spending_capture"] = "saved" if leftover.transactions else "needs_input"
+        response.audit["action_status"] = "saved" if leftover.transactions else "needs_input"
 
 
 def _pending(draft: SpendingDraft) -> dict:
@@ -421,6 +572,11 @@ def _pending(draft: SpendingDraft) -> dict:
         "baseline": None,
         "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
     }
+
+
+def _preview_commands(locale):
+    return {"confirm": translate("coach_action.transaction_confirm_command", locale),
+            "cancel": translate("coach_action.transaction_cancel_command", locale)}
 
 
 def _merge_pending(chat, draft: SpendingDraft) -> SpendingDraft:
@@ -442,26 +598,56 @@ def handle_transaction_confirmation(
     session: Session, request: CoachRequest
 ) -> CoachResponse | None:
     text = request.message.strip()
-    if not CONFIRM_OR_CANCEL.fullmatch(text):
+    if not (CONFIRM_OR_CANCEL.fullmatch(text) or PREVIEW_CONFIRM.fullmatch(text) or CANCEL.fullmatch(text)):
         return None
     chat = SQLAlchemyChatRepository(session).get_for_update(request.user_id, request.session_id)
     if chat is None or not chat.pending_transaction:
         # Never intercept confirm/cancel words meant for budget or goal drafts.
         return None
+    if (preserves_transaction_preview(chat.pending_transaction) and not CANCEL.fullmatch(text)
+            and not PREVIEW_CONFIRM.fullmatch(text)):
+        # A yes/no answer to an intervening topic cannot approve an older
+        # expense preview. Explicit confirmation identifies this operation.
+        return None
+    saved_schedules = []
     if CANCEL.fullmatch(text):
         chat.pending_transaction = None
         answer = "Transaction cancelled. Nothing was saved."
+        action_status = "cancelled"
+    elif chat.pending_transaction.get("kind") in {"recurrence_confirmation", "transaction_confirmation"}:
+        pending = chat.pending_transaction
+        locale = pending.get("locale", "en")
+        if not pending.get("ready") or datetime.fromisoformat(pending["expires_at"]) <= datetime.now(UTC):
+            chat.pending_transaction = None
+            answer = translate("coach_action.transaction_expired", locale)
+            action_status = "rejected"
+        else:
+            try:
+                draft = SpendingDraft.model_validate(pending["draft"])
+                error, answer = _save_dated(session, request.user_id,
+                    [(item, item.occurred_on) for item in draft.transactions], chat.id, locale,
+                    saved_schedules=saved_schedules)
+                if error is not None:
+                    error.audit["action_status"] = "rejected"
+                    return error.model_copy(update={"session_id": request.session_id})
+                action_status = "saved"
+            except (ValueError, TypeError):
+                answer = translate("coach_action.transaction_invalid", locale)
+                action_status = "rejected"
+            chat.pending_transaction = None
     else:
         chat.pending_transaction = None
         answer = (
             "There is nothing waiting to save. Tell me what you spent and how much, "
             "for example 'I spent $5 on chicken rice today'."
         )
+        action_status = "no_pending"
     return CoachResponse(
         session_id=request.session_id,
         selected_agents=["spending"],
         answer=answer,
         agent_results=[],
         disclaimers=[],
-        audit={"source": "spending_capture"},
+        audit={"source": "spending_capture", "action_status": action_status,
+               **({"confirmed_recurrences": saved_schedules} if action_status == "saved" and saved_schedules else {})},
     )

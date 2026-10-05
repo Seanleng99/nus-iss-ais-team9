@@ -15,5 +15,7 @@
   "transaction_capture.test_parse_spending_statement_positives": "花了5块买咖啡",
   "transaction_capture.test_parse_spending_statement_positives_2": "买咖啡",
   "transaction_capture.test_parse_spending_statement_positives_3": "地铁 3.5块",
-  "transaction_capture.test_parse_spending_statement_positives_4": "地铁"
+  "transaction_capture.test_parse_spending_statement_positives_4": "地铁",
+  "transaction_preview.confirm.zh": "确认记账",
+  "transaction_preview.cancel.zh": "取消记账"
 }

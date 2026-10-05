@@ -29,7 +29,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", "../.."]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

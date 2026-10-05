@@ -7,12 +7,13 @@ from time import perf_counter
 from typing import Any, Protocol
 from uuid import uuid4
 
-from coach_i18n import load_data, translate
+from coach_i18n import input_pattern, load_data, translate
 
 from app.agents.education_access import education_gap_message, education_topics
 from app.core.config import Settings
 from app.core.run_trace import task_context
 from app.core.telemetry import context_fields, log_event, trace_method
+from app.models.contracts import output_format
 
 
 class ModelGatewayError(RuntimeError):
@@ -78,11 +79,12 @@ class ModelGateway(Protocol):
 
 
 class BedrockModelGateway:
-    def __init__(self, settings: Settings, client: Any | None = None) -> None:
+    def __init__(self, settings: Settings, client: Any | None = None, *, total_max_attempts: int = 4) -> None:
         self.settings = settings
         self.model_id = settings.model_id
         self.aws_region = settings.aws_region
         self._client = client
+        self._total_max_attempts = total_max_attempts
 
     @property
     def client(self) -> Any:
@@ -96,7 +98,7 @@ class BedrockModelGateway:
                 config=Config(
                     connect_timeout=self.settings.model_connect_timeout_seconds,
                     read_timeout=self.settings.model_read_timeout_seconds,
-                    retries={"mode": "standard", "max_attempts": 3},
+                    retries={"mode": "standard", "total_max_attempts": self._total_max_attempts},
                 ),
             )
         return self._client
@@ -110,13 +112,15 @@ class BedrockModelGateway:
         temperature: float,
         max_tokens: int,
     ) -> str:
+        component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
+        policy = self.settings.model_policy(component, max_tokens)
         try:
-            log_event("bedrock.converse.request", model_id=self.model_id, provider="bedrock")
+            log_event("bedrock.converse.request", model_id=policy.model_id, provider="bedrock")
             response = self.client.converse(
-                modelId=self.model_id,
+                modelId=policy.model_id,
                 system=[{"text": system_prompt}],
                 messages=[{"role": "user", "content": [{"text": user_prompt}]}],
-                inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
+                inferenceConfig={"maxTokens": policy.max_tokens, "temperature": temperature},
             )
             log_event(
                 "bedrock.converse.response",
@@ -152,6 +156,7 @@ class OpenAIModelGateway:
     @property
     def client(self) -> Any:
         if self._client is None:
+            from httpx import Timeout
             from openai import OpenAI
 
             key = self.settings.openai_api_key
@@ -163,7 +168,10 @@ class OpenAIModelGateway:
                 )
             self._client = OpenAI(
                 api_key=key.get_secret_value(),
-                timeout=self.settings.model_read_timeout_seconds,
+                timeout=Timeout(
+                    self.settings.model_read_timeout_seconds,
+                    connect=self.settings.model_connect_timeout_seconds,
+                ),
                 max_retries=0,
             )
         return self._client
@@ -180,29 +188,60 @@ class OpenAIModelGateway:
         # GPT-6 reasoning requests do not accept temperature. Keep the argument
         # for the existing agent interface, but do not forward it to OpenAI.
         del temperature
+        component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
+        policy = self.settings.model_policy(component, max_tokens)
         try:
-            log_event("openai.responses.request", model_id=self.model_id, provider="openai")
+            log_event(
+                "openai.responses.request", model_id=policy.model_id, provider="openai",
+                reasoning_effort=policy.reasoning_effort, max_output_tokens=policy.max_tokens,
+                temperature_supported=False,
+            )
             response = self.client.responses.create(
-                model=self.model_id,
+                model=policy.model_id,
                 instructions=system_prompt,
                 input=[
                     {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
                     {"role": "user", "content": user_prompt},
                 ],
-                reasoning={"effort": self.settings.model_reasoning_effort},
-                max_output_tokens=max_tokens,
-                text={"format": {"type": "json_object"}},
+                reasoning={"effort": policy.reasoning_effort},
+                max_output_tokens=policy.max_tokens,
+                text={"format": output_format()},
                 store=False,
             )
+            if response.status == "incomplete":
+                reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
+                raise ModelGatewayError(
+                    "The model response could not be completed.",
+                    code=("MODEL_OUTPUT_TOKEN_LIMIT" if reason == "max_output_tokens"
+                          else "MODEL_CONTENT_FILTERED" if reason == "content_filter"
+                          else "MODEL_RESPONSE_INCOMPLETE"),
+                    component=component or "openai",
+                )
+            if any(
+                getattr(content, "type", None) == "refusal"
+                for item in getattr(response, "output", [])
+                for content in getattr(item, "content", [])
+            ):
+                raise ModelGatewayError(
+                    "The model declined this request.", code="MODEL_REFUSAL",
+                    component=component or "openai",
+                )
             if response.status != "completed" or not response.output_text.strip():
-                raise ValueError("incomplete or empty response")
+                raise ModelGatewayError(
+                    "The model returned no completed answer.", code="MODEL_RESPONSE_EMPTY",
+                    component=component or "openai",
+                )
             usage = response.usage
             input_tokens = int(usage.input_tokens) if usage else 0
             output_tokens = int(usage.output_tokens) if usage else 0
+            reasoning_tokens = int(getattr(
+                getattr(usage, "output_tokens_details", None), "reasoning_tokens", 0,
+            ) or 0)
             log_event(
                 "openai.responses.response",
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                reasoning_tokens=reasoning_tokens,
             )
             return ModelGeneration(
                 response.output_text,
@@ -211,16 +250,49 @@ class OpenAIModelGateway:
                     "outputTokens": output_tokens,
                     "totalTokens": input_tokens + output_tokens,
                 },
+                provider_metrics={"reasoningTokens": reasoning_tokens},
             )
         except ModelGatewayError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - adapter must hide even unexpected provider failures
+            # SDK exceptions expose typed status/code metadata. Never read or
+            # print their message, body, request headers, URL or API key.
+            supplied_status = getattr(exc, "status_code", None)
+            status = supplied_status if isinstance(supplied_status, int) else None
+            error_class = type(exc).__name__
+            supplied_code = getattr(exc, "code", None)
+            safe_code = supplied_code if isinstance(supplied_code, str) else None
+            if status == 401 or error_class in {"AuthenticationError", "OAuthError"} or safe_code == "invalid_api_key":
+                code = "OPENAI_AUTHENTICATION_FAILED"
+            elif status == 403 or error_class == "PermissionDeniedError" or safe_code in {"permission_denied", "model_access_denied"}:
+                code = "OPENAI_ACCESS_DENIED"
+            elif status == 404 or error_class == "NotFoundError" or safe_code in {"model_not_found", "unsupported_model"}:
+                code = "OPENAI_MODEL_UNAVAILABLE"
+            elif safe_code in {"insufficient_quota", "billing_hard_limit_reached", "billing_not_active"}:
+                code = "OPENAI_QUOTA_EXCEEDED"
+            elif status == 429 or error_class == "RateLimitError":
+                code = "OPENAI_RATE_LIMITED"
+            elif status == 408 or error_class in {
+                "APITimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout",
+                "WriteTimeout", "PoolTimeout",
+            }:
+                code = "OPENAI_TIMEOUT"
+            elif error_class in {
+                "APIConnectionError", "ConnectError", "NetworkError", "ReadError", "WriteError",
+                "RemoteProtocolError", "ProxyError",
+            }:
+                code = "OPENAI_CONNECTION_ERROR"
+            elif (isinstance(status, int) and 500 <= status <= 599) or error_class == "InternalServerError":
+                code = "OPENAI_SERVER_ERROR"
+            elif status in {400, 422} or error_class in {"BadRequestError", "UnprocessableEntityError"}:
+                code = "OPENAI_INVALID_REQUEST"
+            else:
+                code = "OPENAI_INVOCATION_FAILED"
             raise ModelGatewayError(
                 "The configured model could not produce a response.",
-                code=("OPENAI_RATE_LIMITED" if getattr(exc, "status_code", None) == 429
-                      else "OPENAI_INVOCATION_FAILED"),
+                code=code,
                 component="openai",
-            ) from exc
+            ) from None
 
 
 class LocalFixtureModelGateway:
@@ -245,8 +317,9 @@ class LocalFixtureModelGateway:
             from app.models.budget_fixture import fixture_budget_draft
             return json.dumps(fixture_budget_draft(payload))
         if prompt_id == "PROMPT_ID: spending_capture":
+            from app.models.recurring_fixture import apply_recurring_terms
             from app.models.spending_fixture import fixture_spending_draft
-            return json.dumps(fixture_spending_draft(payload))
+            return json.dumps(apply_recurring_terms(payload, fixture_spending_draft(payload)))
         if prompt_id == "PROMPT_ID: router":
             return json.dumps(self._route(payload))
         if prompt_id == "PROMPT_ID: dependency_planner":
@@ -324,6 +397,7 @@ class LocalFixtureModelGateway:
     @staticmethod
     def _route(payload: Mapping[str, Any]) -> dict[str, Any]:
         requested = payload.get("requested_agents")
+        context = payload.get("session_context", {})
         if requested:
             selected = list(requested)
         else:
@@ -349,25 +423,87 @@ class LocalFixtureModelGateway:
                 topics == ["emergency fund readiness"] and "goal_strategy" in selected
             ):
                 selected.append("investment_education")
+        from app.agents.goal_capture import goal_change_request
         from app.agents.spending_capture import spending_capture_request
-        spending_capture = bool(payload.get("pending_transaction")) or (
+        message_text = str(payload["message"])
+        # These recognizers are confined to the deterministic offline fixture.
+        # Production routing remains the model's typed semantic decision.
+        new_question = bool(re.search(
+            r"\b(?:explain|teach|why|how|what|compare|tell me|should|look up)\b|[?]",
+            message_text, re.IGNORECASE,
+        ))
+        detail_reply = bool(re.fullmatch(
+            r"\s*(?:(?:name|goal_name|target_amount|current_amount|target_months|amount|"
+            r"description|category|occurred_on|period_start|currency|income|savings)\s*:\s*[^?]+|"
+            r"(?:SGD|S\$|\$)?\s*\d[\d., /-]*(?:months?)?)\s*", message_text, re.IGNORECASE,
+        ))
+        date_reply = bool(re.fullmatch(
+            r"\s*(?:today|yesterday|tonight|this morning|"
+            r"(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+20\d{2}|"
+            r"20\d{2}-\d{1,2}(?:-\d{1,2})?|\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s*[.!]?\s*",
+            message_text, re.IGNORECASE,
+        ))
+        pending_budget = payload.get("pending_budget") or {}
+        planning_reply = bool(pending_budget.get("planning")) and bool(re.fullmatch(
+            r"\s*(?:all expenses included|use recorded spending|50/30/20|80/20|"
+            r"zero-based|savings first|flexible method)\s*[.!]?\s*",
+            message_text, re.IGNORECASE,
+        ))
+        budget_reply = bool(pending_budget) and not new_question and (
+            detail_reply or date_reply or planning_reply
+        )
+        transaction_reply = bool(payload.get("pending_transaction")) and not new_question and (
+            detail_reply or date_reply
+        )
+        goal_reply = bool(payload.get("pending_goal")) and detail_reply and not new_question
+        if sum(bool(payload.get(field)) for field in (
+            "pending_goal", "pending_budget", "pending_transaction",
+        )) > 1 and re.fullmatch(r"\s*(?:SGD|S\$|\$)?\s*\d[\d.,]*\s*", message_text):
+            # A bare number cannot choose among multiple pending operations.
+            budget_reply = transaction_reply = goal_reply = False
+        if budget_reply:
+            selected = ["budget"]
+        goal_capture = goal_change_request(message_text) or goal_reply
+        if goal_capture and "goal_strategy" not in selected:
+            selected.append("goal_strategy")
+        spending_capture = transaction_reply or (
             not bool(payload.get("pending_budget"))
             and spending_capture_request(str(payload["message"]))
         )
+        spending_capture = spending_capture or bool(
+            re.search(r"\b(?:forecast|project|estimate|upcoming)\b", message_text, re.IGNORECASE)
+            and re.search(r"\b(?:recurring|bills?|expenses?)\b", message_text, re.IGNORECASE)
+        )
         if spending_capture:
-            selected = ["spending"]
+            selected = list(dict.fromkeys(["spending", *selected])) if not transaction_reply else ["spending"]
             if any(term in str(payload["message"]).lower() for term in ("budget", "allocate")):
                 selected.append("budget")
+        budget_status = bool(re.search(
+            r"\b(?:over(?: my| the)? budget|overspend\w*|exceed\w*.*(?:budget|income|limits?)|"
+            r"(?:budget|spending).*on track|on track.*(?:budget|spending)|"
+            r"how am I doing.*(?:budget|spending)|spending.*(?:okay|too high|under control))\b",
+            message_text, re.IGNORECASE,
+        )) or bool(context.get("pending_action") == "budget_status" and date_reply)
+        if budget_status and "budget" not in selected:
+            selected.append("budget")
+        memory_question = bool(re.fullmatch(
+            input_pattern("backend.services.session_context.recall_question"), message_text, re.IGNORECASE
+        )) or bool(re.fullmatch(r"what did I tell you about (?:my )?income\??", message_text, re.IGNORECASE))
+        memory_fields = ["monthly_income"] if memory_question and re.search(r"\bincome\b", message_text, re.IGNORECASE) else []
         return {
             "selected_agents": selected or ["budget"],
             "rationale": ["Offline fixture selected agents for repeatable integration testing."],
             "spending_capture": spending_capture,
-            "budget_planning": bool((payload.get("pending_budget") or {}).get("planning")) or (
+            "goal_capture": goal_capture,
+            "budget_status_query": budget_status,
+            "memory_question": memory_question,
+            "memory_fields": memory_fields,
+            "budget_planning": bool(budget_reply and pending_budget.get("planning")) or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower()
                         for word in ("realistic", "category-level", "propose spending limits", "check my budget plan", "50/30/20", "80/20", "zero-based", "savings first", "custom percentages", "scenario", "what if", "compare", "review", "pace", "adjustment", "funded alternatives", "multi-month", "carry forward", "rollover", "periodic"))
             ),
-            "budget_capture": bool(payload.get("pending_budget")) or (
+            "budget_capture": budget_reply or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower().split()
                         for word in ("set", "save", "add", "update", "record", "change"))
@@ -395,6 +531,12 @@ class LocalFixtureModelGateway:
 
         def anomaly_line(anomaly: Mapping[str, Any]) -> str:
             category = label(anomaly.get("category", "other"))
+            if anomaly.get("aggregation") == "category_month_total":
+                return (
+                    f"Your recorded {category} category total is SGD {float(anomaly.get('amount', 0)):.2f} "
+                    f"for {str(anomaly.get('occurred_on', 'the selected month'))[:7]}, compared with "
+                    f"a recorded monthly comparison baseline of SGD {float(anomaly.get('expected_amount', 0)):.2f}."
+                )
             return (
                 f"I found the unusual {category} expense you noticed: SGD "
                 f"{float(anomaly.get('amount', 0)):.2f} on {anomaly.get('occurred_on', 'a recent day')}, "
@@ -409,10 +551,12 @@ class LocalFixtureModelGateway:
                 if category in totals
                 else ""
             )
+            percent = trend.get("change_percent")
+            comparison = f"({float(percent):+.1f}%)" if percent is not None else "(no comparable prior total)"
             return (
                 f"Your {category} spending is SGD {float(trend.get('current_amount', 0)):.2f} this "
                 f"month versus SGD {float(trend.get('previous_amount', 0)):.2f} last month "
-                f"({float(trend.get('change_percent', 0)):+.1f}%).{total}"
+                f"{comparison}.{total}"
             )
 
         def total_line(category: str) -> str:
@@ -648,15 +792,7 @@ class TracingModelGateway:
         call_id = str(uuid4())
         started = perf_counter()
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
-        log_event(
-            "model.generation.started",
-            call_id=call_id,
-            trace_id=trace_id,
-            component=component,
-            provider=self.settings.model_provider,
-            model_id=self.settings.model_id,
-            input_characters=len(user_prompt),
-        )
+        policy = self.settings.model_policy(component, max_tokens)
         if trace_id:
             with self._lock:
                 calls = self._calls.get(trace_id)
@@ -664,6 +800,15 @@ class TracingModelGateway:
                     raise ModelGatewayError(
                         "The workflow has already closed.",
                         code="WORKFLOW_CLOSED", component="model_budget",
+                    )
+                if self.settings.model_provider.lower() != "local_fixture" and any(
+                    item.get("status") == "failed"
+                    and any(type(item.get(key)) is not int for key in ("input_tokens", "output_tokens", "total_tokens"))
+                    for item in calls
+                ):
+                    raise ModelGatewayError(
+                        "No further model calls are permitted while consumed usage is unknown.",
+                        code="MODEL_USAGE_UNKNOWN", component="model_budget",
                     )
                 if len(calls) >= self.settings.max_model_calls_per_run:
                     raise ModelGatewayError("The workflow exceeded its model-call budget.")
@@ -678,6 +823,10 @@ class TracingModelGateway:
                     "span_id": context_fields().get("span_id"),
                     **(task_context.get() or {}),
                     "component": system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip() or "unknown",
+                    "model_id": policy.model_id,
+                    "reasoning_effort": policy.reasoning_effort,
+                    "max_output_tokens": policy.max_tokens,
+                    "temperature_supported": self.settings.model_provider.lower() == "bedrock",
                     "status": "running",
                     "duration_ms": 0.0,
                     "input_characters": len(user_prompt),
@@ -689,6 +838,11 @@ class TracingModelGateway:
                 }
                 calls.append(call)
 
+        log_event(
+            "model.generation.started", call_id=call_id, trace_id=trace_id,
+            component=component, provider=self.settings.model_provider,
+            model_id=policy.model_id, input_characters=len(user_prompt),
+        )
         status = "completed"
         generation: str = ""
         error_code: str | None = None
@@ -702,7 +856,7 @@ class TracingModelGateway:
             return generation
         except Exception as exc:
             status = "failed"
-            error_code = type(exc).__name__
+            error_code = getattr(exc, "code", type(exc).__name__)
             raise
         finally:
             usage = getattr(generation, "usage", {})
@@ -728,6 +882,7 @@ class TracingModelGateway:
                     "output_tokens": usage.get("outputTokens"),
                     "total_tokens": usage.get("totalTokens"),
                     "error_code": error_code,
+                    "reasoning_tokens": getattr(generation, "provider_metrics", {}).get("reasoningTokens"),
                 }
                 with self._lock:
                     if self._calls.get(trace_id) is not calls:

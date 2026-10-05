@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.telemetry import trace_method
 from app.domain.currency import ApplicationCurrency
+from app.domain.recurrence import LedgerRecurrence
 
 
 class AgentName(StrEnum):
@@ -35,6 +36,8 @@ class Transaction(BaseModel):
     amount: MoneyAmount
     occurred_on: str
     recurring: bool = False
+    recurrence: LedgerRecurrence | None = None
+    obligation_id: str | None = None
 
 
 class FinancialGoal(BaseModel):
@@ -48,6 +51,9 @@ class UserFinancialSnapshot(BaseModel):
     monthly_income: MoneyAmount | None = None
     recurring_expenses: list[Transaction] = Field(default_factory=list)
     recent_transactions: list[Transaction] = Field(default_factory=list)
+    historical_transactions: list[Transaction] = Field(default_factory=list)
+    transaction_context: dict[str, Any] = Field(default_factory=dict)
+    period_start: str | None = None
     goals: list[FinancialGoal] = Field(default_factory=list)
     risk_tolerance: str | None = None
     preferences: dict[str, Any] = Field(default_factory=dict)
@@ -88,6 +94,7 @@ class CoachRequest(BaseModel):
 class InternalCoachRequest(CoachRequest):
     # Only the backend constructs this; the public request has no history field.
     conversation_context: list[dict[str, str]] = Field(default_factory=list, max_length=8)
+    message_position: int | None = Field(default=None, ge=1)
     pending_goal: dict[str, Any] | None = None
     pending_budget: dict[str, Any] | None = None
     pending_transaction: dict[str, Any] | None = None

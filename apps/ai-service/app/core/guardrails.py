@@ -19,7 +19,15 @@ PROMPT_INJECTION_PATTERNS = [
     re.compile(r"\bignore (all )?(previous|above|system|developer) instructions\b", re.IGNORECASE),
     re.compile(r"\breveal (the )?(system prompt|hidden instructions|developer message)\b", re.IGNORECASE),
     re.compile(r"\bdisregard (policy|guardrails|safety rules)\b", re.IGNORECASE),
-    re.compile(r"\bexfiltrate\b|\bapi[_ -]?key\b|\bpassword\b|\bsecret\b", re.IGNORECASE),
+    re.compile(
+        # Look ahead so a harmless warning cannot consume a second, unsafe
+        # credential directive in the same sentence.
+        r"(?=(?:\bexfiltrate\b|"
+        r"(?P<credential_action>\b(?:reveal|dump|print|expose|retrieve|use|store|send)\b)"
+        r"[^.!?;]{0,50}\b(?P<credential_object>api[_ -]?keys?|passwords?|secrets?)\b|"
+        r"\b(?:my|our|the)\s+(?:api[_ -]?key|password)\s*(?:is|:|=)\s*\S+))",
+        re.IGNORECASE,
+    ),
     re.compile(
         r"\b(?:act|behave|respond)\s+as\s+(?:the\s+)?"
         r"(?:system|developer|administrator)\b",
@@ -63,6 +71,46 @@ PROMPT_INJECTION_PATTERNS = [
 
 ADVISORY_DISCLAIMER = translate("safety.educational_disclaimer", "en")
 
+_CREDENTIAL_SAFETY_NEGATION = re.compile(
+    r"\b(?:never|(?:do|must|should)\s+not|don['\N{RIGHT SINGLE QUOTATION MARK}]t)"
+    r"\s+(?:ever\s+)?$", re.IGNORECASE,
+)
+_GENERIC_PASSWORD_HYGIENE = re.compile(
+    r"use\s+(?:a\s+)?"
+    r"(?:(?:strong|unique|long|complex|random|secure)[\s,]+){1,4}passwords?$",
+    re.IGNORECASE,
+)
+
+
+def _has_injection_match(pattern: re.Pattern[str], text: str) -> bool:
+    if "credential_action" not in pattern.groupindex:
+        return pattern.search(text) is not None
+    for match in pattern.finditer(text):
+        action = match.group("credential_action")
+        # Exfiltration and literal credential disclosures are never waived.
+        if action is None:
+            return True
+        if _CREDENTIAL_SAFETY_NEGATION.search(text[max(0, match.start() - 40):match.start()]):
+            continue
+        if action.casefold() == "use" and match.group("credential_object").casefold() in {
+            "password", "passwords",
+        }:
+            noun_phrase = text[match.start():match.end("credential_object")]
+            remainder = text[match.end("credential_object"):]
+            # These generic hygiene objects do not ask for a user's secret.
+            # Other credential verbs are inspected independently, even when
+            # the same sentence also recommends a strong password or manager.
+            if _GENERIC_PASSWORD_HYGIENE.fullmatch(noun_phrase) and not re.match(
+                r"\s*(?::|=|is\b|from\b|of\b|belonging\b)", remainder, re.IGNORECASE,
+            ):
+                continue
+            if re.fullmatch(r"use\s+a\s+password", noun_phrase, re.IGNORECASE) and re.match(
+                r"\s+manager\b", remainder, re.IGNORECASE,
+            ):
+                continue
+        return True
+    return False
+
 
 @dataclass(frozen=True)
 class GuardrailDecision:
@@ -75,9 +123,18 @@ def redact_sensitive_text(text: str) -> tuple[str, list[str]]:
     redacted = text
     findings: list[str] = []
     for label, pattern in PII_PATTERNS.items():
-        if pattern.search(redacted):
+        matches = list(pattern.finditer(redacted))
+        # Explicit monetary tokens are amounts, not telephone/card identifiers.
+        protected = [(match.start(), match.end()) for match in re.finditer(
+            r"(?i)(?:SGD|USD|S\$|US\$|\$)\s*\d[\d,]*(?:\.\d+)?", redacted
+        )] if label in {"phone", "card_like"} else []
+        matches = [match for match in matches if not any(
+            start <= match.start() and match.end() <= end for start, end in protected
+        )]
+        if matches:
             findings.append(label)
-            redacted = pattern.sub(f"[REDACTED_{label.upper()}]", redacted)
+            for match in reversed(matches):
+                redacted = redacted[:match.start()] + f"[REDACTED_{label.upper()}]" + redacted[match.end():]
     return redacted, findings
 
 
@@ -97,7 +154,7 @@ def inspect_prompt(text: str) -> GuardrailDecision:
     injection_findings = [
         f"prompt_injection:{idx}"
         for idx, pattern in enumerate(PROMPT_INJECTION_PATTERNS)
-        if pattern.search(inspected)
+        if _has_injection_match(pattern, inspected)
     ]
     findings = pii_findings + injection_findings
     return GuardrailDecision(
@@ -113,7 +170,7 @@ def sanitize_rag_document(text: str) -> GuardrailDecision:
     findings = list(pii_findings)
     inspected = normalize_for_security_inspection(sanitized)
     for idx, pattern in enumerate(PROMPT_INJECTION_PATTERNS):
-        if pattern.search(inspected):
+        if _has_injection_match(pattern, inspected):
             findings.append(f"indirect_prompt_injection:{idx}")
     if len(findings) > len(pii_findings):
         sanitized = "[REMOVED_UNTRUSTED_INSTRUCTION]"

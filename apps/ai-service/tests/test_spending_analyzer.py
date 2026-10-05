@@ -49,7 +49,7 @@ class TestCategoryTrends:
         
         trends = compute_category_trends(current, previous)
         
-        assert trends[0].change_percent == 100.0
+        assert trends[0].change_percent is None  # Percentage from zero is undefined.
         assert trends[0].direction == "increased"
 
 

@@ -165,7 +165,7 @@ def test_frontend_headers_link_auth_snapshot_ai_persistence_and_response(
         f"app.infrastructure.repositories.{method}" for method in (
             "SQLAlchemyUserRepository.get_financial_snapshot",
             "SQLAlchemyUserRepository.get_profile",
-            "SQLAlchemyTransactionRepository.list_for_user",
+            "SQLAlchemyTransactionRepository.search_expenses",
             "SQLAlchemyGoalRepository.list_for_user",
             "SQLAlchemyChatRepository.get_for_update",
             "SQLAlchemyChatRepository.id_exists",

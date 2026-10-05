@@ -2,6 +2,7 @@ import copy
 import io
 import json
 import urllib.error
+from datetime import date
 
 import pytest
 
@@ -100,6 +101,14 @@ def test_education_smoke_accepts_hybrid_investment_response(
     run_education_smoke(monkeypatch, hybrid_education_response)
 
 
+def test_education_smoke_accepts_supported_table_without_forced_heading(monkeypatch, education_response):
+    education_response["answer"] = (
+        "| Concept | Explanation |\n|---|---|\n"
+        "| Risk | Approved material. [Approved education](https://example.test/cited) |"
+    )
+    run_education_smoke(monkeypatch, education_response)
+
+
 @pytest.mark.parametrize("status", ["general_knowledge", "insufficient", "unknown"])
 def test_education_smoke_rejects_non_rag_investment_status(
     monkeypatch, education_response, status,
@@ -143,7 +152,7 @@ def test_education_smoke_rejects_incomplete_hybrid_sections(
 
 
 @pytest.mark.parametrize(
-    "damage", ["empty_answer", "blocked", "missing_rag_heading", "missing_rag_link"]
+    "damage", ["empty_answer", "blocked", "missing_rag_link"]
 )
 def test_education_smoke_rejects_incomplete_grounded_response(
     monkeypatch, education_response, damage,
@@ -439,6 +448,7 @@ def test_persistence_smoke_verifies_lifecycle_export_and_complete_cleanup(
     monkeypatch,
 ) -> None:
     calls: list[tuple[str, str, dict | None]] = []
+    monkeypatch.setattr(post_deploy_smoke, "_financial_today", lambda: date(2026, 11, 1))
 
     def fake_request(url, method="GET", body=None, api_key=None):
         del api_key
@@ -449,6 +459,7 @@ def test_persistence_smoke_verifies_lifecycle_export_and_complete_cleanup(
             return 200, json.dumps(
                 {
                     "monthly_income": {"amount": 4100},
+                    "period_start": "2026-11-01",
                     "recent_transactions": [
                         {"description": "Deployment smoke transaction"}
                     ],
@@ -488,6 +499,12 @@ def test_persistence_smoke_verifies_lifecycle_export_and_complete_cleanup(
     post_deploy_smoke.check_persistence(
         "https://example.test/api", "synthetic-api-key"
     )
+
+    transaction = next(body for method, url, body in calls if method == "POST" and url.endswith("/transactions"))
+    budget = next(body for method, url, body in calls if method == "PUT" and url.endswith("/budget"))
+    assert transaction["occurred_on"] == "2026-11-01"
+    assert budget["period_start"] == "2026-11-01"
+    assert any(url.endswith("/dashboard?period_start=2026-11-01") for _, url, _ in calls)
 
     assert calls[-1] == (
         "DELETE",

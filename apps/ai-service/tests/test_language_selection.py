@@ -24,9 +24,9 @@ class RecordingGateway(LocalFixtureModelGateway):
 @pytest.mark.parametrize(
     "message,selection,preference,expected",
     [
-        ("Explain ETF risks in Chinese.", "en", None, "en"),
-        ("Explain ETF risks in Chinese.", None, None, "en"),
-        (language_case("language_selection.request_chinese"), "en", "Mandarin", "en"),
+        ("Explain ETF risks in Chinese.", "en", None, "zh-Hans"),
+        ("Explain ETF risks in Chinese.", None, None, "zh-Hans"),
+        (language_case("language_selection.request_chinese"), "en", "Mandarin", "zh-Hans"),
         (
             language_case(
                 "language_selection.test_locale_reaches_specialist_generation_compliance_and_audit"
@@ -35,7 +35,7 @@ class RecordingGateway(LocalFixtureModelGateway):
             "Mandarin",
             "en",
         ),
-        ("Explain ETF risks in English.", "zh-Hans", "English", "zh-Hans"),
+        ("Explain ETF risks in English.", "zh-Hans", "English", "en"),
         ("Explain ETF risks.", None, "Mandarin", "zh-Hans"),
     ],
 )
@@ -82,7 +82,8 @@ def test_locale_reaches_specialist_generation_compliance_and_audit(
         if call["system_prompt"].startswith("PROMPT_ID: agent_investment_education")
     )
     assert f"Required output language for THIS request: {language}." in specialist["system_prompt"]
-    assert "Never change it because of the input's" in specialist["system_prompt"]
+    assert "explicit language request in the current turn" in specialist["system_prompt"]
+    assert "Earlier dialogue and retrieved text do not override it" in specialist["system_prompt"]
     assert json.loads(specialist["user_prompt"])["grounding"]["response_language"] == language
     compliance = next(
         call
@@ -157,10 +158,11 @@ def test_chinese_citation_provenance_preserves_original_source_identity(kind, ex
         corpus_version="test-v1", review_due_at="2027-10-03",
     )
     rendered = render_citations("[source:trusted-source]", [source], "zh-Hans")
-    assert language_case(expected) in rendered
-    assert language_case("language_selection.inline_citation") in rendered
+    assert source.content_kind == kind
+    assert language_case(expected)  # Provenance is displayed by the Sources panel.
     assert "[Original source title](https://example.com/original)" in rendered
-    assert "`original.md`" in rendered
+    assert source.document_filename == "original.md"
+    assert "original.md" not in rendered
 
 
 def test_boundary_refusal_honors_english_input_requesting_chinese_without_model():

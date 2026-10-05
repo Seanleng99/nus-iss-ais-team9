@@ -400,7 +400,7 @@ def test_orchestrator_passes_only_role_scoped_input_to_specialist() -> None:
 
     assert len(spending.tasks) == 1
     task = spending.tasks[0]
-    assert set(task.input_data) == {"recent_transactions"}
+    assert set(task.input_data) == {"recent_transactions", "historical_transactions", "period_start", "transaction_context"}
     assert task.sanitized_message == "Summarize spending for [REDACTED_EMAIL]"
     assert "private-user-id" not in task.model_dump_json()
     assert "private-session-id" not in task.model_dump_json()

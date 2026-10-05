@@ -317,6 +317,14 @@
       "bond duration"
     ],
     [
+      "bond convexity",
+      "bond convexity"
+    ],
+    [
+      "债券凸性",
+      "bond convexity"
+    ],
+    [
       "债券久期",
       "bond duration"
     ],
@@ -1020,6 +1028,7 @@
     "tracking error": "跟踪误差",
     "live market data": "实时市场数据",
     "bond duration": "债券久期",
+    "bond convexity": "债券凸性",
     "zero-coupon bonds": "零息债券",
     "treasury bills": "国库券",
     "Singapore Savings Bonds": "新加坡储蓄债券",
@@ -1032,5 +1041,27 @@
     "tokenized assets": "代币化资产",
     "crypto assets": "加密资产",
     "options trading": "期权交易"
+  },
+  "PUBLIC_EDUCATION_SEARCH_ALIASES": {
+    "convexity": "bond price",
+    "bond convexity": "bond price",
+    "password scam": "investment scams",
+    "password scams": "investment scams",
+    "password safety": "investment scams",
+    "credential theft": "investment scams",
+    "phishing": "investment scams",
+    "phishing scams": "investment scams",
+    "bank account scams": "investment scams",
+    "account takeover scams": "investment scams",
+    "account security": "investment scams",
+    "financial account security": "investment scams",
+    "ordinary account": "cpf oa",
+    "cpf ordinary account": "cpf oa",
+    "special account": "cpf sa",
+    "cpf special account": "cpf sa",
+    "cpfis-oa account": "cpfis oa",
+    "cpfis-sa account": "cpfis sa",
+    "cpf investment account": "cpf investment",
+    "cpfis ordinary account reserve": "cpfis oa"
   }
 }

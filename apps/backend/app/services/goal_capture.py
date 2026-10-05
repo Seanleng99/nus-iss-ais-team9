@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
-from coach_i18n import input_pattern
+from coach_i18n import input_pattern, localize_backend_text, request_locale
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 
@@ -142,6 +142,15 @@ def _preview(session, user_id, draft):
 
 
 def stage_goal_draft(session, user_id, chat, response):
+    if response.blocked or not any("goal_draft" in result.data for result in response.agent_results):
+        return
+    before = response.answer
+    _stage_goal_draft(session, user_id, chat, response)
+    if response.answer != before:
+        response.answer = localize_backend_text(response.answer, response.audit.get("response_locale"))
+
+
+def _stage_goal_draft(session, user_id, chat, response):
     if response.blocked:
         return
     drafts = [
@@ -158,6 +167,7 @@ def stage_goal_draft(session, user_id, chat, response):
         response.answer = (
             "The proposed goal change was invalid. Please restate it. Nothing changed."
         )
+        response.audit["action_status"] = "rejected"
         return
     if not draft.is_goal_request:
         return
@@ -165,6 +175,7 @@ def stage_goal_draft(session, user_id, chat, response):
         response.answer = "Please request one goal or budget change at a time. Nothing changed."
         chat.pending_goal = None
         chat.pending_budget = None
+        response.audit["action_status"] = "rejected"
         return
     text, baseline, values = _preview(session, user_id, draft)
     chat.pending_goal = {
@@ -176,9 +187,18 @@ def stage_goal_draft(session, user_id, chat, response):
     }
     chat.pending_budget = None
     response.answer = text
+    response.audit["action_status"] = "preview" if values is not None else "needs_input"
 
 
 def handle_goal_confirmation(session, request):
+    response = _handle_goal_confirmation(session, request)
+    if response:
+        response.answer = localize_backend_text(response.answer, request_locale(request))
+    return response
+
+
+def _handle_goal_confirmation(session, request):
+    action_status = "rejected"
     confirm = bool(CONFIRM.fullmatch(request.message.strip()))
     cancel = bool(CANCEL.fullmatch(request.message.strip()))
     if not confirm and not cancel:
@@ -191,9 +211,11 @@ def handle_goal_confirmation(session, request):
         }:
             return None
         answer = "There is no pending goal change in this conversation. Nothing changed."
+        action_status = "no_pending"
     elif cancel:
         chat.pending_goal = None
         answer = "Goal change cancelled. Nothing changed."
+        action_status = "cancelled"
     else:
         pending = chat.pending_goal
         draft = GoalDraft.model_validate(pending["draft"])
@@ -201,6 +223,7 @@ def handle_goal_confirmation(session, request):
         if values is None:
             answer = text
             chat.pending_goal = {**pending, "ready": False}
+            action_status = "needs_input"
         elif (
             not pending["ready"]
             or datetime.fromisoformat(pending["expires_at"]) < datetime.now(UTC)
@@ -215,11 +238,13 @@ def handle_goal_confirmation(session, request):
                 "ready": True,
                 "expires_at": (datetime.now(UTC) + timedelta(minutes=30)).isoformat(),
             }
+            action_status = "preview"
         else:
             repo = SQLAlchemyGoalRepository(session)
             if draft.action == "delete":
                 repo.delete(request.user_id, UUID(draft.goal_id))
                 answer = "Deleted your confirmed goal."
+                action_status = "deleted"
             else:
                 payload = GoalCreate(
                     name=values["name"],
@@ -238,6 +263,7 @@ def handle_goal_confirmation(session, request):
                 else:
                     repo.update(request.user_id, UUID(draft.goal_id), payload)
                 answer = "Saved your confirmed goal change. You can review it on the Goals page."
+                action_status = "saved"
             chat.pending_goal = None
     return CoachResponse(
         session_id=request.session_id,
@@ -245,5 +271,5 @@ def handle_goal_confirmation(session, request):
         answer=answer,
         agent_results=[],
         disclaimers=[],
-        audit={"source": "goal_confirmation"},
+        audit={"source": "goal_confirmation", "action_status": action_status},
     )

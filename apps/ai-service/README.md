@@ -32,7 +32,7 @@ scheduling, resolution, and task-resumption events are included in the response 
 ## Run
 
 ```powershell
-pip install -e ".[dev]"
+pip install -e "../shared" -e ".[dev]"
 $env:MODEL_PROVIDER="local_fixture"
 $env:RAG_PROVIDER="local_fixture"
 $env:EDUCATION_CORPUS_VERSION="investment-education-sg@local-fixture-v1"
@@ -42,10 +42,15 @@ uvicorn app.main:app --reload --port 8001
 ```
 
 For a deployed environment, set `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, `MODEL_REASONING_EFFORT=low`, and supply `OPENAI_API_KEY` through a secret. Set both `RAG_PROVIDER=local_documents` and `POLICY_RAG_PROVIDER=local_documents`, with exact Education and Policy corpus versions. The image packages the reviewed files and manifests. Retrieval verifies hashes, provenance, approval, and review deadlines before use; policy retrieval supplies all three approved policy documents. No Bedrock service is called by the deployed AI task.
-For a local live-model run, place the key in the ignored repository-root `.env` file or the shell environment. The service reads `.env` from either the repository root or `apps/ai-service`; `.env.example` must remain blank.
+For a local live-model run, place the key in the ignored repository-root `.env` file or the shell environment. The service reads `.env` from either the repository root or `apps/ai-service`; the `OPENAI_API_KEY` entry in `.env.example` must remain blank.
+`MODEL_ROLE_OVERRIDES` accepts optional `model_id`, `reasoning_effort`, and `max_tokens` per prompt role. Writers have larger example budgets than routing. OpenAI receives the typed schema on the initial request; open maps retain local validation and a bounded repair. OpenAI reasoning requests omit temperature, and telemetry reports reasoning usage and distinct failure reasons. See [Coach remediation](../../docs/coach-response-remediation-2026-10-03.md).
+
+`MAX_MODEL_TOKENS_PER_RUN` defaults to `40000` total input and output tokens across routing, query planning, passage answerability, specialist writing, synthesis and independent policy review. This gives the complete workflow room to finish its final review. Per-role output limits and the overall token limit remain enforced; an explicit smaller overall limit still fails closed when exhausted.
+
+`AGENT_TIMEOUT_SECONDS` defaults to `45` seconds so a specialist can finish several bounded calls for query planning, evidence assessment, writing and contract repair. This configured window also controls whether the workflow can start its single semantic education repair; the corrected draft must pass another independent review. The model read timeout remains `15` seconds per call, and a specialist that exceeds the overall deadline still fails closed. The frozen `openai_local_v6` answerability benchmark requires its original explicit limits: `MAX_MODEL_TOKENS_PER_RUN=20000` and `AGENT_TIMEOUT_SECONDS=20`.
 The packaged Education corpus is owned by Investment Education. Its
-retrieval request contains canonical education topics rather than the raw user question or
-personal values. Prompt set v6 retains fine-grained concepts and a canonical question-intent
+retrieval request contains canonical education topics and validated public search concepts,
+with personal values and the raw user question excluded. Prompt set v6 retains fine-grained concepts and a canonical question-intent
 hint, explicitly records unsupported topics, and preserves partial-evidence notices through
 synthesis. In v6/v7, Investment Education first uses retrieved passages and may supplement missing
 stable concepts in a separate `general_knowledge` field. The application labels that text as model

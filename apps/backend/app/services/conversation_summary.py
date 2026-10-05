@@ -26,20 +26,25 @@ OBJECTIVE = re.compile(
 )
 
 
-def roll_summary(previous, messages, position, facts):
+def roll_summary(previous, messages, position, facts, observations=None):
     from app.services.session_context import CORRECTION, UNSAFE, advance_state
 
     # The eight most recent messages stay verbatim; only whole older pairs roll
     # into memory. Positions are original chat-message positions, not turn IDs.
     cutoff = max(0, position - 9)
     summary = deepcopy(previous or {"through_position": 0, "notes": []})
-    excluded = {fact["source_position"] for fact in facts.values()}
+    excluded = set()
     excluded.update(
         fact["supersedes_position"] for fact in facts.values() if "supersedes_position" in fact
     )
-    summary["notes"] = [
-        note for note in summary["notes"] if note["source_position"] not in excluded
-    ]
+    retained = []
+    for note in summary["notes"]:
+        if note["source_position"] in excluded:
+            if advance_state(None, note["user_excerpt"], note["source_position"])["facts"]:
+                continue
+            note["assistant_excerpt"] = ""
+        retained.append(note)
+    summary["notes"] = retained
     if cutoff <= summary["through_position"]:
         return summary
     older = []
@@ -53,7 +58,7 @@ def roll_summary(previous, messages, position, facts):
             break
     by_position = {item.position: item for item in reversed(older)}
     for item in by_position.values():
-        if item.role != "user" or item.position in excluded:
+        if item.role != "user":
             continue
         assistant = by_position.get(item.position + 1)
         # Missing provenance is fail-closed, just like recent assistant history.
@@ -66,12 +71,36 @@ def roll_summary(previous, messages, position, facts):
         if (
             UNSAFE.search(item.content)
             or UNSAFE.search(assistant.content)
-            or CORRECTION.match(item.content.strip())
         ):
             continue
-        if advance_state(None, item.content, item.position)["facts"]:
-            continue  # Structured, corrected facts are the only source for these values.
-        user = " ".join(item.content.split())
+        semantic = [note for note in observations or []
+                    if note["source_position"] == item.position
+                    and note["source_quote"] in item.content
+                    and note["kind"] in {"preference", "objective", "discussion"}]
+        if semantic:
+            for note in semantic:
+                summary["notes"].append({
+                    "source_position": item.position,
+                    "assistant_position": assistant.position,
+                    "kind": note["kind"],
+                    "topics": note["topics"],
+                    "user_excerpt": note["source_quote"],
+                    "assistant_excerpt": "" if item.position in excluded else _excerpt(
+                        " ".join(assistant.content.split()), 160, salient=True
+                    ),
+                })
+            continue
+        # A turn can contain a fact and a preference. Retain its non-fact clauses
+        # while corrected structured values remain the only numerical memory.
+        from app.services.session_context import statement_clauses
+        correction_turn = CORRECTION.match(item.content.strip())
+        user = " ".join(
+            clause for clause in statement_clauses(item.content)
+            if not advance_state(None, clause, item.position)["facts"]
+            and not (CORRECTION.match(clause) and not (PREFERENCE.search(clause) or OBJECTIVE.search(clause)))
+            and (not correction_turn or PREFERENCE.search(clause) or OBJECTIVE.search(clause))
+        )
+        user = " ".join(user.split())
         if not user:
             continue
         kind = (
@@ -91,20 +120,33 @@ def roll_summary(previous, messages, position, facts):
                     for topic, pattern in TOPICS.items()
                     if re.search(pattern, user, re.IGNORECASE)
                 ],
-                "user_excerpt": _excerpt(user, 240),
-                "assistant_excerpt": _excerpt(" ".join(assistant.content.split()), 160),
+                "user_excerpt": _excerpt(user, 240, salient=True),
+                "assistant_excerpt": (
+                    "" if item.position in excluded or advance_state(None, item.content, item.position)["facts"]
+                    else _excerpt(" ".join(assistant.content.split()), 160, salient=True)
+                ),
             }
         )
-    # Repeated questions do not crowd out other context. Reserve up to two slots
-    # for preferences/objectives, then retain the latest remaining discussions.
+    # Preserve distinct preferences/objectives before repetitive discussions.
+    # Use all slots when needed instead of dropping everything after two facts.
     unique = {note["user_excerpt"].casefold(): note for note in summary["notes"]}
     notes = sorted(unique.values(), key=lambda note: note["source_position"], reverse=True)
-    salient = [note for note in notes if note["kind"] != "discussion"][:2]
+    salient = [note for note in notes if note["kind"] != "discussion"][:MAX_NOTES]
     selected = salient + [note for note in notes if note not in salient][: MAX_NOTES - len(salient)]
     summary["notes"] = sorted(selected, key=lambda note: note["source_position"])
     summary["through_position"] = cutoff
     return summary
 
 
-def _excerpt(text, limit):
-    return text if len(text) <= limit else text[: limit - 1] + "…"
+def _excerpt(text, limit, *, salient=False):
+    if len(text) <= limit:
+        return text
+    if salient:
+        clauses = [part.strip() for part in re.split(r"(?<=[.!?])\s+|;\s*", text) if part.strip()]
+        priorities = [part for part in clauses if PREFERENCE.search(part) or OBJECTIVE.search(part)]
+        if priorities:
+            return _excerpt(" ".join(priorities), limit)
+    # Keep a bounded beginning and ending so the last qualification survives.
+    head = (limit - 3) // 2
+    tail = limit - 3 - head
+    return text[:head].rstrip() + " … " + text[-tail:].lstrip()

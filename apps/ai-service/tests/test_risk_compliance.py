@@ -312,7 +312,11 @@ def test_unexplained_education_block_gets_one_contract_correction(corrected):
         )
     assert len(gateway.calls) == 2
     assert "CORRECTION" in gateway.calls[1]["system_prompt"]
-    assert gateway.calls[0]["user_prompt"] == gateway.calls[1]["user_prompt"]
+    corrected_payload = json.loads(gateway.calls[1]["user_prompt"])
+    feedback = corrected_payload.pop("correction_feedback")
+    assert corrected_payload == json.loads(gateway.calls[0]["user_prompt"])
+    assert json.loads(feedback["previous_response"])["blocked"] is True
+    assert feedback["validation_issues"]
 
 
 def test_education_block_categories_are_logged_without_model_wording(caplog):

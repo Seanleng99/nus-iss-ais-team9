@@ -84,7 +84,7 @@ def test_answer_metadata_labels_follow_ui_selection_without_rewriting_saved_answ
     assert "source.md" in rendered
 
 
-def test_default_ui_is_english_even_with_a_chinese_profile_preference():
+def test_profile_preference_sets_default_ui_without_explicit_language_setting():
     class ChineseProfileClient(CoachClient):
         def get_profile(self, user_id):
             return {"preferred_language": "Mandarin"}
@@ -94,7 +94,8 @@ def test_default_ui_is_english_even_with_a_chinese_profile_preference():
     app.session_state["active_user_id"] = "synthetic-language"
     app.run()
     assert not app.exception
-    assert "Coach" in app.markdown[0].value
+    assert language_case("coach.title") in app.markdown[0].value
+    assert app.session_state["workspace-language"] == "zh-Hans"
     assert not app.selectbox
     assert "coach_language" not in app.query_params
 
@@ -161,7 +162,7 @@ def test_workspace_pages_use_selected_chinese_labels(page, client, fixture):
         assert app.session_state["backend_client"].saved_profile["employment_status"] == "employed"
 
 
-def test_chinese_input_and_language_requests_do_not_override_english_selection():
+def test_direct_language_request_overrides_selection_and_syncs_controls():
     class RecordingClient(CoachClient):
         def ask_coach(self, payload):
             self.payload = payload
@@ -176,11 +177,31 @@ def test_chinese_input_and_language_requests_do_not_override_english_selection()
     app.session_state["active_user_id"] = "synthetic-language"
     app.query_params["coach_language"] = "en"
     app.run()
-    for message in [language_case("coach.chinese_question"),
-                    language_case("coach.chinese_language_request"),
-                    "Explain compound interest. Please answer in Chinese."]:
+    for message, expected in [
+        (language_case("coach.chinese_question"), "en"),
+        (language_case("coach.chinese_language_request"), "zh-Hans"),
+        ("Explain compound interest. Please answer in English.", "en"),
+    ]:
         app.chat_input[0].set_value(message).run(timeout=30)
         assert not app.exception
-        assert client.payload["response_locale"] == "en"
+        assert client.payload["response_locale"] == expected
         assert client.payload["message"] == message
-        assert app.chat_input[0].placeholder == "Message your financial coach"
+        assert app.query_params["coach_language"] == [expected]
+        assert app.chat_input[0].placeholder == (
+            language_case("coach.input") if expected == "zh-Hans" else "Message your financial coach"
+        )
+
+
+def test_fixture_response_displays_demo_capability_notice():
+    app = AppTest.from_string(
+        "from ui.pages import _render_coach_message\n"
+        "_render_coach_message({'role': 'assistant', 'content': 'Example reply.', "
+        "'explanation': {'model_provider': 'local_fixture'}}, 'en')"
+    ).run()
+    assert not app.exception
+    assert any("offline fixture" in item.value for item in app.caption)
+
+
+def test_profile_only_offers_supported_coach_languages():
+    from ui.pages import LANGUAGE_OPTIONS
+    assert LANGUAGE_OPTIONS == ["English", "Mandarin"]

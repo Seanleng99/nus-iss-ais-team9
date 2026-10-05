@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.core.telemetry import trace_method
 from app.domain.budget_methods import BudgetMethod
 from app.domain.currency import ApplicationCurrency
+from app.domain.recurrence import LedgerRecurrence
 from app.domain.schemas import (
     AgentName,
     ApplicationMoneyAmount,
@@ -209,6 +210,8 @@ class TransactionCreate(BaseModel):
     amount: ApplicationMoneyAmount
     occurred_on: date
     recurring: bool = False
+    recurrence: LedgerRecurrence | None = None
+    obligation_id: str | None = Field(default=None, min_length=1, max_length=64)
 
     @model_validator(mode="after")
     def normalize_text(self) -> "TransactionCreate":
@@ -216,6 +219,14 @@ class TransactionCreate(BaseModel):
         self.category = " ".join(self.category.split()).lower()
         if not self.description or not self.category:
             raise ValueError("Transaction description and category are required")
+        if self.recurrence:
+            if self.transaction_type != "expense":
+                raise ValueError("Ledger recurring obligations must be expenses")
+            if self.recurrence.next_due_on <= self.occurred_on:
+                raise ValueError("Next unpaid due date must follow the recorded expense date")
+            self.recurring = True
+        elif self.obligation_id:
+            raise ValueError("An obligation identifier requires explicit recurrence terms")
         return self
 
 

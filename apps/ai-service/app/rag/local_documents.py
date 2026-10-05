@@ -60,7 +60,10 @@ def load_documents(
 def document_chunks(text: str) -> list[str]:
     # Preserve complete paragraphs and their following context. This also keeps
     # list headings with their values without reproducing whole documents per hit.
-    paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", text) if p.strip()]
+    paragraphs = [
+        "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in p.strip().splitlines())
+        for p in re.split(r"\n\s*\n", text) if p.strip()
+    ]
     chunks = []
     heading = ""
     for index in range(len(paragraphs)):

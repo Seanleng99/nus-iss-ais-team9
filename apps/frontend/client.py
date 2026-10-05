@@ -3,6 +3,7 @@ import re
 from contextlib import nullcontext
 from datetime import date
 from functools import wraps
+from math import isfinite
 from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
@@ -69,6 +70,7 @@ class BackendClient:
         transport: httpx.BaseTransport | None = None,
         journey_id: str | None = None,
         synthetic_log: bool = False,
+        coach_timeout_seconds: float | None = None,
     ) -> None:
         self.base_url = (
             base_url or os.getenv("BACKEND_BASE_URL", "http://localhost:8080")
@@ -87,6 +89,12 @@ class BackendClient:
             synthetic_log and not id_token
             and (automation_api_key or os.getenv("BACKEND_API_KEY"))
         )
+        self.coach_timeout_seconds = float(
+            os.getenv("COACH_TIMEOUT_SECONDS", "120") if coach_timeout_seconds is None
+            else coach_timeout_seconds
+        )
+        if not isfinite(self.coach_timeout_seconds) or not 0 < self.coach_timeout_seconds <= 600:
+            raise ValueError("COACH_TIMEOUT_SECONDS must be positive and at most 600 seconds")
 
     def _authentication_headers(self) -> dict[str, str]:
         if self.id_token:
@@ -346,7 +354,7 @@ class BackendClient:
 
     @_trace_operation
     def ask_coach(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._request("POST", "/api/coach", json=payload, timeout=60.0)
+        return self._request("POST", "/api/coach", json=payload, timeout=self.coach_timeout_seconds)
 
     @_trace_operation
     def list_traces(self, user_id: str, *, status: str | None = None, offset: int = 0) -> dict:

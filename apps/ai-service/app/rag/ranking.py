@@ -61,6 +61,8 @@ def terms(text: str) -> list[str]:
             "tolerance": "appetite",
             "reserve": "aside",
             "stock": "share",
+            "pooling": "pool",
+            "pooled": "pool",
         }.get(word, word)
         result.append(word)
     return result

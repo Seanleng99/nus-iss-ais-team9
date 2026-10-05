@@ -82,41 +82,54 @@ def build_education_context(
     *,
     scope: str,
     topics: list[str] | tuple[str, ...] = (),
+    search_terms: list[str] | tuple[str, ...] = (),
+    subquestion_queries: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
 ) -> dict[str, Any]:
     contexts = []
     rejected_chunk_count = 0
     security_findings: list[str] = []
     # Round-robin candidates preserve each subject's opportunity within one
     # bounded evidence budget. Queries contain canonical concepts, never PII.
-    if len(topics) > 1:
-        candidates = [
-            retriever.retrieve(f"General investment education about {topic}")
-            for topic in topics[:6]
+    all_topics = list(dict.fromkeys(topics))
+    topic_list = all_topics[:12]
+    candidate_topics = {}
+    excerpt_topics = {}
+    source_priority = {}
+    if len(topic_list) > 1 or subquestion_queries:
+        suffix = "; concepts: " + ", ".join(search_terms) if search_terms else ""
+        query_pairs = list(subquestion_queries[:12]) if subquestion_queries else [
+            (topic, f"General investment education about {topic}{suffix}") for topic in topic_list
         ]
-        retrieved = []
-        seen = set()
+        candidates = [
+            retriever.retrieve(public_query) for _, public_query in query_pairs
+        ]
+        for topic_index, group in enumerate(candidates):
+            for rank, item in enumerate(group):
+                source_priority[item.source_id] = min(
+                    source_priority.get(item.source_id, (len(topic_list), 3)),
+                    (topic_index, rank),
+                )
+        # A combined concept query preserves relationships such as ETF trading
+        # commissions before single-topic searches add subject coverage.
+        retrieved = list(retriever.retrieve(query))
+        seen = {(item.source_id, item.document_version, item.text) for item in retrieved}
+        for identity in seen:
+            excerpt_topics[identity] = set(topic_list)
         for rank in range(3):
-            for group in candidates:
+            for (topic, public_query), group in zip(query_pairs, candidates, strict=True):
                 if rank >= len(group):
                     continue
                 item = group[rank]
                 identity = (item.source_id, item.document_version, item.text)
+                candidate_topics.setdefault(identity, set()).add(topic)
+                excerpt_topics.setdefault(identity, set()).add(public_query if subquestion_queries else topic)
                 if identity not in seen:
                     seen.add(identity)
                     retrieved.append(item)
-        retrieved = retrieved[:9]
-        # Prefer passages with actual subject headings over repeated mentions
-        # in fees/eligibility prose, preserving a bounded 1,200-word context.
-        from app.rag.ranking import terms
-
-        topic_terms = [set(terms(topic)) for topic in topics]
-        def heading_coverage(item):
-            headings = [set(terms(p)) for p in item.text.split("\n\n") if len(p.split()) <= 8]
-            return sum(any(t == h for h in headings) for t in topic_terms)
-        retrieved.sort(key=heading_coverage, reverse=True)
     else:
         retrieved = retriever.retrieve(query)
     context_words = 0
+    accepted_topics = set()
     for item in retrieved:
         context = asdict(item)
         metadata_decision = sanitize_rag_document(
@@ -148,14 +161,45 @@ def build_education_context(
             rejected_chunk_count += 1
             continue
         words = len(context["text"].split())
+        identity = (item.source_id, item.document_version, item.text)
+        requested = candidate_topics.get(identity, set())
+        if len(topic_list) > 1:
+            # Reserve room for every requested subject before accepting extra
+            # passages. Excerpts contain complete paragraphs, never cut claims.
+            pending = set(topic_list) - accepted_topics - requested
+            allowance = max(0, (1_200 - context_words) // (len(pending) + 1))
+            if len(topic_list) > 2:
+                allowance = min(allowance, 1_200 // (len(topic_list) + 1))
+            if words > allowance:
+                context["text"] = _bounded_topic_excerpt(
+                    context["text"], excerpt_topics.get(identity, requested), allowance,
+                )
+                words = len(context["text"].split())
+            if not words:
+                continue
         if context_words + words > 1_200:
             continue
         context_words += words
+        accepted_topics.update(requested)
         contexts.append(context)
+    # Present the strongest sources for the most specific subject first, while
+    # keeping the additional combined-query passages in the accepted evidence.
+    contexts.sort(key=lambda context: source_priority.get(context["source_id"], (len(topic_list), 3)))
     sources = list({
         context["source_id"]: {key: context[key] for key in SOURCE_METADATA_FIELDS}
         for context in contexts
     }.values())
+    if len(topic_list) > 1:
+        from app.rag.ranking import terms
+
+        # Record shared-passage coverage even when a separate query had no hits.
+        # Generation still checks the complete passage against the question.
+        for topic in topic_list:
+            requested_terms = set(terms(topic))
+            if requested_terms and any(
+                requested_terms.issubset(set(terms(context["text"]))) for context in contexts
+            ):
+                accepted_topics.add(topic)
     log_event(
         "rag.education.context.ready",
         retrieved_chunk_count=len(retrieved), accepted_chunk_count=len(contexts),
@@ -177,7 +221,37 @@ def build_education_context(
         "accepted_chunk_count": len(contexts),
         "rejected_chunk_count": rejected_chunk_count,
         "security_findings": list(dict.fromkeys(security_findings)),
+        "queried_topics": topic_list,
+        "topics_without_context": [topic for topic in all_topics if topic not in accepted_topics]
+        if len(all_topics) > 1 else [],
+        "context_word_count": context_words,
     }
+
+
+def _bounded_topic_excerpt(text: str, topics: set[str], allowance: int) -> str:
+    from app.rag.ranking import passage_scores
+
+    paragraphs = [part for part in re.split(r"\n\s*\n", text) if part.strip()]
+    scores = passage_scores(" ".join(topics), paragraphs)
+    chosen = set()
+    used = 0
+    for index in sorted(range(len(paragraphs)), key=lambda i: scores[i], reverse=True):
+        if index in chosen:
+            continue
+        words = len(paragraphs[index].split())
+        if scores[index] <= 0 or used + words > allowance:
+            continue
+        chosen.add(index)
+        used += words
+        # Retain the paragraph immediately following a relevant heading or
+        # explanation when the bounded budget permits its qualifications.
+        following = index + 1
+        if following < len(paragraphs) and following not in chosen:
+            words = len(paragraphs[following].split())
+            if used + words <= allowance:
+                chosen.add(following)
+                used += words
+    return "\n\n".join(paragraphs[i] for i in sorted(chosen))
 
 
 EDUCATION_DOCUMENTS = [

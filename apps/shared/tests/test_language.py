@@ -6,6 +6,7 @@ import pytest
 from coach_i18n import (
     catalog,
     input_pattern,
+    localize_backend_text,
     localize_reviewed,
     normalize_locale,
     request_locale,
@@ -19,25 +20,25 @@ from language_fixtures import language_case
 @pytest.mark.parametrize(
     "message,expected",
     [
-        ("Explain diversification in Chinese.", "en"),
-        ("Please answer in Mandarin.", "en"),
-        ("Explain ETFs in English, then answer in Chinese.", "en"),
+        ("Explain diversification in Chinese.", "zh-Hans"),
+        ("Please answer in Mandarin.", "zh-Hans"),
+        ("Explain ETFs in English, then answer in Chinese.", "zh-Hans"),
         (language_case("language.test_explicit_request_and_bounded_detection"), "en"),
         (language_case("language.test_explicit_request_and_bounded_detection_2"), "en"),
         (
             language_case("language.test_explicit_request_and_bounded_detection_3"),
-            "en",
+            "zh-Hans",
         ),
         (language_case("language.test_explicit_request_and_bounded_detection_4"), "en"),
         (language_case("language.test_explicit_request_and_bounded_detection_5"), "en"),
         ("Compare ETFs and bonds.", "en"),
     ],
 )
-def test_dialogue_never_selects_output_language(message, expected):
+def test_direct_request_and_bounded_language_detection(message, expected):
     assert resolve_locale(message) == expected
 
 
-def test_application_selection_overrides_dialogue_and_profile_preference():
+def test_current_request_then_selection_then_user_history_then_profile():
     history = [{"role": "user", "content": "Answer in Chinese."}]
     assert (
         resolve_locale(
@@ -48,7 +49,7 @@ def test_application_selection_overrides_dialogue_and_profile_preference():
             preferred="Mandarin",
             history=history,
         )
-        == "zh-Hans"
+        == "en"
     )
     assert (
         resolve_locale(
@@ -58,7 +59,7 @@ def test_application_selection_overrides_dialogue_and_profile_preference():
     )
     assert (
         resolve_locale("Give an example.", preferred="English", history=history)
-        == "en"
+        == "zh-Hans"
     )
     assert resolve_locale("Explain ETFs.", preferred="Mandarin") == "zh-Hans"
     # Assistant text must not change the user's language preference.
@@ -69,6 +70,18 @@ def test_application_selection_overrides_dialogue_and_profile_preference():
         )
         == "en"
     )
+
+
+@pytest.mark.parametrize("message", [
+    'What does "answer in Chinese" mean?',
+    "Do not answer in Chinese.",
+    "Compare English and Chinese financial terminology.",
+    "Please explain `answer in Chinese` as a phrase.",
+    "Explain ETFs, but do not answer in Chinese.",
+    "What does 'answer in Chinese' mean?",
+])
+def test_mentions_quotes_and_negated_requests_do_not_change_selected_language(message):
+    assert resolve_locale(message, selected="en") == "en"
 
 
 def test_request_and_restricted_task_agree_without_exposing_financial_snapshot():
@@ -141,3 +154,11 @@ def test_input_templates_preserve_bounded_captures_and_regex_fragments():
         goal_name.fullmatch(language_case("recognition.goal_name"))["value"]
         == "Emergency fund"
     )
+
+
+def test_reviewed_backend_template_preserves_values_and_unknown_text():
+    message = "- User goal: target SGD 12,000.00; currently saved SGD 1,000.00; duration 12 months"
+    result = localize_backend_text(message, "zh-Hans")
+    assert "User goal" in result and "SGD 12,000.00" in result
+    assert "currently saved" not in result
+    assert localize_backend_text("UNREVIEWED_MODEL_PAYLOAD", "zh-Hans") == "UNREVIEWED_MODEL_PAYLOAD"

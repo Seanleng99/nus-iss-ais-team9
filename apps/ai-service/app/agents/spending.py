@@ -1,4 +1,8 @@
+import calendar
 import json
+from datetime import date
+
+from coach_math.calendar import financial_today
 
 from app.agents.base import BaseAgent
 from app.agents.spending_capture import extract_spending_draft
@@ -50,6 +54,15 @@ class SpendingAgent(BaseAgent):
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)
+        period_start = (date.fromisoformat(snapshot.period_start) if snapshot.period_start else financial_today()).replace(day=1)
+        period_end = period_start.replace(day=calendar.monthrange(period_start.year, period_start.month)[1])
+        # Backend snapshots partition the selected month and prior history.
+        # Legacy snapshots can also repeat selected-month rows in history:
+        # assign those rows to the recent view without deduplicating real expenses.
+        prior_history = snapshot.historical_transactions
+        if snapshot.recent_transactions or snapshot.transaction_context.get("history_end"):
+            prior_history = [txn for txn in prior_history if date.fromisoformat(txn.occurred_on) < period_start]
+        records = [*snapshot.recent_transactions, *prior_history]
         
         # Convert Pydantic models to dicts for analysis (ensure JSON-serializable)
         transactions = [
@@ -58,13 +71,16 @@ class SpendingAgent(BaseAgent):
                 "amount": {"currency": txn.amount.currency, "amount": txn.amount.amount},
                 "occurred_on": txn.occurred_on.isoformat() if hasattr(txn.occurred_on, 'isoformat') else str(txn.occurred_on),
             }
-            for txn in snapshot.historical_transactions or snapshot.recent_transactions
+            for txn in records
+            if txn.amount.currency == "SGD" and date.fromisoformat(txn.occurred_on) <= period_end
         ]
+        selected_month_transactions = [txn for txn in transactions
+                                       if date.fromisoformat(txn["occurred_on"]) >= period_start]
         
         # Run statistical analysis
         analysis = analyze_spending_patterns(
             transactions=transactions,
-            current_month_start=snapshot.period_start,
+            current_month_start=period_start,
         )
         
         # Convert analysis results to JSON-serializable format
@@ -74,6 +90,16 @@ class SpendingAgent(BaseAgent):
             "anomalies": [],
             "data_quality": analysis["data_quality"],
             "months_analyzed": analysis["months_analyzed"],
+            "transaction_context": snapshot.transaction_context,
+            "analysis_period_start": period_start.isoformat(),
+            "analysis_period_end": period_end.isoformat(),
+            "analysis_coverage": self._record_coverage(transactions),
+            "selected_month_coverage": self._record_coverage(selected_month_transactions),
+            "temporal_pattern_scope": "selected_month",
+            "currency": "SGD",
+            "excluded_currencies": sorted({txn.amount.currency for txn in
+                [*snapshot.recent_transactions, *snapshot.historical_transactions]
+                if txn.amount.currency != "SGD"}),
         }
         
         # Convert date objects to ISO strings in trends
@@ -105,131 +131,60 @@ class SpendingAgent(BaseAgent):
             **safe_analysis,
         }
     
-    def _model_message(
-        self,
-        task: AgentTask,
-        sanitized_message: str,
-        grounding: dict,
-    ) -> str:
-        """Prepare structured input for LLM interpretation with guided responses."""
-        
-        # Determine data quality context
-        data_quality = grounding.get("data_quality", "insufficient")
-        months_analyzed = grounding.get("months_analyzed", 0)
-        
-        quality_context = ""
-        if data_quality == "insufficient":
-            quality_context = (
-                "Note: The user has limited transaction data (less than 1 month). "
-                "Focus on encouraging consistent tracking and explain that insights will improve with more data. "
-                "Provide general financial education rather than specific pattern analysis."
-            )
-        elif data_quality == "limited":
-            quality_context = (
-                f"The user has {months_analyzed} month(s) of data. "
-                "Some early patterns may be visible, but emphasize that 3-6 months provides more reliable insights. "
-                "Highlight any clear anomalies or strong trends while noting the preliminary nature."
-            )
-        elif data_quality == "good":
-            quality_context = (
-                f"The user has {months_analyzed} months of data, providing reliable insights. "
-                "You can confidently identify patterns and provide specific recommendations."
-            )
-        else:  # excellent
-            quality_context = (
-                f"The user has {months_analyzed}+ months of comprehensive data. "
-                "Provide detailed, confident analysis with specific, actionable recommendations."
-            )
-        
-        # Convert grounding to JSON-safe format (handle date objects)
-        safe_grounding = {}
-        for key, value in grounding.items():
-            if isinstance(value, list):
-                safe_grounding[key] = []
-                for item in value:
-                    if isinstance(item, dict):
-                        safe_item = {}
-                        for k, v in item.items():
-                            if hasattr(v, 'isoformat'):
-                                safe_item[k] = v.isoformat()
-                            else:
-                                safe_item[k] = v
-                        safe_grounding[key].append(safe_item)
-                    else:
-                        safe_grounding[key].append(item)
-            elif hasattr(value, 'isoformat'):
-                safe_grounding[key] = value.isoformat()
-            else:
-                safe_grounding[key] = value
-        
-        message_payload = {
+    def _model_message(self, task: AgentTask, sanitized_message: str, grounding: dict) -> str:
+        """Let the current question determine depth and presentation."""
+        return json.dumps({
             "user_request": sanitized_message,
-            "analysis_results": safe_grounding,
-            "data_quality_context": quality_context,
+            "analysis_results": grounding,
             "instruction": (
-                "You are a supportive, educational financial coach analyzing spending patterns. "
-                "Your response should follow this structure:\n\n"
-                
-                "1. **ACKNOWLEDGE & VALIDATE**: Start by acknowledging the user's question and validating their interest in understanding their finances. "
-                "Make them feel supported, not judged.\n\n"
-                
-                "2. **KEY FINDINGS**: Present 2-3 most important insights from the data. For each:\n"
-                "   - State what the data shows (use specific numbers)\n"
-                "   - Explain WHY this matters (financial impact or behavioral insight)\n"
-                "   - Note if this is normal, concerning, or positive\n\n"
-                
-                "3. **CONTEXT & EDUCATION**: Help the user understand their spending in broader context:\n"
-                "   - Compare to common benchmarks if relevant (e.g., 'Many people spend 10-15% on dining')\n"
-                "   - Explain any financial concepts (e.g., what constitutes a spending anomaly)\n"
-                "   - Normalize their experience where appropriate\n\n"
-                
-                "4. **ACTIONABLE GUIDANCE**: Provide 2-3 specific, achievable suggestions:\n"
-                "   - Prioritize by impact (high-impact changes first)\n"
-                "   - Make suggestions concrete and measurable\n"
-                "   - Include both 'quick wins' and longer-term strategies\n"
-                "   - Frame positively (what they CAN do, not restrictions)\n\n"
-                
-                "5. **NEXT STEPS & ENCOURAGEMENT**: End with:\n"
-                "   - One specific action they can take this week\n"
-                "   - Encouragement about their financial awareness journey\n"
-                "   - 2-3 relevant follow-up questions to help them explore further (see examples below)\n\n"
-                
-                "FOLLOW-UP QUESTION EXAMPLES (choose 2-3 most relevant to the user's situation):\n"
-                "- 'Would you like me to break down your spending by category in more detail?'\n"
-                "- 'Should we look at which specific days or weeks had the highest spending?'\n"
-                "- 'Would you like to set a budget target for any of these categories?'\n"
-                "- 'Do you notice any patterns in your weekend vs weekday spending?'\n"
-                "- 'Would you like to compare this month to previous months?'\n"
-                "- 'Should we identify your top 3 spending categories to focus on?'\n"
-                "- 'Would you like tips on reducing spending in [specific category]?'\n"
-                "- 'Are you working toward any specific savings goals I can help with?'\n"
-                "- 'Would you like to track progress on any particular spending habit?'\n"
-                "- 'Should we review your recurring expenses to see if any can be reduced?'\n\n"
-                
-                "IMPORTANT GUIDELINES:\n"
-                "- Use warm, supportive, non-judgmental language\n"
-                "- Avoid assumptions about lifestyle, income, or priorities\n"
-                "- Reference actual numbers from the data (amounts, percentages, dates)\n"
-                "- Don't preach or lecture—be a helpful coach\n"
-                "- If data is limited, be honest about uncertainty while still providing value\n"
-                "- Celebrate positive patterns, not just problems\n"
-                "- Never shame or criticize spending choices\n\n"
-                
-                f"{quality_context}\n\n"
-                
-                "Example response tone: 'I notice your dining spending increased from $95 to $450 this month. "
-                "This is 373% higher than your average! While occasional splurges are normal, this could impact your monthly budget. "
-                "Many people see spikes around special occasions. Consider setting a fun money category for these moments. "
-                "This week, you might review if this was a one-time event or a new pattern. Great job tracking your spending!'"
+                "Answer the user's current question directly. Match the requested depth and format; "
+                "a simple total needs a brief answer, while a comparison can explain the relevant "
+                "differences. Use only supplied amounts and dates. Explain missing coverage or small "
+                "samples precisely, without restarting the whole coaching workflow. Do not invent "
+                "missing transaction dates when analysis_coverage reports dated records. "
+                "category_totals and transaction_count describe the supplied recent/selected-month "
+                "view; analysis_coverage describes all analyzed SGD records, including prior history. "
+                "Use selected_month_coverage for selected-month amounts and analysis_coverage for "
+                "historical coverage and weekday/weekend recorded totals. Empty temporal_patterns "
+                "means no concentration was detected for the selected month, not that dates are "
+                "missing. Recorded weekday/weekend totals do not establish a recurring habit. "
+                "Do not invent population benchmarks, normal spending percentages, transaction details or causes. "
+                "A temporal concentration describes recorded spending, not proof of a behavioral "
+                "pattern. An anomaly with aggregation=category_month_total describes a monthly "
+                "category total, not an individual expense or transaction on the month-start date. "
+                "Excluded currencies are never summed or converted; disclose exclusions when relevant. "
+                "Offer at most one relevant next step when useful; ask a question only if "
+                "needed to answer. Saved preferences may tailor wording, never financial evidence. "
+                "Spending entries remain unsaved until the backend displays a preview and the user "
+                "confirms it. Never claim saving happened without backend confirmation."
             ),
+        }, ensure_ascii=False, default=str)
+
+    @staticmethod
+    def _record_coverage(transactions: list[dict]) -> dict:
+        """Summarize the exact supplied analyzer set without implying completeness."""
+        dates = [date.fromisoformat(txn["occurred_on"]) for txn in transactions]
+        weekdays = [txn for txn, day in zip(transactions, dates, strict=True) if day.weekday() < 5]
+        weekends = [txn for txn, day in zip(transactions, dates, strict=True) if day.weekday() >= 5]
+        return {
+            "record_count": len(transactions),
+            "dated_record_count": len(dates),
+            "distinct_recorded_days": len(set(dates)),
+            "first_recorded_on": min(dates).isoformat() if dates else None,
+            "last_recorded_on": max(dates).isoformat() if dates else None,
+            "total_amount": round(sum(txn["amount"]["amount"] for txn in transactions), 2),
+            "weekday": {"record_count": len(weekdays),
+                        "total_amount": round(sum(txn["amount"]["amount"] for txn in weekdays), 2)},
+            "weekend": {"record_count": len(weekends),
+                        "total_amount": round(sum(txn["amount"]["amount"] for txn in weekends), 2)},
         }
-        
-        return json.dumps(message_payload, ensure_ascii=True)
-    
+
     def _compute_category_totals(self, transactions: list) -> dict:
         """Compute category totals from transactions."""
         totals = {}
         for txn in transactions:
+            if (txn.amount.currency if hasattr(txn, 'amount') else txn["amount"].get("currency", "SGD")) != "SGD":
+                continue
             category = txn.category if hasattr(txn, 'category') else txn.get("category", "other")
             amount = txn.amount.amount if hasattr(txn, 'amount') else txn["amount"]["amount"]
             totals[category] = totals.get(category, 0) + amount
@@ -258,6 +213,11 @@ class SpendingAgent(BaseAgent):
                     "summary": result.data.get("summary", ""),
                     "data_quality": grounding["data_quality"],
                     "months_analyzed": grounding["months_analyzed"],
+                    "analysis_coverage": grounding["analysis_coverage"],
+                    "selected_month_coverage": grounding["selected_month_coverage"],
+                    "analysis_period_start": grounding["analysis_period_start"],
+                    "analysis_period_end": grounding["analysis_period_end"],
+                    "temporal_pattern_scope": grounding["temporal_pattern_scope"],
                 },
                 evidence_refs=[f"tool:{task.task_id}:spending_analyzer"],
             )

@@ -83,7 +83,11 @@ class NoGeneration:
 def evaluate(cases: list[EvidenceCase], retriever) -> dict:
     if not cases:
         raise ValueError("cannot evaluate an empty dataset")
-    agent = InvestmentEducationAgent(NoGeneration(), PromptCatalog("v6"), 0.1, 800, retriever)
+    # This frozen benchmark measures retrieval evidence alone, independent of
+    # generated query interpretation or model-assisted answerability decisions.
+    agent = InvestmentEducationAgent(
+        NoGeneration(), PromptCatalog("v6"), 0.1, 800, retriever, semantic_grounding=False,
+    )
     results = []
     for case in cases:
         grounding = agent._ground(

@@ -61,11 +61,13 @@ def test_budget_resolves_education_tool_without_scheduling_investment_agent() ->
     )
 
     assert response.selected_agents == ["budget"]
-    assert len(retriever.queries) == 1
-    assert retriever.queries[0] == (
-        "General investment education about diversification, investment risk"
-    )
-    assert "5,000" not in retriever.queries[0]
+    assert set(retriever.queries) == {
+        "General investment education about diversification",
+        "General investment education about investment risk",
+        "General investment education about diversification, investment risk",
+    }
+    assert len(retriever.queries) == len(set(retriever.queries))
+    assert all("5,000" not in query for query in retriever.queries)
     budget = next(result for result in response.agent_results if result.agent == "budget")
     assert budget.data["income"] == 5000.0
     assert budget.data["disposable_income"] == 3500.0
@@ -139,7 +141,8 @@ def test_goal_and_budget_reuse_one_education_tool_result() -> None:
 
     response = orchestrator(retriever).handle(CoachRequest.model_validate(payload))
 
-    assert len(retriever.queries) == 1
+    assert len(retriever.queries) == 3
+    assert len(retriever.queries) == len(set(retriever.queries))
     education_resolutions = [
         item
         for item in response.audit["dependency_resolutions"]
@@ -325,7 +328,8 @@ def test_goal_budget_spending_and_education_chain_completes_within_bound() -> No
 
     assert response.selected_agents == ["goal_strategy", "budget", "spending"]
     assert response.audit["dependency_rounds"] == 5
-    assert retriever.queries and len(retriever.queries) == 1
+    assert len(retriever.queries) == 3
+    assert len(retriever.queries) == len(set(retriever.queries))
     assert {
         item["capability"] for item in response.audit["dependency_resolutions"]
     } == {

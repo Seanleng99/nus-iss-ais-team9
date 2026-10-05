@@ -274,6 +274,7 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
             grouped[category][1] += 1
     accuracy = passed / total if total else 0
     result: dict[str, Any] = {
+        "measurement": "offline_fixture_contract",
         "total": total,
         "passed": passed,
         "accuracy": round(accuracy, 4),

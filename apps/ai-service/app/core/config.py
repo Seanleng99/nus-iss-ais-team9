@@ -1,7 +1,17 @@
 from typing import Self
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ModelRolePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model_id: str | None = Field(default=None, min_length=1, max_length=200)
+    reasoning_effort: str | None = Field(
+        default=None, pattern=r"^(none|low|medium|high|xhigh|max)$",
+    )
+    max_tokens: int | None = Field(default=None, ge=1, le=8192)
 
 
 class Settings(BaseSettings):
@@ -9,6 +19,7 @@ class Settings(BaseSettings):
         env_file=(".env", "../../.env"),
         env_file_encoding="utf-8",
         hide_input_in_errors=True,
+        extra="ignore",  # Shared .env files also contain backend/frontend settings.
     )
 
     app_env: str = Field(default="local", alias="APP_ENV")
@@ -20,6 +31,9 @@ class Settings(BaseSettings):
     )
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
     model_reasoning_effort: str = Field(default="low", pattern=r"^(none|low|medium|high|xhigh|max)$", alias="MODEL_REASONING_EFFORT")
+    model_role_overrides: dict[str, ModelRolePolicy] = Field(
+        default_factory=dict, alias="MODEL_ROLE_OVERRIDES",
+    )
     embedding_model_id: str = Field(
         default="cohere.embed-multilingual-v3",
         alias="EMBEDDING_MODEL_ID",
@@ -45,7 +59,7 @@ class Settings(BaseSettings):
     max_task_attempts: int = Field(default=3, ge=1, le=10, alias="MAX_TASK_ATTEMPTS")
     max_parallel_agents: int = Field(default=4, ge=1, le=8, alias="MAX_PARALLEL_AGENTS")
     agent_timeout_seconds: float = Field(
-        default=20.0,
+        default=45.0,
         gt=0,
         le=120,
         alias="AGENT_TIMEOUT_SECONDS",
@@ -63,7 +77,7 @@ class Settings(BaseSettings):
         alias="MAX_MODEL_CALLS_PER_RUN",
     )
     max_model_tokens_per_run: int = Field(
-        default=20000,
+        default=40000,
         ge=100,
         le=200000,
         alias="MAX_MODEL_TOKENS_PER_RUN",
@@ -75,7 +89,7 @@ class Settings(BaseSettings):
         alias="MODEL_CONNECT_TIMEOUT_SECONDS",
     )
     model_read_timeout_seconds: float = Field(
-        default=15.0,
+        default=30.0,
         gt=0,
         le=120,
         alias="MODEL_READ_TIMEOUT_SECONDS",
@@ -122,8 +136,25 @@ class Settings(BaseSettings):
     )
     api_key: str = Field(default="change-me-locally", alias="AI_SERVICE_API_KEY")
 
+    def model_policy(self, component: str, max_tokens: int) -> ModelRolePolicy:
+        override = self.model_role_overrides.get(component, ModelRolePolicy())
+        return ModelRolePolicy(
+            model_id=override.model_id or self.model_id,
+            reasoning_effort=override.reasoning_effort or self.model_reasoning_effort,
+            max_tokens=override.max_tokens or max_tokens,
+        )
+
     @model_validator(mode="after")
     def require_deployment_api_key(self) -> Self:
+        roles = {
+            "router", "dependency_planner", "follow_up", "synthesizer", "risk_compliance",
+            "agent_spending", "agent_budget", "agent_goal_strategy", "agent_investment_education",
+            "goal_capture", "budget_capture", "spending_capture",
+            "education_query_planner", "education_answerability",
+            "response_composer", "action_grounding_review",
+        }
+        if set(self.model_role_overrides) - roles:
+            raise ValueError("MODEL_ROLE_OVERRIDES contains an unknown model role")
         if self.app_env.lower() != "local" and (
             self.api_key == "change-me-locally" or len(self.api_key) < 20
         ):

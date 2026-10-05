@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from coach_i18n import SupportedLocale, normalize_locale
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 
 class AgentName(StrEnum):
@@ -54,11 +54,22 @@ class MoneyAmount(BaseModel):
     amount: float = Field(ge=0)
 
 
+class TransactionRecurrence(BaseModel):
+    frequency: Literal["once", "weekly", "fortnightly", "monthly", "yearly"]
+    interval: int = Field(default=1, ge=1, le=120)
+    first_on: date
+    next_due_on: date
+    last_on: date | None = None
+    month_end: bool = False
+
+
 class Transaction(BaseModel):
     description: str
     category: str
     amount: MoneyAmount
     occurred_on: str
+    recurrence: TransactionRecurrence | None = None
+    obligation_id: str | None = None
 
 
 class FinancialGoal(BaseModel):
@@ -73,6 +84,7 @@ class UserFinancialSnapshot(BaseModel):
     recurring_expenses: list[Transaction] = Field(default_factory=list)
     recent_transactions: list[Transaction] = Field(default_factory=list)
     historical_transactions: list[Transaction] = Field(default_factory=list)
+    transaction_context: dict[str, Any] = Field(default_factory=dict)
     goals: list[FinancialGoal] = Field(default_factory=list)
     risk_tolerance: str | None = None
     preferences: dict[str, Any] = Field(default_factory=dict)
@@ -123,6 +135,28 @@ class OlderConversationSummary(StrictContractModel):
         return self
 
 
+class AttributedObservation(StrictContractModel):
+    """An interpretation of an exact user excerpt, never authority for a write."""
+
+    kind: Literal["fact", "preference", "objective", "discussion"]
+    field: SessionField | None = None
+    value: str | None = Field(default=None, min_length=1, max_length=120)
+    source_quote: str = Field(min_length=1, max_length=240)
+    source_position: int = Field(ge=1)
+    attribution: Literal["self", "general", "other", "hypothetical", "quoted"]
+    cadence: Literal["monthly", "once", "unknown"] = "unknown"
+    topics: list[Literal["spending", "budget", "goal_strategy", "investment_education"]] = Field(default_factory=list, max_length=4)
+
+
+class ConversationReferent(StrictContractModel):
+    subject: str = Field(min_length=1, max_length=160)
+    agent: Literal["spending", "budget", "goal_strategy", "investment_education"]
+    education_topics: list[str] = Field(default_factory=list, max_length=12)
+    source_quote: str = Field(min_length=1, max_length=240)
+    source_position: int = Field(ge=1)
+    option_index: int | None = Field(default=None, ge=1, le=12)
+
+
 class SessionContext(StrictContractModel):
     version: Literal[1] = 1
     facts: dict[SessionField, SessionFact] = Field(default_factory=dict, max_length=7)
@@ -132,6 +166,8 @@ class SessionContext(StrictContractModel):
     uncertain_fields: list[SessionField] = Field(default_factory=list, max_length=7)
     pending_action: Literal["budget_status"] | None = None
     older_summary: OlderConversationSummary | None = None
+    observations: list[AttributedObservation] = Field(default_factory=list, max_length=12)
+    referents: list[ConversationReferent] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")
     def validate_fact_values(self):
@@ -153,6 +189,7 @@ class CoachRequest(BaseModel):
     user_id: str
     session_id: str
     message: str = Field(min_length=1, max_length=5000)
+    message_position: int | None = Field(default=None, ge=1)
     response_locale: SupportedLocale | None = None
     snapshot: UserFinancialSnapshot = Field(default_factory=UserFinancialSnapshot)
     requested_agents: list[AgentName] | None = None
@@ -181,6 +218,8 @@ class CoachRequest(BaseModel):
 
 
 class AgentResult(BaseModel):
+    # Server-created grounding authority never crosses a JSON/API boundary.
+    _education_grounding_snapshot: Any = PrivateAttr(default=None)
     agent: AgentName
     summary: str
     rationale: list[str] = Field(default_factory=list)
@@ -228,6 +267,7 @@ class DependencyEdge(StrictContractModel):
 
 
 class AgentTask(StrictContractModel):
+    _education_grounding_snapshot: Any = PrivateAttr(default=None)
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     agent: AgentName
     sanitized_message: str
@@ -242,7 +282,7 @@ class AgentTask(StrictContractModel):
     @model_validator(mode="after")
     def validate_role_scope(self):
         allowed_fields = {
-            AgentName.SPENDING: {"recent_transactions"},
+            AgentName.SPENDING: {"recent_transactions", "historical_transactions", "period_start", "transaction_context"},
             AgentName.BUDGET: {"monthly_income", "recurring_expenses", "planning_context", "saved_budget_capacity"},
             AgentName.GOAL_STRATEGY: {"goals", "emergency_fund"},
             AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
@@ -277,6 +317,7 @@ class NeedsInputInvocation(StrictContractModel):
     status: Literal["needs_input"] = "needs_input"
     reason_code: str = Field(min_length=1, max_length=128)
     questions: list[str] = Field(min_length=1, max_length=4)
+    missing_fields: list[SessionField] = Field(default_factory=list, max_length=7)
 
 
 class FailedInvocation(StrictContractModel):
@@ -370,7 +411,7 @@ class FollowUpResolution(StrictContractModel):
     agent: AgentName | None = None
     subject: str | None = Field(default=None, max_length=240)
     education_topics: list[str] = Field(default_factory=list, max_length=12)
-    source_kind: Literal["recent_dialogue", "older_summary", "session_fact", "saved_goal", "active_topic", "explicit_agent"] | None = None
+    source_kind: Literal["recent_dialogue", "older_summary", "session_fact", "saved_goal", "active_topic", "explicit_agent", "attributed_referent"] | None = None
     source_index: int | None = Field(default=None, ge=0, le=7)
     source_position: int | None = Field(default=None, ge=1)
     question: str | None = Field(default=None, max_length=200)
@@ -378,6 +419,17 @@ class FollowUpResolution(StrictContractModel):
 
 
 class RouterDecision(BaseModel):
+    follow_up_source_index: int | None = Field(default=None, ge=0, le=7)
+    follow_up_subject_position: int | None = Field(default=None, ge=1)
+    follow_up_option_index: int | None = Field(default=None, ge=1, le=12)
+    session_observations: list[AttributedObservation] = Field(default_factory=list, max_length=12)
+    referents: list[ConversationReferent] = Field(default_factory=list, max_length=12)
+    missing_fields: list[SessionField] = Field(default_factory=list, max_length=7)
+    education_search_terms: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(default_factory=list, max_length=12)
+    budget_status_query: bool = False
+    budget_status_period_start: date | None = None
+    memory_question: bool = False
+    memory_fields: list[SessionField] = Field(default_factory=list, max_length=7)
     selected_agents: list[AgentName] = Field(min_length=1, max_length=4)
     rationale: list[str] = Field(min_length=1)
     education_topics: list[str] = Field(default_factory=list, max_length=12)
@@ -392,6 +444,13 @@ class RouterDecision(BaseModel):
         if AgentName.RISK_COMPLIANCE in value:
             raise ValueError("risk_compliance is a mandatory post-routing agent")
         return list(dict.fromkeys(value))
+
+    @field_validator("budget_status_period_start")
+    @classmethod
+    def validate_status_period(cls, value):
+        if value is not None and value.day != 1:
+            raise ValueError("Budget status period must start on the first day")
+        return value
 
 
 class AgentNarrative(BaseModel):
@@ -420,6 +479,7 @@ class EducationOption(BaseModel):
 class HybridEducationNarrative(GroundedEducationNarrative):
     summary: str = Field(default="", max_length=3000)
     source_ids: list[str] = Field(default_factory=list, max_length=9)
+    lead_section: Literal["sourced", "model"] = "sourced"
     general_knowledge: list[GeneralEducationSection] = Field(default_factory=list, max_length=12)
     ordered_options: list[EducationOption] = Field(default_factory=list, max_length=12)
 
@@ -436,6 +496,7 @@ class HybridEducationNarrative(GroundedEducationNarrative):
 
 class SynthesisDecision(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)
+    referents: list[ConversationReferent] = Field(default_factory=list, max_length=12)
 
 
 class ComplianceDecision(BaseModel):
@@ -491,7 +552,7 @@ class Trend(BaseModel):
     category: str
     current_amount: float
     previous_amount: float
-    change_percent: float
+    change_percent: float | None
     change_absolute: float
     significance: Literal["low", "moderate", "high"]
     direction: Literal["increased", "decreased", "stable"]

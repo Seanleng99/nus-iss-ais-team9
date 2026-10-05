@@ -202,7 +202,7 @@ def test_ambiguous_simple_adoption_never_selects_an_option(db_session_factory):
         assert len(chat.pending_budget["comparison"]["results"]) == 3
 
 
-def test_core_context_omits_unrelated_records_and_shares_verified_totals(db_session_factory):
+def test_core_context_shares_owned_bounded_evidence_and_verified_totals(db_session_factory):
     with db_session_factory() as session:
         seed(session)
         seed(session, "other")
@@ -215,10 +215,14 @@ def test_core_context_omits_unrelated_records_and_shares_verified_totals(db_sess
         context = build_planning_context(
             session, "u", message="What if I save more?", period=PERIOD
         )
-        assert context["request_scope"] == {"operations": []}
-        assert "reconciliation" not in context["workspace"]
-        assert "budget_history" not in context["workspace"]
-        assert "recorded_spending" not in context
+        assert context["request_scope"]["selection"] == "semantic"
+        assert context["request_scope"]["authorization"] == "read_only_context"
+        assert len(context["request_scope"]["operations"]) == 11
+        assert "reconciliation" in context["workspace"]
+        assert context["workspace"]["budget_history"] == [
+            {"period_start": str(PERIOD), "id": "version", "saved_at": "2026-10-01", "reason": "edited"}]
+        assert context["workspace"]["context_bounds"]["truncated"] is False
+        assert "recorded_spending" in context
         assert context["selected_period"] == str(PERIOD)
         assert context["selected_budget"]["affordability"]["unallocated"] == 200
         assert "selected_budget" not in build_planning_context(
@@ -226,7 +230,7 @@ def test_core_context_omits_unrelated_records_and_shares_verified_totals(db_sess
         )
 
 
-def test_pending_workspace_followup_keeps_relevant_context_without_all_records(db_session_factory):
+def test_pending_workspace_followup_preserves_all_bounded_operation_evidence(db_session_factory):
     with db_session_factory() as session:
         context = build_planning_context(
             session,
@@ -238,8 +242,9 @@ def test_pending_workspace_followup_keeps_relevant_context_without_all_records(d
                 "planning": None,
             },
         )
-        assert context["request_scope"]["operations"] == ["cashflow"]
-        assert "reconciliation" not in context["workspace"]
+        assert "cashflow" in context["request_scope"]["operations"]
+        assert len(context["request_scope"]["operations"]) == 11
+        assert "reconciliation" in context["workspace"]
         matching = build_planning_context(
             session, "u", message="Match my recorded payment to the bill"
         )

@@ -1,3 +1,5 @@
+import re
+
 from coach_i18n import translate
 
 from app.agents.base import BaseAgent
@@ -149,8 +151,16 @@ class BudgetAgent(BaseAgent):
         ):
             return ["Please provide income and recurring expenses in SGD before calculating savings capacity; no currency conversion is assumed."]
         if not task.context_features.get("has_monthly_income"):
+            if not re.search(
+                r"\b(?:create|build|calculate|how much|afford|feasible|disposable|capacity)\b",
+                task.sanitized_message, re.IGNORECASE,
+            ):
+                return []
             return ["What is your monthly income before creating this budget?"]
         return []
+
+    def _missing_input_fields(self, task):
+        return ["monthly_income"] if not task.context_features.get("has_monthly_income") else []
 
     def _capacity_grounding(self, task):
         saved = task.input_data.get("saved_budget_capacity", {})
@@ -171,7 +181,9 @@ class BudgetAgent(BaseAgent):
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
-        grounding = self._capacity_grounding(task)
+        grounding = self._capacity_grounding(task) if task.context_features.get("has_monthly_income") else {
+            "calculation_status": "no_financial_inputs", "scope": "general budgeting education",
+        }
         spending = task.resolved_dependencies.get(
             CapabilityName.TRANSACTION_CATEGORY_TOTALS
         )
@@ -217,6 +229,8 @@ class BudgetAgent(BaseAgent):
         result: AgentResult,
     ) -> list[CapabilityResult]:
         del result
+        if "capacity" not in grounding:
+            return []
         return [
             CapabilityResult(
                 capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,

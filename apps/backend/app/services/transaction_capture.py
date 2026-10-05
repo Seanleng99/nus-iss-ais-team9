@@ -2,17 +2,21 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
-from coach_i18n import input_pattern
+from coach_i18n import input_pattern, request_locale, translate
+from coach_math.calendar import financial_today
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.financial_schemas import TransactionCreate
 from app.core.telemetry import log_event
 from app.domain.schemas import ApplicationMoneyAmount, CoachRequest, CoachResponse
+from app.infrastructure.models import TransactionRecord
 from app.infrastructure.repositories import SQLAlchemyTransactionRepository
+from app.services.coach_action_state import DurableLastSavedStore, DurablePendingEditStore
 
 AMEND_PREFIX_PATTERN = re.compile(
     r"^\s*(?:oh\s+)?(?:sorry|oops|wait|hold\s+on)[,!.]?\s+"
@@ -292,7 +296,7 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
                    "parking", "carpark", "erp", "top-up", "topup", "transit", "commute",
                    "scoot", "rideshare", "flight", "airticket", "air ticket")),
     ("housing", ("rent", "mortgage", "maintenance fee", "service charge", "condo", "hdb")),
-    ("utilities", ("utilit", "electricity", "power bill", "sproupit", "water bill",
+    ("utilities", ("utility", "utilities", "utilites", "electricity", "power bill", "sproupit", "water bill",
                    "gas bill", "internet", "broadband",
                    "mobile plan", "phone bill", "singtel", "starhub", "m1 ")),
     ("healthcare", ("doctor", "clinic", "medicine", "paracetamol", "pharmac", "hospital",
@@ -307,7 +311,7 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
 
 
 def _today() -> date:
-    return datetime.now(UTC).date()
+    return financial_today()
 
 
 @dataclass
@@ -400,35 +404,8 @@ class LastSavedRecord:
     amount: float
     when: date
     recurring: bool = False
-
-
-class LastSavedStore:
-    def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
-        self.ttl_seconds = ttl_seconds
-        self._lock = threading.Lock()
-        self._entries: dict[str, tuple[LastSavedRecord, float]] = {}
-
-    def remember(self, user_id: str, record: LastSavedRecord) -> None:
-        with self._lock:
-            self._entries[user_id] = (record, time.monotonic())
-
-    def get(self, user_id: str) -> LastSavedRecord | None:
-        with self._lock:
-            entry = self._entries.get(user_id)
-            if entry is None:
-                return None
-            record, stored_at = entry
-            if time.monotonic() - stored_at > self.ttl_seconds:
-                del self._entries[user_id]
-                return None
-            return record
-
-    def clear(self) -> None:
-        with self._lock:
-            self._entries.clear()
-
-
-last_saved_store = LastSavedStore()
+    recurrence: dict | None = None
+    obligation_id: str | None = None
 
 
 @dataclass
@@ -439,6 +416,8 @@ class EditCandidate:
     amount: float
     when: date
     recurring: bool = False
+    recurrence: dict | None = None
+    obligation_id: str | None = None
 
 
 @dataclass
@@ -448,38 +427,6 @@ class PendingEdit:
     candidate: EditCandidate | None
     op: str = "edit"
 
-
-class PendingEditStore:
-    def __init__(self, ttl_seconds: float = PENDING_TTL_SECONDS) -> None:
-        self.ttl_seconds = ttl_seconds
-        self._lock = threading.Lock()
-        self._entries: dict[str, tuple[PendingEdit, float]] = {}
-
-    def put(self, user_id: str, pending: PendingEdit) -> None:
-        with self._lock:
-            self._entries[user_id] = (pending, time.monotonic())
-
-    def get(self, user_id: str) -> PendingEdit | None:
-        with self._lock:
-            entry = self._entries.get(user_id)
-            if entry is None:
-                return None
-            pending, stored_at = entry
-            if time.monotonic() - stored_at > self.ttl_seconds:
-                del self._entries[user_id]
-                return None
-            return pending
-
-    def drop(self, user_id: str) -> None:
-        with self._lock:
-            self._entries.pop(user_id, None)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._entries.clear()
-
-
-pending_edit_store = PendingEditStore()
 
 EDIT_STOP_WORDS = EDIT_META_WORDS | frozenset(
     {
@@ -523,7 +470,7 @@ def _split_name_and_date_filter(target: str) -> tuple[list[str], date | None]:
 def classify_category(text: str) -> str:
     lowered = f" {text.lower()} "
     for category, keywords in CATEGORY_KEYWORDS:
-        if any(keyword in lowered for keyword in keywords):
+        if any(re.search(r"(?<!\w)" + re.escape(keyword.strip()) + r"(?!\w)", lowered) for keyword in keywords):
             return category
     return "other"
 
@@ -1126,8 +1073,8 @@ def _ask_queue_reply(session_id: str, next_draft: CaptureDraft, saved_parts: lis
     return _local_reply(session_id, answer)
 
 
-def _local_reply(session_id: str, answer: str) -> CoachResponse:
-    audit: dict[str, Any] = {"source": "transaction_capture"}
+def _local_reply(session_id: str, answer: str, *, action_status: str = "reviewed_result") -> CoachResponse:
+    audit: dict[str, Any] = {"source": "transaction_capture", "action_status": action_status}
     return CoachResponse(
         session_id=session_id,
         selected_agents=["spending"],
@@ -1167,55 +1114,9 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
     user_id = request.user_id
     session_id = request.session_id
     message = request.message
-
-    def save_one(draft: CaptureDraft, when: date) -> str:
-        try:
-            record = SQLAlchemyTransactionRepository(session).create(
-                user_id,
-                TransactionCreate(
-                    description=draft.description,
-                    category=draft.category,
-                    amount=ApplicationMoneyAmount(amount=draft.amount),
-                    occurred_on=when,
-                    recurring=draft.recurring,
-                ),
-            )
-            session.commit()
-            last_saved_store.remember(
-                user_id,
-                LastSavedRecord(
-                    transaction_id=record.id,
-                    description=draft.description,
-                    category=draft.category,
-                    amount=draft.amount,
-                    when=when,
-                    recurring=draft.recurring,
-                ),
-            )
-        except SQLAlchemyError:
-            session.rollback()
-            pending_capture_store.put(user_id, draft)
-            return "Sorry, I couldn't save that transaction. Please try again."
-        log_event(
-            "transaction.added",
-            source="coach_capture",
-            category=draft.category,
-        )
-        formatted = f"{when.day} {when.strftime('%b %Y')}"
-        part = (
-            f"{draft.description} for SGD {draft.amount:.2f} on {formatted} "
-            f"under {draft.category.capitalize()}"
-        )
-        from app.services.budget_alert import category_overage_note
-
-        note = category_overage_note(session, user_id, when.replace(day=1), draft.category)
-        if note:
-            part = part + " " + note.strip()
-        return part
-
-    def save_list(drafts: list[CaptureDraft], dates: list[date]) -> str:
-        parts = [save_one(draft, when) for draft, when in zip(drafts, dates, strict=True)]
-        return _finalize(parts)
+    locale = request_locale(request)
+    pending_edit_store = DurablePendingEditStore(session, user_id, session_id, locale)
+    last_saved_store = DurableLastSavedStore(session, user_id, session_id, locale)
 
     pending_edit = pending_edit_store.get(user_id)
     if pending_edit is not None:
@@ -1223,20 +1124,23 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             pending_edit_store.drop(user_id)
             if pending_edit.op == "delete":
                 return _local_reply(
-                    session_id, "OK, I've dropped that delete. Nothing was deleted."
+                    session_id, "OK, I've dropped that delete. Nothing was deleted.",
+                    action_status="cancelled",
                 )
             return _local_reply(
-                session_id, "OK, I've dropped that edit. Nothing was changed."
+                session_id, "OK, I've dropped that edit. Nothing was changed.",
+                action_status="cancelled",
             )
         if EDIT_CONFIRM_PATTERN.fullmatch(message.strip().rstrip(".!")):
             if pending_edit.candidate is None:
                 return _local_reply(
                     session_id,
                     "Which one did you mean? Mention its date, for example 'the 21 Sep one'.",
+                    action_status="needs_input",
                 )
             if pending_edit.op == "delete":
-                return _apply_named_delete(session, session_id, user_id, pending_edit)
-            return _apply_named_edit(session, session_id, user_id, pending_edit)
+                return _apply_named_delete(session, session_id, user_id, pending_edit, locale)
+            return _apply_named_edit(session, session_id, user_id, pending_edit, locale)
         picked_keywords, when_filter = _split_name_and_date_filter(message)
         if picked_keywords or when_filter is not None:
             candidates = pending_edit.candidates
@@ -1269,9 +1173,9 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             if len(narrowed) == 1:
                 selected = narrowed[0]
                 if pending_edit.op == "delete":
-                    return _delete_preview_reply(session_id, user_id, selected)
+                    return _delete_preview_reply(session_id, user_id, selected, store=pending_edit_store)
                 return _edit_preview_reply(
-                    session_id, user_id, selected, pending_edit.new_amount
+                    session_id, user_id, selected, pending_edit.new_amount, store=pending_edit_store
                 )
             listing = "; ".join(
                 f"{candidate.description} on {candidate.when.day} "
@@ -1292,11 +1196,13 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                     session_id,
                     f"I found more than one match: {listing}. Which one did you mean? "
                     "Mention its date, for example 'the 21 Sep one'.",
+                    action_status="needs_input",
                 )
             return _local_reply(
                 session_id,
                 "None of those match — which one did you mean? "
                 f"Your options: {listing or ', '.join(c.description for c in candidates)}.",
+                action_status="needs_input",
             )
         pending_edit_store.drop(user_id)
 
@@ -1316,10 +1222,13 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 session_id,
                 "I couldn't find the transaction you meant. "
                 "Mention its name, for example 'delete the Lunch transaction'.",
+                action_status="needs_input",
             )
         records = SQLAlchemyTransactionRepository(session).list_records(user_id)
         matches: list[EditCandidate] = []
         for record in records:
+            if record.currency != "SGD" or record.transaction_type != "expense":
+                continue
             words = set(re.sub(r"[^a-z0-9 ]", " ", record.description.lower()).split())
             if all(keyword in words for keyword in keywords):
                 matches.append(
@@ -1330,6 +1239,8 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                         amount=float(record.amount),
                         when=record.occurred_on,
                         recurring=record.recurring,
+                        recurrence=record.recurrence,
+                        obligation_id=record.obligation_id,
                     )
                 )
         if when_filter is not None:
@@ -1339,10 +1250,11 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 session_id,
                 f"I couldn't find a transaction matching "
                 f"'{' '.join(keywords)}' in your records.",
+                action_status="needs_input",
             )
         matches.sort(key=lambda candidate: candidate.when, reverse=True)
         if len(matches) == 1:
-            return _delete_preview_reply(session_id, user_id, matches[0])
+            return _delete_preview_reply(session_id, user_id, matches[0], store=pending_edit_store)
         pending_edit_store.put(
             user_id,
             PendingEdit(
@@ -1358,6 +1270,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             session_id,
             f"I found more than one match: {listing}. Which one did you mean? "
             "Mention its date, for example 'the 21 Sep one'.",
+            action_status="needs_input",
         )
 
     edit_directive = EDIT_DIRECTIVE_PATTERN.match(message) or EDIT_REQUEST_PATTERN.search(message)
@@ -1378,10 +1291,13 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 session_id,
                 "I couldn't find the transaction you meant. "
                 "Mention its name, for example 'change the Lunch to 25'.",
+                action_status="needs_input",
             )
         records = SQLAlchemyTransactionRepository(session).list_records(user_id)
         matches: list[EditCandidate] = []
         for record in records:
+            if record.currency != "SGD" or record.transaction_type != "expense":
+                continue
             words = set(re.sub(r"[^a-z0-9 ]", " ", record.description.lower()).split())
             if all(keyword in words for keyword in keywords):
                 matches.append(
@@ -1392,6 +1308,8 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                         amount=float(record.amount),
                         when=record.occurred_on,
                         recurring=record.recurring,
+                        recurrence=record.recurrence,
+                        obligation_id=record.obligation_id,
                     )
                 )
         if when_filter is not None:
@@ -1401,10 +1319,11 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 session_id,
                 f"I couldn't find a transaction matching "
                 f"'{' '.join(keywords)}' in your records.",
+                action_status="needs_input",
             )
         matches.sort(key=lambda candidate: candidate.when, reverse=True)
         if len(matches) == 1:
-            return _edit_preview_reply(session_id, user_id, matches[0], new_amount)
+            return _edit_preview_reply(session_id, user_id, matches[0], new_amount, store=pending_edit_store)
         pending_edit_store.put(
             user_id,
             PendingEdit(new_amount=new_amount, candidates=matches[:3], candidate=None),
@@ -1418,6 +1337,7 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             session_id,
             f"I found more than one match: {listing}. Which one did you mean? "
             "Mention its date, for example 'the 21 Sep one'.",
+            action_status="needs_input",
         )
 
     amendment = parse_last_saved_amendment(message)
@@ -1425,6 +1345,14 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
         stored = last_saved_store.get(user_id)
         if stored is None:
             return None
+        current = session.scalar(select(TransactionRecord).where(
+            TransactionRecord.user_id == user_id, TransactionRecord.id == stored.transaction_id,
+        ).with_for_update())
+        if current is None or current.currency != "SGD" or current.transaction_type != "expense" or (current.description, current.category, float(current.amount), current.occurred_on, current.recurring, current.recurrence, current.obligation_id) != (
+            stored.description, stored.category, stored.amount, stored.when, stored.recurring, stored.recurrence, stored.obligation_id,
+        ):
+            last_saved_store.clear()
+            return _local_reply(session_id, translate("coach_action.stale_reference", locale), action_status="rejected")
         amount, when = amendment
         new_amount = stored.amount if amount is None else amount
         new_when = stored.when if when is None else when
@@ -1443,12 +1371,14 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
             if record is None:
                 last_saved_store.clear()
                 return None
-            session.commit()
         except SQLAlchemyError:
             session.rollback()
             return _local_reply(
-                session_id, "Sorry, I couldn't update that transaction. Please try again."
+                session_id, "Sorry, I couldn't update that transaction. Please try again.",
+                action_status="rejected",
             )
+        except ValueError:
+            return _local_reply(session_id, translate("coach_action.recurrence_edit_blocked", locale), action_status="rejected")
         last_saved_store.remember(
             user_id,
             LastSavedRecord(
@@ -1458,20 +1388,21 @@ def handle_transaction_capture(session: Session, request: CoachRequest) -> Coach
                 amount=new_amount,
                 when=new_when,
                 recurring=stored.recurring,
+                recurrence=record.recurrence,
+                obligation_id=record.obligation_id,
             ),
         )
         log_event("transaction.updated", source="coach_capture", category=stored.category)
         formatted = f"{new_when.day} {new_when.strftime('%b %Y')}"
-        part = (
-            f"{stored.description} is now SGD {new_amount:.2f} on {formatted} "
-            f"under {stored.category.capitalize()}"
-        )
+        answer = translate("coach_action.updated", locale,
+            description=stored.description, amount=f"{new_amount:.2f}",
+            date=formatted if locale == "en" else new_when.isoformat(), category=stored.category.capitalize())
         from app.services.budget_alert import category_overage_note
 
-        note = category_overage_note(session, user_id, new_when.replace(day=1), stored.category)
+        note = category_overage_note(session, user_id, new_when.replace(day=1), stored.category, locale)
         if note:
-            part = part + " " + note.strip()
-        return _local_reply(session_id, f"Updated: {part}.")
+            answer += " " + note.strip()
+        return _local_reply(session_id, answer, action_status="saved")
 
     return None
 
@@ -1482,9 +1413,9 @@ def _finalize(parts: list[str]) -> str:
 
 
 def _edit_preview_reply(
-    session_id: str, user_id: str, candidate: EditCandidate, new_amount: float
+    session_id: str, user_id: str, candidate: EditCandidate, new_amount: float, *, store
 ) -> CoachResponse:
-    pending_edit_store.put(
+    store.put(
         user_id,
         PendingEdit(
             new_amount=new_amount,
@@ -1495,15 +1426,17 @@ def _edit_preview_reply(
     formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
     return _local_reply(
         session_id,
-        f"Change {candidate.description} from SGD {candidate.amount:.2f} on {formatted} "
-        f"to SGD {new_amount:.2f}? Reply 'confirm' to save, or 'cancel'.",
+        translate("coach_action.edit_preview", store.locale, description=candidate.description,
+                  amount=f"{candidate.amount:.2f}", new_amount=f"{new_amount:.2f}",
+                  date=formatted if store.locale == "en" else candidate.when.isoformat()),
+        action_status="preview",
     )
 
 
 def _delete_preview_reply(
-    session_id: str, user_id: str, candidate: EditCandidate
+    session_id: str, user_id: str, candidate: EditCandidate, *, store
 ) -> CoachResponse:
-    pending_edit_store.put(
+    store.put(
         user_id,
         PendingEdit(
             new_amount=0.0,
@@ -1515,16 +1448,22 @@ def _delete_preview_reply(
     formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
     return _local_reply(
         session_id,
-        f"Delete {candidate.description} for SGD {candidate.amount:.2f} on {formatted}? "
-        "Reply 'confirm' to delete, or 'cancel'.",
+        translate("coach_action.delete_preview", store.locale, description=candidate.description,
+                  amount=f"{candidate.amount:.2f}",
+                  date=formatted if store.locale == "en" else candidate.when.isoformat()),
+        action_status="preview",
     )
 
 
 def _apply_named_delete(
-    session: Session, session_id: str, user_id: str, pending_edit: PendingEdit
+    session: Session, session_id: str, user_id: str, pending_edit: PendingEdit, locale="en"
 ) -> CoachResponse:
+    pending_edit_store = DurablePendingEditStore(session, user_id, session_id)
     candidate = pending_edit.candidate
     assert candidate is not None
+    refresh = _review_changed_candidate(session, session_id, user_id, pending_edit, locale)
+    if refresh is not None:
+        return refresh
     try:
         removed = SQLAlchemyTransactionRepository(session).delete(
             user_id, candidate.transaction_id
@@ -1532,28 +1471,35 @@ def _apply_named_delete(
         if not removed:
             pending_edit_store.drop(user_id)
             return _local_reply(
-                session_id, "I couldn't find that transaction anymore. Nothing was deleted."
+                session_id, "I couldn't find that transaction anymore. Nothing was deleted.",
+                action_status="rejected",
             )
-        session.commit()
     except SQLAlchemyError:
         session.rollback()
         return _local_reply(
-            session_id, "Sorry, I couldn't delete that transaction. Please try again."
+            session_id, "Sorry, I couldn't delete that transaction. Please try again.",
+            action_status="rejected",
         )
     pending_edit_store.drop(user_id)
     log_event("transaction.deleted", source="coach_capture", category=candidate.category)
     formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
     return _local_reply(
         session_id,
-        f"Deleted: {candidate.description} for SGD {candidate.amount:.2f} on {formatted}.",
+        translate("coach_action.deleted", locale, description=candidate.description,
+                  amount=f"{candidate.amount:.2f}", date=formatted if locale == "en" else candidate.when.isoformat()),
+        action_status="deleted",
     )
 
 
 def _apply_named_edit(
-    session: Session, session_id: str, user_id: str, pending_edit: PendingEdit
+    session: Session, session_id: str, user_id: str, pending_edit: PendingEdit, locale="en"
 ) -> CoachResponse:
+    pending_edit_store = DurablePendingEditStore(session, user_id, session_id)
     candidate = pending_edit.candidate
     assert candidate is not None
+    refresh = _review_changed_candidate(session, session_id, user_id, pending_edit, locale)
+    if refresh is not None:
+        return refresh
     new_amount = pending_edit.new_amount
     try:
         record = SQLAlchemyTransactionRepository(session).update(
@@ -1570,29 +1516,58 @@ def _apply_named_edit(
         if record is None:
             pending_edit_store.drop(user_id)
             return _local_reply(
-                session_id, "I couldn't find that transaction anymore. Nothing was changed."
+                session_id, "I couldn't find that transaction anymore. Nothing was changed.",
+                action_status="rejected",
             )
-        session.commit()
     except SQLAlchemyError:
         session.rollback()
         return _local_reply(
-            session_id, "Sorry, I couldn't update that transaction. Please try again."
+            session_id, "Sorry, I couldn't update that transaction. Please try again.",
+            action_status="rejected",
         )
+    except ValueError:
+        pending_edit_store.drop(user_id)
+        return _local_reply(session_id, translate("coach_action.recurrence_edit_blocked", locale), action_status="rejected")
     pending_edit_store.drop(user_id)
     log_event("transaction.updated", source="coach_capture", category=candidate.category)
     formatted = f"{candidate.when.day} {candidate.when.strftime('%b %Y')}"
-    part = (
-        f"{candidate.description} is now SGD {new_amount:.2f} on {formatted} "
-        f"under {candidate.category.capitalize()}"
-    )
+    answer = translate("coach_action.updated", locale, description=candidate.description,
+        amount=f"{new_amount:.2f}", date=formatted if locale == "en" else candidate.when.isoformat(),
+        category=candidate.category.capitalize())
     from app.services.budget_alert import category_overage_note
 
     note = category_overage_note(
-        session, user_id, candidate.when.replace(day=1), candidate.category
+        session, user_id, candidate.when.replace(day=1), candidate.category, locale
     )
     if note:
-        part = part + " " + note.strip()
-    return _local_reply(session_id, f"Updated: {part}.")
+        answer += " " + note.strip()
+    return _local_reply(session_id, answer, action_status="saved")
+
+
+def _review_changed_candidate(session, session_id, user_id, pending, locale="en"):
+    """Confirm only the owned row shown in the preview, while holding its lock."""
+    candidate = pending.candidate
+    record = session.scalar(select(TransactionRecord).where(
+        TransactionRecord.user_id == user_id, TransactionRecord.id == candidate.transaction_id,
+    ).with_for_update())
+    store = DurablePendingEditStore(session, user_id, session_id, locale)
+    if record is None:
+        store.drop(user_id)
+        return _local_reply(session_id, "I couldn't find that transaction anymore. Nothing was changed.", action_status="rejected")
+    if record.currency != "SGD" or record.transaction_type != "expense":
+        store.drop(user_id)
+        return _local_reply(session_id, translate("coach_action.unsupported", locale), action_status="rejected")
+    if (record.description, record.category, float(record.amount), record.occurred_on, record.recurring, record.recurrence, record.obligation_id) == (
+        candidate.description, candidate.category, candidate.amount, candidate.when, candidate.recurring, candidate.recurrence, candidate.obligation_id,
+    ):
+        return None
+    fresh = EditCandidate(transaction_id=record.id, description=record.description,
+        category=record.category, amount=float(record.amount), when=record.occurred_on,
+        recurring=record.recurring, recurrence=record.recurrence, obligation_id=record.obligation_id)
+    reply = (_delete_preview_reply(session_id, user_id, fresh, store=store) if pending.op == "delete"
+        else _edit_preview_reply(session_id, user_id, fresh, pending.new_amount, store=store))
+    reply.answer = translate("coach_action.stale_preview", locale, preview=reply.answer)
+    return reply
 
 
 def _start_capture(

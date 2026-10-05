@@ -40,6 +40,31 @@ class UsageGateway:
         )
 
 
+def test_real_provider_unknown_usage_prevents_further_model_spending():
+    class TimedOutGateway:
+        attempts = 0
+
+        def generate(self, **kwargs):
+            self.attempts += 1
+            raise ModelGatewayError("Timed out.", code="OPENAI_TIMEOUT")
+
+    delegate = TimedOutGateway()
+    gateway = TracingModelGateway(delegate, Settings(MODEL_PROVIDER="openai", _env_file=None))
+    token = gateway.bind_trace("unknown-usage")
+    try:
+        with pytest.raises(ModelGatewayError) as initial:
+            gateway.generate(system_prompt="PROMPT_ID: agent_investment_education", user_prompt="{}", temperature=0, max_tokens=100)
+        assert initial.value.code == "OPENAI_TIMEOUT"
+        with pytest.raises(ModelGatewayError) as retry:
+            gateway.generate(system_prompt="PROMPT_ID: education_query_planner", user_prompt="{}", temperature=0, max_tokens=100)
+        assert retry.value.code == "MODEL_USAGE_UNKNOWN"
+        assert delegate.attempts == 1
+        assert len(gateway.snapshot("unknown-usage")) == 1
+        assert gateway.snapshot("unknown-usage")[0]["total_tokens"] is None
+    finally:
+        gateway.reset_trace(token)
+
+
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [({}, True), ({"contextual_financial_findings": ["ambiguous wording"]}, False)],
@@ -165,8 +190,23 @@ def test_openai_gateway_hides_provider_errors_and_empty_responses(status, code) 
     assert "private provider details" not in str(error.value)
 
 
-def test_default_model_token_budget_allows_assessment_workflow_headroom() -> None:
-    assert Settings().max_model_tokens_per_run == 20_000
+def test_default_model_token_budget_finishes_all_assessment_and_review_stages(monkeypatch) -> None:
+    monkeypatch.delenv("MAX_MODEL_TOKENS_PER_RUN", raising=False)
+    gateway = TracingModelGateway(UsageGateway(5_000), Settings(_env_file=None))
+    token = gateway.bind_trace("full-reviewed-workflow")
+    stages = ["education_query_planner", "education_answerability", "agent_investment_education",
+              "synthesizer", "risk_compliance"]
+    try:
+        for component in stages:
+            assert gateway.generate(system_prompt="PROMPT_ID: " + component, user_prompt="{}",
+                                    temperature=0, max_tokens=500) == "ok"
+        calls = gateway.snapshot("full-reviewed-workflow")
+        assert [item["component"] for item in calls] == stages
+        assert sum(item["total_tokens"] for item in calls) == 25_000
+        assert all(item["status"] == "completed" for item in calls)
+    finally:
+        gateway.reset_trace(token)
+        gateway.clear("full-reviewed-workflow")
 
 
 def test_tracing_gateway_allows_exact_model_token_budget() -> None:

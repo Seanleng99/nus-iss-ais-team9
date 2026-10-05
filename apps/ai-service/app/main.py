@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 
+from app.core.action_composition import ActionCompositionRequest, compose_action
 from app.core.config import settings
 from app.core.observability import RequestTelemetryMiddleware, get_correlation_id
 from app.core.schemas import CoachRequest, CoachResponse
@@ -110,3 +111,16 @@ async def coach_stream(
         media_type="application/x-ndjson",
         headers={"X-Trace-ID": str(x_workflow_id), "Cache-Control": "no-store"},
     )
+
+
+@app.post("/coach/compose", response_model=CoachResponse, dependencies=[Depends(require_api_key)])
+def coach_compose(
+    payload: ActionCompositionRequest,
+    agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
+) -> CoachResponse:
+    """Private, non-streaming composition after backend validation; no writes."""
+    try:
+        return compose_action(payload, agent_orchestrator)
+    except (ModelGatewayError, RetrievalError) as error:
+        _log_generation_failure(error)
+        raise HTTPException(status_code=503, detail="Action composition is temporarily unavailable.") from error

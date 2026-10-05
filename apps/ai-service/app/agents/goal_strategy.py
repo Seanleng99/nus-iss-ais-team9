@@ -1,3 +1,5 @@
+import math
+import re
 from collections.abc import Sequence
 
 from coach_i18n import translate
@@ -26,6 +28,57 @@ class GoalStrategyAgent(BaseAgent):
     prompt_id = "agent_goal_strategy"
     dependency_planning_enabled = True
 
+    @staticmethod
+    def _illustrative_goal(task):
+        """Validate a read-only user-supplied calculation apart from saved records."""
+        from app.core.schemas import FinancialGoal
+        text = task.sanitized_message
+        example = bool(re.search(r"\b(?:if|suppose|hypothetical|illustrative|example)\b", text, re.IGNORECASE))
+        if task.context_features.get("goal_capture") or re.search(
+            r"\b(?:create|record|update|rename|delete)\b|\bsave\s+(?:this|the|my)\s+goal\b",
+            text, re.IGNORECASE,
+        ):
+            return None
+        if re.search(
+            r"\b(?:afford|feasible|feasibility|realistic|reach|achieve|on track|can I|will I|should I)\b",
+            text, re.IGNORECASE,
+        ):
+            return None
+        amount = reported_value(task, "goal_target_amount")
+        months = reported_value(task, "goal_target_months")
+        if re.search(r"\b(?:USD|EUR|GBP|MYR|AUD|CAD|CHF|JPY|CNY|HKD|NZD|IDR|INR)\b|(?:US|AU|C|HK|NZ)\$|[\u00a3\u20ac]", text, re.IGNORECASE):
+            return None
+        monetary_pattern = r"(?<![\w+-])(?:SGD\s*|S\$\s*|\$\s*)(\d{1,12}(?:\.\d{1,2})?|[1-9]\d{0,2}(?:,\d{3})+(?:\.\d{1,2})?)(?![\d,]|\.\d|[A-Za-z])"
+        legacy_target_pattern = r"\b(?:want|target|save|saving)\s*(?:is|of|for|to)?\s*(\d[\d,]*(?:\.\d{1,2})?)"
+        duration_pattern = r"\b(?:in|over|within)\s+(\d{1,3})\s+months?\b"
+        marked_amounts = re.findall(monetary_pattern, text, re.IGNORECASE)
+        amounts = marked_amounts or re.findall(legacy_target_pattern, text, re.IGNORECASE)
+        durations = re.findall(duration_pattern, text, re.IGNORECASE)
+        if len(amounts) > 1 or len(durations) > 1:
+            return None
+        # One marked SGD target and one explicit duration establish only
+        # target / months. Further figures could be contributions, balances,
+        # another target or returns; do not invent their meaning.
+        if not example and (len(marked_amounts) != 1 or len(durations) != 1):
+            return None
+        residue = re.sub(monetary_pattern if marked_amounts else legacy_target_pattern, "", text, flags=re.IGNORECASE)
+        residue = re.sub(duration_pattern, "", residue, flags=re.IGNORECASE)
+        if re.search(r"\d", residue):
+            return None
+        if len(amounts) == 1:
+            amount = amounts[0].replace(",", "")
+        if len(durations) == 1:
+            months = durations[0]
+        if not amount or not months:
+            return None
+        try:
+            if not math.isfinite(float(amount)) or not 0 <= float(amount) <= 999999999999.99:
+                return None
+            return FinancialGoal(name="Illustrative goal (user-reported, unsaved)",
+                target_amount={"amount": float(amount)}, target_months=int(months))
+        except (ValueError, TypeError):
+            return None
+
     def run_task(self, task):
         if task.context_features.get("goal_capture") and inspect_prompt(task.sanitized_message).allowed:
             draft = extract_goal_draft(self, task)
@@ -48,7 +101,7 @@ class GoalStrategyAgent(BaseAgent):
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         goals = task.input_data.get("goals", [])
         if (
-            goals and not self._emergency_fund_request(task)
+            goals and not self._illustrative_goal(task) and not self._emergency_fund_request(task)
             and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies
         ):
             return (
@@ -91,6 +144,8 @@ class GoalStrategyAgent(BaseAgent):
     def _dependency_options(self, task: AgentTask) -> Sequence[DependencyRequestDraft]:
         if self._emergency_fund_request(task):
             return ()
+        if self._illustrative_goal(task):
+            return ()
         goals = task.input_data.get("goals", [])
         if goals and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies:
             return (
@@ -110,11 +165,20 @@ class GoalStrategyAgent(BaseAgent):
         return ()
 
     def _missing_input_questions(self, task: AgentTask) -> Sequence[str]:
+        if self._illustrative_goal(task):
+            return ()
         if self._emergency_fund_request(task):
             # Explain the sourced benchmark first, even without a saved goal/income.
             return ()
         questions = []
         if not task.input_data.get("goals"):
+            if self._illustrative_goal(task):
+                return []
+            if not (task.context_features.get("session_context", {}).get("facts")
+                    or task.context_features.get("follow_up", {}).get("status") == "resolved"
+                    or re.search(r"\b(?:my|our|saved)\b.*\bgoals?\b", task.sanitized_message, re.IGNORECASE)
+                    or re.search(r"\b(?:calculate|assess|evaluate|help (?:me )?plan|plan a savings goal|how much|monthly saving|feasible|afford|projection|project my|reach my)\b", task.sanitized_message, re.IGNORECASE)):
+                return []
             amount = reported_value(task, "goal_target_amount")
             months = reported_value(task, "goal_target_months")
             if amount and months:
@@ -142,10 +206,19 @@ class GoalStrategyAgent(BaseAgent):
             questions.append("Please provide goal targets and current amounts in SGD before comparing them with SGD budget capacity; no conversion is assumed.")
         return questions
 
+    def _missing_input_fields(self, task):
+        if not task.input_data.get("goals"):
+            return [field for field in ("goal_target_amount", "goal_target_months")
+                    if not reported_value(task, field)]
+        return ["monthly_income"] if not task.context_features.get("has_monthly_income") else []
+
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)
+        illustrative = self._illustrative_goal(task)
+        if illustrative:
+            snapshot = snapshot.model_copy(update={"goals": [illustrative]})
         projection_snapshot = snapshot
         if self._emergency_fund_request(task):
             projection_snapshot = snapshot.model_copy(update={
@@ -153,8 +226,15 @@ class GoalStrategyAgent(BaseAgent):
                           if goal.current_amount.currency == goal.target_amount.currency],
             })
         projections = call_tool(self.name, "goal_projection", projection_snapshot)
-        capacity = task.resolved_dependencies.get(CapabilityName.MONTHLY_SAVINGS_CAPACITY)
+        capacity = task.resolved_dependencies.get(CapabilityName.MONTHLY_SAVINGS_CAPACITY) if not illustrative else None
         grounding: dict = {"projections": projections}
+        if illustrative:
+            grounding["calculation_scope"] = "Illustrative calculation from user-reported inputs; no goal saved and affordability not assessed."
+            grounding["calculation_assumptions"] = {
+                "currency": "SGD", "starting_amount": 0,
+                "investment_returns_assumed": False,
+                "method": "Target divided by months, with equal monthly contributions.",
+            }
         if self._emergency_fund_request(task):
             grounding["emergency_fund"] = task.input_data.get("emergency_fund") or call_tool(
                 self.name, "emergency_fund_summary", snapshot,

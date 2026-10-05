@@ -23,6 +23,28 @@ class AIServiceClient:
         self._base_url = settings.ai_service_base_url.rstrip("/")
         self._api_key = settings.ai_service_api_key
         self._timeout = settings.ai_service_timeout_seconds
+        self._composition_timeout = min(self._timeout, settings.ai_service_composition_timeout_seconds)
+
+    @trace_method
+    async def compose(self, request: CoachRequest, response: CoachResponse, outcomes: list[dict]) -> CoachResponse:
+        # Streaming events commit audit rows; action writes must stay in the
+        # caller's transaction until the final exchange is persisted.
+        try:
+            async with asyncio.timeout(self._composition_timeout):
+                async with httpx.AsyncClient(timeout=self._composition_timeout) as client:
+                    result = await client.post(
+                        f"{self._base_url}/coach/compose",
+                        headers={"X-API-Key": self._api_key, **outbound_headers()},
+                        json={"request": request.model_dump(mode="json"),
+                              "response": response.model_dump(mode="json"), "outcomes": outcomes},
+                    )
+                    result.raise_for_status()
+                    return CoachResponse.model_validate(result.json())
+        except (httpx.HTTPError, ValueError, TimeoutError, TypeError, KeyError) as error:
+            log_event("ai_service.composition.failed", exception_type=type(error).__name__)
+            raise AIServiceUnavailableError(
+                timed_out=isinstance(error, (httpx.TimeoutException, TimeoutError)),
+            ) from error
 
     @trace_method
     async def coach(self, request: CoachRequest) -> CoachResponse:

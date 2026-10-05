@@ -192,10 +192,7 @@ def render_insight_card(insight: dict) -> None:
                     )
                     if context.get("category"):
                         full_question += f"This is about my {context['category'].title()} spending.\n\n"
-                    full_question += (
-                        f"Can you help me understand: {prompt_text}\n\n"
-                        f"Please analyze my transaction data and give me specific insights about this."
-                    )
+                    full_question += prompt_text
                     
                     # Navigate to Coach with the question
                     _navigate_to_coach_with_question(full_question)

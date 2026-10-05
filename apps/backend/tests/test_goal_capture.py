@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from coach_i18n import translate
 
 from app.api.financial_schemas import GoalCreate
 from app.domain.schemas import CoachRequest, CoachResponse
@@ -20,7 +21,7 @@ def draft(**changes):
     )
 
 
-def stage(session, data, chat=None, blocked=False):
+def stage(session, data, chat=None, blocked=False, locale=None):
     chat = chat or SQLAlchemyChatRepository(session).create("u1", "goals-chat", "Goals")
     reply = CoachResponse(
         session_id=chat.id,
@@ -28,7 +29,7 @@ def stage(session, data, chat=None, blocked=False):
         answer="proposal",
         blocked=blocked,
         disclaimers=[],
-        audit={},
+        audit={"response_locale": locale} if locale else {},
         agent_results=[
             {"agent": "goal_strategy", "summary": "draft", "data": {"goal_draft": data}}
         ],
@@ -49,11 +50,16 @@ def test_create_edit_delete_require_preview_and_confirmation(db_session_factory)
         repo = SQLAlchemyGoalRepository(session)
         chat, reply = stage(session, draft())
         assert "Create goal preview" in reply.answer
+        assert reply.audit["action_status"] == "preview"
         assert repo.list_records("u1") == []
-        assert "Saved" in confirm(session).answer
+        saved = confirm(session)
+        assert "Saved" in saved.answer
+        assert saved.audit == {"source": "goal_confirmation", "action_status": "saved"}
         session.commit()
         goal = repo.list_records("u1")[0]
-        assert "no pending" in confirm(session).answer
+        no_pending = confirm(session)
+        assert "no pending" in no_pending.answer
+        assert no_pending.audit["action_status"] == "no_pending"
         chat, reply = stage(
             session, {"action": "update", "goal_name": goal.name, "target_amount": 15000}, chat
         )
@@ -65,10 +71,39 @@ def test_create_edit_delete_require_preview_and_confirmation(db_session_factory)
         chat, reply = stage(session, {"action": "delete", "goal_name": goal.name}, chat)
         assert "permanently delete" in reply.answer
         assert len(repo.list_records("u1")) == 1
-        assert "Deleted" in confirm(session).answer
+        deleted = confirm(session)
+        assert "Deleted" in deleted.answer
+        assert deleted.audit["action_status"] == "deleted"
         session.commit()
         assert repo.list_records("u1") == []
         assert "no pending" in confirm(session).answer
+
+
+def test_chinese_goal_preview_and_confirmation_preserve_authoritative_values(db_session_factory):
+    with db_session_factory() as session:
+        _, reply = stage(session, draft(), locale="zh-Hans")
+        assert translate("goal_action.create_preview", "zh-Hans") in reply.answer
+        assert "SGD 12,000.00" in reply.answer and "Emergency fund" in reply.answer
+        assert "currently saved" not in reply.answer
+        assert SQLAlchemyGoalRepository(session).list_records("u1") == []
+        response = handle_goal_confirmation(session, CoachRequest(
+            user_id="u1", session_id="goals-chat", message="confirm goal", response_locale="zh-Hans",
+        ))
+        assert response.answer == translate("goal_action.saved", "zh-Hans")
+        session.commit()
+        assert float(SQLAlchemyGoalRepository(session).list_records("u1")[0].target_amount) == 12000
+
+
+def test_chinese_goal_missing_fields_do_not_claim_saved_result(db_session_factory):
+    with db_session_factory() as session:
+        data = draft()
+        data.pop("current_amount")
+        data.pop("target_months")
+        _, reply = stage(session, data, locale="zh-Hans")
+        assert translate("goal_action.current", "zh-Hans") in reply.answer
+        assert translate("goal_action.duration", "zh-Hans") in reply.answer
+        assert "Please provide" not in reply.answer
+        assert SQLAlchemyGoalRepository(session).list_records("u1") == []
 
 
 @pytest.mark.parametrize(
@@ -80,7 +115,10 @@ def test_missing_fields_never_save(db_session_factory, field):
         data.pop(field)
         _, reply = stage(session, data)
         assert "Please provide" in reply.answer
-        assert "Please provide" in confirm(session).answer
+        assert reply.audit["action_status"] == "needs_input"
+        missing = confirm(session)
+        assert "Please provide" in missing.answer
+        assert missing.audit["action_status"] == "needs_input"
         assert SQLAlchemyGoalRepository(session).list_records("u1") == []
 
 
@@ -120,7 +158,9 @@ def test_cancel_and_owner_conversation_isolation(db_session_factory):
         assert "no pending" in confirm(session, user="other").answer
         assert "no pending" in confirm(session, conversation="other").answer
         assert confirm(session, "yes") is None
-        assert "cancelled" in confirm(session, "cancel goal").answer
+        cancelled = confirm(session, "cancel goal")
+        assert "cancelled" in cancelled.answer
+        assert cancelled.audit == {"source": "goal_confirmation", "action_status": "cancelled"}
         assert "no pending" in confirm(session).answer
 
 

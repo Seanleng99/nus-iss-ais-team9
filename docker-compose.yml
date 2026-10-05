@@ -21,8 +21,10 @@ services:
       dockerfile: infra/docker/Dockerfile.ai-service
     env_file:
       - .env.example
+      - path: .env
+        required: false
     environment:
-      MODEL_PROVIDER: local_fixture
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-local_fixture}
     ports:
       - "8001:8001"
     cap_drop: [ALL]
@@ -44,6 +46,8 @@ services:
       dockerfile: infra/docker/Dockerfile.backend
     env_file:
       - .env.example
+      - path: .env
+        required: false
     environment:
       AI_SERVICE_BASE_URL: http://ai-service:8001
       POSTGRES_URL: postgresql://coach:coach@postgres:5432/financial_wellness
@@ -73,6 +77,8 @@ services:
       dockerfile: infra/docker/Dockerfile.backend
     env_file:
       - .env.example
+      - path: .env
+        required: false
     environment:
       POSTGRES_URL: postgresql://coach:coach@postgres:5432/financial_wellness
     command: ["alembic", "upgrade", "head"]
@@ -89,6 +95,8 @@ services:
       dockerfile: infra/docker/Dockerfile.frontend
     env_file:
       - .env.example
+      - path: .env
+        required: false
     environment:
       BACKEND_BASE_URL: http://backend:8080
     ports:

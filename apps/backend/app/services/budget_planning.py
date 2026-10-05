@@ -1,12 +1,10 @@
 """Authoritative checks and summaries for first-stage Coach budget planning."""
 
-import re
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Literal
-from zoneinfo import ZoneInfo
 
-from coach_i18n import input_pattern
+from coach_math.calendar import financial_today
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.financial_schemas import BudgetPlanSettings
@@ -54,48 +52,19 @@ class PlanningInputs(BaseModel):
 
 
 def planning_operations(message, pending=None):
-    """Route relevant evidence only; unknown facts are still clarified by the agent."""
-    operations = set()
-    pending_operation = ((pending or {}).get("workspace") or {}).get("operation")
-    if pending_operation:
-        operations.add(pending_operation)
-    patterns = {
-        "commitments": input_pattern("backend.services.budget_planning.commitments"),
-        "cashflow": input_pattern("backend.services.budget_planning.cashflow"),
-        "timing": input_pattern("backend.services.budget_planning.timing"),
-        "reconcile": input_pattern("backend.services.budget_planning.reconcile"),
-        "unlink": r"unmatch|unlink|remove.{0,20}match",
-        "reserves": input_pattern("backend.services.budget_planning.reserves"),
-        "restore": input_pattern("backend.services.budget_planning.restore"),
-        "adaptive_review": input_pattern("backend.services.budget_planning.adaptive_review"),
-        "debt_compare": input_pattern("backend.services.budget_planning.debt_compare"),
-        "continuity": input_pattern("backend.services.budget_planning.continuity"),
-        "reviews": input_pattern("backend.services.budget_planning.reviews"),
-    }
-    for operation, pattern in patterns.items():
-        if re.search(pattern, message, re.IGNORECASE):
-            operations.add(operation)
-    return sorted(operations)
+    """Capabilities available to semantic routing, independent of trigger nouns."""
+    del message, pending
+    return ["adaptive_review", "cashflow", "commitments", "continuity", "debt_compare",
+            "reconcile", "reserves", "restore", "reviews", "timing", "unlink"]
 
 
 def build_planning_context(session, user_id: str, *, today: date | None = None,
                            message=None, pending=None, period=None) -> dict:
-    today = today or datetime.now(ZoneInfo("Asia/Singapore")).date()
+    today = today or financial_today()
     repository = SQLAlchemyBudgetRepository(session)
     history = []
-    include_spending = (
-        message is None
-        or bool(
-            re.search(
-                input_pattern("backend.services.budget_planning.include_spending"),
-                message,
-                re.IGNORECASE,
-            )
-        )
-        or bool(((pending or {}).get("planning") or {}).get("use_recorded_spending"))
-    )
     # Aggregate complete calendar periods; completeness of the records is still unknown.
-    for offset in range(1, 4) if include_spending else []:
+    for offset in range(1, 4):
         year, month_index = divmod(today.year * 12 + today.month - 1 - offset, 12)
         history_period = date(year, month_index + 1, 1)
         totals = repository.spending_by_category(user_id, history_period, currency="SGD")
@@ -112,7 +81,7 @@ def build_planning_context(session, user_id: str, *, today: date | None = None,
     profile = SQLAlchemyUserRepository(session).get_profile(user_id)
     operations = planning_operations(message, pending) if message is not None else None
     data = {
-        "workspace": context(session, user_id, operations=operations, period=period),
+        "workspace": context(session, user_id, period=period),
         "recorded_spending": history,
         "profile_income": {
             "amount": float(profile.monthly_income),
@@ -123,9 +92,8 @@ def build_planning_context(session, user_id: str, *, today: date | None = None,
         else None,
     }
     if message is not None:
-        data["request_scope"] = {"operations": operations}
-        if not include_spending:
-            data.pop("recorded_spending")
+        data["request_scope"] = {"operations": operations, "selection": "semantic",
+                                 "authorization": "read_only_context"}
     if period:
         data["selected_period"] = str(period)
         record = repository.get(user_id, period)

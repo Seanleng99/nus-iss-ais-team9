@@ -197,6 +197,25 @@ def _ordinal(request, match):
     message = request.message
     value = next(value for value in match.groups() if value)
     value = value.casefold().removeprefix("the ")
+    attributed = [item for item in request.session_context.referents if item.option_index is not None]
+    if attributed:
+        latest_position = max(item.source_position for item in attributed)
+        options = [item for item in attributed if item.source_position == latest_position]
+        indices = [item.option_index for item in options]
+        # Rendered options are typed subjects with reviewed user provenance;
+        # ordinary prose and subsequent formatting changes cannot lose them.
+        if len(set(indices)) != len(indices) or sorted(indices) != list(range(1, len(indices) + 1)):
+            return _ambiguous(message, "AMBIGUOUS_ATTRIBUTED_OPTIONS")
+        number = 2 if value == "latter" and len(options) == 2 else ORDINAL_VALUES.get(value)
+        selected = [item for item in options if item.option_index == number]
+        if len(selected) != 1:
+            return _ambiguous(message, "MISSING_ORDERED_OPTION")
+        item = selected[0]
+        return FollowUpResolution(
+            status="resolved", agent=AgentName(item.agent), subject=item.subject,
+            education_topics=item.education_topics, source_kind="attributed_referent",
+            source_position=item.source_position, reason_code="ATTRIBUTED_ORDERED_OPTION",
+        )
     def normalize(text):
         return " ".join(text.casefold().split()).rstrip(
             input_pattern("ai.core.follow_up.sentence_punctuation")
@@ -221,6 +240,20 @@ def _ordinal(request, match):
                     continue
             return _ambiguous(message, "MISSING_ORDERED_OPTIONS")
         pairs = NUMBERED.findall(item.content)
+        if not pairs:
+            # Referents belong to the dialogue, not a particular Markdown
+            # rendering. Preserve displayed order for bullet lists and tables.
+            bullets = re.findall(r"^\s*[-*+]\s+(.+)$", item.content, re.MULTILINE)
+            rows = []
+            for line in item.content.splitlines():
+                if not line.strip().startswith("|"):
+                    continue
+                cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+                if cells and _subject(" ".join(cells), request):
+                    rows.append(" ".join(cells))
+            candidates = bullets or rows
+            if len(candidates) >= 2 and all(_subject(text, request) for text in candidates):
+                pairs = [(str(number), text) for number, text in enumerate(candidates, 1)]
         options = {int(number): text.strip().strip("*") for number, text in pairs}
         if (
             len(options) != len(pairs)

@@ -104,6 +104,18 @@ jobs:
         run: ruff check apps/ai-service apps/shared infra/scripts
       - name: Unit and API tests
         run: pytest apps/ai-service/tests
+      - name: Coach conversational regression contracts (offline)
+        run: >-
+          pytest apps/ai-service/tests/test_conversational_pipeline.py
+          --junitxml=artifacts/conversational-contract-results.xml
+      - name: Upload conversational contract evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: conversational-contract-results
+          path: artifacts/conversational-contract-results.xml
+          if-no-files-found: error
+          retention-days: 30
       - name: Shared language tests
         run: pytest apps/shared/tests
       - name: Enforce LLMSecOps evaluation policy

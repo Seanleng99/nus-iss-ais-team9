@@ -340,6 +340,14 @@ Resources:
               Value: "0.6"
             - Name: MODEL_MAX_TOKENS
               Value: "1600"
+            - Name: MAX_MODEL_TOKENS_PER_RUN
+              Value: "40000"
+            - Name: MODEL_READ_TIMEOUT_SECONDS
+              Value: "30"
+            - Name: AGENT_TIMEOUT_SECONDS
+              Value: "45"
+            - Name: MODEL_ROLE_OVERRIDES
+              Value: '{"router":{"reasoning_effort":"low","max_tokens":1800},"dependency_planner":{"reasoning_effort":"low","max_tokens":1000},"agent_spending":{"reasoning_effort":"medium","max_tokens":3200},"agent_budget":{"reasoning_effort":"medium","max_tokens":3200},"agent_goal_strategy":{"reasoning_effort":"medium","max_tokens":3200},"agent_investment_education":{"reasoning_effort":"medium","max_tokens":4000},"synthesizer":{"reasoning_effort":"low","max_tokens":2400},"risk_compliance":{"reasoning_effort":"medium","max_tokens":3000},"education_query_planner":{"reasoning_effort":"low","max_tokens":1600},"education_answerability":{"reasoning_effort":"low","max_tokens":2400},"response_composer":{"reasoning_effort":"low","max_tokens":2400},"action_grounding_review":{"reasoning_effort":"low","max_tokens":1600}}'
           Secrets:
             - Name: AI_SERVICE_API_KEY
               ValueFrom: !Sub "${AiServiceApiKeySecretArn}:value::"
@@ -399,7 +407,7 @@ Resources:
             - Name: AI_SERVICE_BASE_URL
               Value: http://ai.coach.internal:8001
             - Name: AI_SERVICE_TIMEOUT_SECONDS
-              Value: "45"
+              Value: "90"
             - Name: TRACE_RETENTION_DAYS
               Value: "30"
             - Name: CHAT_RETENTION_DAYS
@@ -471,6 +479,8 @@ Resources:
               Value: "true"
             - Name: BACKEND_BASE_URL
               Value: http://backend.coach.internal:8080
+            - Name: COACH_TIMEOUT_SECONDS
+              Value: "120"
             - Name: OIDC_CLIENT_ID
               Value: !Ref OidcClientId
             - Name: OIDC_REDIRECT_URI

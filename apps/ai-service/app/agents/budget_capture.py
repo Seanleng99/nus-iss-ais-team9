@@ -199,6 +199,7 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
         user_prompt=json.dumps(
             {
                 "message": task.sanitized_message,
+                "coaching_preferences": task.context_features.get("coaching_preferences", {}),
                 "conversation_context": task.context_features.get("conversation_context", []),
                 "session_context": {
                     key: value

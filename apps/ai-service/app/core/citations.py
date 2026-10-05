@@ -2,13 +2,12 @@ import re
 from collections.abc import Sequence
 from urllib.parse import quote
 
-from coach_i18n import translate
-
 from app.core.schemas import SourceCitation
 from app.core.telemetry import trace_method
 from app.models.gateway import ModelGatewayError
 
-SOURCE_MARKER = re.compile(r"\[(?:source:)?([a-z0-9][a-z0-9-]{2,127})\]")
+SOURCE_MARKER = re.compile(r"\[source:([a-z0-9][a-z0-9-]{2,127})\]")
+MALFORMED_SOURCE_MARKER = re.compile(r"\[\s*source\s*:", re.IGNORECASE)
 MODEL_LINK = re.compile(r"://|\bwww\.|\]\s*\(|<\s*a\b|\b(?:href|src)\s*=", re.IGNORECASE)
 
 
@@ -23,7 +22,7 @@ def citation_contract(sources: Sequence[SourceCitation]) -> str:
     return (
         "\nCitation contract for THIS request: there are NO approved sources. "
         "Preserve the supplied calculations and explanations without citation "
-        "markers, source labels, URLs, links, or square brackets. "
+        "markers, source labels, URLs, or links. Ordinary brackets in examples are allowed. "
         "Never copy placeholder IDs from examples."
     )
 
@@ -33,7 +32,7 @@ def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
     approved = {source.source_id for source in sources}
     markers = SOURCE_MARKER.findall(text)
     remaining = SOURCE_MARKER.sub("", text)
-    if MODEL_LINK.search(text) or "[" in remaining or "]" in remaining or (
+    if MODEL_LINK.search(text) or MALFORMED_SOURCE_MARKER.search(remaining) or (
         not set(markers).issubset(approved)
     ):
         raise ModelGatewayError(
@@ -43,8 +42,20 @@ def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
         )
 
 
+def normalize_citation_markers(text: str, sources: Sequence[SourceCitation]) -> str:
+    """Accept old citation syntax only when its ID is actually carried evidence.
+
+    An ordinary bracket such as [food-budget] is not a citation declaration.
+    Explicit [source:...] tokens remain strict even when the ID is unknown.
+    """
+    for source in sources:
+        text = text.replace(f"[{source.source_id}]", f"[source:{source.source_id}]")
+    return text
+
+
 @trace_method
 def render_citations(text: str, sources: Sequence[SourceCitation], locale: object = "en") -> str:
+    text = normalize_citation_markers(text, sources)
     validate_citations(text, sources)
     approved = {source.source_id: source for source in sources}
 
@@ -52,15 +63,8 @@ def render_citations(text: str, sources: Sequence[SourceCitation], locale: objec
         source = approved[match[1]]
         label = re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", " ".join(source.title.split()))
         reference = f"[{label}]({quote(source.canonical_url, safe=':/?#=&%')})"
-        if source.document_filename:
-            kind = {
-                "project_summary": "citation.project_summary_short",
-                "source_document": "citation.source_document",
-            }.get(source.content_kind)
-            detail = f"; {translate(kind, locale)}" if kind else ""
-            reference += " (" + translate(
-                "citation.inline", locale, filename=source.document_filename, detail=detail
-            ) + ")"
+        # The Sources panel and response metadata carry filename/version/kind.
+        # Keep citations readable when several claims use the same document.
         return reference
 
     return SOURCE_MARKER.sub(
@@ -78,11 +82,18 @@ def compact_evidence(data: dict) -> dict:
                      "document_version", "review_due_at", "content_kind")),
     ):
         if field in data:
-            result[field] = [
+            compacted = [
                 {key: item[key] for key in keys if key in item} for item in data[field]
                 # Before generation all evidence is eligible. Once citations are
                 # selected, unrelated passages cannot support the draft's claims.
                 if "cited_source_ids" not in data
                 or item["source_id"] in data["cited_source_ids"]
             ]
+            # Shared capabilities can repeat the very same accepted passage.
+            # Remove only exact duplicates, retaining distinct quotes from one
+            # source and every critical qualification in their complete text.
+            result[field] = []
+            for item in compacted:
+                if item not in result[field]:
+                    result[field].append(item)
     return result

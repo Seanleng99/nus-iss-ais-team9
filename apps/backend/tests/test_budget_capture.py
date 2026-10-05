@@ -1,6 +1,8 @@
+import json
 from datetime import date
 
 import pytest
+from coach_i18n import translate
 from pydantic import ValidationError
 
 from app.api.financial_schemas import BudgetCategoryInput, BudgetUpsert
@@ -61,7 +63,10 @@ def test_draft_survives_sessions_and_only_confirmation_writes(db_session_factory
         assert "pet care" in reply.answer
         assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
     with db_session_factory() as session:
-        assert confirm(session).answer.startswith("Saved")
+        saved = confirm(session)
+        assert saved.answer.startswith("Saved")
+        assert saved.audit == {"source": "budget_confirmation", "action_status": "saved"}
+        assert confirm(session).audit["action_status"] == "no_pending"
         session.commit()
         record = SQLAlchemyBudgetRepository(session).get("u1", PERIOD)
         assert {row.category: float(row.limit_amount) for row in record.categories} == {
@@ -121,7 +126,9 @@ def test_cancel_and_conversation_isolation(db_session_factory):
         setup_draft(session)
         assert "no pending" in confirm(session, session_id="another-chat").answer
         assert "no pending" in confirm(session, user_id="another-user").answer
-        assert "cancelled" in confirm(session, "cancel").answer
+        cancelled = confirm(session, "cancel")
+        assert "cancelled" in cancelled.answer
+        assert cancelled.audit == {"source": "budget_confirmation", "action_status": "cancelled"}
         assert "no pending" in confirm(session).answer
         assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
 
@@ -275,3 +282,108 @@ def test_confirmation_rollback_keeps_draft_for_retry(db_session_factory):
         assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
         assert confirm(session).answer.startswith("Saved")
         session.commit()
+
+
+def test_chinese_budget_preview_and_confirmation_keep_validated_amounts(db_session_factory):
+    with db_session_factory() as session:
+        chat = SQLAlchemyChatRepository(session).create("u1", "budget-chat", "Budget")
+        reply = response(complete_draft())
+        reply.audit["response_locale"] = "zh-Hans"
+        stage_budget_draft(session, "u1", chat, reply)
+        assert translate("budget_action.changes_header", "zh-Hans", period="October 2026") in reply.answer
+        assert "SGD 500.00" in reply.answer and "SGD 120.00" in reply.answer
+        assert translate("budget_action.confirm_instruction", "zh-Hans") in reply.answer
+        assert "user-provided" not in reply.answer
+        assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
+        saved = handle_budget_confirmation(session, CoachRequest(
+            user_id="u1", session_id="budget-chat", message="confirm budget", response_locale="zh-Hans",
+        ))
+        assert saved.answer == translate("budget_action.saved", "zh-Hans", period="October 2026")
+        assert float(SQLAlchemyBudgetRepository(session).get("u1", PERIOD).categories[0].limit_amount) == 500
+
+
+def test_chinese_budget_missing_details_keep_questions_and_write_gate(db_session_factory):
+    with db_session_factory() as session:
+        chat = SQLAlchemyChatRepository(session).create("u1", "budget-chat", "Budget")
+        reply = response(complete_draft(period_start=None, categories=[]))
+        reply.audit["response_locale"] = "zh-Hans"
+        stage_budget_draft(session, "u1", chat, reply)
+        assert translate("budget_action.month", "zh-Hans") in reply.answer
+        assert translate("budget_action.categories", "zh-Hans") in reply.answer
+        assert "Which month" not in reply.answer
+        assert chat.pending_budget["ready"] is False
+        assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
+
+
+def test_chinese_workspace_preview_preserves_schedules_and_confirmation_gate(db_session_factory):
+    from app.services.financial_workspace import read_section
+    with db_session_factory() as session:
+        chat = SQLAlchemyChatRepository(session).create("u1", "budget-chat", "Budget")
+        data = {
+            "action": "workspace",
+            "workspace": {"operation": "cashflow", "payload_json": json.dumps({
+                "opening_on": "2026-10-01", "opening_balance": 1000,
+                "schedules": [{"name": "User salary", "category": "salary", "kind": "income",
+                    "amount": 5000, "first_on": "2026-10-05", "frequency": "monthly"}],
+            })},
+        }
+        reply = response(data)
+        reply.audit["response_locale"] = "zh-Hans"
+        stage_budget_draft(session, "u1", chat, reply)
+        assert translate("budget_action.workspace_header", "zh-Hans") in reply.answer
+        assert "User salary" in reply.answer and "SGD 5,000.00" in reply.answer
+        assert "Opening balance" not in reply.answer and "manually settled dates" not in reply.answer
+        assert translate("budget_action.workspace_confirm", "zh-Hans") in reply.answer
+        assert read_section(session, "u1", "cashflow") is None
+        assert chat.pending_budget["ready"] is True
+        saved = handle_budget_confirmation(session, CoachRequest(
+            user_id="u1", session_id="budget-chat", message="confirm budget", response_locale="zh-Hans",
+        ))
+        assert saved.answer == translate("budget_action.planning_saved", "zh-Hans")
+        assert read_section(session, "u1", "cashflow")["schedules"][0]["name"] == "User salary"
+
+
+def test_chinese_read_only_budget_review_retains_recorded_values(db_session_factory):
+    with db_session_factory() as session:
+        chat = SQLAlchemyChatRepository(session).create("u1", "budget-chat", "Budget")
+        reply = response({"action": "review", "period_start": "2026-10-01"})
+        reply.audit["response_locale"] = "zh-Hans"
+        stage_budget_draft(session, "u1", chat, reply)
+        assert translate("budget_action.review_no_plan", "zh-Hans") in reply.answer
+        assert translate("budget_action.review_incomplete", "zh-Hans") in reply.answer
+        assert "Budget review for" not in reply.answer and "Recorded SGD expenses" not in reply.answer
+        assert "2026-10-01" in reply.answer and "0.00" in reply.answer
+        assert SQLAlchemyBudgetRepository(session).get("u1", PERIOD) is None
+        assert chat.pending_budget["ready"] is False
+
+
+@pytest.mark.parametrize("locale", ["en", "zh-Hans"])
+def test_invalid_workspace_values_request_corrections_without_framework_diagnostics(
+    db_session_factory, locale,
+):
+    from app.services.financial_workspace import read_section
+
+    with db_session_factory() as session:
+        chat = SQLAlchemyChatRepository(session).create("u1", "budget-chat", "Budget")
+        reply = response({
+            "action": "workspace",
+            "workspace": {"operation": "cashflow", "payload_json": json.dumps({
+                "opening_on": "invalid-date", "opening_balance": "not-a-number",
+                "schedules": [],
+            })},
+        })
+        reply.audit["response_locale"] = locale
+        stage_budget_draft(session, "u1", chat, reply)
+
+        assert translate("budget_action.workspace_values", locale) in reply.answer
+        assert "opening_on" not in reply.answer and "opening_balance" not in reply.answer
+        assert "invalid-date" not in reply.answer and "not-a-number" not in reply.answer
+        assert "type=" not in reply.answer and "input_value" not in reply.answer
+        assert "errors.pydantic.dev" not in reply.answer
+        assert chat.pending_budget["ready"] is False
+        assert read_section(session, "u1", "cashflow") is None
+        result = handle_budget_confirmation(session, CoachRequest(
+            user_id="u1", session_id="budget-chat", message="confirm budget", response_locale=locale,
+        ))
+        assert result.answer == translate("budget_action.planning_missing", locale)
+        assert read_section(session, "u1", "cashflow") is None

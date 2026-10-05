@@ -2,8 +2,38 @@ import json
 from datetime import date
 
 import httpx
+import pytest
 
 from client import BackendClient, build_request
+
+
+@pytest.mark.parametrize("override", [None, 0.05])
+def test_coach_deadline_configuration_preserves_short_overrides_and_other_requests(monkeypatch, override):
+    monkeypatch.setenv("COACH_TIMEOUT_SECONDS", "0.1")
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={})
+
+    client = BackendClient(base_url="http://backend.test", automation_api_key="test-key",
+        transport=httpx.MockTransport(handler), coach_timeout_seconds=override)
+    client.ask_coach(build_request("test-user", "Explain budgeting."))
+    client.list_profiles()
+    assert requests[0].extensions["timeout"]["read"] == (0.1 if override is None else override)
+    assert requests[1].extensions["timeout"]["read"] == 20
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "601", "invalid"])
+def test_invalid_coach_deadline_fails_at_configuration(monkeypatch, value):
+    monkeypatch.setenv("COACH_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValueError):
+        BackendClient()
+
+
+def test_default_coach_deadline_exceeds_ordinary_read_deadline(monkeypatch):
+    monkeypatch.delenv("COACH_TIMEOUT_SECONDS", raising=False)
+    assert BackendClient().coach_timeout_seconds > 20
 
 
 def test_build_request_uses_backend_owned_snapshot() -> None:

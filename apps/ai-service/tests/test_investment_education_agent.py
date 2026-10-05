@@ -54,13 +54,16 @@ def test_investment_retrieval_query_contains_topics_not_personal_details() -> No
         )
     )
 
-    assert retriever.queries == [
+    assert len(retriever.queries) == 3
+    assert set(retriever.queries) == {
         "General investment education about bonds",
         "General investment education about exchange-traded funds",
-    ]
-    assert "9,876" not in retriever.queries[0]
-    assert "learner@example.com" not in retriever.queries[0]
-    assert "REDACTED" not in retriever.queries[0]
+        "General investment education about bonds, exchange-traded funds",
+    }
+    for query in retriever.queries:
+        assert "9,876" not in query
+        assert "learner@example.com" not in query
+        assert "REDACTED" not in query
 
 
 def test_investment_model_prompt_contains_topics_not_personal_details() -> None:
@@ -643,8 +646,7 @@ def test_local_fixture_answer_uses_the_most_relevant_retrieved_context() -> None
     context = investment.data["contexts"][0]
     reference = response.sources[0]
     assert response.answer == investment.summary == (
-        "RAG knowledge base (saved documents; no live web search):\n\n"
-        + context["text"] + f" [{reference.title}]({reference.canonical_url})"
+        context["text"] + f" [{reference.title}]({reference.canonical_url})"
         + "\n\nInvestment outcomes vary and losses are possible."
     )
     assert "bonds" in response.answer.lower()

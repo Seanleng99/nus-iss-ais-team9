@@ -73,6 +73,7 @@ def extract_goal_draft(agent, task):
         user_prompt=json.dumps(
             {
                 "message": task.sanitized_message,
+                "coaching_preferences": task.context_features.get("coaching_preferences", {}),
                 "pending_draft": task.context_features.get("pending_goal"),
                 "conversation_context": task.context_features.get("conversation_context", []),
                 "session_context": {

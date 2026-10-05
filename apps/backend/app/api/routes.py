@@ -1,9 +1,17 @@
 import asyncio
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
+from urllib.parse import quote
+from uuid import uuid4
 
-from coach_i18n import input_pattern, localize_reviewed, request_locale, resolve_locale
+from coach_i18n import (
+    input_pattern,
+    localize_backend_text,
+    localize_reviewed,
+    request_locale,
+    resolve_locale,
+)
 from coach_i18n import response_language as request_language
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +36,7 @@ from app.domain.schemas import (
     OrchestrationTraceResponse,
     TraceStatus,
 )
+from app.domain.turn_queries import TurnQueries
 from app.infrastructure.database import get_db_session
 from app.infrastructure.repositories import (
     SQLAlchemyChatRepository,
@@ -35,31 +44,78 @@ from app.infrastructure.repositories import (
     SQLAlchemyUserRepository,
 )
 from app.infrastructure.run_trace import DurableRun
-from app.services.budget_alert import build_status_reply, parse_budget_status_query
+from app.services.budget_alert import build_status_reply
 from app.services.budget_capacity import build_capacity_context
 from app.services.budget_capture import handle_budget_confirmation, stage_budget_draft
 from app.services.budget_planning import build_planning_context
 from app.services.goal_capture import handle_goal_confirmation, stage_goal_draft
 from app.services.privacy_guard import find_other_user_reference, other_user_data_reply
-from app.services.recurring_forecast import (
-    handle_recurring_forecast_query,
-    parse_recurring_forecast_query,
-)
+from app.services.response_composition import action_outcome, compose_backend_response
 from app.services.session_context import (
     budget_query_period,
-    budget_status_follow_up,
     build_session_context,
     complete_state,
     session_fact_reply,
 )
-from app.services.spending_query import handle_date_spending_query, parse_date_spending_query
-from app.services.transaction_capture import handle_transaction_capture
+from app.services.spending_query import handle_date_spending_query
+from app.services.transaction_capture import _today as financial_today
+from app.services.transaction_capture import handle_transaction_capture, parse_date_expression
 from app.services.transaction_staging import (
+    SpendingDraft,
     handle_transaction_confirmation,
+    preserves_transaction_preview,
     stage_transaction_draft,
 )
 
 router = APIRouter()
+
+
+def _previous_query_was_simple_day(chat):
+    if chat is None:
+        return False
+    latest = next((item for item in reversed(chat.messages) if item.role == "assistant"), None)
+    trace = latest.orchestration_trace if latest is not None else None
+    if trace is None or trace.blocked:
+        return False
+    if trace.audit.get("source") == "spending_date_query":
+        return True
+    drafts = [item.get("data", {}).get("spending_draft") for item in trace.agent_results
+              if item.get("agent") == "spending" and not item.get("blocked")]
+    if len(drafts) != 1 or drafts[0] is None:
+        return False
+    try:
+        draft = SpendingDraft.model_validate(drafts[0])
+    except (TypeError, ValueError):
+        return False
+    return (draft.action == "query" and draft.query_date is not None
+            and not draft.query_all_history and not draft.query_categories
+            and draft.query_start is None and draft.query_end is None
+            and draft.query_description is None and draft.query_min_amount is None
+            and draft.query_max_amount is None and draft.query_group_by is None)
+
+
+def _reviewed_specialist_text(result, sources):
+    """Render approved evidence references before appending reviewed prose."""
+    marker = re.compile(r"\[source:([a-z0-9][a-z0-9-]{2,127})\]")
+    text = result.summary.strip()
+    approved = {source.source_id: source for source in sources}
+    for source_id in approved:
+        text = text.replace(f"[{source_id}]", f"[source:{source_id}]")
+    if not set(marker.findall(text)).issubset(approved):
+        return None
+    if re.search(r"\[\s*source\s*:", marker.sub("", text), re.IGNORECASE):
+        return None
+    if re.search(r"://|\bwww\.|\]\s*\(|<\s*a\b|\b(?:href|src)\s*=", text, re.IGNORECASE):
+        return None
+
+    def reference(match):
+        source = approved[match[1]]
+        if not source.canonical_url.startswith("https://"):
+            return ""
+        label = re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", " ".join(source.title.split()))
+        return f"[{label}]({quote(source.canonical_url, safe=':/?#=&%')})"
+
+    return marker.sub(reference, text)
 
 
 def is_workspace_request(message):
@@ -70,16 +126,19 @@ def is_workspace_request(message):
 
 
 def _current_period_start():  # pragma: no cover - trivial
-    return datetime.now(UTC).date().replace(day=1)
+    return financial_today().replace(day=1)
 
 
-def _budget_alert_reply(session: Session, request: CoachRequest) -> CoachResponse:
+def _budget_alert_reply(session: Session, request: CoachRequest, *, period_missing: bool = False) -> CoachResponse:
     try:
+        if period_missing:
+            raise ValueError("Which single month and year should I check?")
         period = budget_query_period(request) or _current_period_start()
     except ValueError as error:
         answer = str(error)
         results = [{"agent": "budget", "summary": answer, "rationale": [], "confidence": 1,
-                    "data": {"needs_input": True, "questions": [answer]}}]
+                    "data": {"needs_input": True, "questions": [answer],
+                             "missing_fields": ["budget_period_start"]}}]
     else:
         answer = build_status_reply(session, request.user_id, period)
         results = []
@@ -134,18 +193,27 @@ async def coach(
     existing_chat = chat_repository.get(request.user_id, request.session_id)
     request = InternalCoachRequest(
         **request.model_dump(), conversation_context=context,
+        message_position=revision + 1,
         session_context=build_session_context(existing_chat, request.message, revision + 1),
     )
+    persisted_snapshot = user_repository.get_financial_snapshot(request.user_id, request.budget_period_start)
+    selected_spending_period = (date.fromisoformat(persisted_snapshot.period_start)
+                               if persisted_snapshot and persisted_snapshot.period_start else request.budget_period_start)
+    if persisted_snapshot is not None:
+        request = request.model_copy(update={"snapshot": persisted_snapshot})
     confirmed_goal = handle_goal_confirmation(session, request)
     if confirmed_goal is not None:
-        return _finalize_coach_response(_persist_local_coach(session, request, confirmed_goal))
+        return _finalize_coach_response(_persist_local_coach(session, request,
+            await compose_backend_response(ai_service, request, confirmed_goal)))
     confirmed = handle_budget_confirmation(session, request)
     if confirmed is not None:
-        return _finalize_coach_response(_persist_local_coach(session, request, confirmed))
+        return _finalize_coach_response(_persist_local_coach(session, request,
+            await compose_backend_response(ai_service, request, confirmed)))
     confirmed_transaction = handle_transaction_confirmation(session, request)
     if confirmed_transaction is not None:
         return _finalize_coach_response(
-            _persist_local_coach(session, request, confirmed_transaction)
+            _persist_local_coach(session, request,
+                await compose_backend_response(ai_service, request, confirmed_transaction))
         )
     if existing_chat and existing_chat.pending_goal:
         existing_chat.pending_goal = {**existing_chat.pending_goal, "ready": False}
@@ -165,27 +233,19 @@ async def coach(
         else handle_transaction_capture(session, request)
     )
     if captured is not None:
-        return _finalize_coach_response(_persist_local_coach(session, request, captured))
-    remembered = session_fact_reply(request) if not pending_goal and not pending_budget else None
-    if remembered is not None:
-        return _finalize_coach_response(_persist_local_coach(session, request, remembered))
-    query_date = (
-        parse_date_spending_query(request.message, request.session_context)
-        if request.session_context["active_topic"] == "spending"
-        and not pending_transaction
-        and re.fullmatch(r"(?:what|how) about .+[?!.]*", request.message.strip(), re.IGNORECASE)
-        else None
-    )
-    if query_date is not None and not pending_budget and not pending_goal and not is_workspace_request(request.message):
-        queried = handle_date_spending_query(session, request, query_date)
-        return _finalize_coach_response(_persist_local_coach(session, request, queried))
-    if not pending_budget and not goal_context and "budget" not in request.message.casefold() and not is_workspace_request(request.message) and parse_recurring_forecast_query(request.message):
-        forecast = handle_recurring_forecast_query(session, request.user_id, request.session_id)
-        return _finalize_coach_response(_persist_local_coach(session, request, forecast))
-    if not pending_budget and not pending_goal and (parse_budget_status_query(request.message) or budget_status_follow_up(request)):
-        alert_reply = _budget_alert_reply(session, request)
-        return _finalize_coach_response(_persist_local_coach(session, request, alert_reply))
-    persisted_snapshot = user_repository.get_financial_snapshot(request.user_id)
+        return _finalize_coach_response(_persist_local_coach(session, request,
+            await compose_backend_response(ai_service, request, captured)))
+    # Only a complete, bare date expression can use the existing spending
+    # subject. Filters, ranges and additional intents go to semantic extraction.
+    followup = re.fullmatch(r"(?:what|how)\s+about\s+(.+?)[?!.]*", request.message.strip(), re.IGNORECASE)
+    query_date = (parse_date_expression(followup[1], allow_future=True)
+                  if followup and request.session_context["active_topic"] == "spending"
+                  and _previous_query_was_simple_day(existing_chat) else None)
+    if query_date is not None and not any((pending_budget, pending_goal, pending_transaction)):
+        return _finalize_coach_response(_persist_local_coach(
+            session, request, await compose_backend_response(ai_service, request,
+                handle_date_spending_query(session, request, query_date))
+        ))
     log_event("coach.snapshot.loaded", snapshot_found=persisted_snapshot is not None)
     if persisted_snapshot is not None:
         request = request.model_copy(update={"snapshot": persisted_snapshot})
@@ -219,7 +279,8 @@ async def coach(
         chat_session.pending_goal = {**chat_session.pending_goal, "ready": False}
     if chat_session.pending_budget:
         chat_session.pending_budget = {**chat_session.pending_budget, "ready": False}
-    if chat_session.pending_transaction:
+    if (chat_session.pending_transaction
+            and not preserves_transaction_preview(chat_session.pending_transaction)):
         chat_session.pending_transaction = {
             **chat_session.pending_transaction,
             "ready": False,
@@ -242,15 +303,62 @@ async def coach(
             raise HTTPException(status_code=404, detail="Conversation not found")
         if len(chat_session.messages) != revision:
             raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
-        stage_budget_draft(session, request.user_id, chat_session, response)
-        stage_goal_draft(session, request.user_id, chat_session, response)
-        stage_transaction_draft(
-            session, request.user_id, chat_session, response, request.message
-        )
+        outcomes = []
+        if not response.blocked:
+            try:
+                queries = TurnQueries.model_validate(response.audit.get("turn_decision", {}))
+            except (TypeError, ValueError):
+                queries = TurnQueries()
+            if queries.budget_status_query:
+                query_request = request.model_copy(update={
+                    "budget_period_start": queries.budget_status_period_start or request.budget_period_start,
+                })
+                alert_reply = _budget_alert_reply(
+                    session, query_request, period_missing="budget_period_start" in queries.missing_fields,
+                )
+                outcomes.append(action_outcome("budget_status", alert_reply))
+                if alert_reply.agent_results:
+                    response.agent_results.extend(alert_reply.agent_results)
+                    turn = response.audit.setdefault("turn_decision", {})
+                    turn["missing_fields"] = list(dict.fromkeys([
+                        *turn.get("missing_fields", []), "budget_period_start",
+                    ]))
+            if queries.memory_question:
+                state = complete_state(request.session_context, response, request.message, revision + 1)
+                recall_request = request.model_copy(update={"session_context": state or request.session_context})
+                recalled = session_fact_reply(recall_request, semantic=True, fields=queries.memory_fields or None)
+                if recalled is not None:
+                    outcomes.append(action_outcome("session_recall", recalled))
+        for operation, stage in (
+            ("budget", lambda: stage_budget_draft(session, request.user_id, chat_session, response)),
+            ("goal", lambda: stage_goal_draft(session, request.user_id, chat_session, response)),
+            ("spending", lambda: stage_transaction_draft(
+                session, request.user_id, chat_session, response, request.message,
+                selected_period_start=selected_spending_period)),
+        ):
+            before = response.answer
+            previous_status = response.audit.pop("action_status", None)
+            stage()
+            if response.answer != before and not response.blocked:
+                outcomes.append(action_outcome(operation, response))
+            elif previous_status is not None:
+                response.audit["action_status"] = previous_status
+        if outcomes and not response.blocked:
+            # Action outcomes must come from authenticated writes/reads. Keep
+            # independently validated specialist answers for other turn intents.
+            action_answer = "\n\n".join(dict.fromkeys(
+                localize_backend_text(item["text"], request_locale(request)) for item in outcomes))
+            independent = [_reviewed_specialist_text(item, response.sources) for item in response.agent_results
+                if not item.blocked and item.agent.value != "risk_compliance"
+                and not any(key in item.data for key in ("budget_draft", "goal_draft", "spending_draft"))
+                and item.summary.strip() and item.summary.strip() != action_answer.strip()]
+            response.answer = "\n\n".join([action_answer, *dict.fromkeys(text for text in independent if text)])
+            response.audit["reviewed_action_outcome"] = True
+            response = await compose_backend_response(ai_service, request, response, outcomes)
         if chat_session.pending_budget and not any("goal_draft" in r.data for r in response.agent_results):
             chat_session.pending_goal = None
         chat_repository.append_message(chat_session, "user", request.message)
-        next_state = complete_state(request.session_context, response)
+        next_state = complete_state(request.session_context, response, request.message, revision + 1)
         if next_state is not None:
             chat_session.conversation_state = next_state
         assistant_message = chat_repository.append_message(
@@ -296,7 +404,9 @@ def _persist_local_coach(
 ) -> CoachResponse:
     locale = request_locale(request)
     response.audit.update(response_locale=locale, response_language=request_language(request))
-    response.answer = localize_reviewed(response.answer, locale)
+    response.audit["reviewed_response"] = True
+    response.audit.setdefault("response_provenance", "backend_validated_local")
+    response.answer = localize_backend_text(response.answer, locale)
     for result in response.agent_results:
         result.summary = localize_reviewed(result.summary, locale)
         result.rationale = [localize_reviewed(text, locale) for text in result.rationale]
@@ -324,7 +434,7 @@ def _persist_coach_exchange(
         )
     state = build_session_context(chat_session, request.message, len(chat_session.messages) + 1)
     chat_repository.append_message(chat_session, "user", request.message)
-    next_state = complete_state(state, response)
+    next_state = complete_state(state, response, request.message, len(chat_session.messages))
     if next_state is not None:
         chat_session.conversation_state = next_state
     assistant_message = chat_repository.append_message(
@@ -333,7 +443,8 @@ def _persist_coach_exchange(
         response.answer,
         [source.model_dump() for source in response.sources],
     )
-    trace_id = str(response.audit.get("trace_id", "")).strip()
+    trace_id = str(response.audit.get("trace_id", "")).strip() or str(uuid4())
+    response.audit["trace_id"] = trace_id
     if trace_id:
         SQLAlchemyOrchestrationTraceRepository(session).create(
             trace_id=trace_id,

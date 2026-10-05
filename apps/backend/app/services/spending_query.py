@@ -2,11 +2,12 @@ import re
 from datetime import date
 from typing import Any
 
+from coach_i18n import request_locale
 from sqlalchemy.orm import Session
 
 from app.domain.schemas import CoachRequest, CoachResponse
-from app.infrastructure.repositories import SQLAlchemyTransactionRepository
 from app.services.transaction_capture import extract_date_from_text
+from app.services.transaction_staging import SpendingDraft, _answer_query
 
 SPENDING_INTENT_PATTERN = re.compile(
     r"\b(?:spend\w*|spent|expense\w*)\b", re.IGNORECASE
@@ -51,27 +52,8 @@ def _reply(session_id: str, answer: str) -> CoachResponse:
 def handle_date_spending_query(
     session: Session, request: CoachRequest, when: date
 ) -> CoachResponse:
-    month_start = when.replace(day=1)
-    records = SQLAlchemyTransactionRepository(session).list_records(
-        request.user_id, period_start=month_start
-    )
-    records = [record for record in records if record.transaction_type == "expense"]
-    day_records = [record for record in records if record.occurred_on == when]
-    label = _formatted_date(when)
-    if not day_records:
-        return _reply(
-            request.session_id,
-            f"You have no transactions on {label}. Would you like to log one? "
-            "For example: 'I have spent $5 on chicken rice today'.",
-        )
-    total = sum(float(record.amount) for record in day_records)
-    lines = ", ".join(
-        f"{record.description} ({record.category.capitalize()}) SGD {float(record.amount):.2f}"
-        for record in day_records
-    )
-    answer = (
-        f"On {label} you had {len(day_records)} transaction"
-        f"{'s' if len(day_records) != 1 else ''}: {lines}. "
-        f"Total: SGD {total:.2f}."
-    )
-    return _reply(request.session_id, answer)
+    # Compatibility entry point; typed semantic extraction resolves filters.
+    return _reply(request.session_id, _answer_query(
+        session, request.user_id, SpendingDraft(action="query", query_date=when),
+        request.message, request_locale(request),
+    ))

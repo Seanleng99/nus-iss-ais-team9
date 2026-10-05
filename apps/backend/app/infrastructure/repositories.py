@@ -1,6 +1,6 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import Select, case, delete, func, or_, select, update
 from sqlalchemy.orm import Session, load_only, selectinload
@@ -31,6 +31,7 @@ from app.infrastructure.models import (
     BudgetCategoryRecord,
     ChatMessageRecord,
     ChatSessionRecord,
+    CoachActionStateRecord,
     FinancialGoalRecord,
     FinancialProfileRecord,
     MonthlyBudgetRecord,
@@ -279,6 +280,8 @@ class SQLAlchemyUserRepository:
                     },
                     "occurred_on": record.occurred_on.isoformat(),
                     "recurring": record.recurring,
+                    "recurrence": record.recurrence,
+                    "obligation_id": record.obligation_id,
                     "transaction_type": record.transaction_type,
                 }
                 for record in transactions
@@ -334,6 +337,10 @@ class SQLAlchemyUserRepository:
                     "created_at": record.created_at.isoformat(),
                     "updated_at": record.updated_at.isoformat(),
                     "session_context": record.conversation_state,
+                    "action_references": ({
+                        "last_saved": record.action_state.last_saved,
+                        "pending_edit": record.action_state.pending_edit,
+                    } if record.action_state is not None else None),
                     "messages": [
                         {
                             "id": str(message.id),
@@ -464,6 +471,7 @@ class SQLAlchemyUserRepository:
             TransactionRecord,
             FinancialGoalRecord,
             MonthlyBudgetRecord,
+            CoachActionStateRecord,
             ChatSessionRecord,
         )
         if any(
@@ -479,20 +487,43 @@ class SQLAlchemyUserRepository:
         return True
 
     @trace_method
-    def get_financial_snapshot(self, user_id: str) -> UserFinancialSnapshot | None:
+    def get_financial_snapshot(self, user_id: str, period_start: date | None = None) -> UserFinancialSnapshot | None:
         if self.session.get(UserRecord, user_id) is None:
             return None
 
         profile = self.get_profile(user_id)
         transaction_repository = SQLAlchemyTransactionRepository(self.session)
         goal_repository = SQLAlchemyGoalRepository(self.session)
-        transactions = transaction_repository.list_for_user(user_id)
+        from app.services.transaction_capture import _today
+
+        period_start = period_start or _today().replace(day=1)
+        history_start = period_start
+        for _ in range(6):
+            history_start = (history_start - timedelta(days=1)).replace(day=1)
+        period_end = next_month(period_start) - timedelta(days=1)
+        recent_records, recent_count, _, _ = transaction_repository.search_expenses(
+            user_id, start=period_start, end=period_end, limit=1000
+        )
+        history_records, history_count, _, _ = transaction_repository.search_expenses(
+            user_id, start=history_start, end=period_start - timedelta(days=1), limit=2000
+        )
+        recurring_records = list(self.session.scalars(
+            transaction_repository._query(user_id).where(
+                TransactionRecord.recurring.is_(True),
+                TransactionRecord.transaction_type == "expense",
+                TransactionRecord.currency == "SGD",
+            )
+        ))
+        transactions = [transaction_repository.to_transaction(item) for item in recent_records]
         goals = goal_repository.list_for_user(user_id)
 
         # Chat persistence creates a bare user record. It must not turn an empty
         # database snapshot into an authoritative replacement for caller-supplied
         # financial context on later coaching requests.
-        if profile is None and not transactions and not goals:
+        any_owned_transaction = self.session.scalar(select(TransactionRecord.id).where(
+            TransactionRecord.user_id == user_id,
+        ).limit(1))
+        if profile is None and any_owned_transaction is None and not goals:
             return None
 
         return UserFinancialSnapshot(
@@ -501,8 +532,24 @@ class SQLAlchemyUserRepository:
                 if profile and profile.monthly_income is not None
                 else None
             ),
-            recurring_expenses=[item for item in transactions if item.recurring],
+            recurring_expenses=[transaction_repository.to_transaction(item) for item in recurring_records],
             recent_transactions=transactions,
+            period_start=period_start.isoformat(),
+            historical_transactions=[transaction_repository.to_transaction(item) for item in history_records],
+            transaction_context={
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "history_start": history_start.isoformat(),
+                "history_end": (period_start - timedelta(days=1)).isoformat(),
+                "recent_record_count": recent_count,
+                "historical_record_count": history_count,
+                "recent_truncated": recent_count > len(recent_records),
+                "history_truncated": history_count > len(history_records),
+                "records_complete": False,
+                "currency": "SGD",
+                "recurring_cadence_known": bool(recurring_records) and all(r.recurrence is not None for r in recurring_records),
+                "recurring_unknown_cadence_count": sum(r.recurrence is None for r in recurring_records),
+            },
             goals=goals,
             risk_tolerance=profile.risk_tolerance if profile else None,
             preferences=(
@@ -631,18 +678,84 @@ class SQLAlchemyTransactionRepository:
     ) -> list[TransactionRecord]:
         return list(self.session.scalars(self._query(user_id, period_start).limit(limit)))
 
+    @staticmethod
+    def to_transaction(record: TransactionRecord) -> Transaction:
+        return Transaction(
+            description=record.description, category=record.category,
+            amount=MoneyAmount(currency=record.currency, amount=float(record.amount)),
+            occurred_on=record.occurred_on.isoformat(), recurring=record.recurring,
+            recurrence=record.recurrence, obligation_id=record.obligation_id,
+        )
+
+    @trace_method
+    def search_expenses(
+        self, user_id: str, *, start: date | None = None, end: date | None = None,
+        categories: list[str] | None = None, description: str | None = None,
+        minimum: float | None = None, maximum: float | None = None,
+        group_by: str | None = None, limit: int = 50,
+    ) -> tuple[list[TransactionRecord], int, float, dict[str, float]]:
+        """Return bounded details with exact totals over the entire owned range."""
+        filters = [TransactionRecord.user_id == user_id,
+                   TransactionRecord.transaction_type == "expense",
+                   TransactionRecord.currency == "SGD"]
+        if start is not None:
+            filters.append(TransactionRecord.occurred_on >= start)
+        if end is not None:
+            filters.append(TransactionRecord.occurred_on <= end)
+        if categories:
+            filters.append(func.lower(TransactionRecord.category).in_([value.casefold() for value in categories]))
+        if description:
+            filters.append(func.lower(TransactionRecord.description).contains(description.casefold(), autoescape=True))
+        if minimum is not None:
+            filters.append(TransactionRecord.amount >= minimum)
+        if maximum is not None:
+            filters.append(TransactionRecord.amount <= maximum)
+        count, total = self.session.execute(
+            select(func.count(), func.coalesce(func.sum(TransactionRecord.amount), 0))
+            .select_from(TransactionRecord).where(*filters)
+        ).one()
+        records = list(self.session.scalars(
+            select(TransactionRecord).where(*filters)
+            .order_by(TransactionRecord.occurred_on.desc(), TransactionRecord.id)
+            .limit(min(max(limit, 1), 2000))
+        ))
+        groups = {}
+        if group_by in {"category", "merchant"}:
+            column = TransactionRecord.category if group_by == "category" else TransactionRecord.description
+            groups = {label: float(amount) for label, amount in self.session.execute(
+                select(column, func.sum(TransactionRecord.amount)).where(*filters)
+                .group_by(column).order_by(func.sum(TransactionRecord.amount).desc())
+            )}
+        return records, int(count), float(total), groups
+
     @trace_method
     def list_for_user(self, user_id: str) -> list[Transaction]:
-        return [
-            Transaction(
-                description=record.description,
-                category=record.category,
-                amount=MoneyAmount(currency=record.currency, amount=float(record.amount)),
-                occurred_on=record.occurred_on.isoformat(),
-                recurring=record.recurring,
-            )
-            for record in self.list_records(user_id) if record.transaction_type == "expense"
-        ]
+        return [self.to_transaction(record) for record in self.list_records(user_id)
+                if record.transaction_type == "expense"]
+
+    def _obligation_id(self, user_id: str, transaction: TransactionCreate, existing_id=None):
+        if transaction.recurrence is None:
+            return None
+        wanted = transaction.obligation_id or existing_id
+        if wanted is None:
+            return str(uuid4())
+        owned = self.session.scalar(select(TransactionRecord.id).where(
+            TransactionRecord.user_id == user_id, TransactionRecord.obligation_id == wanted,
+        ).limit(1))
+        workspace = self.session.get(PlanningPreferencesRecord, user_id)
+        config = (workspace.data or {}).get("cashflow") if workspace else None
+        schedule = next((s for s in (config or {}).get("schedules", [])
+                         if s["id"] == wanted), None)
+        if schedule:
+            rule = transaction.recurrence.model_dump(mode="json")
+            if (schedule["kind"] != "expense" or (config or {}).get("currency", "SGD") != "SGD"
+                    or float(schedule["amount"]) != transaction.amount.amount
+                    or any(rule[key] != schedule.get(key, {"interval": 1, "month_end": False}.get(key))
+                           for key in ("frequency", "interval", "month_end", "first_on", "last_on"))):
+                raise ValueError("Recurring terms must match the linked owned bill schedule")
+        if not owned and not schedule:
+            raise ValueError("Choose an existing recurring obligation belonging to this user")
+        return wanted
 
     def create(self, user_id: str, transaction: TransactionCreate) -> TransactionRecord:
         _ensure_user(self.session, user_id)
@@ -654,6 +767,8 @@ class SQLAlchemyTransactionRepository:
             currency=transaction.amount.currency,
             occurred_on=transaction.occurred_on,
             recurring=transaction.recurring,
+            recurrence=transaction.recurrence.model_dump(mode="json") if transaction.recurrence else None,
+            obligation_id=self._obligation_id(user_id, transaction),
             transaction_type=transaction.transaction_type,
         )
         self.session.add(record)
@@ -673,6 +788,14 @@ class SQLAlchemyTransactionRepository:
         )
         if record is None:
             return None
+        # Expense amount/date corrections omit recurrence fields and preserve
+        # the independently confirmed schedule. An explicit null clears it.
+        if "recurrence" not in transaction.model_fields_set and record.recurrence and transaction.recurring:
+            transaction = TransactionCreate.model_validate({**transaction.model_dump(),
+                "recurrence": record.recurrence, "obligation_id": record.obligation_id,
+            })
+        record.obligation_id = self._obligation_id(user_id, transaction, record.obligation_id)
+        record.recurrence = transaction.recurrence.model_dump(mode="json") if transaction.recurrence else None
         record.description = transaction.description
         record.category = transaction.category
         record.amount = transaction.amount.amount

@@ -43,12 +43,13 @@ class FixedRetriever:
 
 
 class HybridGateway(LocalFixtureModelGateway):
-    def __init__(self, general=(), *, summary=None, source_ids=None, synthesis=None, options=()):
+    def __init__(self, general=(), *, summary=None, source_ids=None, synthesis=None, options=(), lead="sourced"):
         self.general = list(general)
         self.summary = summary
         self.source_ids = source_ids
         self.synthesis = synthesis
         self.options = list(options)
+        self.lead = lead
         self.calls = []
 
     def generate(self, **kwargs):
@@ -69,6 +70,7 @@ class HybridGateway(LocalFixtureModelGateway):
                 "rationale": ["This is general investment education."],
                 "confidence": 0.8,
                 "source_ids": ids,
+                "lead_section": self.lead,
                 "uncertainties": [],
                 "general_knowledge": self.general,
                 "ordered_options": self.options,
@@ -253,6 +255,27 @@ def test_all_rag_answer_keeps_grounded_status_and_empty_general_sections():
     assert "[MoneySense ETF guide](https://www.moneysense.gov.sg/investments/etfs)" in response.answer
 
 
+@pytest.mark.parametrize("version", ["v6", "v7"])
+@pytest.mark.parametrize("lead", ["model", "sourced"])
+def test_plain_definition_can_lead_before_narrow_sourced_example_with_reviewed_attribution(version, lead):
+    definition = "A bond is a loan to an issuer."
+    sourced = "SGS bonds pay coupons every six months."
+    gateway = HybridGateway(
+        [{"topic": "bonds", "text": definition}],
+        summary=sourced + " [source:bond-source]", source_ids=["bond-source"], lead=lead,
+    )
+    response = workflow(gateway, FixedRetriever([source("bond-source", sourced)]), version=version).handle(
+        request("Explain bonds in simple terms.")
+    )
+    assert not response.blocked
+    assert (response.answer.index(definition) < response.answer.index(sourced)) == (lead == "model")
+    assert response.answer.count("Model knowledge (not verified against retrieved sources):") == 1
+    assert "[MoneySense ETF guide]" in response.answer
+    review = json.loads(gateway.calls_for("risk_compliance")[0]["user_prompt"])
+    assert definition in review["draft_answer"] and sourced in review["draft_answer"]
+    assert review["agent_results"][0]["data"]["general_knowledge"] == [{"topic": "bonds"}]
+
+
 def test_v6_source_ids_become_visible_references_before_safety_review():
     gateway = HybridGateway(summary="An ETF trades on an exchange.")
     response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain ETFs."))
@@ -273,9 +296,9 @@ def test_answer_exposes_trusted_document_provenance_before_history_serialization
     ])
     response = workflow(gateway, FixedRetriever([chunk])).handle(request("Explain stocks and ETFs."))
     assert not response.blocked
-    rag, model = response.answer.split("AI model knowledge — no live web search")
-    assert "RAG knowledge base (saved documents; no live web search)" in rag
-    assert f"(RAG: `moneysense_guide_to_etfs.md`; {label})" in rag
+    rag, model = response.answer.split("Model knowledge (not verified against retrieved sources):")
+    assert "RAG knowledge base" not in rag
+    assert "moneysense_guide_to_etfs.md" not in rag
     assert "[MoneySense ETF guide](https://www.moneysense.gov.sg/investments/etfs)" in rag
     assert "ownership in a company" in model
     assert "https://" not in model and "RAG:" not in model
@@ -287,10 +310,11 @@ def test_answer_exposes_trusted_document_provenance_before_history_serialization
     assert "document_filename" not in payload["grounding"]["sources"][0]
 
 
-def test_rag_only_answer_has_explicit_no_web_search_label():
+def test_rag_only_answer_uses_readable_citations_without_a_forced_header():
     response = workflow(HybridGateway(), FixedRetriever([source()])).handle(request("Explain ETFs."))
     assert not response.blocked
-    assert response.answer.startswith("RAG knowledge base (saved documents; no live web search)")
+    assert response.answer.startswith("An ETF trades on an exchange.")
+    assert "[MoneySense ETF guide]" in response.answer
     assert "AI model knowledge" not in response.answer
 
 
@@ -395,13 +419,30 @@ def test_model_cannot_cite_a_source_outside_the_retrieval_allowlist():
 
 
 @pytest.mark.parametrize("bullet", ["-", "1."])
-def test_hybrid_summary_cannot_hide_uncited_model_knowledge_in_sourced_section(bullet):
-    gateway = HybridGateway(
+def test_independent_review_rejects_unsupported_claims_without_using_layout_as_evidence(bullet):
+    class AttributionReviewGateway(HybridGateway):
+        def generate(self, **kwargs):
+            if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
+                self.calls.append(kwargs)
+                return json.dumps({
+                    "blocked": True, "request_allowed": True, "complete": True,
+                    "missing_points": [], "repairable": False,
+                    "summary": "The sourced section contains an unsupported share definition.",
+                    "rationale": ["The ETF passage does not support the share claim."],
+                    "policy_notes": ["Unsupported attribution in the sourced answer."],
+                    "block_categories": ["citation_attribution"], "confidence": 0.9,
+                })
+            return super().generate(**kwargs)
+
+    gateway = AttributionReviewGateway(
         [{"topic": "shares", "text": "A share is ownership in a company."}],
         summary=f"{bullet} An ETF trades on an exchange. [source:etf-source]\n{bullet} A share is ownership in a company.",
     )
-    with pytest.raises(ModelGatewayError):
-        workflow(gateway, FixedRetriever([source()])).handle(request("Explain stocks and ETFs."))
+    response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain stocks and ETFs."))
+    assert response.blocked
+    review = json.loads(gateway.calls_for("risk_compliance")[0]["user_prompt"])
+    assert "A share is ownership in a company." in review["draft_answer"]
+    assert "An ETF trades on an exchange." in review["agent_results"][0]["data"]["contexts"][0]["text"]
 
 
 def test_unsupported_tax_and_tokenized_asset_topics_remain_unavailable():

@@ -4,6 +4,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 
 class SmokeRequestError(OSError):
@@ -255,10 +256,10 @@ def check_investment_education_rag(
         "AI model knowledge — no live web search "
         "(not verified against retrieved sources):\n\n"
     )
-    rag_answer, model_separator, model_answer = answer.partition(model_label)
-    assert rag_answer.startswith(
-        "RAG knowledge base (saved documents; no live web search):\n\n"
-    ), "education answer did not identify saved RAG documents"
+    inline_label = "Model knowledge (not verified against retrieved sources):"
+    present_label = next((label for label in (model_label, inline_label) if label in answer), model_label)
+    rag_answer, model_separator, model_answer = answer.partition(present_label)
+    assert rag_answer.strip(), "education answer omitted supported content"
     for source in sources:
         source_url = urllib.parse.quote(source["canonical_url"], safe=":/?#=&%")
         assert f"]({source_url})" in rag_answer, "education answer omitted a visible RAG citation"
@@ -411,7 +412,14 @@ def check_conditional_education_rag(
     ], "persisted trace lost the Education corpus version"
 
 
+def _financial_today():
+    # Standalone release script: match the application's Singapore calendar.
+    return datetime.now(timezone(timedelta(hours=8))).date()
+
+
 def check_persistence(base_url: str, api_key: str) -> None:
+    today = _financial_today()
+    period_start = today.replace(day=1).isoformat()
     user_url = f"{base_url.rstrip('/')}/users/deployment-smoke-test"
     status, _ = request(
         f"{user_url}/profile",
@@ -434,7 +442,7 @@ def check_persistence(base_url: str, api_key: str) -> None:
                 "description": "Deployment smoke transaction",
                 "category": "verification",
                 "amount": {"currency": "SGD", "amount": 1},
-                "occurred_on": "2026-08-05",
+                "occurred_on": today.isoformat(),
             },
             api_key=api_key,
         )
@@ -445,7 +453,7 @@ def check_persistence(base_url: str, api_key: str) -> None:
             f"{user_url}/budget",
             method="PUT",
             body={
-                "period_start": "2026-08-01",
+                "period_start": period_start,
                 "currency": "SGD",
                 "categories": [{"category": "verification", "limit_amount": 10}],
             },
@@ -457,13 +465,14 @@ def check_persistence(base_url: str, api_key: str) -> None:
         assert status == 200, f"snapshot read returned HTTP {status}"
         snapshot = json.loads(body)
         assert snapshot.get("monthly_income", {}).get("amount") == 4100
+        assert snapshot.get("period_start") == period_start, "snapshot used a different month"
         assert any(
             item.get("description") == "Deployment smoke transaction"
             for item in snapshot.get("recent_transactions", [])
         ), "persisted transaction was absent from the snapshot"
 
         status, body = request(
-            f"{user_url}/dashboard?period_start=2026-08-01", api_key=api_key
+            f"{user_url}/dashboard?period_start={period_start}", api_key=api_key
         )
         assert status == 200, f"dashboard read returned HTTP {status}"
         dashboard = json.loads(body)
@@ -586,7 +595,7 @@ def main() -> None:
             parser.error("--api-key is required with --persistence-base-url")
         retry(
             lambda: check_persistence(args.persistence_base_url, args.api_key),
-            "PostgreSQL persistence",
+            "backend persistence",
         )
 
 

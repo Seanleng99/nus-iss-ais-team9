@@ -50,7 +50,9 @@ class StubAIServiceClient:
             answer="Stub guidance",
             agent_results=agent_results,
             disclaimers=["Educational guidance only."],
-            audit={"source": "stub"},
+            audit={"source": "stub", "turn_decision": {
+                "budget_status_query": request.message == "is my spending okay this month?",
+            }},
         )
 
 
@@ -106,18 +108,12 @@ def _freeze_today(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def _clear_pending() -> Iterator[None]:
     from app.services.transaction_capture import (
-        last_saved_store,
         pending_capture_store,
-        pending_edit_store,
     )
 
     pending_capture_store.clear()
-    last_saved_store.clear()
-    pending_edit_store.clear()
     yield
     pending_capture_store.clear()
-    last_saved_store.clear()
-    pending_edit_store.clear()
 
 
 @pytest.fixture
@@ -134,11 +130,12 @@ def stub_ai() -> Iterator[type[StubAIServiceClient]]:
         app.dependency_overrides.pop(get_ai_service_client, None)
 
 
-def post_coach(user_id: str, message: str, session_id: str = "cap-s1") -> dict:
+def post_coach(user_id: str, message: str, session_id: str = "cap-s1", *, budget_period_start: str | None = None) -> dict:
     response = client.post(
         "/api/coach",
         headers=HEADERS,
-        json={"user_id": user_id, "session_id": session_id, "message": message},
+        json={"user_id": user_id, "session_id": session_id, "message": message,
+              **({"budget_period_start": budget_period_start} if budget_period_start else {})},
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -966,17 +963,153 @@ def test_listing_query_lists_booked_future_transactions(
 # --- named transaction edit with confirmation --------------------------------------
 
 
+@pytest.mark.parametrize("message,expected", [
+    ("confirm transaction", "saved"), ("cancel transaction", "cancelled"),
+    (language_case("transaction_preview.confirm.zh"), "saved"),
+    (language_case("transaction_preview.cancel.zh"), "cancelled"),
+])
+def test_coach_explicit_preview_waits_for_confirmation(stub_ai: type[StubAIServiceClient], message, expected):
+    stub_ai.draft = {**record(txn("Chicken rice", 5, "2026-09-24")), "persistence_intent": "preview"}
+    preview = post_coach("cap-preview", "I spent $5 on chicken rice yesterday. Prepare it for review.")
+    assert preview["audit"]["action_status"] == "preview"
+    assert preview["audit"]["spending_capture"] == "awaiting_confirmation"
+    assert "Chicken rice" in preview["answer"] and "5.00" in preview["answer"]
+    assert transactions_for("cap-preview") == []
+    outcome = post_coach("cap-preview", message)
+    assert outcome["audit"]["action_status"] == expected
+    assert len(transactions_for("cap-preview")) == (1 if expected == "saved" else 0)
+
+
+def test_explicit_read_only_aggregate_uses_authenticated_selected_month(stub_ai):
+    for owner, category, amount, day in [
+        ("cap-selected-total", "dining", 20, "2026-09-01"),
+        ("cap-selected-total", "dining", 30, "2026-09-02"),
+        ("cap-selected-total", "transport", 999, "2026-09-02"),
+        ("cap-selected-total", "dining", 555, "2026-10-01"),
+        ("another-owner", "dining", 777, "2026-09-02"),
+    ]:
+        saved = client.post(f"/api/users/{owner}/transactions", headers=HEADERS, json={
+            "description": "Recorded expense", "category": category,
+            "amount": {"amount": amount}, "occurred_on": day,
+        })
+        assert saved.status_code == 201
+    stub_ai.draft = {**query(), "query_scope": "selected_period", "query_categories": ["dining"]}
+    result = post_coach("cap-selected-total", "What is the total recorded dining spend? Answer in one short sentence.",
+                        budget_period_start="2026-09-01")
+    assert result["audit"]["action_status"] == "read_only_query"
+    assert "50.00" in result["answer"] and "2026-09-01" in result["answer"]
+    assert "555.00" not in result["answer"] and "999.00" not in result["answer"] and "777.00" not in result["answer"]
+    assert stub_ai.last_request.snapshot.period_start == "2026-09-01"
+
+
+@pytest.mark.parametrize("operation", ["lookup", "record"])
+def test_selected_month_never_fills_a_missing_lookup_or_expense_date(stub_ai, operation):
+    stub_ai.draft = query() if operation == "lookup" else record(txn("Chicken rice", 5))
+    message = "Show my transactions." if operation == "lookup" else "I spent $5 on chicken rice."
+    result = post_coach("cap-selected-missing-date", message, budget_period_start="2026-09-01")
+    assert result["audit"]["action_status"] == "needs_input"
+    assert transactions_for("cap-selected-missing-date") == []
+    assert "which day" in result["answer"].lower() if operation == "lookup" else "when" in result["answer"].lower()
+
+
+def test_confirmed_recurring_expense_reports_persisted_schedule_and_cannot_resave(stub_ai):
+    terms = {"frequency": "monthly", "interval": 1, "first_on": "2026-01-31",
+             "next_due_on": "2026-02-28", "last_on": "2026-12-31"}
+    stub_ai.draft = record({**txn("Rent", 100, "2026-01-31"), "recurrence": terms})
+    preview = post_coach("cap-recurring-confirmed-terms", "Prepare my monthly rent expense for review.")
+    assert preview["audit"]["action_status"] == "preview"
+    assert transactions_for("cap-recurring-confirmed-terms") == []
+    stub_ai.draft = None
+    confirmed = post_coach("cap-recurring-confirmed-terms", "confirm transaction")
+    assert confirmed["audit"]["action_status"] == "saved"
+    assert all(day in confirmed["answer"] for day in ["2026-01-31", "2026-02-28", "2026-12-31"])
+    assert "month(s)" in confirmed["answer"] and "every 1" in confirmed["answer"]
+    rows = transactions_for("cap-recurring-confirmed-terms")
+    assert len(rows) == 1 and rows[0]["recurrence"] == {**terms, "month_end": False}
+    assert rows[0]["obligation_id"] not in confirmed["answer"]
+    assert confirmed["audit"]["confirmed_recurrences"] == [{
+        "description": "Rent", "amount": {"currency": "SGD", "amount": 100.0},
+        "recurrence": rows[0]["recurrence"],
+    }]
+    post_coach("cap-recurring-confirmed-terms", "confirm transaction")
+    assert len(transactions_for("cap-recurring-confirmed-terms")) == 1
+
+
+@pytest.mark.parametrize("reply", ["yes", "yes please", "save it"])
+def test_education_invitation_cannot_approve_older_transaction_preview(stub_ai, monkeypatch, reply):
+    original_coach = StubAIServiceClient.coach
+
+    async def coach_with_education_invitation(self, request):
+        response = await original_coach(self, request)
+        if request.message == "Explain diversification.":
+            answer = "Diversification spreads investment exposure. Would you like an example?"
+            return CoachResponse(session_id=request.session_id, selected_agents=["investment_education"],
+                answer=answer, agent_results=[{"agent": "investment_education", "summary": answer,
+                    "rationale": [], "confidence": 1.0, "data": {}}],
+                audit=response.audit, disclaimers=response.disclaimers)
+        return response
+
+    monkeypatch.setattr(StubAIServiceClient, "coach", coach_with_education_invitation)
+    stub_ai.draft = {**record(txn("Chicken rice", 5, "2026-09-24")), "persistence_intent": "preview"}
+    post_coach("cap-preview-invitation", "Prepare my chicken rice expense for review.")
+    stub_ai.draft = None
+    education = post_coach("cap-preview-invitation", "Explain diversification.")
+    assert "Would you like an example?" in education["answer"]
+    post_coach("cap-preview-invitation", reply)
+    assert transactions_for("cap-preview-invitation") == []
+    confirmed = post_coach("cap-preview-invitation", "confirm transaction")
+    assert confirmed["audit"]["action_status"] == "saved"
+    assert len(transactions_for("cap-preview-invitation")) == 1
+    post_coach("cap-preview-invitation", "confirm transaction")
+    assert len(transactions_for("cap-preview-invitation")) == 1
+
+
+@pytest.mark.parametrize("interlude", ["unrelated", "not_spending", "query", "unresolved_query", "forecast"])
+def test_coach_preview_survives_read_only_turn_before_confirmation(stub_ai: type[StubAIServiceClient], interlude):
+    stub_ai.draft = {**record(txn("Chicken rice", 5, "2026-09-24")), "persistence_intent": "preview"}
+    post_coach("cap-preview-continuity", "I spent $5 on chicken rice yesterday. Prepare it for review.")
+    stub_ai.draft = {
+        "unrelated": None,
+        "not_spending": {"is_spending_request": False},
+        "query": query("2026-09-24"),
+        "unresolved_query": query(),
+        "forecast": {"action": "forecast", "query_start": "2026-10-01", "query_end": "2026-10-31"},
+    }[interlude]
+    post_coach("cap-preview-continuity", "Explain a financial concept or answer my recorded-spending question.")
+    assert transactions_for("cap-preview-continuity") == []
+    confirmed = post_coach("cap-preview-continuity", "confirm")
+    assert confirmed["audit"]["action_status"] == "saved"
+    rows = transactions_for("cap-preview-continuity")
+    assert len(rows) == 1 and rows[0]["amount"]["amount"] == 5
+
+
+def test_coach_preview_amendment_requires_fresh_confirmation(stub_ai: type[StubAIServiceClient]):
+    stub_ai.draft = {**record(txn("Chicken rice", 5, "2026-09-24")), "persistence_intent": "preview"}
+    post_coach("cap-preview-correction", "I spent $5 on chicken rice yesterday. Prepare it for review.")
+    stub_ai.draft = record(txn("Chicken rice", 7, "2026-09-24"))
+    corrected = post_coach("cap-preview-correction", "The amount was 7.")
+    assert corrected["audit"]["action_status"] == "preview"
+    assert "7.00" in corrected["answer"]
+    assert transactions_for("cap-preview-correction") == []
+    confirmed = post_coach("cap-preview-correction", "confirm")
+    assert confirmed["audit"]["action_status"] == "saved"
+    rows = transactions_for("cap-preview-correction")
+    assert len(rows) == 1 and rows[0]["amount"]["amount"] == 7
+
+
 def test_named_edit_previews_then_confirm_applies(stub_ai: type[StubAIServiceClient]) -> None:
     stub_ai.draft = record(txn("Anniversary Dinner", 500.0, "2026-09-20"))
     post_coach("cap-e1", "i spent 500 on anniversary dinner on 20 sep")
     before = transactions_for("cap-e1")[0]
     body = post_coach("cap-e1", "change my anniversary dinner spending to 988")
+    assert body["audit"]["action_status"] == "preview"
     answer = body["answer"]
     assert "500.00" in answer
     assert "988.00" in answer
     assert "confirm" in answer.lower()
     assert len(transactions_for("cap-e1")) == 1
     saved = post_coach("cap-e1", "confirm")
+    assert saved["audit"]["action_status"] == "saved"
     assert "988.00" in saved["answer"]
     assert "updated" in saved["answer"].lower()
     txns = transactions_for("cap-e1")
@@ -991,6 +1124,7 @@ def test_named_edit_cancel_changes_nothing(stub_ai: type[StubAIServiceClient]) -
     post_coach("cap-e2", "i spent 500 on anniversary dinner on 20 sep")
     post_coach("cap-e2", "change my anniversary dinner spending to 988")
     body = post_coach("cap-e2", "cancel")
+    assert body["audit"]["action_status"] == "cancelled"
     assert "nothing was changed" in body["answer"].lower()
     assert transactions_for("cap-e2")[0]["amount"]["amount"] == 500.0
 
@@ -1000,6 +1134,7 @@ def test_named_edit_ambiguous_date_disambiguates(stub_ai: type[StubAIServiceClie
     post_coach("cap-e3", "i spent 50 on dinner yesterday")
     post_coach("cap-e3", "i spent 80 on dinner on 21/9")
     body = post_coach("cap-e3", "edit the dinner amount to 70")
+    assert body["audit"]["action_status"] == "needs_input"
     assert "which" in body["answer"].lower()
     preview = post_coach("cap-e3", "the 21 sep one")
     assert "confirm" in preview["answer"].lower()
@@ -1068,11 +1203,13 @@ def test_named_delete_previews_then_confirm_deletes(
     stub_ai.draft = record(txn("Anniversary Dinner", 500.0, "2026-09-20"))
     post_coach("cap-d1", "i spent 500 on anniversary dinner on 20 sep")
     body = post_coach("cap-d1", "delete my anniversary dinner transaction")
+    assert body["audit"]["action_status"] == "preview"
     answer = body["answer"]
     assert "500.00" in answer
     assert "confirm" in answer.lower()
     assert len(transactions_for("cap-d1")) == 1
     removed = post_coach("cap-d1", "confirm")
+    assert removed["audit"]["action_status"] == "deleted"
     assert "deleted" in removed["answer"].lower()
     assert transactions_for("cap-d1") == []
 
@@ -1084,6 +1221,7 @@ def test_named_delete_cancel_keeps_transaction(
     post_coach("cap-d2", "i spent 500 on anniversary dinner on 20 sep")
     post_coach("cap-d2", "delete my anniversary dinner transaction")
     body = post_coach("cap-d2", "cancel")
+    assert body["audit"]["action_status"] == "cancelled"
     assert "nothing was deleted" in body["answer"].lower()
     assert len(transactions_for("cap-d2")) == 1
 
@@ -1277,7 +1415,7 @@ def test_date_spending_query_only_sees_own_transactions(
     add_transaction("iso-d", "Secret Dinner", "food", 50.0)
     stub_ai.draft = query(None)
     body = post_coach("iso-e", "how much did I spend on 20/9?", session_id="iso-s3")
-    assert "no transactions" in body["answer"].lower()
+    assert "no matching" in body["answer"].lower()
     assert "Secret Dinner" not in body["answer"]
 
 
@@ -1295,7 +1433,7 @@ def test_capture_saves_only_for_requesting_user(stub_ai: type[StubAIServiceClien
 def test_budget_status_query_only_uses_own_spending(stub_ai: type[StubAIServiceClient]) -> None:
     add_transaction("iso-g2", "Secret Splurge", "shopping", 9999.0)
     body = post_coach("iso-g", "is my spending okay this month?", session_id="iso-s5")
-    assert stub_ai.last_request is None
+    assert stub_ai.last_request is not None
     assert "Secret Splurge" not in body["answer"]
 
 

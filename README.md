@@ -51,7 +51,7 @@ After authentication activation, Streamlit completes Cognito authorization-code 
 
 ## Spending capture and the transaction ledger
 
-In Coach, record spending in one natural sentence: "lunch 5.50", "dinner at jumbo seafood $120", or "can you help me add my Spotify monthly subscription that costs 10.90". Capture extracts the amount, description, and an optional inline date ("yesterday", "21/9", "last Saturday"), classifies a category, and saves the transaction to the authenticated profile only after the date is known. Polite directives ("please log…", "can you help me add…") and filler words are stripped from the description, and recurring wording ("monthly", "subscription", "every week") flags the transaction as recurring so the forecast in "estimate my upcoming spendings" counts it. Currency is taken only from an explicit marker (`SGD`, `$`, `S$`); amounts are never defaulted and future dates are rejected unless the wording indicates a booking.
+In Coach, record spending in one natural sentence: "lunch 5.50", "dinner at jumbo seafood $120", or "can you help me add my Spotify monthly subscription that costs 10.90". Capture extracts the amount, description, and an optional inline date ("yesterday", "21/9", "last Saturday"), classifies a category, and saves the transaction to the authenticated profile only after the date is known. Polite directives ("please log…", "can you help me add…") and filler words are stripped from the description. Recurring wording flags an expense for the recurring summary, which reports the latest recorded amount for each item. The ledger does not store its cadence, so Coach asks for frequency before estimating a monthly or upcoming total. Personal amounts use SGD by default; explicit foreign currencies are rejected. Amounts are never defaulted and future dates are rejected unless the wording indicates a booking.
 
 Incomplete statements enter a short clarification flow instead of guessing. Missing amount or date triggers a follow-up question; reply with the value ("10.90", "today"), provide a correction to replace the draft, or `cancel` to discard it. A just-saved transaction can also be corrected in chat: "oh sorry its 18.90" (or a date such as "oh sorry it was yesterday") updates that record for the same profile within a short window, re-checks the budget limit, and replies with the new amount. To edit an earlier record by name, say "change my Anniversary Dinner spending to 988" (or "would you be able to edit the spending to 988" after naming the transaction); Coach finds the match in your own records, previews the exact change, and applies it only after you reply `confirm` — you can narrow by date ("change my Lunch on 1st October to 25"), ambiguous matches list the candidates and ask you to pick one by description or date, and `cancel` changes nothing. Deleting works the same way: "delete my Anniversary Dinner transaction" previews the exact record and only removes it after you reply `confirm`. Pending drafts belong to the authenticated profile and conversation and expire after a TTL. Batch entry is supported: multi-line lists, "and"-joined items, and multiple sentences each become separate dated drafts, with undated lines asked one at a time. A saved capture also reports whether it pushed its category over the monthly budget limit. The Transactions page lists, edits, and deletes recorded transactions, including custom categories shared with Budget limits.
 
@@ -85,7 +85,7 @@ The offline model fixture uses explicit fields, for example: `Create goal; name:
 
 ## Agents
 
-Coach now retains supported user-reported facts and corrections within each chat, alongside the latest eight messages and a bounded extractive summary of older preferences, objectives and discussion. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Run `alembic upgrade head` through merge revision `20261002_0015` before updating the backend; this applies both conversation memory and pending transaction columns, including databases already using either migration branch. Deploy the backend/AI service together. See [Session context](docs/session-context.md) for supported inputs, examples, limits and validation.
+Coach retains attributed user-reported facts and corrections within each chat, alongside the latest eight messages and a bounded extractive summary of older preferences, objectives and discussion. Validated local replies also remain available as context. Explicit language requests apply to the current turn and synchronize the Coach selector. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Run `alembic upgrade head` through revision `20261004_0016` before updating the backend; this includes the previous memory/pending-transaction migration branches and adds durable chat-scoped transaction edit and just-saved references. Reinstall `apps/shared` and update the backend/AI service together. See [Session context](docs/session-context.md) and [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for supported inputs, limits and validation.
 
 Read-only references such as `Explain that more simply`, `What about that goal?` and `Explain the second option` are resolved before routing. Ambiguous references ask one brief question; remembered dialogue cannot resume a pending goal, budget or transaction draft as an action.
 
@@ -115,7 +115,19 @@ cd C:\ai-financial-wellness-coach\apps\backend
 alembic upgrade head
 ```
 
-Compose explicitly uses `MODEL_PROVIDER=local_fixture` so local integration tests do not need an OpenAI API key or incur model charges. This fixture is deterministic and permitted only when `APP_ENV` is `local` or `test`; deployed environments fail configuration validation unless `MODEL_PROVIDER=openai` with both governed local-document retrievers.
+Compose defaults to `MODEL_PROVIDER=local_fixture` for offline development and loads an optional private `.env` after `.env.example` (Docker Compose 2.24+). It honors an explicit `MODEL_PROVIDER` from `.env` or the shell. The fixture uses canned responses; it does not measure live Coach quality. Its mode is shown in Coach. Deployed environments require `MODEL_PROVIDER=openai` with both governed local-document retrievers.
+
+For live local coaching, put these values in the ignored `.env`, alongside a private `OPENAI_API_KEY`, then rebuild/restart Compose:
+
+```dotenv
+MODEL_PROVIDER=openai
+RAG_PROVIDER=local_documents
+EDUCATION_CORPUS_VERSION=investment-education-sg@2026-09-27.2
+POLICY_RAG_PROVIDER=local_documents
+POLICY_CORPUS_VERSION=financial-coach-policy-sg@2026-08-29.1
+```
+
+`MODEL_ROLE_OVERRIDES` accepts a JSON map keyed by prompt role, with optional `model_id`, `reasoning_effort`, and `max_tokens`. The example and AWS template give writers more output room than routing. OpenAI receives a schema on the initial request, and traces distinguish reasoning tokens, output limits, refusals, and invalid contracts. OpenAI reasoning calls do not use the application's temperature setting. See [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for regression coverage and remaining live validation.
 
 To run the services separately:
 

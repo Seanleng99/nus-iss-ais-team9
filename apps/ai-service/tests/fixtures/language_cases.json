@@ -93,5 +93,6 @@
   "language_selection.incomplete_notice": "此解释可能尚未涵盖你问题的所有部分。",
   "language_selection.source_document": "已保存的来源文档",
   "language_selection.source_summary": "项目撰写的摘要",
-  "language_selection.inline_citation": "知识库："
+  "language_selection.inline_citation": "知识库：",
+  "risk_compliance_functional.etf_topic": "交易所交易基金"
 }

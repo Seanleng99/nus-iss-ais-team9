@@ -225,7 +225,7 @@ def _assert_released(response: CoachResponse, gateway: _ScriptedGateway) -> None
     pytest.param("What are the risks of REITs and unit trusts?", "real estate investment trusts",
                  id="plural_product_risks"),
     pytest.param(language_case("risk_compliance.test_legitimate_requests_are_not_flagged"),
-                 "exchange-traded funds", id="zh_what_is_an_etf"),
+                 language_case("risk_compliance_functional.etf_topic"), id="zh_what_is_an_etf"),
 ])
 def test_allows_safe_answer_for_education_question(message, expected_text, record_property):
     gateway = _ScriptedGateway()
