@@ -1,5 +1,7 @@
 # Risk & Compliance Agent Tests
 
+All model-assisted blocking decisions require `block_categories` and a brief policy explanation, including ordinary Budget/Goal reviews. One bounded correction is allowed for an invalid verdict; exhausted correction withholds the draft as `review_contract_unverified`. Tests distinguish this failure from a valid `model_review` block, preserve fixed categories in privacy-safe traces and verify that optional Education gaps do not invalidate qualified Budget/Goal arithmetic. Saved-budget read tests provide the actual scoped record evidence to Compliance and reject mutation fields in read commands.
+
 The **Risk & Compliance Agent Tests** workflow
 (`.github/workflows/risk-compliance-agent-tests.yml`) checks the compliance
 agent offline on every push or pull request that touches `apps/shared/**` or

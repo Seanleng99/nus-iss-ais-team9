@@ -231,6 +231,11 @@ class InvestmentEducationAgent(BaseAgent):
         # context but do not inherit permission to answer from model memory.
         grounding["sourced_evidence_status"] = grounding["evidence_status"]
         grounding["source_unanswered_topics"] = list(grounding.get("unanswered_topics", []))
+        log_event("education.coverage.assessed", status=grounding.get("coverage_assessment"),
+                  error_code=grounding.get("semantic_failure_code"),
+                  evidence_status=grounding.get("sourced_evidence_status"),
+                  source_count=len(grounding.get("coverage_source_ids", [])),
+                  finding_count=len(grounding["source_unanswered_topics"]))
         return self._capture_grounding(task, grounding, sanitized_message)
 
     def _capture_grounding(self, task: AgentTask, grounding: dict, sanitized_message: str) -> dict:

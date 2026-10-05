@@ -33,7 +33,8 @@ class ComposerGateway:
                 "omitted_requested_parts": []})
         return json.dumps({"blocked": self.blocked, "summary": "Policy reviewed.",
             "rationale": ["The request and grounded response were checked."],
-            "confidence": 1.0, "policy_notes": []})
+            "confidence": 1.0, "policy_notes": ["The draft contains an unverifiable claim."] if self.blocked else [],
+            "block_categories": ["unverifiable_claim"] if self.blocked else []})
 
 
 def payload():

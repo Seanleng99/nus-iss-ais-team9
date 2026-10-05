@@ -462,26 +462,19 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
     assert response.selected_agents == (
         ["budget"] if agent_name == "budget" else ["goal_strategy", "budget"]
     )
-    assert [call["system_prompt"].splitlines()[0] for call in gateway.calls] == [
+    assert [call["system_prompt"].splitlines()[0] for call in gateway.calls
+            if not call["system_prompt"].startswith("PROMPT_ID: budget_input_requirements")] == [
         "PROMPT_ID: synthesizer", "PROMPT_ID: risk_compliance",
     ]
     specialists = {result.agent: result for result in response.agent_results[:-1]}
     for name, result in specialists.items():
         assert result.data["evidence_status"] == "insufficient"
         assert result.data["sources"] == result.data["contexts"] == []
-        if chinese:
-            summary = {
-                "budget": language_case("chinese_safety_explanations.summary"),
-                "goal_strategy": language_case("chinese_safety_explanations.summary_2"),
-            }[name]
-        else:
-            calculation = "budget calculation" if name == "budget" else "goal projection"
-            summary = (
-                f"The deterministic {calculation} is available, but the approved "
-                "Education knowledge base does not contain enough information for the "
-                "requested investment explanation."
-            )
-        assert result.summary == summary
+        from coach_i18n import translate
+        assert result.summary.endswith(translate(
+            "budget.education_gap" if name == "budget" else "goal.education_gap",
+            "zh-Hans" if chinese else "en"))
+        assert "3,500.00" in result.summary if name == "budget" else "800.00" in result.summary
         assert result.rationale == [
             language_case(
                 "chinese_safety_explanations.test_missing_education_preserves_budget_and_goal_calculations_without_specialist_generation_2"
@@ -489,7 +482,7 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
             if chinese
             else "Calculated values were preserved while unsupported educational claims were withheld."
         ]
-        assert summary in response.answer
+        assert result.summary in response.answer
 
     budget = specialists["budget"]
     expected_budget = {

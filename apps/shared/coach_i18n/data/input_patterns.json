@@ -103,5 +103,6 @@
   "backend.services.session_context.embedded_money_statement": "(?<![\\w\\x27’]){PREFIX}{label}{SEPARATOR}(?:about\\s+|around\\s+|roughly\\s+|approximately\\s+|大约|约)?{MONEY}{SUFFIX}(?!\\d|,\\d|\\.\\d)",
   "backend.services.session_context.compound_separator": "[;；\\n]+|(?<=[.!?。])\\s+|,\\s+(?!\\d)|\\s+(?:and|but)\\s+(?=(?:my\\b|I\\b|please\\b|keep\\b|target\\b|current\\b|monthly\\b))|，|(?:而且|并且)",
   "backend.services.session_context.unreported_clause": "\\b(?:if|suppose|assuming|imagine|hypothetically|hypothetical|for example)\\b|\\b(?:friend|spouse|wife|husband|partner|brother|sister|mother|father|client|customer)(?:[\\x27’]s)?\\b|\\b(?:not|isn[\\x27’]t|wasn[\\x27’]t|don[\\x27’]t)\\b|假如|假设|如果|比如|朋友的|配偶的|丈夫的|妻子的|不是",
-  "backend.services.session_context.monthly_cadence": "\\b(?:monthly|per month|a month|each month|every month)\\b|/month|每月|一个月"
+  "backend.services.session_context.monthly_cadence": "\\b(?:monthly|per month|a month|each month|every month)\\b|/month|每月|一个月",
+  "ai.models.gateway.personal_budget_input": "(?:制定|创建|计算|评估).{0,20}(?:预算|可支配收入|储蓄能力)|我的预算|我的月度预算"
 }

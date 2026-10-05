@@ -63,7 +63,7 @@ class BudgetScenario(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review", "alternatives", "continuity", "workspace"] = "plan"
+    action: Literal["plan", "set", "compare", "review", "alternatives", "continuity", "workspace"] = "plan"
     workspace: WorkspaceChange | None = None
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
@@ -242,6 +242,23 @@ def _stage_budget_draft(session: Session, user_id: str, chat, response: CoachRes
         return
     if not draft.is_budget_request:
         return
+    if draft.action == "set":
+        # Existence is checked against the authenticated user's target month,
+        # never against another month's plan or the model's catalog guess.
+        record = SQLAlchemyBudgetRepository(session).get(user_id, draft.period_start) if draft.period_start else None
+        if record and draft.planning is None:
+            import json
+            draft.questions = draft.missing()
+            draft.action = "workspace"
+            draft.workspace = WorkspaceChange(operation="budgets", payload_json=json.dumps({
+                "action": "edit", "scope": {"kind": "periods", "periods": [str(draft.period_start)]},
+                "categories": [{"category": item.category, "limit_amount": item.limit_amount}
+                               for item in draft.categories],
+            }))
+        else:
+            draft.action = "plan"
+            if draft.planning is None:
+                draft.planning = PlanningInputs()
     if draft.action in {"workspace", "continuity"}:
         import json
         previous_workspace = (chat.pending_budget or {}).get("draft", {}).get("workspace")

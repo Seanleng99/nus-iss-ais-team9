@@ -2086,6 +2086,9 @@ class AgentOrchestrator:
                     or scoped_spending.get("historical_transaction_count", 0)
                 ),
                 "goal_count": len(snapshot.goals),
+                "goal_capacity_required": agent == AgentName.BUDGET and bool(snapshot.goals)
+                    and AgentName.GOAL_STRATEGY in state["selected_agents"]
+                    and not state.get("goal_capture"),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
                 "education_topics": state.get("education_topics", []),
                 "education_search_terms": state.get("education_search_terms", []),

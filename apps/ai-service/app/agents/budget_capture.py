@@ -2,10 +2,12 @@ import json
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from coach_math.budget_scope import BudgetScope
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.agents.budget_methods import BudgetMethod
 from app.core.prompts import CURRENCY_POLICY
+from app.models.gateway import ModelGatewayError
 from app.models.structured import generate_structured_response
 
 
@@ -49,7 +51,7 @@ class WorkspaceChange(BaseModel):
 class BudgetDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_budget_request: bool = True
-    action: Literal["plan", "compare", "review", "alternatives", "continuity", "workspace"] = "plan"
+    action: Literal["plan", "set", "compare", "review", "alternatives", "continuity", "workspace"] = "plan"
     workspace: WorkspaceChange | None = None
     scenarios: list[BudgetScenario] = Field(default_factory=list, max_length=3)
     planning: PlanningInputs | None = None
@@ -67,9 +69,19 @@ class BudgetDraft(BaseModel):
 class CoreBudgetDraft(BudgetDraft):
     """Everyday planning does not expose the specialist workspace command schema."""
 
-    action: Literal["plan", "compare", "review", "alternatives"] = "plan"
+    action: Literal["plan", "set", "compare", "review", "alternatives"] = "plan"
     workspace: None = None
 
+
+class BudgetRecordRead(BaseModel):
+    """A read command cannot smuggle edits into the extraction handoff."""
+
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["read", "compare"]
+    scope: BudgetScope = Field(default_factory=BudgetScope)
+    categories: list[BudgetDraftCategory] = Field(default_factory=list, max_length=0)
+    remove_categories: list[str] = Field(default_factory=list, max_length=0)
+    planning: None = None
 
 def extract_budget_draft(agent, task) -> BudgetDraft:
     context = task.input_data.get("planning_context", {})
@@ -90,6 +102,13 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
             "period_start is the first day of the explicitly requested month. Without an explicit "
             "month and year leave it null and ask unless recorded_context.selected_period supplies the month explicitly selected in the UI. "
             "An explicit month in the message takes precedence over the UI selection; never reuse another month's plan. "
+            "SETTING CATEGORY LIMITS: 'set my [month] budget limits' uses action=set with period_start and "
+            "the explicit categories, whether or not other months have budgets. The backend resolves "
+            "the requested month's owned record: existing months receive a category patch; missing "
+            "months enter funded-plan creation and clarification. Leave planning=null unless the user "
+            "explicitly supplies planning inputs. Do not reject a set request because its month is "
+            "absent. Explicit edit/update/change/remove/delete requests still use the saved-record "
+            "contract and must never create a missing plan. Never copy funding inputs from another month. "
             "An amount of zero is valid. Only monthly limits are supported; ask about weekly, daily "
             "requests instead of converting them. Multi-month planning, carry-forward/rollover, or recurring review preferences use action=workspace with the appropriate operation: "
             "These are always is_budget_request=true; use the workspace command contract below. "
@@ -207,6 +226,19 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
         before, rest = system_prompt.split("WORKSPACE COMMANDS:", 1)
         _, after = rest.split("CONFIRMED CONTEXT:", 1)
         system_prompt = before + "CONFIRMED CONTEXT:" + after
+    def validate_draft(draft):
+        if draft.workspace and draft.workspace.operation == "budgets":
+            try:
+                payload = json.loads(draft.workspace.payload_json)
+                if not isinstance(payload, dict):
+                    raise TypeError("Expected a budget record command object")
+                if payload.get("action") in {"read", "compare"}:
+                    BudgetRecordRead.model_validate(payload)
+            except (ValueError, TypeError, ValidationError) as exc:
+                raise ModelGatewayError("Budget read commands must be valid JSON and contain no edits.",
+                                        code="INVALID_STRUCTURED_RESPONSE") from exc
+        return draft
+
     return generate_structured_response(
         agent.gateway,
         response_type=response_type,
@@ -229,4 +261,5 @@ def extract_budget_draft(agent, task) -> BudgetDraft:
         ),
         temperature=0,
         max_tokens=agent.max_tokens,
+        validate_response=validate_draft,
     )

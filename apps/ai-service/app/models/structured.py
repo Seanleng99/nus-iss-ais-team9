@@ -120,7 +120,9 @@ def generate_structured_response(
         elif exc.code == "INVALID_EDUCATION_PROVENANCE" and response_type.__name__ == "EducationAnswerability":
             validation_issues = (
                 str(exc) + " Cover every supplied question_id once in supplied order. "
-                "Use only actual carried source_ids and exact verbatim passage quotes. "
+                "Choose an actual evidence_passages passage_id, with source_id=null and quote=\"\"; "
+                "the server resolves its exact source/text. Never invent or alter a passage reference. "
+                "Alternatively use only actual carried source_ids and exact verbatim passage quotes. "
                 "Metadata is allowed only for source verification, with its evidence_field "
                 "and exact complete value. Supported/partial require supporting quotes; "
                 "unsupported must have none. Partial/unsupported require a precise limitation. "

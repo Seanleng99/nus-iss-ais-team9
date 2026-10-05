@@ -26,7 +26,8 @@ class CoverageReviewGateway(LocalFixtureModelGateway):
                 if self.veto else "The draft accurately qualifies the limited records."
             ),
             "rationale": ["Recorded totals cannot establish an enduring habit."],
-            "policy_notes": [],
+            "policy_notes": ["The draft overstates limited spending evidence."] if self.veto else [],
+            "block_categories": ["factual_qualification"] if self.veto else [],
             "confidence": 0.98,
         })
 

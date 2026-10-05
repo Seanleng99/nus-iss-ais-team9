@@ -33,7 +33,8 @@ class ConditionalGateway(ScriptedSemanticGateway):
 def request(*, agents=("budget",), financial_inputs=True):
     return CoachRequest(
         user_id="synthetic", session_id="conditional-semantic",
-        message="Explain a monthly budget and why an ETF can differ from its index.",
+        message=("Calculate my disposable income from my profile income and explain why an ETF can differ from its index."
+                 if financial_inputs else "Explain a monthly budget and why an ETF can differ from its index."),
         requested_agents=list(agents),
         snapshot={
             "monthly_income": {"amount": 4000},

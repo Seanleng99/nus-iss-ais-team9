@@ -18,6 +18,7 @@ from app.agents.education_access import (
     education_model_question,
     public_education_search_terms,
 )
+from app.core.telemetry import log_event
 from app.models.gateway import (
     LocalFixtureModelGateway,
     ModelGateway,
@@ -45,8 +46,9 @@ class EducationQueryPlan(BaseModel):
 class PassageSupport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    source_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{2,127}$")
-    quote: str = Field(min_length=4, max_length=1200)
+    source_id: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{2,127}$")
+    quote: str = Field(default="", max_length=1200)
+    passage_id: str | None = Field(default=None, pattern=r"^p[1-9][0-9]*$")
     evidence_field: Literal[
         "text", "title", "issuing_organization", "published_at", "document_version",
         "corpus_version", "review_due_at", "content_kind",
@@ -174,8 +176,10 @@ def validate_answerability(
     decision: EducationAnswerability, plan: EducationQueryPlan, contexts: list[dict],
     sources: list[dict] | None = None,
 ) -> EducationAnswerability:
+    passages = {item["passage_id"]: item for item in evidence_passages(contexts, sources)}
     expected = [question.question_id for question in plan.subquestions]
     if [item.question_id for item in decision.coverage] != expected:
+        log_event("education.answerability.rejected", reason_code="SUBQUESTION_ORDER_OR_COVERAGE_INVALID")
         raise ModelGatewayError(
             "Answerability must cover every subquestion in supplied order.",
             code="INVALID_EDUCATION_PROVENANCE",
@@ -185,13 +189,24 @@ def validate_answerability(
             bool(item.supporting_passages) != (item.status != "unsupported")
             or (item.status != "supported" and not item.limitation.strip())
         ):
+            log_event("education.answerability.rejected", reason_code="SUPPORT_OR_LIMITATION_MISSING")
             raise ModelGatewayError(
                 "Supported portions require carried passage quotes; gaps require a limitation.",
                 code="INVALID_EDUCATION_PROVENANCE",
             )
         for passage in item.supporting_passages:
+            if passage.passage_id is not None:
+                accepted = passages.get(passage.passage_id)
+                if (accepted is None or passage.source_id not in {None, accepted["source_id"]}
+                        or passage.evidence_field != accepted["evidence_field"]
+                        or passage.quote not in {"", accepted["quote"]}):
+                    log_event("education.answerability.rejected", reason_code="INVALID_PASSAGE_REFERENCE")
+                    raise ModelGatewayError("Passage references must identify unchanged carried evidence.",
+                                            code="INVALID_EDUCATION_PROVENANCE")
+                passage.source_id = accepted["source_id"]
+                passage.quote = accepted["quote"]
             passage_match = passage.evidence_field == "text" and any(
-                passage.source_id == context["source_id"] and passage.quote in context["text"]
+                passage.source_id == context["source_id"] and len(passage.quote) >= 4 and passage.quote in context["text"]
                 for context in contexts
             )
             metadata_match = (
@@ -201,11 +216,40 @@ def validate_answerability(
                         for source in sources or [])
             )
             if not (passage_match or metadata_match):
+                log_event("education.answerability.rejected", reason_code="QUOTE_NOT_IN_CARRIED_EVIDENCE")
                 raise ModelGatewayError(
                     "Answerability quotes must be exact text in accepted source passages.",
                     code="INVALID_EDUCATION_PROVENANCE",
                 )
     return decision
+
+
+def evidence_passages(contexts: list[dict], sources: list[dict] | None = None) -> list[dict]:
+    """Exact server-owned spans; choosing an ID never changes quotation text."""
+    passages = []
+    seen = set()
+    def append(source_id, quote, evidence_field="text"):
+        identity = (source_id, evidence_field, quote)
+        if 4 <= len(quote) <= 1200 and identity not in seen:
+            seen.add(identity)
+            passages.append({"passage_id": f"p{len(passages) + 1}", "source_id": source_id,
+                             "quote": quote, "evidence_field": evidence_field})
+    for context in contexts:
+        for paragraph in re.split(r"\n\s*\n", context["text"]):
+            # Long paragraphs retain exact contiguous spans. The complete
+            # original contexts remain available for semantic qualifications.
+            while len(paragraph) > 1200:
+                boundary = paragraph.rfind(" ", 0, 1200)
+                boundary = boundary if boundary >= 4 else 1200
+                append(context["source_id"], paragraph[:boundary])
+                paragraph = paragraph[boundary:]
+            append(context["source_id"], paragraph)
+    for source in sources or []:
+        for field in ("title", "issuing_organization", "published_at", "document_version",
+                      "corpus_version", "review_due_at", "content_kind"):
+            if source.get(field) is not None:
+                append(source["source_id"], str(source[field]), field)
+    return passages
 
 
 def unassessed_answerability(plan: EducationQueryPlan, contexts: list[dict]) -> EducationAnswerability:
@@ -249,7 +293,10 @@ def assess_answerability(
             "only for a complete relevant answer, partial for a narrower supported portion, "
             "unsupported otherwise. Current rules must preserve the exact product, account, "
             "time and eligibility scope. Every supported portion requires one to four short "
-            "verbatim quotes from carried passages and their actual source IDs. Quotes must "
+            "references to carried passages. Choose passage_id from evidence_passages; return "
+            "source_id=null and quote=\"\" so the server supplies their exact text and source. "
+            "Do not retype, shorten, paraphrase or combine a quote. Select the actual evidence_field. "
+            "For compatibility, an exact carried quote with its source_id and passage_id=null is valid. Quotes must "
             "support the portion, not merely mention the topic. State the precise missing "
             "portion in limitation for partial/unsupported. Do not answer from model memory. "
             "Use evidence_field=text for passages. Only a source-verification subquestion may "
@@ -257,7 +304,7 @@ def assess_answerability(
             "the exact complete field value. A title/date/organization never supports a "
             "financial claim. Captured publication/version dates are not a live freshness check. "
             "Return JSON {\"coverage\":[{\"question_id\":\"q1\",\"status\":\"supported\","
-            "\"supporting_passages\":[{\"source_id\":ID,\"quote\":exact quote}],"
+            "\"supporting_passages\":[{\"passage_id\":\"p1\",\"source_id\":null,\"quote\":\"\",\"evidence_field\":\"text\"}],"
             "\"limitation\":\"\"}]} in supplied subquestion order."
         ),
         user_prompt=json.dumps({
@@ -265,6 +312,7 @@ def assess_answerability(
             "contexts": [{"source_id": context["source_id"], "text": context["text"]}
                          for context in contexts],
             "sources": sources or [],
+            "evidence_passages": evidence_passages(contexts, sources),
         }, ensure_ascii=False),
         temperature=temperature, max_tokens=min(max_tokens, 1600),
         validate_response=lambda result: validate_answerability(result, plan, contexts, sources),

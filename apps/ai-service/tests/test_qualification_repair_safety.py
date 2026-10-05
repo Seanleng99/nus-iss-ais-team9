@@ -7,7 +7,6 @@ import pytest
 from app.agents.risk_compliance import RiskComplianceAgent
 from app.core.prompts import PromptCatalog
 from app.core.schemas import AgentName, AgentResult, CoachRequest
-from app.models.gateway import ModelGatewayError
 from app.rag.policy import LocalPolicyRetriever
 
 
@@ -74,8 +73,9 @@ def test_mixed_unsafe_category_cannot_become_a_qualification_repair(unsafe_categ
 @pytest.mark.parametrize("unsafe_category", ["personal_advice", "return_guarantee", "privacy", "injection"])
 def test_model_cannot_mark_a_mixed_unsafe_category_repairable(unsafe_category):
     gateway = ReviewGateway(block_categories=["factual_qualification", unsafe_category])
-    with pytest.raises(ModelGatewayError):
-        review(gateway)
+    result = review(gateway)
+    assert result.blocked and result.data["block_reasons"] == ["review_contract_unverified"]
+    assert result.data.get("repairable") is not True
     assert len(gateway.calls) == 2  # One bounded contract correction; no accepted unsafe verdict.
 
 

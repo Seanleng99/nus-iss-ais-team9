@@ -51,6 +51,10 @@ The retrieval design separates educational knowledge from policy controls. Inves
 
 Investment Education alone has direct `education_retriever` permission. Budget and Goal Strategy are authorized by the capability registry to request the orchestrator's typed `education_context` capability. The orchestrator obtains evidence through Investment Education's grounding logic and validates that provider's direct tool permission; the requesting agents receive resolved evidence without retriever access. Risk and Compliance has an independently allowlisted `policy_retriever`. Both collections provide offline fixtures for local and CI execution and checksum-verified, version-pinned local-document retrievers for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Spending remains retrieval-free.
 
+Semantic answerability can select server-assigned passage references. The server resolves each reference to exact text and source metadata from the current sanitized evidence before validating support. Unknown references, changed quotations, mismatched source IDs and metadata used to support financial claims are rejected. The full contexts remain available for assessing scope and qualifications; selecting a reference does not establish semantic support by itself. Exact-quote responses remain supported for compatibility. Source/corpus checks and the single bounded contract correction remain enforced.
+
+Saved-budget read/compare extraction carries a typed read-only operation and scoped owned-record evidence into independent review. Category-setting extraction delegates target-month existence to the authenticated backend; explicit edits/deletions cannot create missing plans. Optional education gaps preserve visible, qualified Budget/Goal calculations. Every model-assisted blocking verdict needs a bounded category and a specific policy explanation; exhausted invalid verdicts withhold the draft with `review_contract_unverified`.
+
 ## Implemented Physical AWS View
 
 ```mermaid

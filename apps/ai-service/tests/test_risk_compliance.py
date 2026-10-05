@@ -20,7 +20,7 @@ from app.agents.risk_compliance import (
 from app.core.config import Settings
 from app.core.prompts import PromptCatalog
 from app.core.schemas import AgentName, AgentResult, CoachRequest
-from app.models.gateway import LocalFixtureModelGateway, ModelGatewayError
+from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
 from app.rag.policy import LocalPolicyRetriever
 
@@ -302,8 +302,8 @@ def test_unexplained_education_block_gets_one_contract_correction(corrected):
     request = CoachRequest(user_id="synthetic-review", session_id="s", message="Explain fixed deposits.")
     results = [AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary="A bank deposit.")]
     if corrected == "invalid":
-        with pytest.raises(ModelGatewayError, match="invalid structured response"):
-            _agent(gateway).validate(request, results, "A bank deposit.")
+        result = _agent(gateway).validate(request, results, "A bank deposit.")
+        assert result.blocked and result.data["block_reasons"] == ["review_contract_unverified"]
     else:
         result = _agent(gateway).validate(request, results, "A bank deposit.")
         assert result.blocked == (corrected == "explained_block")
@@ -411,11 +411,11 @@ def test_missing_policy_evidence_blocks_before_model_even_with_safe_flag():
 def test_semantic_flag_must_be_a_real_boolean():
     gateway = _DecisionGateway(_education_decision(financial_language_safe="true"))
     results = [AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary="Education.", rationale=[], confidence=0.8)]
-    with pytest.raises(ModelGatewayError):
-        _agent(gateway).validate(
-            CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk."), results,
-            "No investment should be assumed to guarantee returns without those checks.",
-        )
+    result = _agent(gateway).validate(
+        CoachRequest(user_id="u1", session_id="s1", message="Explain investment risk."), results,
+        "No investment should be assumed to guarantee returns without those checks.",
+    )
+    assert result.blocked and result.data["block_reasons"] == ["review_contract_unverified"]
     assert len(gateway.calls) == 2  # One bounded correction; neither response is accepted.
 
 
@@ -527,7 +527,7 @@ def test_unsafe_recommendation_stays_blocked_with_budget_calculation_data():
     assert "I recommend buying this ETF" not in response.model_dump_json()
 
 
-def test_reviewer_receives_complete_confirmed_budget_evidence_for_memory_acknowledgement():
+def test_memory_acknowledgement_does_not_trigger_an_unrequested_capacity_calculation():
     capacity = {
         "source": "confirmed_plan", "period_start": "2026-10-01", "currency": "SGD",
         "take_home_income": 5000, "planned_expenses": 2600,
@@ -541,11 +541,9 @@ def test_reviewer_receives_complete_confirmed_budget_evidence_for_memory_acknowl
     ), _RecordingGateway())
     assert not response.blocked
     budget = next(item["data"] for item in review["agent_results"] if item["agent"] == "budget")
-    assert budget["capacity"] == capacity
-    assert budget["capacity_source"] == "confirmed_plan"
-    assert budget["planned_expenses"] == 2600
-    assert budget["unallocated_income"] == 1400
-    assert budget["income"] == 5000 and budget["savings"] == 1000
+    assert "capacity" not in budget
+    assert "planned_expenses" not in budget
+    assert "savings" not in budget
 
 
 @pytest.mark.parametrize("message", [
@@ -657,8 +655,8 @@ def test_missing_policy_evidence_records_its_category():
 def test_unexplained_model_review_block_is_attributed_to_the_model():
     result = _validate("Help me understand a monthly budget", gateway=_BlockingReviewGateway())
     assert result.blocked is True
-    assert result.data["block_reasons"] == ["model_review"]
-    assert result.policy_notes == []
+    assert result.data["block_reasons"] == ["review_contract_unverified"]
+    assert result.policy_notes == ["review_contract:unverified"]
 
 
 def test_block_reasons_reach_the_compliance_event_and_safe_log(caplog):
@@ -676,10 +674,10 @@ def test_block_reasons_reach_the_compliance_event_and_safe_log(caplog):
     ))
     assert response.blocked
     event = next(e for e in response.audit["events"] if e["event_type"] == "compliance.completed")
-    assert event["details"]["block_reasons"] == ["model_review"]
+    assert event["details"]["block_reasons"] == ["review_contract_unverified"]
     logged = [
         json.loads(record.getMessage()) for record in caplog.records
         if '"compliance.completed"' in record.getMessage()
     ]
-    assert logged and logged[-1]["details"]["block_reasons"] == ["model_review"]
+    assert logged and logged[-1]["details"]["block_reasons"] == ["review_contract_unverified"]
     assert "The reviewer did not approve this draft." not in caplog.text

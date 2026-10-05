@@ -15,6 +15,7 @@ from app.rag.answerability import (
     EducationQueryPlan,
     assess_answerability,
     build_query_plan,
+    evidence_passages,
     validate_answerability,
 )
 from app.rag.retriever import RetrievedChunk
@@ -205,6 +206,38 @@ def test_incomplete_coverage_contract_is_rejected():
         validate_answerability(
             EducationAnswerability(coverage=[]), EducationQueryPlan.model_validate(PLAN), [],
         )
+
+
+def test_passage_selection_resolves_exact_server_text_without_model_transcription():
+    contexts = [{"source_id": "etf-source", "text": QUOTE + "\n\nLosses remain possible."}]
+    decision = EducationAnswerability.model_validate(coverage(quote=""))
+    support = decision.coverage[0].supporting_passages[0]
+    support.source_id = None
+    support.passage_id = "p1"
+    result = validate_answerability(decision, EducationQueryPlan.model_validate(PLAN), contexts)
+    assert result.coverage[0].supporting_passages[0].quote == QUOTE
+    assert result.coverage[0].supporting_passages[0].source_id == "etf-source"
+
+
+@pytest.mark.parametrize("passage_id,source_id,quote", [
+    ("p999", None, ""), ("p1", "invented-source", ""), ("p1", None, "Changed wording"),
+])
+def test_passage_reference_cannot_change_evidence(passage_id, source_id, quote):
+    decision = EducationAnswerability.model_validate(coverage(quote=quote))
+    support = decision.coverage[0].supporting_passages[0]
+    support.passage_id, support.source_id = passage_id, source_id
+    with pytest.raises(ModelGatewayError, match="unchanged carried evidence"):
+        validate_answerability(decision, EducationQueryPlan.model_validate(PLAN), [{"source_id": "etf-source", "text": QUOTE}])
+
+
+def test_long_passage_catalog_keeps_contiguous_exact_spans_and_qualifications():
+    text = ("Public explanation of diversification. " * 50) + "Diversification does not eliminate losses."
+    contexts = [{"source_id": "education-source", "text": text}]
+    catalog = evidence_passages(contexts)
+    assert len(catalog) > 1
+    assert "".join(item["quote"] for item in catalog) == text
+    assert all(len(item["quote"]) <= 1200 for item in catalog)
+    assert "does not eliminate losses" in catalog[-1]["quote"]
 
 
 def test_source_verification_can_quote_exact_carried_metadata():

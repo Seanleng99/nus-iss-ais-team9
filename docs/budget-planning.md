@@ -4,6 +4,32 @@
 
 Implemented locally on 5 October 2026. Monthly budgets remain the stored records, while Coach supports an explicitly requested month, a list of months, an inclusive range, a year or all saved budgets. A year expands to January–December. Relative periods are interpreted against the Singapore calendar. The sidebar's **Default month** is used only when the message omits a period; ambiguous dates require clarification and do not fall back to it.
 
+### Edge acceptance follow-up, 5 October 2026
+
+The deployed Edge run passed 11 of 17 acceptance flows. It exposed blocked saved-budget reads/comparisons, rejected second-month `set` wording, unavailable source-required education and an unsolicited personal allocation in a conceptual answer. Subsequent CloudWatch inspection found that standalone and mixed education retrieval accepted six passages, then exhausted answerability correction with `INVALID_EDUCATION_PROVENANCE`. This was an evidence-validation failure; the traces do not establish missing corpus coverage or a token overrun.
+
+The local corrections give saved-record reads a typed read-only contract, reject edit fields in read commands and carry scoped owned records into Compliance. Their extraction summary identifies reading/comparing records, without claiming a pending write. The backend still retrieves the current owned records before displaying its final deterministic result. Reads cannot be confirmed as mutations.
+
+`Set my December 2026 budget limits ...` now extracts `action=set`. The authenticated backend checks that target month for the active owner. Existing plans receive a category patch that preserves unrelated limits and funding settings. A missing month enters funded-plan creation, asking for take-home income, savings allocation and expense coverage; neither another month nor another profile supplies those values. Explicit edits/deletions of missing plans remain validation errors. Every mutation still needs its own exact preview and confirmation.
+
+The input classifier also runs when profile income is present. A conceptual request does not receive an unrequested percentage allocation; a compound request containing a personal calculation still receives financial grounding. Goal capacity dependencies remain explicit calculation requirements. When optional Education cannot be verified, Budget/Goal render their tool-derived amounts and qualifications alongside the education limitation. Compliance assesses calculation support and education support separately.
+
+These corrections are local. The previous browser results remain deployment evidence for the earlier build; rerun the exact failed prompts and the full 17-flow Edge checklist after deploying the corrected build.
+
+Local verification for the Edge acceptance corrections on 5 October 2026:
+
+| Check | Result |
+| --- | --- |
+| Full AI unit/API and safety suite | 1,716 passed; 1 Windows symlink-privilege skip |
+| Full backend unit/API suite | 937 passed |
+| Shared language/math suite | 39 passed |
+| Release-smoke contract suite | 42 passed |
+| LLMSecOps offline evaluation policy | All 8 suites / 87 cases passed |
+| Approved full-document retrieval and scope benchmark | 100/100 cases passed |
+| Ruff, whitespace and Chinese-character inventory | Passed |
+
+The focused regressions additionally cover read/compare without usable profile income, rejection of edits inside a read command, conceptual answers with existing income, mixed arithmetic/source gaps and separate Goal capacities across a range containing a missing month. The retrieval benchmark measures retrieval and scope, not generated-answer quality. Scripted gateway tests validate the new passage-reference and Compliance contracts; live-provider acceptance and deployed Edge results remain pending. The 40,000-token workflow budget and governed Education access permissions are unchanged.
+
 ## Everyday reasoning context
 
 The 5 October reasoning follow-up gives ordinary Budget advice the requested saved category limits, method, planning values, affordability results and protected category/savings minimums. Category-only plans remain readable without income; unavailable overall affordability does not prevent qualitative guidance. Capture and ordinary advice share the same owned plan evidence, while ordinary advice omits unrelated workspace configuration and record IDs. Risk and Compliance receives the same reasoning evidence.

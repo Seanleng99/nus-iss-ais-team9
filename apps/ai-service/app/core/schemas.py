@@ -509,6 +509,18 @@ class ComplianceDecision(BaseModel):
     rationale: list[str] = Field(min_length=1, max_length=8)
     policy_notes: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0.0, le=1.0)
+    block_categories: list[Literal[
+        "prohibited_request", "personal_advice", "return_guarantee", "privacy",
+        "injection", "citation_attribution", "factual_qualification", "unverifiable_claim",
+    ]] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def explain_verdict(self):
+        if self.blocked and (not self.block_categories or not any(note.strip() for note in self.policy_notes)):
+            raise ValueError("A blocking verdict requires block_categories and a brief policy note")
+        if not self.blocked and not isinstance(self, EducationComplianceDecision) and self.block_categories:
+            raise ValueError("An allowed verdict must have empty block_categories")
+        return self
 
 
 class EducationComplianceDecision(ComplianceDecision):
@@ -517,10 +529,6 @@ class EducationComplianceDecision(ComplianceDecision):
     missing_points: list[str] = Field(max_length=6)
     repairable: bool = False
     financial_language_safe: bool = Field(default=False, strict=True)
-    block_categories: list[Literal[
-        "prohibited_request", "personal_advice", "return_guarantee", "privacy",
-        "injection", "citation_attribution", "factual_qualification", "unverifiable_claim",
-    ]] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def validate_block_explanation(self):

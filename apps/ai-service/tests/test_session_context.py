@@ -102,7 +102,7 @@ def test_router_and_writer_receive_state_but_calculator_uses_saved_income():
     gateway = RecordingGateway()
     context = state(monthly_income="4200", goal_name="Holiday")
     context["active_topic"] = "budget"
-    response = reply(gateway, context, snapshot={"monthly_income": {"amount": 5000}})
+    response = reply(gateway, context, message="Calculate my disposable income from my profile income.", snapshot={"monthly_income": {"amount": 5000}})
     assert response.selected_agents == ["budget"]
     router = json.loads(
         next(c for c in gateway.calls if c["system_prompt"].startswith("PROMPT_ID: router"))[
@@ -188,6 +188,7 @@ def test_router_and_writer_receive_summary_without_facts_or_calculation_changes(
     response = reply(
         gateway,
         older_context(assistant="Earlier budget used SGD 9000."),
+        message="Calculate my disposable income from my profile income.",
         snapshot={"monthly_income": {"amount": 5000}},
     )
     router = next(c for c in gateway.calls if c["system_prompt"].startswith("PROMPT_ID: router"))

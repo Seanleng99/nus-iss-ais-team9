@@ -319,9 +319,16 @@ class LocalFixtureModelGateway:
         if prompt_id == "PROMPT_ID: budget_input_requirements":
             # Offline fixture only; production uses the semantic classifier.
             text = payload["message"].casefold()
+            if payload.get("follow_up", {}).get("status") == "resolved":
+                text += " " + payload["follow_up"].get("subject", "").casefold()
             conceptual = any(term in text for term in ("explain", "in general", "definition", "formula", "example", "how does", "how do", "what is", "what are"))
             personal = any(term in text for term in ("create", "build", "calculate", "how much", "afford", "feasible", "disposable", "capacity"))
-            return json.dumps({"requires_income": personal and not conceptual})
+            personal_calculation = (
+                any(term in text for term in ("my disposable", "my monthly disposable", "my savings capacity", "my monthly savings capacity", "from my profile income", "my budget", "my monthly budget", "this monthly budget"))
+                or bool(re.search(r"\b(?:create|build|creating)\b.{0,35}\bbudget\b", text))
+                or bool(re.search(input_pattern("ai.models.gateway.personal_budget_input"), text))
+            )
+            return json.dumps({"requires_income": personal_calculation or personal and not conceptual})
         if prompt_id == "PROMPT_ID: spending_capture":
             from app.models.recurring_fixture import apply_recurring_terms
             from app.models.spending_fixture import fixture_spending_draft
@@ -685,6 +692,8 @@ class LocalFixtureModelGateway:
             elif grounding.get("capacity_source") == "confirmed_plan":
                 capacity = grounding["capacity"]
                 summary = f"Your confirmed {capacity['period_start']} budget sets aside SGD {capacity['estimated_savings_capacity']:.2f} monthly savings, with SGD {capacity['unallocated_income']:.2f} unallocated. This is a planned allocation, not a savings balance."
+            elif grounding.get("calculation_status") == "no_financial_inputs":
+                summary = "A budget describes planned income, spending and savings. Category limits are planned amounts; actual recorded spending comes from expense records. Remaining budget is the limit minus recorded spending, and does not establish an available cash balance."
             elif grounding.get("income", 0) == 0:
                 summary = "Add monthly income and recurring expenses to generate a personalized budget."
             else:

@@ -36,6 +36,8 @@ def fixture_budget_scope(text, today=None):
             start_year -= 1
         return {"kind": "range", "start": f"{start_year}-{start_month:02d}-01", "end": f"{span[4]}-{end_month:02d}-01"}, False
     dates = [f"{year}-{int(month):02d}-01" for year, month in re.findall(r"\b(20\d{2})-(0[1-9]|1[0-2])(?:-01)?\b", lower)]
+    for first, second, year in re.findall(rf"\b({names})\s+(?:and|&)\s+({names})\s+(20\d{{2}})\b", lower):
+        dates.extend(f"{year}-{MONTHS.index(month) + 1:02d}-01" for month in (first, second))
     dates += [f"{year}-{MONTHS.index(month) + 1:02d}-01" for month, year in re.findall(rf"\b({names})\s+(20\d{{2}})\b", lower)]
     if dates:
         return {"kind": "periods", "periods": list(dict.fromkeys(dates))}, False
@@ -103,6 +105,8 @@ def fixture_budget_draft(payload):
     draft.setdefault("categories", [])
     draft["questions"] = []
     draft["is_budget_request"] = True
+    if re.search(r"\bset\b.*\bbudget(?: limits)?\b", text, re.IGNORECASE):
+        draft["action"] = "set"
     if payload.get("planning_requested") or draft.get("planning"):
         planning = dict(draft.get("planning") or {})
         for key, pattern in (

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from coach_i18n import translate
 
 from app.agents.base import BaseAgent
+from app.agents.calculation_summary import goal_calculation_summary
 from app.agents.education_access import education_topics, should_request_education_context
 from app.agents.goal_capture import extract_goal_draft
 from app.core.guardrails import inspect_prompt
@@ -322,7 +323,8 @@ class GoalStrategyAgent(BaseAgent):
         return AgentResult(
             agent=self.name,
             summary=(
-                translate('goal.education_gap', grounding.get('response_language'))
+                goal_calculation_summary(grounding) + "\n\n"
+                + translate('goal.education_gap', grounding.get('response_language'))
             ),
             rationale=[
                 translate('education.calculations_preserved', grounding.get('response_language'))

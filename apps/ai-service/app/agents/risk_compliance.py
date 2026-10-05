@@ -26,7 +26,7 @@ from app.core.schemas import (
     SourceCitation,
 )
 from app.core.telemetry import log_event, trace_method
-from app.models.gateway import ModelGateway
+from app.models.gateway import ModelGateway, ModelGatewayError
 from app.models.structured import generate_structured_response
 from app.rag.policy import PolicyRetriever
 from app.rag.retriever import MAX_EDUCATION_CHUNK_CHARACTERS
@@ -538,6 +538,19 @@ class RiskComplianceAgent:
         self.max_tokens = max_tokens
         self.policy_retriever = policy_retriever
 
+    def _review(self, **kwargs):
+        try:
+            return generate_structured_response(self.gateway, **kwargs), None
+        except ModelGatewayError as exc:
+            if exc.code != "INVALID_STRUCTURED_RESPONSE":
+                raise
+            # The bounded correction was exhausted. Withhold the draft and
+            # report the contract failure without logging model wording.
+            return ComplianceDecision(blocked=True, summary="The safety review could not be verified.",
+                                      rationale=["The model verdict did not satisfy the review contract."],
+                                      policy_notes=["review_contract:unverified"], confidence=1.0,
+                                      block_categories=["unverifiable_claim"]), exc.code
+
     @trace_method
     def validate(
         self,
@@ -724,17 +737,27 @@ class RiskComplianceAgent:
                 validate_citations(text, review_sources)
             return review
 
-        review = generate_structured_response(
-            self.gateway,
+        review, review_error = self._review(
             response_type=EducationComplianceDecision if education_review else ComplianceDecision,
             system_prompt=(
                 self.prompts.get("risk_compliance")
                 + "\nBudget workflow context: monthly expense limits, explicit debt minimum payments and user-chosen savings contributions are budgeting scope. "
-                "A budget_draft with action=workspace (or continuity) is an unsaved settings proposal. The authenticated backend validates owned records and missing fields, displays an exact preview, and requires a separate confirmation before any write. Treat this extraction as budget planning, not execution of a financial transaction. All existing safety and privacy checks still apply. "
+                "budget_record_read is a typed read-only operation with server-supplied owned records and resolved calendar scope. Read/compare handoffs request no write, income input or confirmation. Assess their actual supplied record evidence. A workspace draft for edits/deletes (or continuity) is an unsaved settings proposal. The authenticated backend validates owned records and missing fields, displays an exact preview, and requires a separate confirmation before any write. Treat extraction as a handoff, not execution of a financial transaction. All existing safety and privacy checks still apply. "
                 "Workspace operation=budgets reads/compares owned monthly plans or proposes exact edits, category removals or deletion across requested months. Reads never write; edits/deletes require backend validation and a separate confirmation. Calendar ranges and yearly totals are valid budget scopes. "
                 "A budget_draft with action=alternatives requests a read-only backend calculation from confirmed owned commitments; it does not itself calculate or save amounts. "
                 "When commitments are absent the backend asks for setup. A truthful statement of this handoff is an application capability, not a financial recommendation requiring investment evidence. "
                 "Still block invented amounts, claims that missing inputs are known, personal investment/product advice, guarantees and unsafe content; do not treat draft labels as proof of safety."
+                "\nDeterministic Budget/Goal tool outputs and owned saved records support budget arithmetic without investment citations. "
+                "An optional Education evidence gap does not invalidate those calculations or make the request prohibited. "
+                "Judge their assumptions, requested month, recurrence coverage and capacity source. Conditional Budget/Goal "
+                "consumers cannot provide model-only investment explanations: a truthful source limitation with preserved "
+                "calculations is an acceptable partial answer. Do not require unsupported education to fill that gap. "
+                "For a combined calculation and education request, completeness is assessed per part; missing source "
+                "coverage alone is not a safety block. Keep source-supported, model-only and calculated claims separate."
+                "\nEvery blocked verdict requires at least one block_categories value from prohibited_request, "
+                "personal_advice, return_guarantee, privacy, injection, citation_attribution, factual_qualification, "
+                "unverifiable_claim, and a brief policy_notes explanation of the actual defect. An allowed verdict "
+                "has block_categories=[]. A generic inability to verify without identifying the defect is invalid."
                 + "\nReturn a short policy verdict only. Do not rewrite the answer "
                 "or introduce any financial facts. Keep rationale and policy_notes "
                 "to at most two short assessment sentences each."
@@ -862,6 +885,13 @@ class RiskComplianceAgent:
                                     "method",
                                     "spending_context",
                                     "saved_budget_context",
+                                    "budget_draft",
+                                    "planning_analysis",
+                                    "budget_record_read",
+                                    "subquestion_coverage",
+                                    "coverage_assessment",
+                                    "semantic_failure_code",
+                                    "retrieval_consumer",
                                     "recurring_evidence",
                                     "funding_gap",
                                     "period_start",
@@ -930,7 +960,10 @@ class RiskComplianceAgent:
             "policy_corpus_version": policy_corpus_version,
             "policy_sources": policy_sources,
             "policy_contexts": contexts,
+            "review_block_categories": list(dict.fromkeys(review.block_categories)),
         }
+        if review_error:
+            compliance_data["review_contract_error"] = review_error
         if isinstance(review, EducationComplianceDecision):
             if contextual_financial_findings and not review.financial_language_safe:
                 output_findings.append("response_withheld")
@@ -990,7 +1023,8 @@ class RiskComplianceAgent:
         compliance_data["block_reasons"] = [
             reason for reason, fired in (
                 ("request_not_allowed", request_not_allowed),
-                ("model_review", review.blocked),
+                ("model_review", review.blocked and not review_error),
+                ("review_contract_unverified", bool(review_error)),
             ) if fired
         ]
         return AgentResult(

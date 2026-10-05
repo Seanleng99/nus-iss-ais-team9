@@ -147,7 +147,8 @@ _BLOCKING_REVIEW = {
     "blocked": True,
     "summary": "The draft was not approved.",
     "rationale": ["The reviewer did not approve this draft."],
-    "policy_notes": [],
+    "policy_notes": ["The draft contains an unverifiable claim."],
+    "block_categories": ["unverifiable_claim"],
     "confidence": 0.6,
 }
 

@@ -191,6 +191,55 @@ def test_read_preview_cannot_be_confirmed_through_workspace_api(db_session_facto
             confirm_change(session, "budget-u", preview)
 
 
+@pytest.mark.parametrize("other_saved_month", [False, True])
+def test_set_missing_month_enters_funded_creation_without_borrowing_another_plan(db_session_factory, other_saved_month):
+    with db_session_factory() as session:
+        if other_saved_month:
+            save(session, NOV, income=9000, savings=4000)
+        save(session, DEC, user="other-u", income=8000, savings=3000)
+        chat = SQLAlchemyChatRepository(session).create("budget-u", "budget-chat", "Budget")
+        reply = CoachResponse(session_id="budget-chat", selected_agents=["budget"], answer="Draft", audit={},
+                              disclaimers=[], agent_results=[{"agent": "budget", "summary": "Draft", "data": {
+                                  "budget_draft": {"action": "set", "period_start": str(DEC),
+                                                   "categories": [{"category": "food", "limit_amount": 650},
+                                                                  {"category": "housing", "limit_amount": 1500}]}}}])
+        stage_budget_draft(session, "budget-u", chat, reply, default_period=OCT)
+        assert reply.audit["budget_capture"] == "needs_input"
+        assert "take-home" in reply.answer and "savings" in reply.answer
+        assert chat.pending_budget["draft"]["period_start"] == str(DEC)
+        planning = chat.pending_budget["draft"]["planning"]
+        assert planning["take_home_income"] is None and planning["savings_target"] is None
+        assert SQLAlchemyBudgetRepository(session).get("budget-u", DEC) is None
+        assert not chat.pending_budget["ready"]
+
+
+def test_set_existing_month_previews_a_patch_and_preserves_funding_and_other_limits(db_session_factory):
+    with db_session_factory() as session:
+        save(session, DEC, income=5000, savings=1000)
+        chat = SQLAlchemyChatRepository(session).create("budget-u", "budget-chat", "Budget")
+        reply = CoachResponse(session_id="budget-chat", selected_agents=["budget"], answer="Draft", audit={},
+                              disclaimers=[], agent_results=[{"agent": "budget", "summary": "Draft", "data": {
+                                  "budget_draft": {"action": "set", "period_start": str(DEC),
+                                                   "categories": [{"category": "food", "limit_amount": 650}]}}}])
+        stage_budget_draft(session, "budget-u", chat, reply, default_period=OCT)
+        assert reply.audit["action_status"] == "preview"
+        before = SQLAlchemyBudgetRepository(session).get("budget-u", DEC)
+        assert {row.category: float(row.limit_amount) for row in before.categories}["food"] == 500
+        assert confirm(session).audit["action_status"] == "saved"
+        after = SQLAlchemyBudgetRepository(session).get("budget-u", DEC)
+        assert {row.category: float(row.limit_amount) for row in after.categories} == {"food": 650, "transport": 200}
+        assert after.planning["take_home_income"] == 5000 and after.planning["savings_target"] == 1000
+
+
+def test_explicit_edit_of_a_missing_month_still_cannot_create_a_plan(db_session_factory):
+    with db_session_factory() as session:
+        save(session, NOV)
+        with pytest.raises(ValueError, match="saved"):
+            preview_change(session, "budget-u", command("edit", {"kind": "periods", "periods": [str(DEC)]},
+                           categories=[{"category": "food", "limit_amount": 650}]))
+        assert SQLAlchemyBudgetRepository(session).get("budget-u", DEC) is None
+
+
 @pytest.mark.parametrize("action", ["read", "delete"])
 def test_new_record_action_does_not_inherit_previous_edit_fields(db_session_factory, action):
     with db_session_factory() as session:

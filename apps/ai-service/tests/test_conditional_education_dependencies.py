@@ -402,7 +402,8 @@ def test_empty_education_result_preserves_deterministic_budget() -> None:
     assert budget.data["income"] == 5000.0
     assert budget.data["disposable_income"] == 3500.0
     assert budget.data["evidence_status"] == "insufficient"
-    assert "deterministic budget calculation is available" in budget.summary
+    assert "3,500.00" in budget.summary and "700.00" in budget.summary
+    assert "Approved source support could not be verified" in budget.summary
 
 
 def test_optional_education_failure_preserves_deterministic_budget() -> None:
