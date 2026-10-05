@@ -111,7 +111,6 @@ class GoalStrategyAgent(BaseAgent):
                     capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,
                     reason_code="GOAL_FEASIBILITY_REQUIRES_CAPACITY",
                     required_output_fields=[
-                        "estimated_savings_capacity",
                         "calculation_method",
                     ],
                 ),
@@ -239,7 +238,24 @@ class GoalStrategyAgent(BaseAgent):
             grounding["emergency_fund"] = task.input_data.get("emergency_fund") or call_tool(
                 self.name, "emergency_fund_summary", snapshot,
             )
-        if capacity is not None:
+        if capacity is not None and capacity.data.get("source") == "unavailable":
+            grounding.update({"monthly_savings_capacity": capacity.data,
+                "needs_input": True, "questions": [capacity.data["reason"]],
+                "calculation_scope": "Goal projection only; the requested budget has no confirmed savings capacity, so affordability is unavailable."})
+        elif capacity is not None and capacity.data.get("source") == "period_plans":
+            total_required = round(sum(float(item["monthly_required"]) for item in projections), 2)
+            period_results = []
+            for row in capacity.data["periods"]:
+                known = row.get("source") == "confirmed_plan"
+                pool = float(row["estimated_savings_capacity"]) if known else None
+                period_results.append({"period_start": row["period_start"],
+                    "monthly_required": total_required, "monthly_capacity": pool,
+                    "monthly_shortfall": round(max(total_required - pool, 0), 2) if known else None,
+                    "status": "feasible" if known and pool >= total_required else "shortfall" if known else "unavailable"})
+            grounding.update({"monthly_savings_capacity": capacity.data,
+                              "period_feasibility": period_results,
+                              "calculation_scope": "Each requested month's confirmed pool funds all listed goals concurrently; missing plans are unavailable. No monthly pool is inferred from a period total."})
+        elif capacity is not None:
             monthly_capacity = float(capacity.data["estimated_savings_capacity"])
             feasibility = [
                 {

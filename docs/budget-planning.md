@@ -1,5 +1,72 @@
 # Budget planning: plans, methods, scenarios and spending reviews
 
+## Saved budgets across months and years
+
+Implemented locally on 5 October 2026. Monthly budgets remain the stored records, while Coach supports an explicitly requested month, a list of months, an inclusive range, a year or all saved budgets. A year expands to January–December. Relative periods are interpreted against the Singapore calendar. The sidebar's **Default month** is used only when the message omits a period; ambiguous dates require clarification and do not fall back to it.
+
+## Everyday reasoning context
+
+The 5 October reasoning follow-up gives ordinary Budget advice the requested saved category limits, method, planning values, affordability results and protected category/savings minimums. Category-only plans remain readable without income; unavailable overall affordability does not prevent qualitative guidance. Capture and ordinary advice share the same owned plan evidence, while ordinary advice omits unrelated workspace configuration and record IDs. Risk and Compliance receives the same reasoning evidence.
+
+The backend supplies monthly aggregates of owned expense records across the available history, without descriptions or transaction IDs. The Orchestrator selects the requested month, list, range, year or all-saved-budget months before specialist tasks and capability fingerprints are built. Expense-only months are not added to an all-saved-budget scope. Requested totals and up to six preceding months of history remain separate. A month with no recorded expenses has zero recorded totals, which never establishes zero actual household costs. Missing budgets remain unavailable. Budget can request Spending history even when the requested month contains no transactions.
+
+These reasoning aggregates describe gross recorded expenses in SGD; other currencies are disclosed and excluded, and income/transfers/refunds are not counted as expenses. Refund-adjusted balances remain the dedicated backend budget review's responsibility. Complete monthly aggregates support older periods and records beyond the bounded raw snapshot. Existing single-month statistical analysis is retained when supplied dated records cover that selected month; otherwise the response identifies aggregate-only evidence and does not invent transaction-level patterns or causes.
+
+Without a confirmed plan, the illustrative baseline projects recurring expenses into the selected calendar month using explicit frequency, interval, start/end and month-end terms. Already-paid occurrences remain part of the full month's cost. Repeated payment rows sharing an owned obligation ID use one schedule, rather than adding multiple months' payments. Distinct obligations remain distinct even when names match. Unknown frequency, conflicting terms or indistinguishable unlinked schedules make capacity unavailable instead of guessing monthly amounts or reporting zero. Goals receive that unavailable result and ask for the missing information. Confirmed-plan savings capacity continues to use its saved allocation directly.
+
+A bounded semantic input check distinguishes general learning from personal calculations. Definitions, formulas and explanations can proceed without income even when they contain words such as *calculate*, *build* or *how much*. Personal disposable-income/affordability calculations and dependent goal-capacity requests still require financial inputs. The input check cannot calculate, save, confirm or supply missing amounts. These changes are local; live-provider wording acceptance and deployment remain unverified.
+
+Local verification for the reasoning follow-up on 5 October 2026:
+
+| Check | Result |
+| --- | --- |
+| Complete AI-service suite | 1,678 passed, 1 skipped |
+| Backend budget, conversation, query and ownership regression sweep | 316 passed |
+| Complete shared mathematics and language suite | 39 passed |
+| Ruff across services/shared/infra scripts; whitespace and language inventory | Passed |
+
+Coverage includes advisory writer context, month/range/all scope selection, historical-only expenses, missing plans, conceptual versus personal input requirements, calendar recurrence costs, repeated obligations, changed prices, conflicting/unknown schedules and unavailable goal capacity. Older positive-calculation fixtures now provide explicit monthly terms rather than assuming cadence from a recurring label. The backend sweep retains two existing serialization/deprecation warnings. These checks use local fixtures and isolated databases; they establish neither deployed behavior nor real-provider semantic acceptance.
+
+## Saved-budget operations
+
+| Request | Behavior |
+| --- | --- |
+| "Show all my saved budgets" | Reads all budgets owned by the active profile. |
+| "Compare my budgets from August through October 2026" | Shows each saved month's category limits, planning values and recorded expenses, with period totals. |
+| "Summarise my budgets for 2026" | Includes all twelve requested months; months with no budget are identified rather than treated as zero. |
+| "Change food to SGD 600 from October through December 2026" | Previews the same explicit change against each existing month's own plan. |
+| "Remove the food limit from my November 2026 budget" | Previews removal of that limit while retaining recorded transactions. |
+| "Delete my November 2026 budget" | Previews removal of that monthly budget, including its limits and confirmed planning values. |
+
+Reads and saved-record comparisons require no income or write confirmation. Existing hypothetical scenario comparisons retain their separate compare/adopt/confirm contract. Saved-record edits specify only changed category limits, category removals or planning fields. Other categories, income, savings and methods are preserved independently for every month; a selected month's plan is never copied implicitly. Changes to income require an explicit take-home basis. Adding planning metadata to a category-only budget still uses the ordinary confirmed planning workflow.
+
+Every edit/deletion is an authenticated backend preview followed by a separate `confirm budget`. Corrections create a new preview; `cancel` discards it. All affected budgets must exist. The backend validates affordability, budgeting-method rules, protected categories, debt/goal commitments and reserve requirements for every month before writing. One invalid or missing target blocks the complete batch. User locking, a thirty-minute expiry and financial-evidence checks reject changed or stale previews. A savepoint rolls back all monthly writes if any write fails. Repeated confirmation cannot replay a consumed draft, and a read-only interlude cannot approve an earlier deletion.
+
+Deletion retains transactions, goals, bill/payday schedules, reserves and commitment/timing settings. It cannot bypass saved commitments. A snapshot with the reason **Plan retained before confirmed deletion** is appended to the existing owned history (maximum fifty versions per month), so normal restoration can recreate the plan after current validation and confirmation. Deletion never rewrites existing snapshots and removes the plan as a source of confirmed savings capacity.
+
+The semantic router supplies a typed `budget_scope` and `budget_scope_unclear`. The same scope selects saved capacity before specialist tasks and dependency fingerprints are built. Explicit single-month goal calculations use that month's pool. Multi-month goal calculations expose feasibility for each month, including unavailable plans; known period savings totals are diagnostic and never become a recurring monthly pool. Unallocated income is not assigned to goals. An explicit missing plan cannot borrow another month's capacity or silently use a profile-based illustrative fallback.
+
+API contracts:
+
+- `GET /api/users/{user_id}/budgets` lists owned saved budgets. Optional `start=YYYY-MM-01&end=YYYY-MM-01` selects an inclusive range and reports missing months.
+- Existing `POST /budget/workspace/preview` accepts `operation: "budgets"` with JSON-encoded `payload_json`: `action: read|compare|edit|delete`, `scope`, optional edit `categories`, `remove_categories`, and `planning` patch. `scope` is `{kind:"periods",periods:[...]}`, `{kind:"range",start:...,end:...}` or `{kind:"all"}`. Coach resolves `{kind:"default"}` into an explicit month using the trusted sidebar default before previewing.
+- Existing `POST /budget/workspace/confirm` confirms a mutation preview by its owned preview ID. Read/compare previews cannot be confirmed as writes.
+
+Explicit lists/ranges and mutation batches are bounded to 120 months per request; all-saved reads include the complete owned history. Mixed legacy currencies have separate read totals and are never converted; edits support SGD. No database migration is needed. Tests cover scope validation, ownership, year/range reads, per-month preservation, deletions/restoration, constraints, stale/expired/cancelled previews, batch rollback, Coach/API confirmation and period-specific goal capacity. These are local/offline contracts; deployment and real-provider extraction acceptance remain unverified for this increment.
+
+Local verification on 5 October 2026:
+
+| Check | Result |
+| --- | --- |
+| Backend budget, conversation, status-query and ownership regression sweep | 311 passed |
+| Final budget capture/workspace/records checks, including additional action-switch and empty-commitment regressions | 75 passed (overlaps the sweep above) |
+| AI budget, dependency, conversation and follow-up contracts | 205 passed |
+| Frontend Coach language, app and budget editor checks | 47 passed |
+| Shared calendar-scope and language catalog checks | 30 passed |
+| Ruff across services/shared/infra scripts; whitespace checks; Chinese-character inventory | Passed |
+
+The frontend run preloaded the UI modules after a cold-start run exceeded AppTest's three-second timeout. Language inventory required the already-approved unsandboxed command because the sandbox blocked its Git subprocess. Neither check used a deployed service or established live-provider acceptance.
+
 Current UI and Coach flow: see [Everyday Budget and Coach workflow](budget-usability.md) for the 2026-10-01 simplification. The first simplification deployed at `72846d0`; the subsequent optional-form removal is local and requires separate deployment/live acceptance. Earlier workflow descriptions below retain the underlying contracts; the new document supersedes their UI entry points.
 
 Earlier release evidence: the AWS demo deployment on 2026-09-29 at `f821887a62e8b8d94aa77975f34d6770042e6312` passed CI, migrations and release smoke. The focused GPT-6 Luna Budget acceptance suite passed 14/14 executions at that revision; it does not validate later improvements or this simplification.

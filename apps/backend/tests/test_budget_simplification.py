@@ -217,7 +217,8 @@ def test_core_context_shares_owned_bounded_evidence_and_verified_totals(db_sessi
         )
         assert context["request_scope"]["selection"] == "semantic"
         assert context["request_scope"]["authorization"] == "read_only_context"
-        assert len(context["request_scope"]["operations"]) == 11
+        assert len(context["request_scope"]["operations"]) == 12
+        assert "budgets" in context["request_scope"]["operations"]
         assert "reconciliation" in context["workspace"]
         assert context["workspace"]["budget_history"] == [
             {"period_start": str(PERIOD), "id": "version", "saved_at": "2026-10-01", "reason": "edited"}]
@@ -243,7 +244,8 @@ def test_pending_workspace_followup_preserves_all_bounded_operation_evidence(db_
             },
         )
         assert "cashflow" in context["request_scope"]["operations"]
-        assert len(context["request_scope"]["operations"]) == 11
+        assert len(context["request_scope"]["operations"]) == 12
+        assert "budgets" in context["request_scope"]["operations"]
         assert "reconciliation" in context["workspace"]
         matching = build_planning_context(
             session, "u", message="Match my recorded payment to the bill"

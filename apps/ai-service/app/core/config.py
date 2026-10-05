@@ -149,7 +149,7 @@ class Settings(BaseSettings):
         roles = {
             "router", "dependency_planner", "follow_up", "synthesizer", "risk_compliance",
             "agent_spending", "agent_budget", "agent_goal_strategy", "agent_investment_education",
-            "goal_capture", "budget_capture", "spending_capture",
+            "goal_capture", "budget_capture", "budget_input_requirements", "spending_capture",
             "education_query_planner", "education_answerability",
             "response_composer", "action_grounding_review",
         }

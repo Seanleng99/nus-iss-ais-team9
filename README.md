@@ -8,6 +8,10 @@ Application currency is fixed to **SGD**. Profile income, transaction amounts, g
 
 ## Repository Layout
 
+Coach's everyday Budget reasoning uses saved category limits and commitments together with spending evidence for the requested month or range. Prior history stays separate from the requested totals. General budgeting explanations do not require personal income; personal capacity estimates require income and explicit recurring schedules when no confirmed plan exists. See [Budget reasoning contracts](docs/budget-planning.md#everyday-reasoning-context) for the local implementation and verification limits.
+
+Coach's everyday Budget reasoning uses saved category limits and commitments together with spending evidence for the requested month or range. Prior history stays separate from the requested totals. General budgeting explanations do not require personal income; personal capacity estimates require income and explicit recurring schedules when no confirmed plan exists. See [Budget reasoning contracts](docs/budget-planning.md#everyday-reasoning-context) for the local implementation and verification limits.
+
 ```text
 apps/
   frontend/          Streamlit user interface
@@ -57,7 +61,9 @@ Incomplete statements enter a short clarification flow instead of guessing. Miss
 
 ## Budget planning and confirmation
 
-In Coach, ask for category limits such as: "Set my October 2026 budget to 500 for food and 120 for pet care." Coach collects missing month/year, category and amount details, then previews the exact changes. All personal financial amounts use SGD, including bare numbers and `$`; Coach and agents do not ask for currency confirmation. Explicit foreign-currency amounts are unsupported and require SGD amounts without automatic conversion. Reply `confirm budget` to save, `cancel` to discard, or provide corrections. Income is not required to record an explicit category limit. Dates are never defaulted from the current month.
+In Coach, ask for category limits such as: "Set my October 2026 budget to 500 for food and 120 for pet care." Coach collects missing month/year, category and amount details, then previews the exact changes. All personal financial amounts use SGD, including bare numbers and `$`; Coach and agents do not ask for currency confirmation. Explicit foreign-currency amounts are unsupported and require SGD amounts without automatic conversion. Reply `confirm budget` to save, `cancel` to discard, or provide corrections. Income is not required to record an explicit category limit. The sidebar month is a default when no period is specified; explicit months, ranges and years override it. Ambiguous dates still require clarification.
+
+Coach can show all saved budgets, compare saved months, summarise a year, change limits across multiple saved months, remove category limits and delete specified monthly budgets. Examples: "Show all my saved budgets", "Compare my budgets from August through October 2026", "Change food to SGD 600 in my budgets from October through December 2026", "Remove the food limit from my November 2026 budget", and "Delete my November 2026 budget". Reads and comparisons make no changes. Edits and deletions preview every affected month and require `confirm budget`; batch changes apply together or remain unapplied. Unspecified values and financial records are kept. See [budget scope and management](docs/budget-planning.md#saved-budgets-across-months-and-years) for safeguards, APIs and capacity semantics.
 
 Drafts belong to the authenticated profile and conversation. Confirmation updates only the listed categories and preserves other limits. A changed budget, an intervening turn, or a preview older than 30 minutes requires a fresh preview and confirmation. Draft consumption, budget updates, and the chat exchange commit together. The Budget page provides allocation and spending charts, over-limit indicators, and suggested or custom category names; transactions also accept custom categories so their spending can be tracked against the same limits.
 

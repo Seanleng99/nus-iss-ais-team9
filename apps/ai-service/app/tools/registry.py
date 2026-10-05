@@ -1,6 +1,8 @@
 from datetime import date
 from decimal import Decimal
 
+from coach_math.budget_baseline import recurring_month_total
+
 from app.core.guardrails import validate_tool_permission
 from app.core.schemas import AgentName, UserFinancialSnapshot
 from app.core.telemetry import trace_method
@@ -15,9 +17,19 @@ def summarize_transactions(snapshot: UserFinancialSnapshot) -> dict[str, float]:
 
 
 @trace_method
-def calculate_budget(snapshot: UserFinancialSnapshot) -> dict[str, float | str]:
+def calculate_budget(snapshot: UserFinancialSnapshot) -> dict:
     income = snapshot.monthly_income.amount if snapshot.monthly_income else 0.0
-    recurring = sum(item.amount.amount for item in snapshot.recurring_expenses)
+    evidence = recurring_month_total(snapshot.recurring_expenses, snapshot.period_start)
+    recurring = evidence["monthly_amount"]
+    if recurring is None:
+        return {
+            "income": income, "recurring_expenses": None, "disposable_income": None,
+            "needs": None, "wants": None, "savings": None,
+            "period_start": evidence["period_start"], "recurring_evidence": evidence,
+            "calculation_status": "recurring_terms_unconfirmed",
+            "method": "Savings capacity unavailable until recurring payment frequency and obligation identity are confirmed.",
+            "questions": ["Confirm the frequency of recurring expenses and identify repeated payments for the same obligation before calculating monthly capacity."],
+        }
     disposable = max(income - recurring, 0.0)
     return {
         "income": round(income, 2),
@@ -26,6 +38,8 @@ def calculate_budget(snapshot: UserFinancialSnapshot) -> dict[str, float | str]:
         "needs": round(disposable * 0.5, 2),
         "wants": round(disposable * 0.3, 2),
         "savings": round(disposable * 0.2, 2),
+        "funding_gap": round(max(recurring - income, 0.0), 2),
+        "period_start": evidence["period_start"], "recurring_evidence": evidence,
         "method": "50/30/20 baseline after recurring expenses",
     }
 

@@ -22,7 +22,7 @@ flowchart LR
   C --> G
 ```
 
-The orchestrator controls which agents may request retrieval. Investment Education receives a sanitized topic question and risk constraint. Budget and Goal Strategy may request `education_context` for allowlisted investment topics; the retriever receives canonical topic labels, never raw transactions or identifiers. Spending and calculation-only paths remain retrieval-free. Compliance receives Education evidence in the draft but independently reads only the Policy corpus.
+The orchestrator controls which agents may request retrieval. Investment Education receives a sanitized topic question and risk constraint and is the only agent with direct `education_retriever` permission. Budget and Goal Strategy may request `education_context` for allowlisted investment topics through the capability registry. The orchestrator checks Investment Education's tool permission and executes its grounding logic, then returns evidence to the requesting agent. Retrieval events identify Investment Education as the executor; dependency events retain the consumer. The retriever receives canonical topic labels, never raw transactions or identifiers. Spending and calculation-only paths remain retrieval-free. Compliance receives Education evidence in the draft but independently reads only the Policy corpus.
 
 ## Corpus preparation and approval
 

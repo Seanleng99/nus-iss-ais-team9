@@ -7,7 +7,7 @@ The simplified Budget page, inline method selector and monthly-editor improvemen
 Saved budgets open with **Spending this month**: **Budgeted / Spent / Remaining**
 (or **Over budget**), overall usage and the charts below. **Edit budget** opens the
 monthly editor immediately; saved spending and charts remain visible below it. A month without a saved budget opens setup directly.
-The selected month remains shared with Overview and Coach.
+The selected month remains shared with Overview and supplies Coach's default when the message does not specify a period. Coach can also use explicitly requested months, ranges, years or all saved budgets.
 
 - The **Category spending** bar chart compares saved limits with recorded expenses and labels the amounts directly. Over-limit categories appear first in red and their overage amounts are called out above the chart. Spending without limits is shown in amber with no invented budgeted amount. Zero limits are labeled explicitly. Per-category progress cards are removed; the overall budget-used bar remains. Editing a limit does not change saved spending or either chart until saving succeeds.
 - **Category spending** and **Budget allocation** are always visible when their data is available, side by side on desktop and stacked on narrow screens. There are no chart switches or chart expanders. Allocation shows the share of saved expense limits; savings are separate. Empty data gets an explanation instead of a misleading chart. Pace details, automatic adjustments and month-copy controls remain removed.
@@ -19,6 +19,18 @@ The selected month remains shared with Overview and Coach.
 - Missing limits, income, savings and category types are explained beside their controls. Reasons for an unavailable save also appear near the button: incomplete inputs, an empty category list, invalid method percentages, a shortfall or no changes to save. Backend rejections retain inputs and require renewed confirmation. Success returns to saved spending with month-specific confirmation that remains visible across reruns.
 - **Explore a change** is removed. Direct editing already shows the effect on monthly affordability before saving. Ask Coach for comparisons or tradeoffs; the deterministic comparison tools and their separate adoption/confirmation contract remain available there.
 - Overview offers **View budget** for saved plans and **Set up budget** when no category limits exist. View budget opens monitoring; **Edit budget** starts editing on Budget. The duplicate **Ask Coach** button is removed from Budget. Coach remains available in the sidebar with the shared selected month and saved-plan context; unsaved editor values are not treated as confirmed settings.
+
+## Coach budget management — 5 October 2026
+
+Coach's caption reads **Default month: October 2026** (using the actual selection). Its help text explains that the selection is used only when the question omits a period. The former "Budget capacity uses the selected month" wording is removed.
+
+Ask Coach to show saved budgets, compare months or summarise a year without changing data. To change saved limits over several months, remove a category, or delete a monthly budget, name the period and requested change. Coach shows the exact before/after values for every affected month. Reply `confirm budget` to apply the whole batch, provide corrections for another preview, or `cancel`. Missing target budgets, invalid allocations and saved commitments block the batch instead of silently skipping months.
+
+Changing limits preserves each month's other categories, income, savings and method. Removing limits keeps recorded transactions. Deleting a monthly budget keeps transactions, goals, bills, reserves and commitment settings, and retains a restorable budget-history version. Delete requests cannot bypass saved commitments. Deleted plans no longer provide confirmed savings capacity.
+
+Explicit months also determine the saved savings pool used in goal calculations. For a requested range, Coach assesses each month separately; a yearly savings total is never treated as one recurring monthly pool. Missing planning settings remain unavailable. The new workflows have local contract coverage; their deployment and live-provider acceptance have not yet been established.
+
+Ordinary advice such as “Which parts of my November budget could I adjust?” receives that month's saved category limits and protected commitments. Spending evidence follows the same period, with prior history identified separately even when the selected month has no transactions. General questions such as “Explain how to calculate disposable income” do not require personal income. If there is no confirmed plan, recurring expenses need known schedules before Coach estimates capacity; historical repeated payments are not summed as separate monthly bills. See [everyday reasoning contracts](budget-planning.md#everyday-reasoning-context).
 
 ## Browser acceptance follow-up — 1 October 2026
 

@@ -212,14 +212,14 @@ def _preview(session: Session, user_id: str, draft: BudgetDraft) -> tuple[str, d
     return "\n\n".join(lines), baseline
 
 
-def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse) -> None:
+def stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse, *, default_period=None) -> None:
     before = response.answer
-    _stage_budget_draft(session, user_id, chat, response)
+    _stage_budget_draft(session, user_id, chat, response, default_period=default_period)
     if response.answer != before and not response.blocked:
         response.answer = localize_backend_text(response.answer, response.audit.get("response_locale"))
 
 
-def _stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse) -> None:
+def _stage_budget_draft(session: Session, user_id: str, chat, response: CoachResponse, *, default_period=None) -> None:
     # An intervening turn can never leave an old preview armed for a generic 'yes'.
     if chat.pending_budget:
         chat.pending_budget = {**chat.pending_budget, "ready": False}
@@ -249,7 +249,8 @@ def _stage_budget_draft(session: Session, user_id: str, chat, response: CoachRes
             try:
                 previous_values = json.loads(previous_workspace["payload_json"])
                 new_values = json.loads(draft.workspace.payload_json)
-                if isinstance(previous_values, dict) and isinstance(new_values, dict):
+                if (isinstance(previous_values, dict) and isinstance(new_values, dict)
+                    and (draft.workspace.operation != "budgets" or previous_values.get("action") == new_values.get("action"))):
                     draft.workspace.payload_json = json.dumps({**previous_values, **new_values})
             except (ValueError, TypeError):
                 pass  # Invalid structured data remains subject to authoritative validation.
@@ -261,13 +262,29 @@ def _stage_budget_draft(session: Session, user_id: str, chat, response: CoachRes
                 raise ValueError(" ".join(draft.questions))
             if draft.workspace is None:
                 raise ValueError("Supply the planning operation and its details. For multiple months: source month/year, first target month/year, number of months, actual take-home income, savings, expense coverage and carry rule. You can also use Plan upcoming months in Budget.")
+            if draft.workspace.operation == "budgets":
+                from app.services.budget_records import BudgetRecordRequest
+                command = BudgetRecordRequest.model_validate_json(draft.workspace.payload_json)
+                from coach_math.budget_scope import BudgetScope, resolve_budget_periods
+                turn = response.audit.get("turn_decision", {})
+                if turn.get("budget_scope_unclear"):
+                    raise ValueError("Specify the requested month and year or an unambiguous range.")
+                scope = BudgetScope.model_validate(turn["budget_scope"]) if turn.get("budget_scope") else None
+                if scope and scope.kind != "default":
+                    command.scope = scope
+                if command.scope.kind == "default":
+                    periods = resolve_budget_periods(command.scope, default_period or draft.period_start)
+                    command.scope = BudgetScope(kind="periods", periods=periods)
+                draft.workspace.payload_json = command.model_dump_json()
+                pending["draft"] = draft.model_dump(mode="json")
             pending["workspace_preview"] = preview_change(session, user_id, draft.workspace)
             pending["ready"] = not pending["workspace_preview"].get("read_only", False)
-            response.answer = describe_preview(pending["workspace_preview"])
+            response.answer = describe_preview(pending["workspace_preview"], locale=response.audit.get("response_locale", "en"))
         except ValueError as error:
             response.answer = "Nothing has been saved. " + _planning_error(error)
         chat.pending_budget = pending
-        response.audit["budget_capture"] = "workspace_preview" if pending["ready"] else "needs_input"
+        response.audit["budget_capture"] = "read_only_records" if pending.get("workspace_preview", {}).get("read_only") else "workspace_preview" if pending["ready"] else "needs_input"
+        response.audit["action_status"] = "read_only" if pending.get("workspace_preview", {}).get("read_only") else "preview" if pending["ready"] else "needs_input"
         response.audit["budget_workspace_version"] = "budget-workspace-v1"
         return
     if draft.action == "alternatives":
@@ -493,6 +510,9 @@ def _handle_budget_confirmation(session: Session, request: CoachRequest) -> Coac
             chat.pending_budget = None
             answer = "Planning draft cancelled. Nothing was saved."
             action_status = "cancelled"
+        elif chat.pending_budget.get("workspace_preview", {}).get("read_only"):
+            answer = "A read or comparison cannot be saved. Request an explicit budget change first."
+            action_status = "read_only"
         elif not chat.pending_budget.get("ready"):
             if request.message.strip().lower() in {"yes", "yes please"}:
                 return None
@@ -500,9 +520,10 @@ def _handle_budget_confirmation(session: Session, request: CoachRequest) -> Coac
             action_status = "needs_input"
         else:
             try:
+                pending_operation = chat.pending_budget["workspace_preview"]["operation"]
                 confirm_change(session, request.user_id, chat.pending_budget["workspace_preview"])
                 chat.pending_budget = None
-                answer = "Saved your confirmed planning changes. Review them on the Budget page."
+                answer = "Applied your confirmed budget changes to every listed month. Review the result on the Budget page." if pending_operation == "budgets" else "Saved your confirmed planning changes. Review them on the Budget page."
                 action_status = "saved"
             except ValueError as error:
                 chat.pending_budget = {**chat.pending_budget, "ready": False}

@@ -177,10 +177,12 @@ def sanitize_rag_document(text: str) -> GuardrailDecision:
     return GuardrailDecision(allowed=True, sanitized_text=sanitized, findings=findings)
 
 
+# Direct tool execution only; capability requests are authorized separately by
+# CapabilityRegistry before the Orchestrator invokes the permitted provider.
 TOOL_ALLOWLIST: dict[AgentName, set[str]] = {
     AgentName.SPENDING: {"transaction_summarizer"},
-    AgentName.BUDGET: {"budget_calculator", "budget_planner", "education_retriever"},
-    AgentName.GOAL_STRATEGY: {"goal_projection", "emergency_fund_summary", "education_retriever"},
+    AgentName.BUDGET: {"budget_calculator", "budget_planner"},
+    AgentName.GOAL_STRATEGY: {"goal_projection", "emergency_fund_summary"},
     AgentName.INVESTMENT_EDUCATION: {"education_retriever"},
     AgentName.RISK_COMPLIANCE: {"policy_checker", "policy_retriever"},
 }

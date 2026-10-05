@@ -176,7 +176,7 @@ class BaseAgent(ABC):
             SourceCitation.model_validate(source) for source in grounding.get("sources", [])
         ]
         system_prompt += citation_contract(narrative_sources)
-        if self.name == AgentName.BUDGET and grounding.get("capacity_source") != "confirmed_plan":
+        if self.name == AgentName.BUDGET and grounding.get("capacity_source") == "illustrative_fallback":
             system_prompt += (
                 "\nDescribe the supplied budget as an illustrative calculation: "
                 "say 'the baseline allocates', not 'you should allocate'. "
@@ -184,8 +184,8 @@ class BaseAgent(ABC):
                 "the user's current savings balance or observed saving behavior. "
                 "Do not infer actual expenses from category limits or claim that "
                 "a single transaction establishes a spending pattern. "
-                "recurring_expenses is the total recorded in the supplied snapshot, "
-                "not proof of all actual expenses. If it is zero, explicitly state "
+                "recurring_expenses is the requested month's projection from explicit recurrence terms, "
+                "not proof of all actual expenses or paid bills. If it is zero, explicitly state "
                 "that recorded recurring expenses total zero but actual expenses "
                 "are unknown and may reduce disposable income and these illustrative amounts. "
                 "Never claim that there are no expenses or no pending expenses."

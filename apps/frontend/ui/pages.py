@@ -1115,7 +1115,7 @@ def coach_page() -> None:
             get_period_start().strftime("%Y-%m") if ui_locale == "zh-Hans"
             else get_period_start().strftime("%B %Y")
         )
-        st.caption(label("coach.period", period=period))
+        st.caption(label("coach.period", period=period), help=label("coach.period_help"))
     
     # If we have a pending question and navigation was triggered, auto-submit it
     if pending_question and should_navigate:

@@ -449,6 +449,8 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
             "recurring_expenses": [{
                 "description": "Rent", "category": "housing", "amount": {"amount": 1500},
                 "occurred_on": "2026-08-01",
+                "obligation_id": "rent",
+                "recurrence": {"frequency": "monthly", "first_on": "2026-08-01", "next_due_on": "2026-09-01"},
             }],
             "goals": [{
                 "name": "Emergency fund", "target_amount": {"amount": 12000},

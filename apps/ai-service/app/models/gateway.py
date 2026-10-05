@@ -316,6 +316,12 @@ class LocalFixtureModelGateway:
         if prompt_id == "PROMPT_ID: budget_capture":
             from app.models.budget_fixture import fixture_budget_draft
             return json.dumps(fixture_budget_draft(payload))
+        if prompt_id == "PROMPT_ID: budget_input_requirements":
+            # Offline fixture only; production uses the semantic classifier.
+            text = payload["message"].casefold()
+            conceptual = any(term in text for term in ("explain", "in general", "definition", "formula", "example", "how does", "how do", "what is", "what are"))
+            personal = any(term in text for term in ("create", "build", "calculate", "how much", "afford", "feasible", "disposable", "capacity"))
+            return json.dumps({"requires_income": personal and not conceptual})
         if prompt_id == "PROMPT_ID: spending_capture":
             from app.models.recurring_fixture import apply_recurring_terms
             from app.models.spending_fixture import fixture_spending_draft
@@ -490,7 +496,14 @@ class LocalFixtureModelGateway:
             input_pattern("backend.services.session_context.recall_question"), message_text, re.IGNORECASE
         )) or bool(re.fullmatch(r"what did I tell you about (?:my )?income\??", message_text, re.IGNORECASE))
         memory_fields = ["monthly_income"] if memory_question and re.search(r"\bincome\b", message_text, re.IGNORECASE) else []
+        from app.models.budget_fixture import fixture_budget_scope, fixture_record_request
+        scope, unclear_scope = fixture_budget_scope(message_text, payload.get("today"))
+        record_request = fixture_record_request({"message": message_text, "pending_draft": pending_budget})
+        if record_request and "budget" not in selected:
+            selected.append("budget")
         return {
+            "budget_scope": scope,
+            "budget_scope_unclear": unclear_scope,
             "selected_agents": selected or ["budget"],
             "rationale": ["Offline fixture selected agents for repeatable integration testing."],
             "spending_capture": spending_capture,
@@ -503,7 +516,7 @@ class LocalFixtureModelGateway:
                 and any(word in str(payload["message"]).lower()
                         for word in ("realistic", "category-level", "propose spending limits", "check my budget plan", "50/30/20", "80/20", "zero-based", "savings first", "custom percentages", "scenario", "what if", "compare", "review", "pace", "adjustment", "funded alternatives", "multi-month", "carry forward", "rollover", "periodic"))
             ),
-            "budget_capture": budget_reply or (
+            "budget_capture": bool(record_request) or budget_reply or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower().split()
                         for word in ("set", "save", "add", "update", "record", "change"))
@@ -662,7 +675,14 @@ class LocalFixtureModelGateway:
         if prompt_id.endswith("spending"):
             summary = LocalFixtureModelGateway._spending_summary(payload, grounding)
         elif prompt_id.endswith("budget"):
-            if grounding.get("capacity_source") == "confirmed_plan":
+            if grounding.get("calculation_status") == "recurring_terms_unconfirmed":
+                return {"summary": grounding["questions"][0], "rationale": ["Recurring terms are unconfirmed."], "confidence": 1.0}
+            if grounding.get("capacity_source") == "period_plans":
+                capacity = grounding["capacity"]
+                summary = f"Requested months have SGD {capacity['known_savings_total']:.2f} in known planned savings in total; each monthly pool is separate."
+            elif grounding.get("calculation_status") == "requested_plan_unavailable":
+                summary = grounding["requested_capacity"]["reason"]
+            elif grounding.get("capacity_source") == "confirmed_plan":
                 capacity = grounding["capacity"]
                 summary = f"Your confirmed {capacity['period_start']} budget sets aside SGD {capacity['estimated_savings_capacity']:.2f} monthly savings, with SGD {capacity['unallocated_income']:.2f} unallocated. This is a planned allocation, not a savings balance."
             elif grounding.get("income", 0) == 0:
@@ -697,6 +717,8 @@ class LocalFixtureModelGateway:
                 combined = grounding.get("combined_feasibility", {})
                 if combined:
                     summary += f" For all listed goals together, the monthly shortfall is SGD {combined['monthly_shortfall']:.2f}; they share one pool."
+                if grounding.get("period_feasibility"):
+                    summary += " " + "; ".join(f"{row['period_start']}: {row['status']}" for row in grounding["period_feasibility"]) + ". Each month has its own shared pool."
         else:
             contexts = grounding.get("contexts", [])
             summary = (

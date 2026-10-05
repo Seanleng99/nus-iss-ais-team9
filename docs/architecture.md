@@ -2,6 +2,10 @@
 
 ## Implemented Logical View
 
+Coach resolves requested budget calendar scopes before specialist tasks. Backend-owned monthly plans and capacity contexts are selected by the requested month, month range, year or all-saved scope; the sidebar month supplies a default only when no period is named. Goal feasibility keeps each monthly savings pool separate. Saved-budget reads/comparisons and exact edit/delete proposals use the typed `budgets` workspace command. The backend validates ownership, preserves unspecified values, previews every affected month and applies confirmed mutations atomically with the chat exchange. See [budget scope contracts](budget-planning.md#saved-budgets-across-months-and-years).
+
+Ordinary Budget reasoning receives the scoped saved category limits, planning values and protected minimums. Owned monthly expense aggregates align Spending dependencies with that same scope and keep prior history separate, including when the requested month has no recorded transactions. Full expense/plan catalogs are removed before specialist scheduling; unrelated workspace settings are omitted from ordinary advice. Capability fingerprints include dates, historical records and scoped aggregate context so different periods cannot reuse an incompatible result. The fallback projects distinct obligations using explicit recurrence terms; unknown positive-cost schedules yield unavailable capacity. A constrained semantic input check permits general budgeting explanations without income while preserving missing-input requirements for personal calculations. See [everyday reasoning context](budget-planning.md#everyday-reasoning-context).
+
 ```mermaid
 flowchart LR
   User["User"] --> UI["Streamlit UI"]
@@ -18,9 +22,12 @@ flowchart LR
     Compliance["Risk and Compliance Agent"]
 
     Orchestrator -->|"Transactions"| Spending
-    Orchestrator -->|"Income + recurring expenses"| Budget
+    Orchestrator -->|"Income + recurring expenses + requested budget context"| Budget
     Orchestrator -->|"Savings goals"| Goal
     Orchestrator -->|"Question + risk constraints"| Invest
+    Budget -. "education_context request" .-> Orchestrator
+    Goal -. "education_context request" .-> Orchestrator
+    Invest -->|"Grounding for education_context"| Orchestrator
     Spending --> Synthesis
     Budget --> Synthesis
     Goal --> Synthesis
@@ -30,8 +37,6 @@ flowchart LR
 
   Backend -->|"Coach request + minimized financial snapshot"| Orchestrator
   EducationRAG["Education RAG: CPF, MAS, SGX, Government"] -->|"Investment education"| Invest
-  EducationRAG -->|"Conditional investment concepts"| Budget
-  EducationRAG -->|"Conditional investment concepts"| Goal
   PolicyRAG["Policy RAG: advice boundaries + safety rules"] -->|"Independent validation"| Compliance
   Compliance -->|"Approved or blocked answer"| Backend
 
@@ -40,11 +45,11 @@ flowchart LR
   Compliance -. "Model-assisted review" .-> OpenAI
 ```
 
-PostgreSQL is the system of record for personal financial data. The application backend owns database access and sends only a minimized, request-scoped financial snapshot to the private AI service. Agents do not connect directly to PostgreSQL: Spending receives transactions, Budget receives income and recurring expenses, Goal Strategy receives savings goals, and Investment Education receives only the sanitized question and relevant risk constraints.
+PostgreSQL is the system of record for personal financial data. The application backend owns database access and sends owned financial snapshots and compact monthly plan/expense catalogs to the private AI service. The Orchestrator selects the requested evidence before model and specialist invocation. Agents do not connect directly to PostgreSQL: Spending receives scoped transactions and expense aggregates, Budget receives income, recurrence terms and scoped saved-plan context, Goal Strategy receives savings goals, and Investment Education receives only the sanitized question and relevant risk constraints.
 
-The retrieval design separates educational knowledge from policy controls. Investment Education can retrieve trusted CPF, MAS, SGX, and government education content. Budget and Goal Strategy retrieve only when the user explicitly asks about an allowlisted investment concept relevant to their calculation. Spending does not use RAG. Risk and Compliance independently retrieves advice-boundary and safety policy before approving or blocking the synthesized response.
+The retrieval design separates educational knowledge from policy controls. Investment Education can retrieve trusted CPF, MAS, SGX, and government education content. Budget and Goal Strategy request education evidence only when the user explicitly asks about an allowlisted investment concept relevant to their calculation. Spending does not use RAG. Risk and Compliance independently retrieves advice-boundary and safety policy before approving or blocking the synthesized response.
 
-Investment Education has a dedicated `education_retriever`; Budget and Goal Strategy can request the same governed retriever through the orchestrator's typed `education_context` capability; Risk and Compliance has an independently allowlisted `policy_retriever`. Both collections provide offline fixtures for local and CI execution and checksum-verified, version-pinned local-document retrievers for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Spending remains retrieval-free.
+Investment Education alone has direct `education_retriever` permission. Budget and Goal Strategy are authorized by the capability registry to request the orchestrator's typed `education_context` capability. The orchestrator obtains evidence through Investment Education's grounding logic and validates that provider's direct tool permission; the requesting agents receive resolved evidence without retriever access. Risk and Compliance has an independently allowlisted `policy_retriever`. Both collections provide offline fixtures for local and CI execution and checksum-verified, version-pinned local-document retrievers for deployed environments. Education citations remain user-facing, while Policy evidence is retained separately in the Compliance result and privacy-safe trace. Spending remains retrieval-free.
 
 ## Implemented Physical AWS View
 

@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from coach_i18n import SupportedLocale, normalize_locale
+from coach_math.budget_scope import BudgetScope
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 
@@ -268,6 +269,7 @@ class DependencyEdge(StrictContractModel):
 
 class AgentTask(StrictContractModel):
     _education_grounding_snapshot: Any = PrivateAttr(default=None)
+    _budget_requires_income: bool | None = PrivateAttr(default=None)
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     agent: AgentName
     sanitized_message: str
@@ -283,7 +285,7 @@ class AgentTask(StrictContractModel):
     def validate_role_scope(self):
         allowed_fields = {
             AgentName.SPENDING: {"recent_transactions", "historical_transactions", "period_start", "transaction_context"},
-            AgentName.BUDGET: {"monthly_income", "recurring_expenses", "planning_context", "saved_budget_capacity"},
+            AgentName.BUDGET: {"monthly_income", "recurring_expenses", "period_start", "planning_context", "saved_budget_capacity"},
             AgentName.GOAL_STRATEGY: {"goals", "emergency_fund"},
             AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
         }
@@ -419,6 +421,8 @@ class FollowUpResolution(StrictContractModel):
 
 
 class RouterDecision(BaseModel):
+    budget_scope: BudgetScope | None = None
+    budget_scope_unclear: bool = False
     follow_up_source_index: int | None = Field(default=None, ge=0, le=7)
     follow_up_subject_position: int | None = Field(default=None, ge=1)
     follow_up_option_index: int | None = Field(default=None, ge=1, le=12)

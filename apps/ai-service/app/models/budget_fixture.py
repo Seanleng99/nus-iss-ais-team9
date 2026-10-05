@@ -1,6 +1,9 @@
 """Conservative, offline-only budget fixture; production uses structured model extraction."""
 
 import re
+from datetime import date
+
+from coach_math.calendar import financial_today
 
 MONTHS = (
     "january",
@@ -18,7 +21,77 @@ MONTHS = (
 )
 
 
+def fixture_budget_scope(text, today=None):
+    """Offline calendar examples only; production uses the semantic router."""
+    today = date.fromisoformat(today) if isinstance(today, str) else today or financial_today()
+    lower = text.lower()
+    if re.search(r"\ball\s+(?:(?:my|saved|existing)\s+)*budgets?\b", lower):
+        return {"kind": "all"}, False
+    names = "|".join(MONTHS)
+    span = re.search(rf"\b({names})(?:\s+(20\d{{2}}))?\s+(?:through|to|until|[-\u2013])\s+({names})\s+(20\d{{2}})\b", lower)
+    if span:
+        start_year = int(span[2] or span[4])
+        start_month, end_month = MONTHS.index(span[1]) + 1, MONTHS.index(span[3]) + 1
+        if span[2] is None and start_month > end_month:
+            start_year -= 1
+        return {"kind": "range", "start": f"{start_year}-{start_month:02d}-01", "end": f"{span[4]}-{end_month:02d}-01"}, False
+    dates = [f"{year}-{int(month):02d}-01" for year, month in re.findall(r"\b(20\d{2})-(0[1-9]|1[0-2])(?:-01)?\b", lower)]
+    dates += [f"{year}-{MONTHS.index(month) + 1:02d}-01" for month, year in re.findall(rf"\b({names})\s+(20\d{{2}})\b", lower)]
+    if dates:
+        return {"kind": "periods", "periods": list(dict.fromkeys(dates))}, False
+    year = re.search(r"\b(20\d{2})\b", lower)
+    if year and not re.search(rf"\b({names})\b", lower):
+        return {"kind": "range", "start": f"{year[1]}-01-01", "end": f"{year[1]}-12-01"}, False
+    relative = re.search(r"\b(this|last|next)\s+(month|year)\b", lower)
+    if relative:
+        offset = {"this": 0, "last": -1, "next": 1}[relative[1]]
+        if relative[2] == "year":
+            year = today.year + offset
+            return {"kind": "range", "start": f"{year}-01-01", "end": f"{year}-12-01"}, False
+        year, month = divmod(today.year * 12 + today.month - 1 + offset, 12)
+        return {"kind": "periods", "periods": [f"{year}-{month + 1:02d}-01"]}, False
+    return {"kind": "default"}, bool(re.search(rf"\b({names})\b", lower))
+
+
+def fixture_record_request(payload):
+    text = payload["message"]
+    previous = (payload.get("pending_draft") or {}).get("workspace") or {}
+    lower = text.lower()
+    records = bool(re.search(r"\bbudgets?\b", lower) and re.search(
+        r"\b(show|list|read|summari[sz]e|delete|remove|edit|update|change|compare)\b", lower))
+    if not records and previous.get("operation") != "budgets":
+        return None
+    if "what if" in lower or "scenario" in lower or "review" in lower or "compare budget methods" in lower:
+        return None
+    if re.search(r"50/30/20|80/20|zero[- ]based|savings first|custom percentages|flexible method", lower):
+        return None
+    import json
+    command = json.loads(previous["payload_json"]) if previous.get("operation") == "budgets" else {}
+    command.setdefault("action", "read")
+    scope, unclear = fixture_budget_scope(text, payload.get("recorded_context", {}).get("today"))
+    if scope["kind"] != "default" or "scope" not in command:
+        command["scope"] = scope
+    if re.search(r"\b(delete|remove)\b.*\b(?:monthly )?budgets?\b", lower) and "category" not in lower and "limit" not in lower:
+        command["action"] = "delete"
+    elif re.search(r"\b(edit|update|change|remove|delete)\b", lower):
+        command["action"] = "edit"
+    elif "compare" in lower:
+        command["action"] = "compare"
+    changes = [{"category": match[1].strip().lower(), "limit_amount": float(match[2])}
+               for match in re.finditer(r"(?:^|[;\n,])\s*([\w ]+):\s*(?:SGD\s*|\$)?(\d+(?:\.\d{1,2})?)", text, re.IGNORECASE)]
+    if changes:
+        command["categories"] = changes
+    removal = re.search(r"\bremove (?:the )?([\w ]+?) (?:category|limit)\b", lower)
+    if removal:
+        command["remove_categories"] = [removal[1].strip()]
+    return {"action": "workspace", "workspace": {"operation": "budgets", "payload_json": json.dumps(command)},
+            "questions": ["Which month and year should I use?"] if unclear else []}
+
+
 def fixture_budget_draft(payload):
+    records = fixture_record_request(payload)
+    if records is not None:
+        return records
     text = payload["message"].strip()
     scenario = re.search(r"scenario ([A-Za-z0-9 _-]+): (income|savings|[a-z ]+)=(\d+(?:\.\d{1,2})?)", text, re.IGNORECASE)
     if scenario:

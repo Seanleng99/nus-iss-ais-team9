@@ -185,7 +185,8 @@ def test_planning_evidence_survives_paraphrases_without_trigger_nouns(db_session
         assert {"cashflow", "reserves", "review_preferences", "constraints:2026-10-01", "timing:2026-10-01"} <= settings.keys()
         assert context["recorded_spending"][0]["categories"] == {"food": 100.0}
         assert context["request_scope"]["selection"] == "semantic"
-        assert len(context["request_scope"]["operations"]) == 11
+        assert len(context["request_scope"]["operations"]) == 12
+        assert "budgets" in context["request_scope"]["operations"]
 
 
 def test_planning_limits_are_reported_and_requested_period_is_retained(db_session_factory):

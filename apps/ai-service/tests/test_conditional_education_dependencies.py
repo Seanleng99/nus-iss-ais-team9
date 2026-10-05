@@ -1,7 +1,9 @@
 import json
 
 from app.core.config import Settings
-from app.core.schemas import CoachRequest
+from app.core.guardrails import TOOL_ALLOWLIST
+from app.core.run_trace import task_context
+from app.core.schemas import AgentName, CoachRequest
 from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
 from app.rag.retriever import (
@@ -17,9 +19,11 @@ class CountingEducationRetriever:
     def __init__(self) -> None:
         self.delegate = LocalEducationRetriever()
         self.queries: list[str] = []
+        self.executors: list[str | None] = []
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         self.queries.append(query)
+        self.executors.append((task_context.get() or {}).get("agent"))
         return self.delegate.retrieve(query, top_k)
 
 
@@ -37,6 +41,8 @@ def budget_request(message: str) -> CoachRequest:
                     "category": "housing",
                     "amount": {"amount": 1500},
                     "occurred_on": "2026-08-01",
+                    "obligation_id": "rent",
+                    "recurrence": {"frequency": "monthly", "first_on": "2026-08-01", "next_due_on": "2026-09-01"},
                 }
             ],
         },
@@ -67,6 +73,7 @@ def test_budget_resolves_education_tool_without_scheduling_investment_agent() ->
         "General investment education about diversification, investment risk",
     }
     assert len(retriever.queries) == len(set(retriever.queries))
+    assert set(retriever.executors) == {"investment_education"}
     assert all("5,000" not in query for query in retriever.queries)
     budget = next(result for result in response.agent_results if result.agent == "budget")
     assert budget.data["income"] == 5000.0
@@ -143,6 +150,7 @@ def test_goal_and_budget_reuse_one_education_tool_result() -> None:
 
     assert len(retriever.queries) == 3
     assert len(retriever.queries) == len(set(retriever.queries))
+    assert set(retriever.executors) == {"investment_education"}
     education_resolutions = [
         item
         for item in response.audit["dependency_resolutions"]
@@ -247,6 +255,28 @@ def test_optional_education_failure_preserves_deterministic_budget() -> None:
     )
     budget = next(result for result in response.agent_results if result.agent == "budget")
 
+    assert response.blocked is False
+    assert budget.data["income"] == 5000.0
+    assert budget.data["evidence_status"] == "insufficient"
+    assert budget.data["dependency_warnings"] == [
+        "Optional capability education_context was unavailable."
+    ]
+    assert any(
+        item["reason_code"] == "OPTIONAL_TOOL_UNAVAILABLE"
+        for item in response.audit["dependency_resolutions"]
+    )
+
+
+def test_denied_retrieval_provider_preserves_budget_without_querying(monkeypatch) -> None:
+    monkeypatch.setitem(TOOL_ALLOWLIST, AgentName.INVESTMENT_EDUCATION, set())
+    retriever = CountingEducationRetriever()
+
+    response = orchestrator(retriever).handle(
+        budget_request("Explain investment risk while creating my budget.")
+    )
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+
+    assert retriever.queries == []
     assert response.blocked is False
     assert budget.data["income"] == 5000.0
     assert budget.data["evidence_status"] == "insufficient"

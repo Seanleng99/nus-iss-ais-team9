@@ -55,7 +55,7 @@ def planning_operations(message, pending=None):
     """Capabilities available to semantic routing, independent of trigger nouns."""
     del message, pending
     return ["adaptive_review", "cashflow", "commitments", "continuity", "debt_compare",
-            "reconcile", "reserves", "restore", "reviews", "timing", "unlink"]
+            "reconcile", "reserves", "restore", "reviews", "timing", "unlink", "budgets"]
 
 
 def build_planning_context(session, user_id: str, *, today: date | None = None,
@@ -91,6 +91,17 @@ def build_planning_context(session, user_id: str, *, today: date | None = None,
         if profile and profile.monthly_income is not None
         else None,
     }
+    from app.services.budget_capacity import build_capacity_context
+    from app.services.budget_records import owned_budgets
+    records = owned_budgets(session, user_id)
+    data["today"] = str(today)
+    data["budget_periods"] = [str(record.period_start) for record in records]
+    from app.services.budget_reasoning import saved_plan_context, spending_catalog
+    data["budgets_by_period"] = {str(record.period_start): saved_plan_context(session, user_id, record)
+                                for record in records}
+    data["spending_by_period"] = spending_catalog(session, user_id)
+    data["capacity_by_period"] = {str(record.period_start): build_capacity_context(session, user_id, record.period_start)
+                                  for record in records}
     if message is not None:
         data["request_scope"] = {"operations": operations, "selection": "semantic",
                                  "authorization": "read_only_context"}
@@ -98,23 +109,7 @@ def build_planning_context(session, user_id: str, *, today: date | None = None,
         data["selected_period"] = str(period)
         record = repository.get(user_id, period)
         if record:
-            data["selected_budget"] = {
-                "period_start": str(period), "currency": record.currency,
-                "categories": {c.category: float(c.limit_amount) for c in record.categories},
-                "planning": record.planning,
-            }
-            if record.planning:
-                data["selected_budget"]["affordability"] = affordability(data["selected_budget"]["categories"], PlanningInputs.model_validate({k: v for k, v in record.planning.items() if k != "version"}))
-                from app.services.budget_constraints import requirements
-                try:
-                    required = requirements(session, user_id, period)
-                    if required:
-                        data["selected_budget"]["restrictions"] = {
-                            "category_minimums": {k: v / 100 for k, v in required["floors"].items()},
-                            "savings_minimum": required["savings"] / 100,
-                        }
-                except ValueError:
-                    data["selected_budget"]["restriction_status"] = "Saved restrictions need review; the backend will check them again."
+            data["selected_budget"] = data["budgets_by_period"][str(period)]
     return data
 
 

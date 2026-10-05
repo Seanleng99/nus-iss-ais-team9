@@ -81,6 +81,8 @@ def budget_request(message="Create my monthly budget."):
                 "description": "Synthetic rent", "category": "housing",
                 "amount": {"currency": "SGD", "amount": 1500},
                 "occurred_on": "2026-08-01",
+                "obligation_id": "synthetic-rent",
+                "recurrence": {"frequency": "monthly", "first_on": "2026-08-01", "next_due_on": "2026-09-01"},
             }],
         },
     )

@@ -731,6 +731,7 @@ class RiskComplianceAgent:
                 self.prompts.get("risk_compliance")
                 + "\nBudget workflow context: monthly expense limits, explicit debt minimum payments and user-chosen savings contributions are budgeting scope. "
                 "A budget_draft with action=workspace (or continuity) is an unsaved settings proposal. The authenticated backend validates owned records and missing fields, displays an exact preview, and requires a separate confirmation before any write. Treat this extraction as budget planning, not execution of a financial transaction. All existing safety and privacy checks still apply. "
+                "Workspace operation=budgets reads/compares owned monthly plans or proposes exact edits, category removals or deletion across requested months. Reads never write; edits/deletes require backend validation and a separate confirmation. Calendar ranges and yearly totals are valid budget scopes. "
                 "A budget_draft with action=alternatives requests a read-only backend calculation from confirmed owned commitments; it does not itself calculate or save amounts. "
                 "When commitments are absent the backend asks for setup. A truthful statement of this handoff is an application capability, not a financial recommendation requiring investment evidence. "
                 "Still block invented amounts, claims that missing inputs are known, personal investment/product advice, guarantees and unsafe content; do not treat draft labels as proof of safety."
@@ -860,13 +861,24 @@ class RiskComplianceAgent:
                                     "savings",
                                     "method",
                                     "spending_context",
+                                    "saved_budget_context",
+                                    "recurring_evidence",
+                                    "funding_gap",
+                                    "period_start",
                                     "projections",
                                     "emergency_fund",
                                     "monthly_savings_capacity",
+                                    "period_feasibility",
+                                    "requested_capacity",
                                     "feasibility",
                                     "combined_feasibility",
                                     "category_totals",
                                     "transaction_count",
+                                    "monthly_category_totals",
+                                    "historical_months",
+                                    "historical_transaction_count",
+                                    "recorded_totals_complete",
+                                    "caveat",
                                     "category_trends",
                                     "temporal_patterns",
                                     "anomalies",

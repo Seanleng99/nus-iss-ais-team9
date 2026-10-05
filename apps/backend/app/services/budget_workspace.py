@@ -19,7 +19,7 @@ from app.services.financial_workspace import lock_workspace, read_section, write
 
 class WorkspaceChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare", "restore", "adaptive_review"]
+    operation: Literal["cashflow", "commitments", "reconcile", "unlink", "continuity", "reviews", "timing", "reserves", "debt_compare", "restore", "adaptive_review", "budgets"]
     payload_json: str = Field(default="{}", max_length=30000)
 
 
@@ -127,7 +127,7 @@ def evidence(session, user_id):
             },
             "date": local_today(),
             "budgets": {
-                str(b.period_start): _snapshot(b)
+                str(b.period_start): {"id": str(b.id), "snapshot": _snapshot(b)}
                 for b in session.scalars(
                     select(MonthlyBudgetRecord).where(MonthlyBudgetRecord.user_id == user_id)
                 )
@@ -153,6 +153,9 @@ def evidence(session, user_id):
 
 
 def build_change(session, user_id, change):
+    if change.operation == "budgets":
+        from app.services.budget_records import build_record_change
+        return build_record_change(session, user_id, json.loads(change.payload_json))
     from app.services.budget_constraints import AllocationPolicy, validate_policy
     from app.services.budget_continuity import ContinuityRequest, ReviewPreferences, preview_batch
     from app.services.budget_edits import apply_edits
@@ -267,7 +270,8 @@ def preview_change(session, user_id, change):
     return {
         "preview_id": str(uuid4()),
         "operation": change.operation,
-        "read_only": change.operation in {"debt_compare", "adaptive_review"},
+        "read_only": change.operation in {"debt_compare", "adaptive_review"} or (
+            change.operation == "budgets" and target["action"] in {"read", "compare"}),
         "target": target,
         "details": details,
         "labels": context(session, user_id),
@@ -301,6 +305,11 @@ def confirm_change(session, user_id, pending):
             "This preview expired or its financial records/settings changed. Request a fresh preview before confirming"
         )
     op, target = pending["operation"], pending["target"]
+    if pending.get("read_only"):
+        raise ValueError("A read-only comparison/review cannot be saved; request an explicit change first")
+    if op == "budgets":
+        from app.services.budget_records import apply_record_change
+        return apply_record_change(session, user_id, target)
     if op in {"debt_compare", "adaptive_review"}:
         raise ValueError("A read-only comparison/review cannot be saved; explicitly revise the relevant commitments and budget through a fresh preview")
     if op == "restore":
@@ -340,7 +349,7 @@ def confirm_change(session, user_id, pending):
     )
 
 
-def describe_preview(preview):
+def describe_preview(preview, *, locale="en"):
     import re
 
     def safe(value):
@@ -350,6 +359,9 @@ def describe_preview(preview):
         return f"SGD {value:,.2f}"
 
     op, target, details = preview["operation"], preview["target"], preview["details"]
+    if op == "budgets":
+        from app.services.budget_records import describe_record_change
+        return describe_record_change(target, details, locale=locale)
     if op == "debt_compare":
         from app.services.budget_tradeoffs import describe_tradeoffs
         return describe_tradeoffs(details)

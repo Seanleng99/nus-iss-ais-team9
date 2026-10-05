@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from coach_i18n import input_pattern, localize_reviewed, request_locale, translate
 from coach_i18n import response_language as request_language
+from coach_math.calendar import financial_today
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.base import BaseAgent
@@ -438,7 +439,7 @@ class AgentOrchestrator:
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
             routing_mode = "chat_memory"
             routing_actor = "orchestrator"
-        elif requested_agents:
+        elif requested_agents and "budget_periods" not in request.budget_context:
             decision = RouterDecision(
                 selected_agents=requested_agents,
                 rationale=[
@@ -455,10 +456,12 @@ class AgentOrchestrator:
                 "conversation_context": [item.model_dump(exclude_defaults=True) for item in request.conversation_context],
                 "session_context": request.session_context.model_dump(exclude_none=True),
                 "follow_up": resolution.model_dump(exclude_none=True),
-                "requested_agents": None,
+                "requested_agents": requested_agents or None,
                 "pending_goal": request.pending_goal,
                 "pending_budget": request.pending_budget,
                 "pending_transaction": request.pending_transaction,
+                "default_budget_period": request.budget_context.get("selected_period"),
+                "today": request.budget_context.get("today", str(financial_today())),
                 "snapshot_features": {
                     "has_monthly_income": request.snapshot.monthly_income is not None,
                     "recurring_expense_count": len(request.snapshot.recurring_expenses),
@@ -549,6 +552,17 @@ class AgentOrchestrator:
                     "Planning requires budget_capture=true and budget. General explanations of rules "
                     "alone are not planning requests. A pending draft does "
                     "not make an unrelated new question a budget-setting request."
+                    "\nSaved budget lookup/listing, comparison of saved months, yearly summaries, "
+                    "category removal, budget deletion and multi-month edits require budget_capture=true "
+                    "and budget, even without income. These use the budget specialist's records command. "
+                    "Return budget_scope for the period relevant to budget or goal-capacity calculations: "
+                    "kind periods with exact first-of-month dates, range with inclusive start/end, "
+                    "all for all saved budgets, default only when no period is specified. "
+                    "A named year means January through December; resolve relative months/years using today. "
+                    "The sidebar month is a default; explicit dates always override it, including goal feasibility. "
+                    "For an ambiguous month/year or range, set budget_scope_unclear=true and ask; "
+                    "never fill a missing year from the sidebar or select an unrelated saved plan. "
+                    "Keep a pending budget scope for genuine corrections, never for unrelated questions."
                     + "\nSet spending_capture=true and include spending for statements recording a "
                     "new expense the user already paid or was charged for ('I spent $5 on chicken "
                     "rice'), for questions looking up recorded spending on a day or period ('what "
@@ -601,6 +615,8 @@ class AgentOrchestrator:
             )
             routing_mode = "model"
             routing_actor = "router"
+            if requested_agents:
+                decision.selected_agents = requested_agents
             needs_semantic_specialist = (
                 decision.education_topics
                 and AgentName.INVESTMENT_EDUCATION not in decision.selected_agents
@@ -709,6 +725,8 @@ class AgentOrchestrator:
         if memory_reply is not None:
             # A read-only memory question never resumes an unrelated saved-record draft.
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
+        from app.tools.budget_context import scope_budget_request
+        request = scope_budget_request(request, decision)
         event = self._event(
             state,
             "routing.completed",
@@ -719,6 +737,7 @@ class AgentOrchestrator:
             },
         )
         return {
+            "request": request,
             "turn_decision": decision.model_dump(mode="json"),
             "selected_agents": decision.selected_agents,
             "follow_up": resolution,
@@ -1206,7 +1225,9 @@ class AgentOrchestrator:
                     continue
                 tool_call_counts[definition.provider] = provider_call_count + 1
                 try:
-                    validate_tool_permission(request.requester, definition.provider)
+                    # The registry authorizes the consumer above. Check direct
+                    # tool permission for the specialist executing retrieval.
+                    validate_tool_permission(AgentName.INVESTMENT_EDUCATION, definition.provider)
                     # Conditional consumers use the same public concept plan,
                     # passage budget and quote-backed semantic coverage as the
                     # Education specialist. There is one retrieval contract.
@@ -1216,7 +1237,7 @@ class AgentOrchestrator:
                     )
                     token = task_context.set({
                         "task_id": provider_task_id,
-                        "agent": request.requester.value,
+                        "agent": education_task.agent.value,
                         "attempt": requester_task.attempt,
                     })
                     try:
@@ -1315,7 +1336,7 @@ class AgentOrchestrator:
                             ),
                         ]
                     )
-                except (ModelGatewayError, RetrievalError, ValueError) as exc:
+                except (ModelGatewayError, RetrievalError, ValueError, PermissionError) as exc:
                     if request.required:
                         raise ModelGatewayError(
                             "A required tool dependency was unavailable."
@@ -2002,6 +2023,8 @@ class AgentOrchestrator:
                     item.model_dump(mode="json") for item in snapshot.recurring_expenses
                 ],
             }
+            if snapshot.period_start:
+                input_data["period_start"] = snapshot.period_start
         elif agent == AgentName.GOAL_STRATEGY:
             input_data = {
                 "goals": [item.model_dump(mode="json") for item in snapshot.goals]
@@ -2017,8 +2040,14 @@ class AgentOrchestrator:
             raise ModelGatewayError("The orchestrator cannot create that specialist task.")
         if agent == AgentName.BUDGET and state["request"].saved_budget_capacity:
             input_data["saved_budget_capacity"] = state["request"].saved_budget_capacity
-        if agent == AgentName.BUDGET and state.get("budget_capture"):
-            input_data["planning_context"] = state["request"].budget_context
+        if agent == AgentName.BUDGET and state["request"].budget_context:
+            context = state["request"].budget_context
+            input_data["planning_context"] = context if state.get("budget_capture") else {
+                key: value for key, value in context.items() if key in {
+                    "selected_period", "selected_budget", "scoped_budgets", "resolved_scope",
+                    "scope_unclear", "spending_context",
+                }
+            }
         memory_reply = income_memory_reply(state["request"]) if agent == AgentName.BUDGET else None
         return AgentTask(
             agent=agent,
@@ -2038,9 +2067,11 @@ class AgentOrchestrator:
                 "pending_budget": state["request"].pending_budget if agent == AgentName.BUDGET else None,
                 "spending_capture": state.get("spending_capture", False) and agent == AgentName.SPENDING,
                 "pending_transaction": state["request"].pending_transaction if agent == AgentName.SPENDING else None,
-                "has_monthly_income": snapshot.monthly_income is not None or state["request"].saved_budget_capacity.get("source") == "confirmed_plan",
+                "has_monthly_income": snapshot.monthly_income is not None or state["request"].saved_budget_capacity.get("source") in {"confirmed_plan", "period_plans"},
                 "recurring_expense_count": len(snapshot.recurring_expenses),
                 "recent_transaction_count": len(snapshot.recent_transactions),
+                "historical_transaction_count": len(snapshot.historical_transactions),
+                "has_spending_context": bool(snapshot.transaction_context.get("budget_spending_scope")),
                 "goal_count": len(snapshot.goals),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
                 "education_topics": state.get("education_topics", []),

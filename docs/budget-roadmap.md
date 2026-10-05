@@ -1,5 +1,15 @@
 # Budget planner roadmap implementation
 
+## Saved budget management — 5 October 2026
+
+Implemented locally: owned budget listing and saved-month/year comparisons; explicit single-month and multi-month limit/planning edits; category removal and monthly-budget deletion through Coach's preview/confirmation flow. Scope selection now overrides the sidebar default consistently for saved savings capacity and goal feasibility. Batch changes validate every target and apply atomically. Transactions and other financial records are retained; deletion keeps restorable budget history. Coach labels the sidebar context as a default month. No database migration is required. Local regression results and contract details are recorded in `budget-planning.md`; these changes are not yet deployed or certified by live-provider acceptance.
+
+## Everyday reasoning — 5 October 2026
+
+The local 5 October reasoning follow-up addresses ordinary-task context gaps: saved categories and commitments reach advisory turns, calendar scopes also select spending evidence, historical-only spending remains available, recurring expenses use explicit schedule terms and general explanations use semantic input requirements. No new specialist financial features or database migration are required. Verification and remaining live-acceptance limits are recorded in `budget-planning.md`.
+
+## Earlier planner increments
+
 The user authorized these four increments, to be delivered and committed in sequence.
 
 1. **Shared calculations**: owned, month-specific confirmed budget capacity feeds Budget and Goal Strategy; explicit fallback; one shared pool for concurrent goals. Implemented; backend regression suite and AI regression cases verified.

@@ -831,6 +831,20 @@ def review_budget(user_id: UserId, period_start: Annotated[date, Query()],
     return build_budget_review(session, user_id, period_start)
 
 
+@router.get("/users/{user_id}/budgets")
+def list_budgets(user_id: UserId, session: Annotated[Session, Depends(get_db_session)],
+                 start: date | None = None, end: date | None = None):
+    from coach_math.budget_scope import BudgetScope
+
+    from app.services.budget_records import build_record_change
+    try:
+        scope = BudgetScope(kind="range", start=start, end=end) if start or end else BudgetScope(kind="all")
+        _, result = build_record_change(session, user_id, {"action": "read", "scope": scope.model_dump(mode="json")})
+        return result
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
 @router.post("/users/{user_id}/budget/compare")
 def compare_budget(user_id: UserId, draft: BudgetDraft, session: Annotated[Session, Depends(get_db_session)]):
     # The caller supplies an exploratory plan. Ownership is checked by the router;

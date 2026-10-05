@@ -18,21 +18,21 @@ DEFAULT_CAPABILITIES = (
         provider=AgentName.SPENDING.value,
         provider_type=CapabilityProviderType.AGENT,
         allowed_requesters={AgentName.BUDGET},
-        required_inputs=["recent_transactions"],
+        required_inputs=["recent_transactions", "historical_transactions", "period_start", "transaction_context"],
     ),
     CapabilityDefinition(
         capability=CapabilityName.MONTHLY_BUDGET_BASELINE,
         provider="budget_calculator",
         provider_type=CapabilityProviderType.TOOL,
         allowed_requesters={AgentName.BUDGET},
-        required_inputs=["monthly_income", "recurring_expenses"],
+        required_inputs=["monthly_income", "recurring_expenses", "period_start"],
     ),
     CapabilityDefinition(
         capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,
         provider=AgentName.BUDGET.value,
         provider_type=CapabilityProviderType.AGENT,
         allowed_requesters={AgentName.GOAL_STRATEGY},
-        required_inputs=["monthly_income", "recurring_expenses"],
+        required_inputs=["monthly_income", "recurring_expenses", "period_start"],
     ),
     CapabilityDefinition(
         capability=CapabilityName.GOAL_PROJECTION,
@@ -45,6 +45,7 @@ DEFAULT_CAPABILITIES = (
         capability=CapabilityName.EDUCATION_CONTEXT,
         provider="education_retriever",
         provider_type=CapabilityProviderType.TOOL,
+        # These consumers request evidence; Investment Education executes retrieval.
         allowed_requesters={AgentName.BUDGET, AgentName.GOAL_STRATEGY},
         required_inputs=["sanitized_message"],
     ),

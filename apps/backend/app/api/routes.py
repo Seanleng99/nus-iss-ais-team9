@@ -310,12 +310,26 @@ async def coach(
             except (TypeError, ValueError):
                 queries = TurnQueries()
             if queries.budget_status_query:
+                from coach_math.budget_scope import resolve_budget_periods
+                scope = queries.budget_scope
+                periods = resolve_budget_periods(scope, request.budget_period_start) if scope and scope.kind not in {"default", "all"} else []
                 query_request = request.model_copy(update={
-                    "budget_period_start": queries.budget_status_period_start or request.budget_period_start,
+                    "budget_period_start": periods[0] if len(periods) == 1 else queries.budget_status_period_start or request.budget_period_start,
                 })
-                alert_reply = _budget_alert_reply(
-                    session, query_request, period_missing="budget_period_start" in queries.missing_fields,
-                )
+                if scope and (scope.kind == "all" or len(periods) > 1) and not queries.budget_scope_unclear:
+                    from app.services.budget_records import (
+                        build_record_change,
+                        describe_record_change,
+                    )
+                    target, details = build_record_change(session, request.user_id,
+                        {"action": "compare", "scope": scope.model_dump(mode="json")})
+                    alert_reply = CoachResponse(session_id=request.session_id, selected_agents=["budget"],
+                        answer=describe_record_change(target, details, locale=request_locale(request)),
+                        agent_results=[], disclaimers=[], audit={"source": "budget_records", "action_status": "read_only"})
+                else:
+                    alert_reply = _budget_alert_reply(
+                        session, query_request, period_missing=queries.budget_scope_unclear or "budget_period_start" in queries.missing_fields,
+                    )
                 outcomes.append(action_outcome("budget_status", alert_reply))
                 if alert_reply.agent_results:
                     response.agent_results.extend(alert_reply.agent_results)
@@ -330,7 +344,8 @@ async def coach(
                 if recalled is not None:
                     outcomes.append(action_outcome("session_recall", recalled))
         for operation, stage in (
-            ("budget", lambda: stage_budget_draft(session, request.user_id, chat_session, response)),
+            ("budget", lambda: stage_budget_draft(session, request.user_id, chat_session, response,
+                                                 default_period=request.budget_period_start)),
             ("goal", lambda: stage_goal_draft(session, request.user_id, chat_session, response)),
             ("spending", lambda: stage_transaction_draft(
                 session, request.user_id, chat_session, response, request.message,

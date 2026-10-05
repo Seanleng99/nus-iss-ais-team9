@@ -25,6 +25,11 @@ class SpendingAgent(BaseAgent):
     prompt_id = "agent_spending"
     dependency_planning_enabled = True
 
+    def _missing_input_questions(self, task):
+        if task.input_data.get("transaction_context", {}).get("scope_unclear"):
+            return ["Specify the requested month and year or an unambiguous range."]
+        return []
+
     def run_task(self, task):
         if task.context_features.get("spending_capture") and inspect_prompt(
             task.sanitized_message
@@ -54,6 +59,9 @@ class SpendingAgent(BaseAgent):
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)
+        scoped = snapshot.transaction_context.get("budget_spending_scope")
+        if scoped is not None and len(scoped["periods"]) != 1:
+            return self._ground_scoped(scoped)
         period_start = (date.fromisoformat(snapshot.period_start) if snapshot.period_start else financial_today()).replace(day=1)
         period_end = period_start.replace(day=calendar.monthrange(period_start.year, period_start.month)[1])
         # Backend snapshots partition the selected month and prior history.
@@ -121,11 +129,34 @@ class SpendingAgent(BaseAgent):
         
         # Legacy support - compute category totals from recent transactions
         category_totals = self._compute_category_totals(snapshot.recent_transactions)
+        historical_months = {}
+        for txn in transactions:
+            if date.fromisoformat(txn["occurred_on"]) >= period_start:
+                continue
+            month = txn["occurred_on"][:7] + "-01"
+            row = historical_months.setdefault(month, {"period_start": month, "currency": "SGD", "category_totals": {}, "transaction_count": 0})
+            row["category_totals"][txn["category"]] = round(row["category_totals"].get(txn["category"], 0) + txn["amount"]["amount"], 2)
+            row["transaction_count"] += 1
+        if scoped is not None:
+            grounded = self._ground_scoped(scoped)
+            # Preserve existing statistical analysis when its dated selected
+            # records exactly cover this month. Older/truncated requests use
+            # complete backend totals and disclose aggregate-only evidence.
+            if (len(selected_month_transactions) == scoped["transaction_count"]
+                and sum(r["transaction_count"] for r in historical_months.values()) == scoped["historical_transaction_count"]
+                and not snapshot.transaction_context.get("history_truncated")):
+                grounded.update({key: safe_analysis[key] for key in (
+                    "category_trends", "temporal_patterns", "anomalies", "data_quality",
+                    "analysis_coverage", "selected_month_coverage", "temporal_pattern_scope",
+                )})
+            return grounded
         
         return {
             # Legacy support
             "category_totals": category_totals,
             "transaction_count": len(snapshot.recent_transactions),
+            "historical_months": [historical_months[p] for p in sorted(historical_months)],
+            "historical_transaction_count": sum(r["transaction_count"] for r in historical_months.values()),
             
             # NEW: Statistical analysis results (JSON-safe)
             **safe_analysis,
@@ -153,6 +184,10 @@ class SpendingAgent(BaseAgent):
                 "pattern. An anomaly with aggregation=category_month_total describes a monthly "
                 "category total, not an individual expense or transaction on the month-start date. "
                 "Excluded currencies are never summed or converted; disclose exclusions when relevant. "
+                "When monthly_category_totals is supplied, totals cover exactly those requested months. "
+                "historical_months is separate prior context, even when the requested month has no records. "
+                "monthly_aggregates_only supplies no transaction-level or weekday evidence; do not infer "
+                "missing dates from absent temporal patterns or invent habits and causes. "
                 "Offer at most one relevant next step when useful; ask a question only if "
                 "needed to answer. Saved preferences may tailor wording, never financial evidence. "
                 "Spending entries remain unsaved until the backend displays a preview and the user "
@@ -177,6 +212,29 @@ class SpendingAgent(BaseAgent):
                         "total_amount": round(sum(txn["amount"]["amount"] for txn in weekdays), 2)},
             "weekend": {"record_count": len(weekends),
                         "total_amount": round(sum(txn["amount"]["amount"] for txn in weekends), 2)},
+        }
+
+    @staticmethod
+    def _ground_scoped(scoped):
+        rows = scoped["periods"]
+        history = scoped["history"]
+        dates = [r[key] for r in rows for key in ("first_recorded_on", "last_recorded_on") if r.get(key)]
+        coverage = {
+            "record_count": scoped["transaction_count"], "dated_record_count": scoped["transaction_count"],
+            "first_recorded_on": min(dates) if dates else None, "last_recorded_on": max(dates) if dates else None,
+            "total_amount": round(sum(scoped["category_totals"].values()), 2),
+        }
+        last = date.fromisoformat(rows[-1]["period_start"]) if rows else None
+        return {
+            **scoped, "monthly_category_totals": rows, "historical_months": history,
+            "category_trends": [], "temporal_patterns": [], "anomalies": [],
+            "data_quality": "insufficient" if scoped["transaction_count"] < 5 else "limited",
+            "months_analyzed": len(rows), "analysis_coverage": coverage,
+            "selected_month_coverage": coverage if len(rows) == 1 else {},
+            "analysis_period_start": rows[0]["period_start"] if rows else None,
+            "analysis_period_end": str(last.replace(day=calendar.monthrange(last.year, last.month)[1])) if last else None,
+            "temporal_pattern_scope": "monthly_aggregates_only",
+            "excluded_currencies": sorted({c for r in [*rows, *history] for c in r.get("excluded_currencies", [])}),
         }
 
     def _compute_category_totals(self, transactions: list) -> dict:
@@ -218,6 +276,8 @@ class SpendingAgent(BaseAgent):
                     "analysis_period_start": grounding["analysis_period_start"],
                     "analysis_period_end": grounding["analysis_period_end"],
                     "temporal_pattern_scope": grounding["temporal_pattern_scope"],
+                    **{key: grounding[key] for key in ("monthly_category_totals", "historical_months",
+                        "historical_transaction_count", "recorded_totals_complete", "caveat") if key in grounding},
                 },
                 evidence_refs=[f"tool:{task.task_id}:spending_analyzer"],
             )

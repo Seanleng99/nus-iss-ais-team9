@@ -47,6 +47,8 @@ def goal_request(*, requested_agents: list[str]) -> CoachRequest:
                     "category": "housing",
                     "amount": {"amount": 1500},
                     "occurred_on": "2026-08-01",
+                    "obligation_id": "rent",
+                    "recurrence": {"frequency": "monthly", "first_on": "2026-08-01", "next_due_on": "2026-09-01"},
                 }
             ],
             "goals": [
@@ -248,6 +250,17 @@ def test_capability_registry_rejects_unauthorized_requester() -> None:
 
     with pytest.raises(CapabilityRegistryError, match="cannot request"):
         registry.authorize(AgentName.SPENDING, CapabilityName.EDUCATION_CONTEXT)
+
+
+@pytest.mark.parametrize("requester", list(AgentName))
+def test_education_context_authorizes_only_budget_and_goal_consumers(requester) -> None:
+    registry = CapabilityRegistry()
+    if requester in {AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
+        definition = registry.authorize(requester, CapabilityName.EDUCATION_CONTEXT)
+        assert definition.provider == "education_retriever"
+    else:
+        with pytest.raises(CapabilityRegistryError, match="cannot request"):
+            registry.authorize(requester, CapabilityName.EDUCATION_CONTEXT)
 
 
 class RequestingAgent:
