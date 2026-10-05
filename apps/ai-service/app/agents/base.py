@@ -176,6 +176,13 @@ class BaseAgent(ABC):
             SourceCitation.model_validate(source) for source in grounding.get("sources", [])
         ]
         system_prompt += citation_contract(narrative_sources)
+        if grounding.get("subquestion_coverage"):
+            system_prompt += (
+                "\nCoverage quote_ref identifies an exact substring of grounding.contexts: "
+                "context_index is zero-based and start/end are character offsets, with end exclusive. "
+                "The full passage remains supplied; preserve its surrounding qualifications and "
+                "the coverage status and limitation. A reference is not proof of claim relevance."
+            )
         if self.name == AgentName.BUDGET and grounding.get("capacity_source") == "illustrative_fallback":
             system_prompt += (
                 "\nDescribe the supplied budget as an illustrative calculation: "

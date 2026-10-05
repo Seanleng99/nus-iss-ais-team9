@@ -240,6 +240,21 @@ def test_long_passage_catalog_keeps_contiguous_exact_spans_and_qualifications():
     assert "does not eliminate losses" in catalog[-1]["quote"]
 
 
+def test_answerability_input_carries_text_once_and_preserves_context_groups_and_headings():
+    text = "ETF\n\n" + QUOTE + "\n\nThis applies only to the stated index."
+    contexts = [{"source_id": "etf-source", "text": text}] * 2
+    gateway = ScriptedSemanticGateway()
+    assess_answerability(gateway, EducationQueryPlan.model_validate(PLAN), contexts,
+                         temperature=0.2, max_tokens=1600)
+    payload = json.loads(gateway.calls[0]["user_prompt"])
+    assert "contexts" not in payload
+    catalog = payload["evidence_passages"]
+    for index in (0, 1):
+        spans = [item["quote"] for item in catalog if item.get("context_index") == index]
+        assert spans == text.split("\n\n")
+    assert all(item["source_id"] == "etf-source" for item in catalog)
+
+
 def test_source_verification_can_quote_exact_carried_metadata():
     plan = EducationQueryPlan.model_validate({"subquestions": [{
         "question_id": "q1", "topic": "source verification",

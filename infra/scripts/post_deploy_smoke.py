@@ -346,8 +346,8 @@ def check_conditional_education_rag(
         "session_id": session_id,
         "message": (
             "Calculate my monthly disposable income and savings capacity from the supplied "
-            "income, and explain how diversification and investment risk relate to these "
-            "estimates using approved education sources. This is a read-only analysis."
+            "income. Separately, define diversification and investment risk using approved "
+            "education sources. This is a read-only analysis."
         ),
         "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
         "requested_agents": ["budget"],

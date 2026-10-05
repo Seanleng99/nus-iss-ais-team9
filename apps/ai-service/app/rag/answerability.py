@@ -228,22 +228,25 @@ def evidence_passages(contexts: list[dict], sources: list[dict] | None = None) -
     """Exact server-owned spans; choosing an ID never changes quotation text."""
     passages = []
     seen = set()
-    def append(source_id, quote, evidence_field="text"):
+    def append(source_id, quote, evidence_field="text", context_index=None):
         identity = (source_id, evidence_field, quote)
-        if 4 <= len(quote) <= 1200 and identity not in seen:
+        if 0 < len(quote) <= 1200 and (evidence_field == "text" or identity not in seen):
             seen.add(identity)
-            passages.append({"passage_id": f"p{len(passages) + 1}", "source_id": source_id,
-                             "quote": quote, "evidence_field": evidence_field})
-    for context in contexts:
+            item = {"passage_id": f"p{len(passages) + 1}", "source_id": source_id,
+                    "quote": quote, "evidence_field": evidence_field}
+            if context_index is not None:
+                item["context_index"] = context_index
+            passages.append(item)
+    for context_index, context in enumerate(contexts):
         for paragraph in re.split(r"\n\s*\n", context["text"]):
             # Long paragraphs retain exact contiguous spans. The complete
-            # original contexts remain available for semantic qualifications.
+            # context group remains available for semantic qualifications.
             while len(paragraph) > 1200:
                 boundary = paragraph.rfind(" ", 0, 1200)
                 boundary = boundary if boundary >= 4 else 1200
-                append(context["source_id"], paragraph[:boundary])
+                append(context["source_id"], paragraph[:boundary], context_index=context_index)
                 paragraph = paragraph[boundary:]
-            append(context["source_id"], paragraph)
+            append(context["source_id"], paragraph, context_index=context_index)
     for source in sources or []:
         for field in ("title", "issuing_organization", "published_at", "document_version",
                       "corpus_version", "review_due_at", "content_kind"):
@@ -296,6 +299,9 @@ def assess_answerability(
             "references to carried passages. Choose passage_id from evidence_passages; return "
             "source_id=null and quote=\"\" so the server supplies their exact text and source. "
             "Do not retype, shorten, paraphrase or combine a quote. Select the actual evidence_field. "
+            "The catalog carries the accepted text once, in exact contiguous spans. Read all "
+            "text spans in each context_index group together, including short headings and surrounding qualifications; a span boundary "
+            "does not remove a condition or limit its scope. "
             "For compatibility, an exact carried quote with its source_id and passage_id=null is valid. Quotes must "
             "support the portion, not merely mention the topic. State the precise missing "
             "portion in limitation for partial/unsupported. Do not answer from model memory. "
@@ -309,8 +315,6 @@ def assess_answerability(
         ),
         user_prompt=json.dumps({
             "subquestions": [item.model_dump() for item in plan.subquestions],
-            "contexts": [{"source_id": context["source_id"], "text": context["text"]}
-                         for context in contexts],
             "sources": sources or [],
             "evidence_passages": evidence_passages(contexts, sources),
         }, ensure_ascii=False),

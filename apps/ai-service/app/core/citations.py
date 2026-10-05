@@ -96,4 +96,21 @@ def compact_evidence(data: dict) -> dict:
             for item in compacted:
                 if item not in result[field]:
                     result[field].append(item)
+    if "subquestion_coverage" in data:
+        coverage = []
+        for question in data["subquestion_coverage"]:
+            supports = []
+            for original in question.get("supporting_passages", []):
+                support = dict(original)
+                text = support.get("quote", "")
+                if support.get("evidence_field", "text") == "text" and len(text) >= 4:
+                    for index, context in enumerate(result.get("contexts", [])):
+                        if support.get("source_id") == context.get("source_id") and text in context.get("text", ""):
+                            start = context["text"].index(text)
+                            support.pop("quote")
+                            support["quote_ref"] = {"context_index": index, "start": start, "end": start + len(text)}
+                            break
+                supports.append(support)
+            coverage.append({**question, "supporting_passages": supports})
+        result["subquestion_coverage"] = coverage
     return result

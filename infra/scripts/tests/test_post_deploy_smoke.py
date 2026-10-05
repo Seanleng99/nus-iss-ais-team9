@@ -443,6 +443,10 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
         "monthly_income": {"currency": "SGD", "amount": 4000}
     }
     assert calls[0][1]["body"]["requested_agents"] == ["budget"]
+    message = calls[0][1]["body"]["message"]
+    assert "Calculate my monthly disposable income and savings capacity" in message
+    assert "Separately, define diversification and investment risk" in message
+    assert "approved education sources" in message and "read-only analysis" in message
     assert calls[1][0][0].endswith(
         "?user_id=deployment-conditional-rag-smoke-test"
     )

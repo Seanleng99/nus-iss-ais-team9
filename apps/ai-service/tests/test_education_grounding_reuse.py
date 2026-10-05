@@ -86,7 +86,9 @@ def test_repair_does_not_repeat_semantic_assessment_and_still_requires_independe
     original = json.loads(writers[0]["user_prompt"])["grounding"]
     repaired = json.loads(writers[1]["user_prompt"])["grounding"]
     assert repaired == original
-    assert repaired["subquestion_coverage"][0]["supporting_passages"][0]["quote"] == QUOTE
+    support = repaired["subquestion_coverage"][0]["supporting_passages"][0]
+    ref = support["quote_ref"]
+    assert repaired["contexts"][ref["context_index"]]["text"][ref["start"]:ref["end"]] == QUOTE
     assert "Retain the source conditions." in json.loads(writers[1]["user_prompt"])["message"]
     assert response.blocked == (outcome != "allowed")
     if outcome == "allowed":
