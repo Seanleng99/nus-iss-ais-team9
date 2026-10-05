@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from app.core.config import Settings
 from app.core.guardrails import TOOL_ALLOWLIST
 from app.core.run_trace import task_context
@@ -115,6 +117,33 @@ def test_allowlisted_education_topic_does_not_use_stochastic_planner() -> None:
         and item["resolution"] == "resolved"
         for item in response.audit["dependency_resolutions"]
     )
+
+
+@pytest.mark.parametrize("catalog", [
+    {},
+    {"2026-08-01": {
+        "period_start": "2026-08-01", "category_totals": {},
+        "transaction_count": 0, "currency": "SGD",
+    }},
+])
+def test_empty_backend_expense_catalog_does_not_schedule_spending(catalog) -> None:
+    retriever = CountingEducationRetriever()
+    request = budget_request("Create my monthly budget and explain diversification.")
+    request.snapshot.period_start = "2026-08-01"
+    request.budget_context = {
+        "selected_period": "2026-08-01", "spending_by_period": catalog,
+    }
+
+    response = orchestrator(retriever).handle(request)
+
+    assert response.selected_agents == ["budget"]
+    assert response.audit["retrieval_consumers"] == ["budget"]
+    assert {
+        item["capability"] for item in response.audit["dependency_resolutions"]
+    } == {"education_context"}
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["spending_context"]["transaction_count"] == 0
+    assert budget.data["evidence_status"] == "grounded"
 
 
 def test_calculation_only_budget_does_not_query_education() -> None:

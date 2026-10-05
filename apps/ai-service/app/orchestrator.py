@@ -2001,6 +2001,7 @@ class AgentOrchestrator:
         requested_by: AgentName | None = None,
     ) -> AgentTask:
         snapshot = state["request"].snapshot
+        scoped_spending = snapshot.transaction_context.get("budget_spending_scope") or {}
         if agent == AgentName.SPENDING:
             input_data = {
                 "recent_transactions": [
@@ -2071,7 +2072,10 @@ class AgentOrchestrator:
                 "recurring_expense_count": len(snapshot.recurring_expenses),
                 "recent_transaction_count": len(snapshot.recent_transactions),
                 "historical_transaction_count": len(snapshot.historical_transactions),
-                "has_spending_context": bool(snapshot.transaction_context.get("budget_spending_scope")),
+                "has_spending_context": bool(
+                    scoped_spending.get("transaction_count", 0)
+                    or scoped_spending.get("historical_transaction_count", 0)
+                ),
                 "goal_count": len(snapshot.goals),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
                 "education_topics": state.get("education_topics", []),

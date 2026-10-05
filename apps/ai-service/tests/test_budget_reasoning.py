@@ -136,6 +136,33 @@ def test_history_only_can_be_requested_and_is_published_by_spending():
     assert data["historical_months"][0]["category_totals"] == {"food": 300}
 
 
+def test_backend_history_only_remains_available_when_requested_month_is_empty():
+    r = CoachRequest(
+        user_id="u", session_id="aggregate-history-only",
+        message="Use my spending history to improve my budget",
+        requested_agents=["budget"],
+        snapshot={"period_start": "2026-10-01", "monthly_income": {"amount": 4000}},
+        budget_context={
+            "selected_period": "2026-10-01",
+            "spending_by_period": {
+                "2026-09-01": {
+                    "period_start": "2026-09-01", "category_totals": {"food": 300},
+                    "transaction_count": 1, "currency": "SGD",
+                },
+            },
+        },
+    )
+
+    response = orchestrator().handle(r)
+
+    assert response.selected_agents == ["budget", "spending"]
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    spending = budget.data["spending_context"]
+    assert spending["transaction_count"] == 0
+    assert spending["category_totals"] == {}
+    assert spending["historical_months"][0]["category_totals"] == {"food": 300}
+
+
 class IntentGateway(LocalFixtureModelGateway):
     def __init__(self, requires_income=False):
         self.requires_income = requires_income
