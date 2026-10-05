@@ -31,6 +31,12 @@ Release `37310200156` for `8310a98` on 5 October 2026 deployed healthy services 
 
 Local recovery verification on 5 October: 1,719 AI tests passed with one Windows symlink-privilege skip; all 42 release-smoke contract tests, eight offline evaluation suites and Ruff passed. A fresh local GPT-6 Luna request using the approved document retrievers supported both public definitions, passed independent Compliance and consumed 22,471 tokens across six calls. That check did not exercise deployed HTTP services or the smoke profile's existing dialogue; AWS release smoke remains the deployment verification.
 
+Release `37323605695` for `d81f52c` failed the same conditional smoke and rolled back. Its final token-overrun trace `f08cfaed-2747-489e-a490-4a7dc0951ce6` consumed 40,114 tokens; backend logs confirmed eight prior messages loaded from the fixed smoke session. Each authenticated smoke attempt now uses a fresh UUID-suffixed session, including retries, so deployment verification does not inherit earlier release dialogue. Synthetic user IDs and all evidence assertions remain unchanged.
+
+A fresh request built through the backend also exposed routing ambiguity: an income/capacity calculation was treated as budget drafting. Router instructions now distinguish calculations using supplied income/expenses from category planning and saved-record commands, including compound educational questions. A local GPT-6 Luna check with that backend-built request routed to Budget analysis, grounded both definitions, passed independent Compliance and consumed 26,946 tokens across seven calls. It used approved local document retrievers; deployed HTTP smoke remains the release gate.
+
+Follow-up verification: 1,719 AI tests passed with the same Windows symlink skip, all 42 smoke contract tests passed, and all seven corpus release tests passed using Git Bash. Ruff and whitespace checks passed.
+
 In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention. Restrict log access separately from application access. The foundation enables ECS Container Insights. The application stack creates the `ai-financial-wellness-coach-demo-operational` dashboard for ECS CPU/memory, ALB backend errors/health/latency, and privacy-safe AI generation-failure counts. Model latency and token usage are recorded in application evaluation telemetry.
 
 ## Alerts

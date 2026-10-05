@@ -135,8 +135,8 @@ def test_conditional_release_request_preserves_baseline_with_backend_catalog() -
     gateway = SemanticEducationGateway(budget_scope={"kind": "default"})
     request = backend_catalog_request(
         "Calculate my monthly disposable income and savings capacity from the supplied "
-        "income, and explain how diversification and investment risk relate to these "
-        "estimates using approved education sources. This is a read-only analysis."
+        "income. Separately, define diversification and investment risk using approved "
+        "education sources. This is a read-only analysis."
     )
     request.snapshot.monthly_income.amount = 4000
     request.snapshot.recurring_expenses = []
@@ -148,6 +148,7 @@ def test_conditional_release_request_preserves_baseline_with_backend_catalog() -
     assert response.blocked is False
     assert response.selected_agents == ["budget"]
     assert "budget_capture" not in gateway.components
+    assert "agent_investment_education" not in gateway.components
     budget = next(result for result in response.agent_results if result.agent == "budget")
     assert budget.data["income"] == 4000
     assert budget.data["disposable_income"] == 4000

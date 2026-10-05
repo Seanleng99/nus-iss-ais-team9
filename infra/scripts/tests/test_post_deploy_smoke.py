@@ -413,6 +413,8 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
         [
             (200, json.dumps(coach_response)),
             (200, json.dumps({"audit": audit})),
+            (200, json.dumps(coach_response)),
+            (200, json.dumps({"audit": audit})),
         ]
     )
     calls = []
@@ -432,13 +434,17 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
         "synthetic-api-key",
         corpus,
     )
+    post_deploy_smoke.check_conditional_education_rag(
+        "https://example.test/api/coach", "synthetic-api-key", corpus,
+    )
 
     assert calls[0][1]["body"]["user_id"] == (
         "deployment-conditional-rag-smoke-test"
     )
-    assert calls[0][1]["body"]["session_id"] == (
-        "deployment-conditional-rag-smoke-test-v3"
-    )
+    first_session = calls[0][1]["body"]["session_id"]
+    second_session = calls[2][1]["body"]["session_id"]
+    assert first_session.startswith("deployment-conditional-rag-smoke-test-v3-")
+    assert first_session != second_session and len(first_session) <= 128
     assert calls[0][1]["body"]["snapshot"] == {
         "monthly_income": {"currency": "SGD", "amount": 4000}
     }
