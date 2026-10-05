@@ -192,7 +192,7 @@ def test_openai_gateway_hides_provider_errors_and_empty_responses(status, code) 
 
 def test_default_model_token_budget_finishes_all_assessment_and_review_stages(monkeypatch) -> None:
     monkeypatch.delenv("MAX_MODEL_TOKENS_PER_RUN", raising=False)
-    gateway = TracingModelGateway(UsageGateway(5_000), Settings(_env_file=None))
+    gateway = TracingModelGateway(UsageGateway(10_000), Settings(_env_file=None))
     token = gateway.bind_trace("full-reviewed-workflow")
     stages = ["education_query_planner", "education_answerability", "agent_investment_education",
               "synthesizer", "risk_compliance"]
@@ -202,8 +202,13 @@ def test_default_model_token_budget_finishes_all_assessment_and_review_stages(mo
                                     temperature=0, max_tokens=500) == "ok"
         calls = gateway.snapshot("full-reviewed-workflow")
         assert [item["component"] for item in calls] == stages
-        assert sum(item["total_tokens"] for item in calls) == 25_000
+        assert sum(item["total_tokens"] for item in calls) == 50_000
         assert all(item["status"] == "completed" for item in calls)
+        with pytest.raises(ModelGatewayError) as exhausted:
+            gateway.generate(system_prompt="PROMPT_ID: synthesizer", user_prompt="{}",
+                             temperature=0, max_tokens=500)
+        assert exhausted.value.code == "MODEL_TOKEN_BUDGET_EXCEEDED"
+        assert len(gateway.snapshot("full-reviewed-workflow")) == len(stages)
     finally:
         gateway.reset_trace(token)
         gateway.clear("full-reviewed-workflow")

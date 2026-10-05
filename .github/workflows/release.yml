@@ -399,6 +399,7 @@ jobs:
             MODEL_PROVIDER=openai
             MODEL_ID=gpt-6-luna
             MODEL_REASONING_EFFORT=low
+            MAX_MODEL_TOKENS_PER_RUN=50000
             PROMPT_SET_VERSION=v6
             RAG_PROVIDER=local_documents
             POLICY_RAG_PROVIDER=local_documents
@@ -416,6 +417,7 @@ jobs:
           --expect MODEL_PROVIDER=openai
           --expect MODEL_ID=gpt-6-luna
           --expect MODEL_REASONING_EFFORT=low
+          --expect MAX_MODEL_TOKENS_PER_RUN=50000
           --expect PROMPT_SET_VERSION=v6
           --expect RAG_PROVIDER=local_documents
           --expect POLICY_RAG_PROVIDER=local_documents

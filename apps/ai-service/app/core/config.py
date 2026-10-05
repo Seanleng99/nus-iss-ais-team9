@@ -77,7 +77,7 @@ class Settings(BaseSettings):
         alias="MAX_MODEL_CALLS_PER_RUN",
     )
     max_model_tokens_per_run: int = Field(
-        default=40000,
+        default=50000,
         ge=100,
         le=200000,
         alias="MAX_MODEL_TOKENS_PER_RUN",

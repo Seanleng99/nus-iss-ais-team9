@@ -205,7 +205,7 @@ def test_explicit_20k_budget_refuses_correction_even_when_initial_review_fits():
 
 def test_estimate_never_overrides_the_actual_token_cap_or_releases_an_unreviewed_correction():
     gateway = SchemaThenPolicyRepairGateway(overrun=True)
-    response = run_schema_then_policy_repair(gateway)
+    response = run_schema_then_policy_repair(gateway, MAX_MODEL_TOKENS_PER_RUN=40000)
     assert response.blocked
     assert gateway.writers == 3
     assert gateway.reviews == 1

@@ -42,10 +42,11 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
         "EDUCATION_CORPUS_VERSION": "investment-education-sg@next",
         "POLICY_CORPUS_VERSION": "financial-coach-policy-sg@next",
     }
-    environment = dict.fromkeys(values, "stale-corpus@old")
+    environment = {**dict.fromkeys(values, "stale-corpus@old"), "MAX_MODEL_TOKENS_PER_RUN": "40000"}
     rendered = STEPS["Render AI service task definition"]["with"]["environment-variables"]
     rendered = re.sub(r"\$\{\{ env\.(\w+) \}\}", lambda match: values[match[1]], rendered)
     environment.update(line.split("=", 1) for line in rendered.strip().splitlines())
+    assert environment["MAX_MODEL_TOKENS_PER_RUN"] == "50000"
     task = {"containerDefinitions": [{
         "name": "ai-service",
         "environment": [{"name": key, "value": value} for key, value in environment.items()],
@@ -56,14 +57,15 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     env = {**values, "RENDERED_AI_TASK": str(path), "AI_CONTAINER_NAME": "ai-service"}
     verified = run_step("Verify AI runtime configuration has not drifted", ROOT, env)
     assert verified.returncode == 0, verified.stderr + verified.stdout
-    for pin in values:
+    for pin in [*values, "MAX_MODEL_TOKENS_PER_RUN"]:
         item = next(item for item in task["containerDefinitions"][0]["environment"] if item["name"] == pin)
-        item["value"] = "stale-corpus@old"
+        expected_value = item["value"]
+        item["value"] = "40000" if pin == "MAX_MODEL_TOKENS_PER_RUN" else "stale-corpus@old"
         path.write_text(json.dumps(task))
         rejected = run_step("Verify AI runtime configuration has not drifted", ROOT, env)
         assert rejected.returncode != 0
         assert pin in rejected.stderr + rejected.stdout
-        item["value"] = values[pin]
+        item["value"] = expected_value
     smoke = STEPS["Run health and AI safety smoke tests"]["run"]
     assert '--expected-corpus-version "$EDUCATION_CORPUS_VERSION"' in smoke
     assert '--expected-policy-corpus-version "$POLICY_CORPUS_VERSION"' in smoke

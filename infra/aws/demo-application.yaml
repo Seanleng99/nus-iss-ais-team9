@@ -341,7 +341,7 @@ Resources:
             - Name: MODEL_MAX_TOKENS
               Value: "1600"
             - Name: MAX_MODEL_TOKENS_PER_RUN
-              Value: "40000"
+              Value: "50000"
             - Name: MODEL_READ_TIMEOUT_SECONDS
               Value: "30"
             - Name: AGENT_TIMEOUT_SECONDS
