@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from language_fixtures import language_case
 
 from app.core.config import Settings
-from app.core.schemas import CoachRequest
+from app.core.schemas import AgentName, CoachRequest
 from app.evals.gate import evaluate_policy
 from app.evals.runner import _matches_expected, run_dataset
 from app.models.gateway import LocalFixtureModelGateway
@@ -42,6 +44,61 @@ def test_expected_properties_are_conjunctive() -> None:
         response,
         {"selected_agents": ["budget"], "blocked": True},
     )
+
+
+@pytest.mark.parametrize("data", [
+    {}, {"savings": None}, {"savings": "unknown"}, {"savings": {}},
+    {"savings": float("nan")}, {"savings": float("inf")}, {"savings": False},
+])
+def test_unavailable_or_invalid_budget_amount_fails_without_crashing(data) -> None:
+    response = SimpleNamespace(
+        agent_results=[SimpleNamespace(agent=AgentName.BUDGET, data=data)],
+        blocked=False,
+    )
+
+    assert not _matches_expected(response, {"savings": 0})
+
+
+def test_unavailable_budget_amount_is_recorded_as_failed_case(tmp_path: Path) -> None:
+    request = {
+        "user_id": "eval", "session_id": "unknown-recurrence",
+        "message": "Create a monthly budget", "requested_agents": ["budget"],
+        "snapshot": {
+            "monthly_income": {"amount": 5000},
+            "period_start": "2026-08-01",
+            "recurring_expenses": [{
+                "description": "Rent", "category": "housing",
+                "amount": {"amount": 1500}, "occurred_on": "2026-08-01",
+            }],
+        },
+    }
+    dataset = tmp_path / "unavailable-budget.jsonl"
+    cases = [
+        {"id": "invented-savings", "input": request, "expected": {"savings": 700}},
+        {"id": "unavailable-savings", "input": request, "expected": {"savings": None}},
+    ]
+    dataset.write_text(
+        "".join(json.dumps(case) + "\n" for case in cases), encoding="utf-8",
+    )
+
+    metrics = run_dataset(dataset)
+
+    assert metrics["total"] == 2
+    assert metrics["passed"] == 1
+    assert metrics["failed_case_ids"] == ["invented-savings"]
+
+
+def test_repository_evaluation_policy_passes(monkeypatch) -> None:
+    root = Path(__file__).resolve().parents[3]
+    monkeypatch.chdir(root)
+
+    report, passed = evaluate_policy(root / "infra/llmsecops/evaluation-policy.json")
+
+    assert passed, {
+        suite["name"]: suite["metrics"]["failed_case_ids"]
+        for suite in report["datasets"]
+        if suite["metrics"]["failed_case_ids"]
+    }
 
 
 def test_chinese_answer_check_rejects_an_english_answer_with_chinese_metadata() -> None:

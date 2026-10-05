@@ -2,6 +2,7 @@ import argparse
 import json
 import re
 from collections import defaultdict
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,23 @@ def _policy_source_ids(response) -> set[str]:
         str(source["source_id"])
         for source in response.audit.get("policy_sources", [])
     }
+
+
+def _matches_budget_amount(actual: Any, expected: Any) -> bool:
+    if expected is None:
+        return actual is None
+    if actual is None or isinstance(actual, bool) or isinstance(expected, bool):
+        return False
+    try:
+        actual_amount = float(actual)
+        expected_amount = float(expected)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        isfinite(actual_amount)
+        and isfinite(expected_amount)
+        and abs(actual_amount - expected_amount) <= 1
+    )
 
 
 def _matches_expected(response, expected: dict) -> bool:
@@ -118,7 +136,7 @@ def _matches_expected(response, expected: dict) -> bool:
         data = _agent_data(response, "budget")
         checks.append(
             all(
-                abs(float(data.get(key, -1)) - float(value)) <= 1
+                key in data and _matches_budget_amount(data[key], value)
                 for key, value in expected.items()
                 if key in BUDGET_KEYS
             )
