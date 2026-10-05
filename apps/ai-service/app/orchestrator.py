@@ -617,25 +617,6 @@ class AgentOrchestrator:
             routing_actor = "router"
             if requested_agents:
                 decision.selected_agents = requested_agents
-            needs_semantic_specialist = (
-                decision.education_topics
-                and AgentName.INVESTMENT_EDUCATION not in decision.selected_agents
-                and not (
-                    decision.education_topics == ["emergency fund readiness"]
-                    and AgentName.GOAL_STRATEGY in decision.selected_agents
-                )
-            )
-            has_education_access = any(
-                agent in decision.selected_agents
-                for agent in (AgentName.INVESTMENT_EDUCATION, AgentName.BUDGET, AgentName.GOAL_STRATEGY)
-            )
-            if needs_semantic_specialist or (
-                should_request_education_context(state["sanitized_message"]) and not has_education_access
-            ):
-                decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
-                decision.rationale.append(
-                    translate('routing.education_specialist', response_language)
-                )
         # The semantic decision determines whether the current turn continues a
         # draft. A pending draft alone never converts a new topic into a write.
         decision.goal_capture = decision.goal_capture or goal_change_request(state["sanitized_message"])
@@ -725,6 +706,34 @@ class AgentOrchestrator:
         if memory_reply is not None:
             # A read-only memory question never resumes an unrelated saved-record draft.
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
+        if routing_mode == "model":
+            # Calendar scope still needs semantic routing for explicitly selected
+            # specialists. Recognized topics can use their governed capability
+            # without adding a second Education narrative. Capture paths return
+            # drafts before dependency preflight, so they still need a specialist.
+            detected_topics = set(education_topics(state["sanitized_message"]))
+            has_conditional_consumer = (
+                AgentName.BUDGET in decision.selected_agents and not decision.budget_capture
+                or AgentName.GOAL_STRATEGY in decision.selected_agents and not decision.goal_capture
+            )
+            conditional_education = (
+                has_conditional_consumer and bool(detected_topics)
+                and set(decision.education_topics).issubset(detected_topics)
+            )
+            emergency_goal = (
+                decision.education_topics == ["emergency fund readiness"]
+                and AgentName.GOAL_STRATEGY in decision.selected_agents
+                and not decision.goal_capture
+            )
+            has_education_access = (
+                AgentName.INVESTMENT_EDUCATION in decision.selected_agents
+                or conditional_education or emergency_goal
+            )
+            if not has_education_access and (
+                decision.education_topics or should_request_education_context(state["sanitized_message"])
+            ):
+                decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
+                decision.rationale.append(translate('routing.education_specialist', response_language))
         from app.tools.budget_context import scope_budget_request
         request = scope_budget_request(request, decision)
         event = self._event(

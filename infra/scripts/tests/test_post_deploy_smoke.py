@@ -437,8 +437,12 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
         "deployment-conditional-rag-smoke-test"
     )
     assert calls[0][1]["body"]["session_id"] == (
-        "deployment-conditional-rag-smoke-test-v2"
+        "deployment-conditional-rag-smoke-test-v3"
     )
+    assert calls[0][1]["body"]["snapshot"] == {
+        "monthly_income": {"currency": "SGD", "amount": 4000}
+    }
+    assert calls[0][1]["body"]["requested_agents"] == ["budget"]
     assert calls[1][0][0].endswith(
         "?user_id=deployment-conditional-rag-smoke-test"
     )

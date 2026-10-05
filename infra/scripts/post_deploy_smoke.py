@@ -340,13 +340,14 @@ def check_conditional_education_rag(
     expected_corpus_version: str,
 ) -> None:
     user_id = "deployment-conditional-rag-smoke-test"
-    session_id = "deployment-conditional-rag-smoke-test-v2"
+    session_id = "deployment-conditional-rag-smoke-test-v3"
     payload = {
         "user_id": user_id,
         "session_id": session_id,
         "message": (
-            "Create my monthly budget and explain how diversification and investment "
-            "risk relate to it using approved education sources."
+            "Calculate my monthly disposable income and savings capacity from the supplied "
+            "income, and explain how diversification and investment risk relate to these "
+            "estimates using approved education sources. This is a read-only analysis."
         ),
         "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
         "requested_agents": ["budget"],

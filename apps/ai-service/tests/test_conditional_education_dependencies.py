@@ -2,10 +2,11 @@ import json
 
 import pytest
 
+from app.agents.education_access import education_topics
 from app.core.config import Settings
 from app.core.guardrails import TOOL_ALLOWLIST
 from app.core.run_trace import task_context
-from app.core.schemas import AgentName, CoachRequest
+from app.core.schemas import AgentName, CoachRequest, FinancialGoal
 from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
 from app.rag.retriever import (
@@ -57,6 +58,139 @@ def orchestrator(retriever) -> AgentOrchestrator:
         gateway=LocalFixtureModelGateway(),
         education_retriever=retriever,
     )
+
+
+class SemanticEducationGateway(LocalFixtureModelGateway):
+    def __init__(self, **router_fields) -> None:
+        self.router_fields = router_fields
+        self.components: list[str] = []
+
+    def generate(self, **kwargs) -> str:
+        component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
+        self.components.append(component)
+        response = super().generate(**kwargs)
+        if component == "router":
+            decision = json.loads(response)
+            decision.update({
+                "education_topics": ["diversification", "investment risk"],
+                "budget_scope": {"kind": "periods", "periods": ["2026-11-01"]},
+                "budget_capture": False, "budget_planning": False,
+                **self.router_fields,
+            })
+            return json.dumps(decision)
+        return response
+
+
+def backend_catalog_request(message: str, agent: str = "budget") -> CoachRequest:
+    request = budget_request(message)
+    request.requested_agents = [AgentName(agent)]
+    request.snapshot.period_start = "2026-08-01"
+    request.budget_context = {
+        "today": "2026-10-05", "selected_period": "2026-08-01",
+        "budget_periods": [], "spending_by_period": {},
+    }
+    return request
+
+
+@pytest.mark.parametrize("agent", ["budget", "goal_strategy"])
+def test_semantic_calendar_routing_uses_conditional_education(agent) -> None:
+    gateway = SemanticEducationGateway()
+    retriever = CountingEducationRetriever()
+    request = backend_catalog_request(
+        "Explain my illustrative monthly budget baseline for November 2026 from the "
+        "supplied income and how diversification and investment risk relate to it "
+        "using approved education sources. This is a read-only explanation."
+        if agent == "budget" else
+        "Assess my home goal for November 2026 and explain diversification and investment risk.",
+        agent,
+    )
+    if agent == "goal_strategy":
+        request.snapshot.goals = [FinancialGoal.model_validate({
+            "name": "Home deposit", "target_amount": {"amount": 24000}, "target_months": 24,
+        })]
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway,
+        education_retriever=retriever,
+    ).handle(request)
+
+    assert response.blocked is False
+    assert "router" in gateway.components
+    assert "agent_investment_education" not in gateway.components
+    assert "budget_capture" not in gateway.components
+    assert "investment_education" not in response.selected_agents
+    assert response.audit["retrieval_consumers"] == (["budget"] if agent == "budget" else ["budget", "goal_strategy"])
+    assert set(retriever.executors) == {"investment_education"}
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["evidence_status"] == "grounded"
+    assert budget.data["saved_budget_context"]["selected_period"] == "2026-11-01"
+    assert [row["period_start"] for row in budget.data["spending_context"]["periods"]] == ["2026-11-01"]
+    assert any(
+        item["capability"] == "education_context"
+        and item["provider_task_id"].startswith("tool:education_retriever:")
+        for item in response.audit["dependency_edges"]
+    )
+
+
+def test_conditional_release_request_preserves_baseline_with_backend_catalog() -> None:
+    gateway = SemanticEducationGateway(budget_scope={"kind": "default"})
+    request = backend_catalog_request(
+        "Calculate my monthly disposable income and savings capacity from the supplied "
+        "income, and explain how diversification and investment risk relate to these "
+        "estimates using approved education sources. This is a read-only analysis."
+    )
+    request.snapshot.monthly_income.amount = 4000
+    request.snapshot.recurring_expenses = []
+    response = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway,
+        education_retriever=CountingEducationRetriever(),
+    ).handle(request)
+
+    assert response.blocked is False
+    assert response.selected_agents == ["budget"]
+    assert "budget_capture" not in gateway.components
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["income"] == 4000
+    assert budget.data["disposable_income"] == 4000
+    assert budget.data["evidence_status"] == "grounded"
+    assert response.audit["retrieval_consumers"] == ["budget"]
+
+
+@pytest.mark.parametrize("agent,message,fields,capture_field", [
+    ("budget", "Set my budget food limit to SGD 600 and explain diversification.",
+     {"budget_capture": False}, "budget_capture"),
+    ("budget", "Propose my monthly budget and explain diversification.",
+     {"budget_planning": True}, "budget_capture"),
+    ("goal_strategy", "Create my home savings goal and explain diversification.",
+     {"goal_capture": False}, "goal_capture"),
+])
+def test_capture_paths_retain_education_specialist(agent, message, fields, capture_field) -> None:
+    service = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=SemanticEducationGateway(education_topics=["diversification"], **fields),
+    )
+    routed = service._route({
+        "request": backend_catalog_request(message, agent),
+        "sanitized_message": message, "trace_id": "capture-education-test",
+    })
+
+    assert routed[capture_field] is True
+    assert AgentName.INVESTMENT_EDUCATION in routed["selected_agents"]
+
+
+def test_semantic_topic_without_detector_coverage_retains_education_specialist() -> None:
+    message = "Explain my monthly budget and how avoiding all eggs in one basket relates to it."
+    assert education_topics(message) == []
+    service = AgentOrchestrator(
+        config=Settings(MODEL_PROVIDER="local_fixture"),
+        gateway=SemanticEducationGateway(education_topics=["diversification"]),
+    )
+    routed = service._route({
+        "request": backend_catalog_request(message),
+        "sanitized_message": message, "trace_id": "semantic-education-test",
+    })
+
+    assert routed["budget_capture"] is False
+    assert routed["selected_agents"] == [AgentName.BUDGET, AgentName.INVESTMENT_EDUCATION]
 
 
 def test_budget_resolves_education_tool_without_scheduling_investment_agent() -> None:

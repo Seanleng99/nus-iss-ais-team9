@@ -106,6 +106,8 @@ Every completed run emits a privacy-safe trace containing task lifecycle events,
 
 Conditional Education access for Budget and Goal Strategy is implemented while deterministic grounding remains authoritative. Personal amounts and records are excluded from the topic-only retrieval query; Spending remains retrieval-free; and personal financial records remain in PostgreSQL rather than the Education or Policy stores.
 
+Semantic routing still resolves calendar scope when the backend supplies a budget-period catalog, including explicit specialist selection. A Budget or Goal analysis with recognized Education topics uses its existing `education_context` capability rather than adding Investment Education solely because the router identified those topics. This choice is made after draft-capture flags are resolved: capture paths return drafts before capability preflight and still need the Education specialist for a compound explanation. Semantic topics outside deterministic detector coverage also retain specialist routing.
+
 ## MCP And A2A Position
 
 MCP is relevant when the system needs a standard way to expose retrieval, budget calculators, policy engines, or external data connectors. The current AI service uses an internal tool registry and allowlist first. MCP can be added later at that boundary if it improves governance and integration reuse.
