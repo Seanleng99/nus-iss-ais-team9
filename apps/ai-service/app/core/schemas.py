@@ -432,6 +432,7 @@ class RouterDecision(BaseModel):
     missing_fields: list[SessionField] = Field(default_factory=list, max_length=7)
     education_search_terms: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(default_factory=list, max_length=12)
     budget_status_query: bool = False
+    budget_capacity_query: bool = False
     budget_status_period_start: date | None = None
     memory_question: bool = False
     memory_fields: list[SessionField] = Field(default_factory=list, max_length=7)

@@ -47,6 +47,10 @@ COUNTS = {
     "max_output_tokens",
     "review_round",
     "repair_round",
+    "used_tokens",
+    "estimated_repair_tokens",
+    "token_limit",
+    "remaining_tokens",
 }
 FLAGS = {
     "blocked",
@@ -132,12 +136,14 @@ CODE_LISTS = {
     "evidence_refs",
     "missing_fields",
     "passage_ids",
+    "repair_blockers",
 }
 DECISION_FIELDS = {
     "selected_agents",
     "query_topics",
     "routing_mode",
     "budget_status_query",
+    "budget_capacity_query",
     "memory_question",
     "goal_capture",
     "budget_capture",
@@ -180,7 +186,7 @@ def safe_details(details, *, decision=False):
             and type(value) in (int, float)
             and isfinite(value)
             and value >= 0
-            or (key in FLAGS or key in {"budget_status_query", "memory_question"})
+            or (key in FLAGS or key in {"budget_status_query", "budget_capacity_query", "memory_question"})
             and type(value) is bool
         ):
             result[key] = value

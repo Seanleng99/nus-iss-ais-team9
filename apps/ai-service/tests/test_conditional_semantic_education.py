@@ -71,15 +71,19 @@ def test_conditional_consumers_get_quote_backed_coverage_once(agents):
     assert len(retriever.queries) == len(set(retriever.queries))
 
 
-def test_direct_and_conditional_consumers_share_assessed_context_without_duplicate_model_calls():
+def test_direct_education_owns_assessed_context_without_duplicate_model_calls():
     gateway, retriever = ConditionalGateway(), RecordingRetriever()
     response = workflow(gateway, retriever).handle(request(agents=("budget", "investment_education")))
     assert not response.blocked
     assert len(semantic_calls(gateway, "education_query_planner")) == 1
     assert len(semantic_calls(gateway, "education_answerability")) == 1
     budget = next(result for result in response.agent_results if result.agent == "budget")
-    assert budget.data["coverage_assessment"] == "model_semantic_with_exact_quotes"
+    education = next(result for result in response.agent_results if result.agent == "investment_education")
+    assert education.data["coverage_assessment"] == "model_semantic_with_exact_quotes"
+    assert budget.data["disposable_income"] == 4000
+    assert not budget.data.get("contexts") and not budget.data.get("sources")
     assert "general_knowledge" not in budget.data
+    assert "because of fees and timing" in response.answer
 
 
 def test_general_budget_preserves_education_without_saved_income():

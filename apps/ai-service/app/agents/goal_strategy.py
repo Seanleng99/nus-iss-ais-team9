@@ -118,6 +118,7 @@ class GoalStrategyAgent(BaseAgent):
             )
         if (
             (self._emergency_fund_request(task) or should_request_education_context(task.sanitized_message))
+            and (self._emergency_fund_request(task) or not task.context_features.get("education_handled_separately"))
             and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
             and not any(
                 CapabilityName.EDUCATION_CONTEXT.value in warning

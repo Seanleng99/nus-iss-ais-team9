@@ -156,6 +156,7 @@ class BudgetAgent(BaseAgent):
             )
         if (
             should_request_education_context(task.sanitized_message)
+            and not task.context_features.get("education_handled_separately")
             and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
             and not any(
                 CapabilityName.EDUCATION_CONTEXT.value in warning

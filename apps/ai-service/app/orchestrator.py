@@ -522,6 +522,11 @@ class AgentOrchestrator:
                     "when that calculation is combined with public educational definitions. "
                     "Available backend budget context, an explicit budget specialist selection "
                     "and the word monthly do not themselves request a plan or records command. "
+                    "Set budget_capacity_query=true for calculations or goal affordability assessments "
+                    "using saved budget savings capacity. Keep budget_capture and budget_planning false "
+                    "for these assessments, including when combined with education. Reading the supplied "
+                    "capacity to assess a goal is not a budget records command. Set this flag false "
+                    "for requests to list/compare records or propose/change a budget. "
                     "Return budget_scope for the period relevant to budget or goal-capacity calculations: "
                     "kind periods with exact first-of-month dates, range with inclusive start/end, "
                     "all for all saved budgets, default only when no period is specified. "
@@ -619,6 +624,9 @@ class AgentOrchestrator:
                 state["sanitized_message"], re.IGNORECASE,
             ))
         checkpoint("EXPLICIT_BUDGET_CAPTURE", "user_selection")
+        if decision.budget_capacity_query and not decision.budget_planning:
+            decision.budget_capture = False
+        checkpoint("BUDGET_CAPACITY_READ_ONLY")
         # Pending spending drafts are backend-owned context; explicit spending
         # statements and dated spend lookups always reach the extraction step.
         goal_related = request.pending_goal is not None or re.search(
@@ -675,10 +683,22 @@ class AgentOrchestrator:
         if resolution.status != "standalone":
             # Deterministic resolution constrains the model router. A reference
             # to earlier prose cannot turn a read-only question into draft capture.
-            decision.selected_agents = requested_agents or [resolution.agent or AgentName.INVESTMENT_EDUCATION]
-            decision.education_topics = list(dict.fromkeys(
-                resolution.education_topics + education_topics(state["sanitized_message"])
-            )) if resolution.status == "resolved" and resolution.agent == AgentName.INVESTMENT_EDUCATION else []
+            current_topics = education_topics(state["sanitized_message"])
+            current_education_request = (
+                resolution.status == "resolved"
+                and AgentName.INVESTMENT_EDUCATION in decision.selected_agents
+                and bool(current_topics or decision.education_search_terms)
+            )
+            # Resolving what "that goal" refers to does not replace a new
+            # education question with another goal feasibility assessment.
+            if current_education_request:
+                decision.selected_agents = requested_agents or decision.selected_agents
+                decision.education_topics = list(dict.fromkeys(decision.education_topics + current_topics))
+            else:
+                decision.selected_agents = requested_agents or [resolution.agent or AgentName.INVESTMENT_EDUCATION]
+                decision.education_topics = list(dict.fromkeys(
+                    resolution.education_topics + current_topics
+                )) if resolution.status == "resolved" and resolution.agent == AgentName.INVESTMENT_EDUCATION else []
             if resolution.status == "ambiguous":
                 decision.education_search_terms = []
             decision.goal_capture = False
@@ -692,7 +712,7 @@ class AgentOrchestrator:
             # A read-only memory question never resumes an unrelated saved-record draft.
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
         checkpoint("CHAT_MEMORY_READ_ONLY")
-        if routing_mode == "model":
+        if routing_mode in {"model", "follow_up"} and resolution.status != "ambiguous":
             # Calendar scope still needs semantic routing for explicitly selected
             # specialists. Recognized topics can use their governed capability
             # without adding a second Education narrative. Capture paths return
@@ -1676,6 +1696,14 @@ class AgentOrchestrator:
                 "reuse_goal_specialist" if state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
                 else "reuse_investment_specialist"
             ))
+        elif self._can_preserve_specialist_answers(state):
+            # Each specialist already answers its part of this read-only request.
+            # A rewrite can drop qualifications and consumes recovery headroom.
+            # Preserve the text and citations; full independent review follows.
+            synthesis = SynthesisDecision(answer="\n\n".join(
+                result.summary for result in state["agent_results"]
+            ))
+            log_event("synthesis.strategy", component="reuse_calculation_and_education")
         else:
             log_event("synthesis.strategy", component="model_synthesizer")
             synthesis = generate_structured_response(
@@ -1713,6 +1741,18 @@ class AgentOrchestrator:
                 "answer_referents": [item.model_dump(mode="json") for item in synthesis.referents],
                 "audit_events": events}
 
+    def _can_preserve_specialist_answers(self, state: OrchestratorState) -> bool:
+        results = state["agent_results"]
+        return (
+            self.prompts.version in {"v6", "v7"}
+            and any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
+            and all(item.agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
+                    and not item.blocked and not item.data.get("needs_input")
+                    and not any(key in item.data for key in ("budget_draft", "goal_draft"))
+                    for item in results)
+            and not any(state.get(key) for key in ("budget_capture", "goal_capture", "spending_capture"))
+        )
+
     @trace_method
     def _review_compliance(self, state: OrchestratorState) -> OrchestratorState:
         events = [
@@ -1743,6 +1783,8 @@ class AgentOrchestrator:
         used_tokens = sum(int(call.get("total_tokens") or 0) for call in calls)
         repair_feedback = json.dumps(result.data.get("missing_points", []), ensure_ascii=False)
         education_task = self._find_task_by_agent(state["tasks"], AgentName.INVESTMENT_EDUCATION)
+        education_result = next((item for item in state["agent_results"]
+                                 if item.agent == AgentName.INVESTMENT_EDUCATION), None)
         latest_repair_calls = {}
         for call in reversed(calls):
             component = call["component"]
@@ -1771,20 +1813,18 @@ class AgentOrchestrator:
         )
         fixture = self.config.model_provider.lower() == "local_fixture"
         snapshot_available = (
-            len(state["agent_results"]) == 1
-            and isinstance(state["agent_results"][0]._education_grounding_snapshot,
+            education_result is not None
+            and isinstance(education_result._education_grounding_snapshot,
                            EducationGroundingSnapshot)
         )
         # All previous attempts remain consumed usage. Only the latest writer and
         # review predict the next pair, using the same privately verified grounding.
         # Real-provider unknown usage cannot justify more spending. The gateway
         # enforces the unchanged hard budget after each call and discards overruns.
-        repair_fits = (
-            (fixture or (usage_known and snapshot_available and len(latest_repair_calls) == 2))
-            and used_tokens + repair_inputs + len(repair_feedback.encode("utf-8")) // 3
-            + repair_outputs
-            < self.config.max_model_tokens_per_run
-            and len(calls) + 4 <= self.config.max_model_calls_per_run
+        estimated_repair_tokens = repair_inputs + len(repair_feedback.encode("utf-8")) // 3 + repair_outputs
+        specialist_eligible = (
+            education_task is not None and education_result is not None
+            and (len(state["agent_results"]) == 1 or self._can_preserve_specialist_answers(state))
         )
         follow_up = state.get("follow_up", FollowUpResolution())
         # A model review cannot invent the missing subject. Recover a mistaken
@@ -1794,7 +1834,6 @@ class AgentOrchestrator:
             and follow_up.agent == AgentName.INVESTMENT_EDUCATION
         )
         repair_conditions = [
-            ("REPAIR_BUDGET_UNAVAILABLE", repair_fits),
             ("REPAIR_REQUEST_NOT_ALLOWED", result.data.get("request_allowed") is not False),
             ("REPAIR_VERDICT_NOT_REPAIRABLE", not result.blocked or result.data.get("repairable") is True),
             ("REPAIR_ANSWER_ALREADY_COMPLETE", result.data.get("answer_complete") is False or result.data.get("repairable") is True),
@@ -1803,16 +1842,23 @@ class AgentOrchestrator:
             ("REPAIR_SPECIALIST_BLOCKED", not any(item.blocked for item in state["agent_results"])),
             ("REPAIR_NEEDS_INPUT", not any(item.data.get("needs_input") for item in state["agent_results"])
                 or clarification_repairable),
-            ("REPAIR_SPECIALIST_NOT_ELIGIBLE", len(state["agent_results"]) == 1
-                and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION),
+            ("REPAIR_SPECIALIST_NOT_ELIGIBLE", specialist_eligible),
             ("REPAIR_NO_MISSING_POINTS", bool(result.data.get("missing_points"))),
+            ("REPAIR_GROUNDING_UNAVAILABLE", fixture or snapshot_available),
+            ("REPAIR_USAGE_UNAVAILABLE", fixture or (usage_known and len(latest_repair_calls) == 2)),
+            ("REPAIR_CALL_BUDGET_EXCEEDED", len(calls) + 4 <= self.config.max_model_calls_per_run),
+            ("REPAIR_TOKEN_BUDGET_EXCEEDED", used_tokens + estimated_repair_tokens < self.config.max_model_tokens_per_run),
             ("REPAIR_DEADLINE_EXCEEDED", perf_counter() - state.get("workflow_started", 0) < self.config.agent_timeout_seconds),
         ]
-        repair_reason = next((code for code, passed in repair_conditions if not passed), "REPAIR_ELIGIBLE")
+        repair_blockers = [code for code, passed in repair_conditions if not passed]
+        repair_reason = repair_blockers[0] if repair_blockers else "REPAIR_ELIGIBLE"
         repair_allowed = repair_reason == "REPAIR_ELIGIBLE"
         events.append(self._event(state, "education.completeness.repair_decision", "orchestrator",
             details={"allowed": repair_allowed, "repair_round": 1, "decision_source": "deterministic_rule",
-                     "reason_code": repair_reason}))
+                     "reason_code": repair_reason, "repair_blockers": repair_blockers,
+                     "used_tokens": used_tokens, "estimated_repair_tokens": estimated_repair_tokens,
+                     "token_limit": self.config.max_model_tokens_per_run,
+                     "remaining_tokens": max(0, self.config.max_model_tokens_per_run - used_tokens)}))
         if repair_allowed:
             # Admit repair within the configured specialist window, rather than
             # ending eligibility before a normal multi-call review can finish.
@@ -1828,11 +1874,13 @@ class AgentOrchestrator:
                     state, "education.completeness.repair", AgentName.INVESTMENT_EDUCATION.value,
                     details={"attempt": 1, "reason_code": "INCOMPLETE_ANSWER"},
                 ))
-                repair_state = {**state, "tasks": {task.task_id: task}, "audit_events": events}
+                # Keep completed financial tasks and their verified calculations;
+                # only the Education task is ready for this one correction.
+                repair_state = {**state, "tasks": {**state["tasks"], task.task_id: task}, "audit_events": events}
                 try:
-                    snapshot = state["agent_results"][0]._education_grounding_snapshot
+                    snapshot = education_result._education_grounding_snapshot
                     if isinstance(snapshot, EducationGroundingSnapshot):
-                        snapshot.authorize_result(task, state["agent_results"][0].data)
+                        snapshot.authorize_result(task, education_result.data)
                         task._education_grounding_snapshot = snapshot
                     updated.update(self._run_ready_tasks(repair_state))
                     repair_state.update(updated)
@@ -1847,14 +1895,15 @@ class AgentOrchestrator:
                         follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
                     )
                     events.append(review_event(result, 2))
-                except (ModelGatewayError, RetrievalError, TimeoutError):
+                except (ModelGatewayError, RetrievalError, TimeoutError) as error:
                     # Keep only the original independently reviewed answer; an
                     # unavailable repair must never expose an unreviewed draft.
                     updated = {}
                     events.append(self._event(
                         state, "education.completeness.repair_unavailable",
                         AgentName.INVESTMENT_EDUCATION.value,
-                        details={"attempt": 1, "reason_code": "REPAIR_UNAVAILABLE"},
+                        details={"attempt": 1, "reason_code": "REPAIR_UNAVAILABLE",
+                                 "error_code": getattr(error, "code", "REPAIR_UNAVAILABLE")},
                     ))
         return {**updated, "compliance_result": result, "audit_events": events}
 
@@ -2124,6 +2173,15 @@ class AgentOrchestrator:
                     and not state.get("goal_capture"),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
                 "education_topics": state.get("education_topics", []),
+                "education_handled_separately": (
+                    agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY}
+                    and AgentName.INVESTMENT_EDUCATION in state.get("selected_agents", [])
+                ),
+                "financial_assessment_handled_separately": (
+                    agent == AgentName.INVESTMENT_EDUCATION
+                    and any(item in state.get("selected_agents", [])
+                            for item in (AgentName.BUDGET, AgentName.GOAL_STRATEGY))
+                ),
                 "education_search_terms": state.get("education_search_terms", []),
                 "conversation_context": [
                     item.model_dump(exclude_defaults=True) for item in state["request"].conversation_context

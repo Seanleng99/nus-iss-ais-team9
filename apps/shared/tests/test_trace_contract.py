@@ -21,6 +21,12 @@ def test_metadata_survives_all_contract_boundaries_without_private_content():
         "prompt": "PRIVATE",
         "quote": "PRIVATE",
         "reason_code": "FOLLOW_UP_READ_ONLY",
+        "repair_blockers": ["REPAIR_TOKEN_BUDGET_EXCEEDED"],
+        "used_tokens": 45815,
+        "estimated_repair_tokens": 16500,
+        "token_limit": 50000,
+        "remaining_tokens": 4185,
+        "missing_points": ["PRIVATE"],
     }
     producer = make_event("routing.override_applied", trace_id, details=metadata)
     backend = safe_event(producer, trace_id)
@@ -28,6 +34,8 @@ def test_metadata_survives_all_contract_boundaries_without_private_content():
     assert viewer == producer["details"] == backend["details"]
     assert viewer["question_count"] == 2
     assert viewer["review_block_categories"] == ["unverifiable_claim"]
+    assert viewer["repair_blockers"] == ["REPAIR_TOKEN_BUDGET_EXCEEDED"]
+    assert viewer["remaining_tokens"] == 4185
     assert viewer["query_topics"] == ["emergency_fund_readiness"]
     assert "PRIVATE" not in str(backend)
     assert backend["schema_version"] == 1

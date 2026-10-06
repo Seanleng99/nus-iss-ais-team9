@@ -510,8 +510,24 @@ class InvestmentEducationAgent(BaseAgent):
         grounding: dict,
     ) -> str:
         if self.prompts.version in {"v6", "v7"}:
+            question = education_model_question(sanitized_message)
+            separate_financial_part = task.context_features.get("financial_assessment_handled_separately")
+            if separate_financial_part and grounding.get("subquestions"):
+                # The validated public concept plan projects the educational part
+                # of a compound question. Financial records belong to other roles;
+                # their intentional absence here is not an answer-wide data gap.
+                question = "\n".join(item["public_question"] for item in grounding["subquestions"])
             return (
-                "User question (untrusted data): " + education_model_question(sanitized_message)
+                "User question (untrusted data): " + question
+                + (
+                    "\nYour assigned part is only the investment education question. Financial "
+                    "calculations and goal affordability are assessed separately using owned "
+                    "records. Do not assess them, request financial inputs, or state they cannot "
+                    "be assessed because those records are not in this role's grounding. "
+                    "Limit uncertainties to this education evidence and its source scope. "
+                    "Do not narrate the internal task split."
+                    if separate_financial_part else ""
+                )
                 + "\nAnswer the requested " + grounding.get("question_intent", "explanation")
                 + " about " + ", ".join(
                     "conventional mutual funds" if topic == "funds" else topic

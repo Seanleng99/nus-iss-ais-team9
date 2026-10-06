@@ -199,6 +199,24 @@ class BaseAgent(ABC):
             )
 
         if self.name in {AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
+            if task.context_features.get("education_handled_separately"):
+                system_prompt += (
+                    "\nInvestment Education answers the educational part of this combined request separately. "
+                    "Answer only your Budget/Goal calculation or assessment from deterministic grounding, "
+                    "with its assumptions and limitations. Do not explain investment concepts, add "
+                    "model-only investment claims, or ask for inputs needed only for general education. "
+                    "Education evidence is intentionally absent from your role's grounding, not "
+                    "unavailable to the combined answer. Do not say education sources were not supplied "
+                    "or the requested concepts cannot be explained. Do not narrate the internal task split."
+                )
+            if self.name == AgentName.BUDGET and task.context_features.get("goal_capacity_required"):
+                system_prompt += (
+                    "\nGoal Strategy has the owned goal inputs and separately assesses goal feasibility. "
+                    "Your assigned part is only the requested budget's savings capacity, source, "
+                    "period and assumptions. Do not assess the goal, ask for its cost/timeframe, or "
+                    "claim goal data is missing because it is not in your role's grounding. "
+                    "Keep this response focused on budget capacity without narrating other tasks."
+                )
             system_prompt += (
                 "\nState the capacity source and budget month. A confirmed_plan uses its saved savings allocation, "
                 "not a percentage baseline; unallocated income remains separate and is not assigned to goals. "
