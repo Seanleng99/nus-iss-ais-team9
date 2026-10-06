@@ -2,6 +2,7 @@
   "name": "nus-iss-project-promptfoo-security",
   "private": true,
   "version": "1.0.0",
+  "packageManager": "npm@11.6.2",
   "engines": {
     "node": ">=22.22"
   },

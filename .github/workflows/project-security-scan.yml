@@ -46,6 +46,7 @@ jobs:
           cache-dependency-path: security/promptfoo/package-lock.json
       - name: Install scan dependencies
         run: |
+          npm install --global npm@11.6.2
           python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
           npm ci --prefix security/promptfoo
       - name: Verify provider, grader and report failure detection
@@ -130,6 +131,7 @@ jobs:
           fi
       - name: Install scan dependencies
         run: |
+          npm install --global npm@11.6.2
           python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
           npm ci --prefix security/promptfoo
       - name: Obtain model secret access through AWS OIDC

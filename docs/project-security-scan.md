@@ -40,7 +40,7 @@ Offline mode uses the application's existing fixture model and retrievers. It ve
 
 ## Run locally
 
-Use Python 3.12 and Node 24. From the repository root, in an activated AI-service virtual environment:
+Use Python 3.12, Node 24 and npm 11.6.2. CI pins npm to the resolver used to generate and verify the lock; npm 11.19.0 attempted to add optional peers and rejected that lock during the first integrated run. From the repository root, in an activated AI-service virtual environment:
 
 ```sh
 python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
