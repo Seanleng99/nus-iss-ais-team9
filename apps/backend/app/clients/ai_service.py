@@ -27,11 +27,18 @@ class AIServiceClient:
 
     @trace_method
     async def compose(self, request: CoachRequest, response: CoachResponse, outcomes: list[dict]) -> CoachResponse:
-        # Streaming events commit audit rows; action writes must stay in the
-        # caller's transaction until the final exchange is persisted.
+        # During action composition DurableRun buffers stream events. Financial
+        # writes and final trace completion therefore share one atomic commit.
         try:
             async with asyncio.timeout(self._composition_timeout):
                 async with httpx.AsyncClient(timeout=self._composition_timeout) as client:
+                    run = active_run.get()
+                    if run is not None:
+                        return await self._stream(client, request,
+                            {"X-API-Key": self._api_key, "X-Workflow-ID": run.trace_id, **outbound_headers()}, run,
+                            path="/coach/compose/stream",
+                            payload={"request": request.model_dump(mode="json"),
+                                     "response": response.model_dump(mode="json"), "outcomes": outcomes})
                     result = await client.post(
                         f"{self._base_url}/coach/compose",
                         headers={"X-API-Key": self._api_key, **outbound_headers()},
@@ -89,12 +96,12 @@ class AIServiceClient:
                 timed_out=isinstance(error, (httpx.TimeoutException, TimeoutError))
             ) from error
 
-    async def _stream(self, client, request, headers, run):
+    async def _stream(self, client, request, headers, run, *, path="/coach/stream", payload=None):
         async with client.stream(
             "POST",
-            f"{self._base_url}/coach/stream",
+            f"{self._base_url}{path}",
             headers=headers,
-            json=request.model_dump(mode="json"),
+            json=payload if payload is not None else request.model_dump(mode="json"),
         ) as response:
             log_event("ai_service.response", status_code=response.status_code)
             response.raise_for_status()

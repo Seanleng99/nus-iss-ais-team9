@@ -50,14 +50,14 @@ def test_multicall_specialist_finishes_under_default_but_exhausts_explicit_deadl
     monkeypatch.delenv("AGENT_TIMEOUT_SECONDS", raising=False)
     stage_gateway = SimulatedStageGateway()
 
-    def wait_with_simulated_provider_latency(futures, *, timeout):
+    def completed_with_simulated_provider_latency(futures, *, timeout):
         completed, unfinished = wait_for_completion(futures, timeout=2)
         assert not unfinished
         if stage_gateway.elapsed_seconds > timeout:
-            return set(), set(futures)
-        return completed, unfinished
+            raise TimeoutError
+        yield from completed
 
-    monkeypatch.setattr(orchestrator_module, "wait", wait_with_simulated_provider_latency)
+    monkeypatch.setattr(orchestrator_module, "as_completed", completed_with_simulated_provider_latency)
     options = {"AGENT_TIMEOUT_SECONDS": deadline} if deadline is not None else {}
     coach = AgentOrchestrator(
         config=Settings(_env_file=None, MODEL_PROVIDER="local_fixture", **options),

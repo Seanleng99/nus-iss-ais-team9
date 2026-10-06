@@ -124,3 +124,19 @@ def coach_compose(
     except (ModelGatewayError, RetrievalError) as error:
         _log_generation_failure(error)
         raise HTTPException(status_code=503, detail="Action composition is temporarily unavailable.") from error
+
+
+@app.post("/coach/compose/stream", dependencies=[Depends(require_api_key)])
+async def coach_compose_stream(
+    payload: ActionCompositionRequest,
+    agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
+    x_workflow_id: Annotated[UUID, Header()],
+) -> StreamingResponse:
+    trace_id = str(x_workflow_id)
+    if payload.response.audit.get("trace_id") != trace_id or payload.response.session_id != payload.request.session_id:
+        raise HTTPException(status_code=422, detail="Invalid composition identity")
+    return StreamingResponse(
+        stream_run(agent_orchestrator, payload, trace_id, operation="composition"),
+        media_type="application/x-ndjson",
+        headers={"X-Trace-ID": trace_id, "Cache-Control": "no-store"},
+    )

@@ -3,3 +3,9 @@
 from contextvars import ContextVar
 
 active_run: ContextVar[object | None] = ContextVar("active_run", default=None)
+
+
+def record_event(event_type, **details):
+    run = active_run.get()
+    if run is not None:
+        run.record_event(event_type, **details)

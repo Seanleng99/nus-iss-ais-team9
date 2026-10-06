@@ -188,3 +188,36 @@ def test_policy_retrieval_failure_keeps_backend_answer_and_all_consumed_calls():
     ]
     assert result.audit["model_input_tokens"] >= 6
     assert result.audit["model_output_tokens"] >= 4
+
+
+def test_composition_stream_retains_linked_content_free_events_and_rejects_identity():
+    from uuid import uuid4
+
+    from app.core.config import settings
+    from app.main import get_orchestrator
+
+    trace_id = str(uuid4())
+    value = payload().model_dump(mode="json")
+    value["response"]["audit"]["trace_id"] = trace_id
+    previous = app.dependency_overrides.get(get_orchestrator)
+    app.dependency_overrides[get_orchestrator] = lambda: service(ComposerGateway())
+    try:
+        client = TestClient(app)
+        headers = {"X-API-Key": settings.api_key, "X-Workflow-ID": trace_id}
+        result = client.post("/coach/compose/stream", headers=headers, json=value)
+        assert result.status_code == 200
+        frames = [json.loads(line) for line in result.text.splitlines()]
+        assert frames[-1]["type"] == "response"
+        events = [f["event"] for f in frames if f["type"] == "event"]
+        assert all(e["trace_id"] == trace_id for e in events)
+        assert any(e["event_type"] == "composition.completed" for e in events)
+        assert any(e["event_type"] == "model.decision.accepted" for e in events)
+        assert "200 for savings" not in json.dumps(events)
+        value["response"]["audit"]["trace_id"] = str(uuid4())
+        assert client.post("/coach/compose/stream", headers=headers, json=value).status_code == 422
+        assert client.post("/coach/compose/stream", json=value).status_code == 401
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(get_orchestrator, None)
+        else:
+            app.dependency_overrides[get_orchestrator] = previous

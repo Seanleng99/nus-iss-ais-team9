@@ -186,6 +186,10 @@ class InvestmentEducationAgent(BaseAgent):
                 grounding["evidence_status"] = "insufficient"
             grounding["subquestions"] = [question.model_dump() for question in plan.subquestions]
             grounding["subquestion_coverage"] = [item.model_dump() for item in coverage.coverage]
+            for item in coverage.coverage:
+                log_event("education.question.coverage", question_id=item.question_id,
+                          coverage_status=item.status, source_ids=[support.source_id for support in item.supporting_passages],
+                          passage_ids=[support.passage_id for support in item.supporting_passages if support.passage_id])
             grounding["coverage_assessment"] = "semantic_contract_unverified" if semantic_failure else "model_semantic_with_exact_quotes" if semantic_assessment else "offline_contract_unassessed"
             grounding["retrieval_strategy"] = "semantic_plan_unverified" if semantic_failure else "model_public_concept_plan" if semantic_assessment else "canonical_fixture_queries"
             if semantic_failure:

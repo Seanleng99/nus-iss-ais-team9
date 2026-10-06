@@ -65,14 +65,20 @@ def test_workflow_logs_safe_structured_lifecycle_events(caplog) -> None:
         "workflow.started",
         "guardrail.evaluated",
         "conversation.follow_up.resolved",
+        "routing.proposed",
         "routing.completed",
         "task.created",
+        "task.queued",
         "task.started",
+        "task.attempt.started",
+        "task.attempt.completed",
+        "task.execution.finished",
         "task.completed",
         "synthesis.started",
         "synthesis.completed",
         "compliance.started",
         "compliance.completed",
+        "education.completeness.repair_decision",
         "workflow.completed",
         "workflow.metrics",
     ]
@@ -93,7 +99,7 @@ def test_workflow_logs_safe_structured_lifecycle_events(caplog) -> None:
     assert task_completed["details"]["retrieval_consumer"] == "investment_education"
     assert task_completed["details"]["query_topics"] == [
         "diversification",
-        "exchange-traded funds",
+        "exchange-traded_funds",
     ]
     assert task_completed["details"]["retrieved_chunk_count"] >= 1
     assert task_completed["details"]["rejected_chunk_count"] == 0

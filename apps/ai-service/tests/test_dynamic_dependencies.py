@@ -1,5 +1,6 @@
 import json
 import time
+from threading import Barrier
 
 import pytest
 from pydantic import ValidationError
@@ -517,14 +518,14 @@ def test_missing_budget_input_returns_typed_needs_input_result() -> None:
     )
 
 
-class DelayedCompletedAgent:
-    def __init__(self, name: AgentName, starts: dict[AgentName, float]) -> None:
+class ConcurrentCompletedAgent:
+    def __init__(self, name: AgentName, rendezvous: Barrier) -> None:
         self.name = name
-        self.starts = starts
+        self.rendezvous = rendezvous
 
     def run_task(self, task):
-        self.starts[self.name] = time.perf_counter()
-        time.sleep(0.08)
+        # Both specialists must be running before either is allowed to finish.
+        self.rendezvous.wait(timeout=5)
         return CompletedInvocation(
             result=AgentResult(
                 agent=self.name,
@@ -536,19 +537,19 @@ class DelayedCompletedAgent:
 
 
 def test_independent_ready_agents_execute_concurrently() -> None:
-    starts: dict[AgentName, float] = {}
+    rendezvous = Barrier(2)
     orchestrator = AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture", MAX_PARALLEL_AGENTS=2),
         gateway=LocalFixtureModelGateway(),
         agents={
-            AgentName.SPENDING: DelayedCompletedAgent(AgentName.SPENDING, starts),
-            AgentName.INVESTMENT_EDUCATION: DelayedCompletedAgent(
+            AgentName.SPENDING: ConcurrentCompletedAgent(AgentName.SPENDING, rendezvous),
+            AgentName.INVESTMENT_EDUCATION: ConcurrentCompletedAgent(
                 AgentName.INVESTMENT_EDUCATION,
-                starts,
+                rendezvous,
             ),
         },
     )
-    orchestrator.handle(
+    response = orchestrator.handle(
         CoachRequest(
             user_id="u1",
             session_id="parallel",
@@ -557,7 +558,9 @@ def test_independent_ready_agents_execute_concurrently() -> None:
         )
     )
 
-    assert abs(starts[AgentName.SPENDING] - starts[AgentName.INVESTMENT_EDUCATION]) < 0.04
+    assert {AgentName.SPENDING, AgentName.INVESTMENT_EDUCATION} <= {
+        result.agent for result in response.agent_results
+    }
 
 
 class RetryOnceAgent:

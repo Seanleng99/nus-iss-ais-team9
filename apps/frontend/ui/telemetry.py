@@ -1,4 +1,4 @@
-"""Content-free call tracing. Keep the three independently built service copies aligned."""
+"""Content-free call tracing using the shared metadata contract."""
 
 import inspect
 import json
@@ -8,69 +8,17 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
-from math import isfinite
 from time import perf_counter
 from uuid import uuid4
+
+from coach_trace import code as _safe_code
+from coach_trace import safe_details
 
 SERVICE_NAME = "frontend"
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _journey_id: ContextVar[str | None] = ContextVar("journey_id", default=None)
 _span: ContextVar[dict | None] = ContextVar("call_span", default=None)
 logger = logging.getLogger("service.calls")
-
-# No payload, query, prompt, answer, token, claim, URL, profile ID or exception text.
-_COUNTS = {
-    "duration_ms",
-    "status_code",
-    "input_characters",
-    "output_characters",
-    "input_tokens",
-    "output_tokens",
-    "total_tokens",
-    "source_count",
-    "finding_count",
-    "agent_result_count",
-    "retrieved_chunk_count",
-    "accepted_chunk_count",
-    "rejected_chunk_count",
-    "attempt",
-    "top_k",
-    "history_count",
-    "message_count",
-    "model_call_count",
-    "timeout_seconds",
-    "response_bytes",
-    "question_characters",
-}
-_FLAGS = {"blocked", "allowed", "cache_hit", "snapshot_found", "authenticated", "persisted"}
-_CODES = {
-    "agent",
-    "component",
-    "status",
-    "error_code",
-    "exception_type",
-    "reason_code",
-    "response_type",
-    "response_language",
-    "authentication_method",
-    "routing_mode",
-    "evidence_status",
-    "provider",
-    "model_id",
-    "prompt_id",
-    "prompt_set_version",
-    "corpus_version",
-    "knowledge_base_id",
-    "http_method",
-    "route",
-    "trace_id",
-    "request_id",
-    "task_id",
-    "selected_agents",
-    "response_fields",
-    "source_ids",
-}
-
 
 def configure_logging(level: str = "INFO") -> None:
     # basicConfig is idempotent; it also preserves the hosting application's handlers.
@@ -87,12 +35,6 @@ def valid_correlation_id(value: str | None) -> str:
     )
 
 
-def _safe_code(value):
-    if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_./:@{}<>-]{1,180}", value):
-        return value
-    return None
-
-
 def context_fields() -> dict:
     return {
         "correlation_id": _correlation_id.get(),
@@ -102,21 +44,7 @@ def context_fields() -> dict:
 
 
 def log_event(event: str, *, level: int = logging.INFO, **fields) -> None:
-    safe = {}
-    for key, value in fields.items():
-        if (
-            key in _COUNTS
-            and type(value) in (int, float)
-            and isfinite(value)
-            or key in _FLAGS
-            and isinstance(value, bool)
-        ):
-            safe[key] = value
-        elif key in _CODES:
-            if isinstance(value, (list, tuple)):
-                safe[key] = [code for item in value[:30] if (code := _safe_code(item))]
-            elif (code := _safe_code(value)) is not None:
-                safe[key] = code
+    safe = safe_details(fields)
     logger.log(
         level,
         json.dumps(

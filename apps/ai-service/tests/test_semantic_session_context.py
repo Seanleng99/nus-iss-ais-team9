@@ -171,8 +171,8 @@ def test_exhausted_contract_and_budget_errors_are_not_retried_as_transient_tasks
     orchestrator = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", MAX_TASK_ATTEMPTS=3,
                                                    RETRY_BACKOFF_SECONDS=0), gateway=LocalFixtureModelGateway())
     agent = FailingAgent()
-    failed, attempt, retries, _ = orchestrator._execute_task(AgentTask(agent="spending", sanitized_message="Summarize."), agent)
-    assert agent.calls == attempt == 1 and retries == [] and not failed.retryable
+    failed, attempt, execution_events, _ = orchestrator._execute_task(AgentTask(agent="spending", sanitized_message="Summarize."), agent)
+    assert agent.calls == attempt == 1 and not any(e.event_type == "task.retry_scheduled" for e in execution_events) and not failed.retryable
 
 
 def test_one_structured_repair_does_not_become_six_calls_through_task_retries():
@@ -194,5 +194,5 @@ def test_one_structured_repair_does_not_become_six_calls_through_task_retries():
 
     orchestrator = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", MAX_TASK_ATTEMPTS=3,
                                                    RETRY_BACKOFF_SECONDS=0), gateway=LocalFixtureModelGateway())
-    failed, _, retries, _ = orchestrator._execute_task(AgentTask(agent="spending", sanitized_message="Summarize."), InvalidAgent())
-    assert gateway.calls == 2 and retries == [] and failed.error_code == "INVALID_STRUCTURED_RESPONSE"
+    failed, _, execution_events, _ = orchestrator._execute_task(AgentTask(agent="spending", sanitized_message="Summarize."), InvalidAgent())
+    assert gateway.calls == 2 and not any(e.event_type == "task.retry_scheduled" for e in execution_events) and failed.error_code == "INVALID_STRUCTURED_RESPONSE"

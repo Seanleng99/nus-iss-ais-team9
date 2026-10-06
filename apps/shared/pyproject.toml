@@ -9,7 +9,7 @@ description = "Shared language selection and reviewed translations for Coach ser
 requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
-include = ["coach_i18n*", "coach_math*"]
+include = ["coach_i18n*", "coach_math*", "coach_trace*"]
 
 [tool.setuptools.package-data]
 coach_i18n = ["locales/*.json", "data/*.json"]

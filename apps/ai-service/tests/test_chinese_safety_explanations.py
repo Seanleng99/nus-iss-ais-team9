@@ -341,9 +341,11 @@ def test_explicit_selection_explanation_is_localized_without_router(message, chi
         if chinese
         else "The caller supplied an explicit allowlisted specialist selection."
     ]
-    assert result["audit_events"][-1].details == {
-        "selected_agents": ["spending"], "routing_mode": "explicit",
-    }
+    routing_details = result["audit_events"][-1].details
+    assert routing_details["selected_agents"] == ["spending"]
+    assert routing_details["routing_mode"] == "explicit"
+    assert routing_details["after"]["selected_agents"] == ["spending"]
+    assert routing_details["decision_id"]
 
 
 @pytest.mark.parametrize(

@@ -93,7 +93,7 @@ def test_only_transient_openai_failures_and_generic_fixture_errors_retry(code, r
     agent = Agent()
     orchestrator = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", MAX_TASK_ATTEMPTS=3,
                                                    RETRY_BACKOFF_SECONDS=0), gateway=LocalFixtureModelGateway())
-    outcome, attempt, retries, _ = orchestrator._execute_task(AgentTask(agent="spending", sanitized_message="Summarize."), agent)
+    outcome, attempt, execution_events, _ = orchestrator._execute_task(AgentTask(agent="spending", sanitized_message="Summarize."), agent)
     assert agent.calls == attempt == (3 if retryable else 1)
-    assert len(retries) == (2 if retryable else 0)
+    assert len([event for event in execution_events if event.event_type == "task.retry_scheduled"]) == (2 if retryable else 0)
     assert outcome.retryable is retryable

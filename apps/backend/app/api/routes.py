@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.clients.ai_service import AIServiceClient, AIServiceUnavailableError
 from app.core.config import settings
-from app.core.run_trace import active_run
+from app.core.run_trace import active_run, record_event
 from app.core.security import (
     AuthenticatedPrincipal,
     automation_user_id_reserved,
@@ -169,14 +169,49 @@ async def coach(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
     x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
+    # Authorize both profile and conversation before creating any audit record.
     enforce_user_access(principal, session, request.user_id)
-    chat_repository = SQLAlchemyChatRepository(session)
+    repository = SQLAlchemyChatRepository(session)
     try:
-        conversation_existed, revision, context = chat_repository.context_snapshot(
-            request.user_id, request.session_id
-        )
+        existed, revision, context = repository.context_snapshot(request.user_id, request.session_id)
     except PermissionError as error:
         raise HTTPException(status_code=404, detail="Conversation not found") from error
+    chat = repository.get_for_update(request.user_id, request.session_id)
+    if chat is None:
+        if existed or repository.id_exists(request.session_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        try:
+            chat = repository.create(request.user_id, request.session_id, request.message[:120])
+        except IntegrityError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="Conversation changed; please retry.") from error
+    elif len(chat.messages) != revision:
+        raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
+    run = DurableRun(session, chat.id, settings.ai_service_timeout_seconds + settings.ai_service_composition_timeout_seconds)
+    token = active_run.set(run)
+    try:
+        record_event("backend.authorization.accepted", authenticated=True)
+        run.buffered = True
+        response = await _coach(request, http_response, ai_service, session, principal, x_synthetic_log,
+                                (existed, revision, context))
+        http_response.headers["X-Trace-ID"] = run.trace_id
+        return response
+    except asyncio.CancelledError:
+        run.fail("abandoned", "REQUEST_CANCELLED")
+        raise
+    except Exception as error:
+        if not run.closed:
+            run.fail("failed", "RESPONSE_PERSISTENCE_FAILED")
+        if isinstance(error, HTTPException):
+            error.headers = {**(error.headers or {}), "X-Trace-ID": run.trace_id}
+        raise
+    finally:
+        active_run.reset(token)
+
+
+async def _coach(request, http_response, ai_service, session, principal, x_synthetic_log, context_snapshot):
+    chat_repository = SQLAlchemyChatRepository(session)
+    conversation_existed, revision, context = context_snapshot
     user_repository = SQLAlchemyUserRepository(session)
     profile = user_repository.get_profile(request.user_id)
     locale = resolve_locale(
@@ -187,6 +222,7 @@ async def coach(
     request = request.model_copy(update={"response_locale": locale})
     # Refuse third-party data requests before any local handler can answer from this user's data.
     if find_other_user_reference(request.message, request.user_id) is not None:
+        record_event("backend.handler.selected", handler="privacy_guard", reason_code="CROSS_USER_REFERENCE")
         return _finalize_coach_response(
             _persist_local_coach(session, request, other_user_data_reply(request.session_id))
         )
@@ -203,14 +239,17 @@ async def coach(
         request = request.model_copy(update={"snapshot": persisted_snapshot})
     confirmed_goal = handle_goal_confirmation(session, request)
     if confirmed_goal is not None:
+        record_event("backend.handler.selected", handler="goal_confirmation")
         return _finalize_coach_response(_persist_local_coach(session, request,
             await compose_backend_response(ai_service, request, confirmed_goal)))
     confirmed = handle_budget_confirmation(session, request)
     if confirmed is not None:
+        record_event("backend.handler.selected", handler="budget_confirmation")
         return _finalize_coach_response(_persist_local_coach(session, request,
             await compose_backend_response(ai_service, request, confirmed)))
     confirmed_transaction = handle_transaction_confirmation(session, request)
     if confirmed_transaction is not None:
+        record_event("backend.handler.selected", handler="transaction_confirmation")
         return _finalize_coach_response(
             _persist_local_coach(session, request,
                 await compose_backend_response(ai_service, request, confirmed_transaction))
@@ -233,6 +272,7 @@ async def coach(
         else handle_transaction_capture(session, request)
     )
     if captured is not None:
+        record_event("backend.handler.selected", handler="transaction_capture")
         return _finalize_coach_response(_persist_local_coach(session, request,
             await compose_backend_response(ai_service, request, captured)))
     # Only a complete, bare date expression can use the existing spending
@@ -242,6 +282,7 @@ async def coach(
                   if followup and request.session_context["active_topic"] == "spending"
                   and _previous_query_was_simple_day(existing_chat) else None)
     if query_date is not None and not any((pending_budget, pending_goal, pending_transaction)):
+        record_event("backend.handler.selected", handler="date_spending_query")
         return _finalize_coach_response(_persist_local_coach(
             session, request, await compose_backend_response(ai_service, request,
                 handle_date_spending_query(session, request, query_date))
@@ -286,8 +327,9 @@ async def coach(
             "ready": False,
         }
     # DurableRun commits metadata and releases the conversation lock before AI.
-    run = DurableRun(session, chat_session.id, settings.ai_service_timeout_seconds)
-    token = active_run.set(run)
+    run = active_run.get()
+    run.flush()
+    record_event("backend.handler.selected", handler="agent_orchestrator")
     try:
         response = await ai_service.coach(request)
         response.audit["trace_id"] = run.trace_id
@@ -295,6 +337,7 @@ async def coach(
         response.audit["response_locale"] = request_locale(request)
         with call_span("pydantic.main.BaseModel.model_validate", response_type="CoachResponse"):
             response = CoachResponse.model_validate(response.model_dump())
+        run.buffered = True
         # Reacquire the conversation lock after incremental event commits.
         session.expire_all()
         enforce_user_access(principal, session, request.user_id)
@@ -354,6 +397,9 @@ async def coach(
             before = response.answer
             previous_status = response.audit.pop("action_status", None)
             stage()
+            record_event("backend.action.outcome", phase="pending_commit", operation=operation,
+                         action_status=response.audit.get("action_status", response.audit.get(f"{operation}_capture", "reviewed_result")),
+                         blocked=response.blocked)
             if response.answer != before and not response.blocked:
                 outcomes.append(action_outcome(operation, response))
             elif previous_status is not None:
@@ -409,8 +455,6 @@ async def coach(
     except Exception:
         run.fail("failed", "RESPONSE_PERSISTENCE_FAILED")
         raise
-    finally:
-        active_run.reset(token)
 
 
 @trace_method
@@ -419,6 +463,8 @@ def _persist_local_coach(
 ) -> CoachResponse:
     locale = request_locale(request)
     response.audit.update(response_locale=locale, response_language=request_language(request))
+    record_event("backend.action.outcome", phase="pending_commit", handler=str(response.audit.get("source", "local_handler")),
+                 action_status=response.audit.get("action_status", "reviewed_result"), blocked=response.blocked)
     response.audit["reviewed_response"] = True
     response.audit.setdefault("response_provenance", "backend_validated_local")
     response.answer = localize_backend_text(response.answer, locale)
@@ -458,6 +504,10 @@ def _persist_coach_exchange(
         response.answer,
         [source.model_dump() for source in response.sources],
     )
+    run = active_run.get()
+    if run is not None:
+        run.complete(response, assistant_message.id)
+        return
     trace_id = str(response.audit.get("trace_id", "")).strip() or str(uuid4())
     response.audit["trace_id"] = trace_id
     if trace_id:

@@ -265,3 +265,64 @@ def test_saved_answer_links_to_the_active_profiles_trace():
     assert not test.exception
     assert test.session_state["coach_trace_target"] == {"user_id": "owner", "trace_id": "run-1"}
     assert test.query_params["page"] == ["traces"]
+
+
+def test_failed_run_graph_reviews_and_coverage_use_only_saved_safe_events():
+    from ui.trace_viewer import (
+        coverage_rows,
+        decision_rows,
+        dependency_edges,
+        dependency_resolutions,
+        review_rows,
+        task_rows,
+    )
+
+    trace = {"status": "failed", "audit": {"durable_events": [
+        {"event_type": "routing.override_applied", "details": {"rule_id": "FOLLOW_UP_READ_ONLY",
+         "before": {"budget_capture": True, "rationale": "PRIVATE"}, "after": {"budget_capture": False}}},
+        {"event_type": "dependency.requested", "task_id": "requester", "details": {
+         "request_id": "dep-1", "capability": "budget_capacity", "required": False}},
+        {"event_type": "dependency.scheduled", "task_id": "requester", "parent_task_id": "provider", "details": {
+         "request_id": "dep-1", "capability": "budget_capacity"}},
+        {"event_type": "compliance.completed", "details": {"review_round": 1, "blocked": True,
+         "review_block_categories": ["unverifiable_claim"], "policy_notes": ["PRIVATE"]}},
+        {"event_type": "task.attempt.failed", "task_id": "provider", "details": {"error_code": "UNEXPECTED_AGENT_ERROR", "retryable": False}},
+        {"event_type": "education.question.coverage", "details": {"question_id": "q1",
+         "coverage_status": "partial", "source_ids": ["approved-source"], "passage_ids": ["p1"], "quote": "PRIVATE"}},
+    ]}}
+    assert dependency_edges(trace) == [{"Requester task": "requester", "Provider task": "provider", "Capability": "budget_capacity"}]
+    assert dependency_resolutions(trace)[0]["required"] is False
+    assert task_rows(trace)[0]["Outcome"] == "waiting_for_dependency"
+    assert task_rows(trace)[1]["Outcome"] == "attempt_failed"
+    assert review_rows(trace)[0]["review_block_categories"] == ["unverifiable_claim"]
+    assert coverage_rows(trace)[0]["Coverage"] == "partial"
+    assert "PRIVATE" not in str(decision_rows(trace) + review_rows(trace) + coverage_rows(trace))
+    test = page(TraceClient({**TRACE, **trace}))
+    assert not test.exception
+    assert len(test.get("graphviz_chart")) == 1
+
+
+def test_generation_success_and_rejected_decision_are_distinct_in_model_view():
+    trace = deepcopy(TRACE)
+    trace["audit"]["durable_events"].extend([
+        {"event_type": "model.contract.validated", "span_id": "validation-span", "details": {"call_id": "call-1"}},
+        {"event_type": "model.decision.rejected", "details": {"call_id": "call-1", "error_code": "MISSING_CITATION"}},
+        {"event_type": "model.correction.requested", "span_id": "correction-span", "details": {"correction_of_call_id": "call-1", "attempt": 2}},
+    ])
+    call = model_calls_for(trace)[0]
+    assert call["status"] == "completed"
+    assert call["contract_status"] == "validated"
+    assert call["decision_status"] == "rejected"
+    assert call["correction_requested"]
+    assert call["attempt"] == 1
+    assert call["span_id"] == "span-1"
+
+
+def test_model_contract_rejection_does_not_rewrite_generation_success():
+    trace = deepcopy(TRACE)
+    trace["audit"]["durable_events"].append({
+        "event_type": "model.contract.rejected", "details": {"call_id": "call-1", "error_code": "INVALID_STRUCTURED_RESPONSE"},
+    })
+    call = model_calls_for(trace)[0]
+    assert call["status"] == "completed"
+    assert call["contract_status"] == "rejected"

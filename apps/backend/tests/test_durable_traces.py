@@ -71,7 +71,7 @@ def install(monkeypatch, db_session_factory, outcome, *, blocked=False):
             # A different DB session can see the decision before the next frame arrives.
             with db_session_factory() as session:
                 record = session.get(OrchestrationTraceRecord, trace_id)
-                saved = record.audit["durable_events"]
+                saved = [e for e in record.audit["durable_events"] if not e["event_type"].startswith("backend.")]
                 assert len(saved) == 1
                 assert saved[0]["event_id"] == first["event"]["event_id"]
                 assert "question" not in saved[0]["details"]
@@ -134,7 +134,7 @@ def test_incremental_trace_survives_failure(monkeypatch, db_session_factory, out
     data = trace.json()
     assert data["status"] == expected
     assert data["finished_at"]
-    assert len(data["audit"]["durable_events"]) == 1
+    assert len([e for e in data["audit"]["durable_events"] if not e["event_type"].startswith("backend.")]) == 1
     assert bool(data["assistant_message_id"]) == (outcome == "success")
     assert "private forbidden" not in trace.text
     assert (
@@ -179,7 +179,7 @@ def test_later_database_failure_preserves_committed_events(
         records = [
             r for r in session.identity_map.values() if isinstance(r, OrchestrationTraceRecord)
         ]
-        if any(len(r.audit.get("durable_events", [])) == 2 for r in records) or (
+        if any(any(e["event_type"] == "task.started" for e in r.audit.get("durable_events", [])) for r in records) or (
             failed and recovery_write_fails
         ):
             failed = True
@@ -195,7 +195,7 @@ def test_later_database_failure_preserves_committed_events(
     with db_session_factory() as session:
         record = session.get(OrchestrationTraceRecord, sent[0])
         assert record.status == ("running" if recovery_write_fails else "failed")
-        assert len(record.audit["durable_events"]) == 1
+        assert len([e for e in record.audit["durable_events"] if not e["event_type"].startswith("backend.")]) == 1
         if recovery_write_fails:
             record.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
             session.commit()
@@ -292,7 +292,7 @@ asyncio.run(main())
     events = trace["audit"]["durable_events"]
     assert any(item["event_type"] == "task.completed" for item in events)
     for call in trace["audit"]["model_calls"]:
-        matching = [e for e in events if e["details"].get("call_id") == call["call_id"]]
+        matching = [e for e in events if e["details"].get("call_id") == call["call_id"] and e["event_type"].startswith("model.generation.")]
         assert len(matching) == 2
         assert all(e["trace_id"] == trace_id for e in matching)
         if call.get("task_id"):
@@ -327,7 +327,7 @@ def test_final_chat_commit_failure_keeps_trace_without_partial_messages(
         record = session.get(OrchestrationTraceRecord, sent[0])
         assert record.status == "failed"
         assert record.assistant_message_id is None
-        assert len(record.audit["durable_events"]) == 1
+        assert len([e for e in record.audit["durable_events"] if not e["event_type"].startswith("backend.")]) == 1
         assert session.scalar(select(ChatMessageRecord)) is None
 
 
@@ -363,4 +363,4 @@ def test_overall_timeout_preserves_trace_even_when_transport_does_not_timeout(
     trace_id = response.headers["X-Trace-ID"]
     trace = client.get(f"/api/coach/traces/{trace_id}?user_id=trace-owner", headers=HEADERS).json()
     assert trace["status"] == "timed_out"
-    assert len(trace["audit"]["durable_events"]) == 1
+    assert len([e for e in trace["audit"]["durable_events"] if not e["event_type"].startswith("backend.")]) == 1

@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -13,6 +13,8 @@ from uuid import uuid4
 from coach_i18n import input_pattern, localize_reviewed, request_locale, translate
 from coach_i18n import response_language as request_language
 from coach_math.calendar import financial_today
+from coach_trace import SCHEMA_VERSION
+from coach_trace import safe_details as trace_details
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.base import BaseAgent
@@ -97,52 +99,6 @@ from app.tools.registry import call_tool
 
 logger = logging.getLogger("service.ai.workflow")
 
-SAFE_WORKFLOW_DETAIL_KEYS = {
-    "model_provider",
-    "model_id",
-    "prompt_set_version",
-    "accepted_chunk_count",
-    "agent",
-    "agent_result_count",
-    "allowed",
-    "attempt",
-    "attempts",
-    "blocked",
-    "block_reasons",
-    "review_block_categories",
-    "capabilities",
-    "capability",
-    "corpus_version",
-    "duration_ms",
-    "error_code",
-    "evidence_status",
-    "finding_count",
-    "input_fingerprint",
-    "model_call_count",
-    "model_input_tokens",
-    "model_output_tokens",
-    "policy_corpus_version",
-    "policy_corpus_versions",
-    "policy_note_count",
-    "policy_source_count",
-    "query_topics",
-    "reason_code",
-    "rejected_chunk_count",
-    "request_id",
-    "requested_by",
-    "required",
-    "resolution",
-    "retrieval_consumer",
-    "retrieval_consumers",
-    "retrieval_corpus_versions",
-    "retrieval_source_count",
-    "retrieved_chunk_count",
-    "retryable",
-    "routing_mode",
-    "selected_agents",
-    "source_count",
-    "timeout_seconds",
-}
 
 
 def _write_workflow_log(
@@ -156,24 +112,9 @@ def _write_workflow_log(
     level: int = logging.INFO,
     event_id: str | None = None,
 ) -> None:
-    safe_details = {
-        key: value
-        for key, value in (details or {}).items()
-        if key in SAFE_WORKFLOW_DETAIL_KEYS
-    }
-    for code_key in ("error_code", "reason_code"):
-        if code_key not in safe_details:
-            continue
-        code_value = str(safe_details[code_key])
-        if not (
-            1 <= len(code_value) <= 128
-            and all(
-                character.isalnum() or character in "._-"
-                for character in code_value
-            )
-        ):
-            safe_details[code_key] = "UNSAFE_VALUE_REDACTED"
+    safe_details = trace_details(details or {})
     payload = {
+        "schema_version": SCHEMA_VERSION,
         "timestamp": datetime.now(UTC).isoformat(),
         "service": "ai-service",
         **context_fields(),
@@ -434,6 +375,25 @@ class AgentOrchestrator:
                 if agent != AgentName.RISK_COMPLIANCE
             )
         )
+        routing_events = []
+
+        def snapshot():
+            return trace_details({**decision.model_dump(mode="json"),
+                                  "query_topics": decision.education_topics,
+                                  "routing_mode": routing_mode}, decision=True)
+
+        def checkpoint(rule_id, source="deterministic_rule", reason_code=None):
+            nonlocal previous, decision_id
+            current = snapshot()
+            if current != previous:
+                next_id = str(uuid4())
+                routing_events.append(self._event(state, "routing.override_applied", "orchestrator",
+                    details={"decision_id": next_id, "parent_decision_id": decision_id, "decision_source": source,
+                             "rule_id": rule_id, "reason_code": reason_code or rule_id,
+                             "before": previous, "after": current}))
+                previous = current
+                decision_id = next_id
+
         memory_reply = income_memory_reply(request)
         if memory_reply is not None:
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
@@ -622,29 +582,43 @@ class AgentOrchestrator:
             )
             routing_mode = "model"
             routing_actor = "router"
-            if requested_agents:
-                decision.selected_agents = requested_agents
+        previous = snapshot()
+        decision_id = str(uuid4())
+        routing_events.append(self._event(state, "routing.proposed", routing_actor,
+            details={"decision_id": decision_id, "decision_source": (
+                "model" if routing_mode == "model" else "user_selection" if requested_agents else "deterministic_rule"),
+                "after": previous, "selected_agents": previous["selected_agents"],
+                "routing_mode": routing_mode}))
+        if routing_mode == "model" and requested_agents:
+            decision.selected_agents = requested_agents
+            checkpoint("EXPLICIT_AGENT_SELECTION", "user_selection")
         # The semantic decision determines whether the current turn continues a
         # draft. A pending draft alone never converts a new topic into a write.
         decision.goal_capture = decision.goal_capture or goal_change_request(state["sanitized_message"])
         if decision.goal_capture and AgentName.GOAL_STRATEGY not in decision.selected_agents:
             decision.selected_agents.append(AgentName.GOAL_STRATEGY)
+        checkpoint("GOAL_CAPTURE_REQUIRES_SPECIALIST")
         # Pending drafts are backend-owned context, never public client confirmation.
         if requested_agents and AgentName.BUDGET in requested_agents and re.search(
             r"\b(realistic|category-level|50/30/20|80/20|zero-based|savings first|custom percentages|what.if|compare.*budget|budget.*scenario|review.*budget|budget.*review|month.end pace|budget.*adjustment|funded alternatives|multi.month|carry.forward|rollover|periodic.*review)\b", state["sanitized_message"], re.IGNORECASE
         ):
             decision.budget_planning = True
+        checkpoint("EXPLICIT_BUDGET_PLANNING_SCOPE", "user_selection")
         if decision.budget_planning:
             decision.budget_capture = True
+        checkpoint("BUDGET_PLANNING_REQUIRES_CAPTURE")
         if decision.budget_capture and AgentName.BUDGET not in decision.selected_agents:
             decision.selected_agents.append(AgentName.BUDGET)
+        checkpoint("BUDGET_CAPTURE_REQUIRES_SPECIALIST")
         if decision.budget_status_query and AgentName.BUDGET not in decision.selected_agents:
             decision.selected_agents.append(AgentName.BUDGET)
+        checkpoint("BUDGET_STATUS_REQUIRES_SPECIALIST")
         if requested_agents and AgentName.BUDGET in requested_agents:
             decision.budget_capture = decision.budget_capture or bool(re.search(
                 input_pattern("ai.orchestrator.decision_budget_capture"),
                 state["sanitized_message"], re.IGNORECASE,
             ))
+        checkpoint("EXPLICIT_BUDGET_CAPTURE", "user_selection")
         # Pending spending drafts are backend-owned context; explicit spending
         # statements and dated spend lookups always reach the extraction step.
         goal_related = request.pending_goal is not None or re.search(
@@ -660,12 +634,15 @@ class AgentOrchestrator:
             and not goal_related
             and spending_capture_request(state["sanitized_message"])
         )
+        checkpoint("SPENDING_CAPTURE_REQUEST")
         if request.session_context.last_stated_fields and not spending_capture_request(state["sanitized_message"]):
             # An explicit profile fact or correction does not answer a pending
             # transaction's missing amount/date.
             decision.spending_capture = False
+        checkpoint("PROFILE_FACT_READ_ONLY")
         if decision.spending_capture and AgentName.SPENDING not in decision.selected_agents:
             decision.selected_agents.append(AgentName.SPENDING)
+        checkpoint("SPENDING_CAPTURE_REQUIRES_SPECIALIST")
         source_index = decision.follow_up_source_index
         if (decision.follow_up_subject_position is not None
                 and not any((decision.goal_capture, decision.budget_capture, decision.spending_capture))):
@@ -710,9 +687,11 @@ class AgentOrchestrator:
             decision.spending_capture = False
             decision.rationale = [(translate('conversation.follow_up_resolved', response_language) if resolution.status == 'resolved' else translate('conversation.follow_up_unclear', response_language))]
             routing_mode = "follow_up"
+        checkpoint("FOLLOW_UP_READ_ONLY", reason_code=resolution.reason_code)
         if memory_reply is not None:
             # A read-only memory question never resumes an unrelated saved-record draft.
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
+        checkpoint("CHAT_MEMORY_READ_ONLY")
         if routing_mode == "model":
             # Calendar scope still needs semantic routing for explicitly selected
             # specialists. Recognized topics can use their governed capability
@@ -741,6 +720,7 @@ class AgentOrchestrator:
             ):
                 decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
                 decision.rationale.append(translate('routing.education_specialist', response_language))
+        checkpoint("EDUCATION_ACCESS_REQUIRED")
         from app.tools.budget_context import scope_budget_request
         request = scope_budget_request(request, decision)
         event = self._event(
@@ -749,6 +729,7 @@ class AgentOrchestrator:
             routing_actor,
             details={
                 "selected_agents": [agent.value for agent in decision.selected_agents],
+                "decision_id": decision_id, "after": snapshot(),
                 "routing_mode": routing_mode,
             },
         )
@@ -764,7 +745,7 @@ class AgentOrchestrator:
             "budget_capture": decision.budget_capture,
             "budget_planning": decision.budget_planning,
             "spending_capture": decision.spending_capture,
-            "audit_events": [*state.get("audit_events", []), event],
+            "audit_events": [*state.get("audit_events", []), *routing_events, event],
         }
 
     @trace_method
@@ -832,29 +813,19 @@ class AgentOrchestrator:
             events.append(
                 self._event(
                     state,
-                    "task.started",
+                    "task.queued",
                     task.agent.value,
                     task_id=task.task_id,
                     details={"attempt": task.attempt},
                 )
             )
             context = copy_context()
-            future = executor.submit(context.run, self._execute_task, task, agent)
+            future = executor.submit(context.run, self._execute_task, task, agent, perf_counter(), state["trace_id"])
             futures[future] = task.task_id
 
-        done, not_done = wait(
-            futures,
-            timeout=self.config.agent_timeout_seconds,
-        )
-        outcomes = {futures[future]: future.result() for future in done}
-        timed_out = {futures[future] for future in not_done}
-        for future in not_done:
-            future.cancel()
-        executor.shutdown(wait=False, cancel_futures=True)
-
         fatal_failure: tuple[str, str] | None = None
-        for task in ready:
-            if task.task_id in timed_out:
+        for task, execution in self._task_outcomes(futures, tasks, executor, self.config.agent_timeout_seconds):
+            if execution is None:
                 task.status = AgentTaskStatus.TIMED_OUT
                 events.append(
                     self._event(
@@ -862,25 +833,17 @@ class AgentOrchestrator:
                         "task.timed_out",
                         task.agent.value,
                         task_id=task.task_id,
-                        details={"timeout_seconds": self.config.agent_timeout_seconds},
+                        details={"timeout_seconds": self.config.agent_timeout_seconds,
+                                 "required": self._task_failure_is_required(state, task)},
                     )
                 )
                 if self._task_failure_is_required(state, task):
                     fatal_failure = ("AGENT_TIMEOUT", task.agent.value)
                 continue
 
-            outcome, final_attempt, retry_errors, duration_ms = outcomes[task.task_id]
+            outcome, final_attempt, execution_events, duration_ms = execution
             task.attempt = final_attempt
-            for attempt, error_code in retry_errors:
-                events.append(
-                    self._event(
-                        state,
-                        "task.retry_scheduled",
-                        task.agent.value,
-                        task_id=task.task_id,
-                        details={"attempt": attempt, "error_code": error_code},
-                    )
-                )
+            events.extend(execution_events)
 
             if isinstance(outcome, CompletedInvocation):
                 task.status = AgentTaskStatus.COMPLETED
@@ -924,6 +887,7 @@ class AgentOrchestrator:
                 )
             elif isinstance(outcome, NeedsDependencyInvocation):
                 task.status = AgentTaskStatus.WAITING_FOR_DEPENDENCY
+                task.context_features["dependency_wait_started"] = perf_counter()
                 pending.extend(outcome.dependency_requests)
                 for request in outcome.dependency_requests:
                     events.append(
@@ -959,6 +923,7 @@ class AgentOrchestrator:
                         details={
                             "reason_code": outcome.reason_code,
                             "question_count": len(outcome.questions),
+                            "missing_fields": outcome.missing_fields,
                         },
                     )
                 )
@@ -973,6 +938,7 @@ class AgentOrchestrator:
                         details={
                             "error_code": outcome.error_code,
                             "retryable": outcome.retryable,
+                            "required": self._task_failure_is_required(state, task),
                             "attempts": final_attempt,
                         },
                     )
@@ -1001,13 +967,57 @@ class AgentOrchestrator:
             "audit_events": events,
         }
 
+    @staticmethod
+    def _task_outcomes(futures, tasks, executor, timeout):
+        pending = set(futures)
+        try:
+            completed = as_completed(futures, timeout=timeout)
+            while pending:
+                try:
+                    future = next(completed)
+                except TimeoutError:
+                    for future in pending:
+                        yield tasks[futures[future]], None
+                    break
+                pending.remove(future)
+                yield tasks[futures[future]], future.result()
+        finally:
+            for future in pending:
+                future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+
     @trace_method
-    def _execute_task(self, task: AgentTask, agent: BaseAgent):
+    def _execute_task(self, task: AgentTask, agent: BaseAgent, submitted_at=None, trace_id=None):
         log_event("agent.invocation", agent=task.agent.value, task_id=task.task_id)
         started = perf_counter()
-        retry_errors: list[tuple[int, str]] = []
+        execution_events = []
+        trace_state = {"trace_id": trace_id or workflow_id.get() or str(uuid4())}
+        execution_id = str(uuid4())
+        backoff_ms = 0.0
+        execution_events.append(self._event(trace_state, "task.started", task.agent.value,
+            task_id=task.task_id, details={"attempt": task.attempt,
+                "execution_id": execution_id, "dependency_wait_ms": task.context_features.get("dependency_wait_ms", 0),
+                "queue_duration_ms": round(max(0, started - (submitted_at or started)) * 1000, 2)}))
+
+        def attempt_event(event_type, **details):
+            event = self._event(trace_state, event_type, task.agent.value, task_id=task.task_id,
+                details={"attempt": final_attempt, "execution_id": execution_id, **details})
+            execution_events.append(event)
+
+        def backoff(error_code):
+            nonlocal backoff_ms
+            attempt_event("task.retry_scheduled", attempt=final_attempt + 1, error_code=error_code,
+                          backoff_duration_ms=self.config.retry_backoff_seconds * 2 ** (final_attempt - 1) * 1000)
+            began = perf_counter()
+            sleep(self.config.retry_backoff_seconds * (2 ** (final_attempt - 1)))
+            elapsed = round((perf_counter() - began) * 1000, 2)
+            backoff_ms += elapsed
+            attempt_event("task.backoff.completed", backoff_duration_ms=elapsed)
+
         final_attempt = task.attempt
         while final_attempt <= self.config.max_task_attempts:
+            attempt_started = perf_counter()
+            attempt_event("task.attempt.started")
             try:
                 token = task_context.set({"task_id": task.task_id, "attempt": final_attempt})
                 try:
@@ -1027,6 +1037,8 @@ class AgentOrchestrator:
                     "BEDROCK_THROTTLINGEXCEPTION", "BEDROCK_SERVICEUNAVAILABLEEXCEPTION",
                     "BEDROCK_INTERNALSERVEREXCEPTION", "BEDROCK_MODELTIMEOUTEXCEPTION",
                 }
+                attempt_event("task.attempt.failed", error_code=error_code, retryable=retryable,
+                              execution_duration_ms=round((perf_counter() - attempt_started) * 1000, 2))
                 if not retryable or final_attempt >= self.config.max_task_attempts:
                     outcome = FailedInvocation(
                         error_code=error_code,
@@ -1034,25 +1046,34 @@ class AgentOrchestrator:
                         safe_message="The specialist could not complete within validated response limits.",
                     )
                     break
-                retry_errors.append((final_attempt + 1, error_code))
-                sleep(self.config.retry_backoff_seconds * (2 ** (final_attempt - 1)))
+                backoff(error_code)
                 final_attempt += 1
                 continue
+            except Exception as exc:
+                attempt_event("task.attempt.failed", error_code="UNEXPECTED_AGENT_ERROR",
+                              exception_type=type(exc).__name__, retryable=False,
+                              execution_duration_ms=round((perf_counter() - attempt_started) * 1000, 2))
+                raise
+            attempt_event("task.attempt.completed", status=type(outcome).__name__,
+                          execution_duration_ms=round((perf_counter() - attempt_started) * 1000, 2))
             if (
                 isinstance(outcome, FailedInvocation)
                 and outcome.retryable
                 and final_attempt < self.config.max_task_attempts
             ):
-                retry_errors.append((final_attempt + 1, outcome.error_code))
-                sleep(self.config.retry_backoff_seconds * (2 ** (final_attempt - 1)))
+                backoff(outcome.error_code)
                 final_attempt += 1
                 continue
             break
+        total_duration_ms = round((perf_counter() - started) * 1000, 2)
+        attempt_event("task.execution.finished", duration_ms=total_duration_ms,
+                      execution_duration_ms=round(max(0, total_duration_ms - backoff_ms), 2),
+                      backoff_duration_ms=backoff_ms)
         return (
             outcome,
             final_attempt,
-            retry_errors,
-            round((perf_counter() - started) * 1000, 2),
+            execution_events,
+            total_duration_ms,
         )
 
     @staticmethod
@@ -1513,6 +1534,8 @@ class AgentOrchestrator:
         unresolved_requesters = {request.requester_task_id for request in unresolved}
         for requester_task_id in touched_requesters - unresolved_requesters:
             requester_task = tasks[requester_task_id]
+            requester_task.context_features["dependency_wait_ms"] = round(
+                (perf_counter() - requester_task.context_features.pop("dependency_wait_started", perf_counter())) * 1000, 2)
             requester_task.status = AgentTaskStatus.READY
             requester_task.attempt += 1
             events.append(
@@ -1521,7 +1544,7 @@ class AgentOrchestrator:
                     "task.resumed",
                     requester_task.agent.value,
                     task_id=requester_task_id,
-                    details={"attempt": requester_task.attempt},
+                    details={"attempt": requester_task.attempt, "dependency_wait_ms": requester_task.context_features.get("dependency_wait_ms")},
                 )
             )
 
@@ -1694,7 +1717,7 @@ class AgentOrchestrator:
     def _review_compliance(self, state: OrchestratorState) -> OrchestratorState:
         events = [
             *state.get("audit_events", []),
-            self._event(state, "compliance.started", AgentName.RISK_COMPLIANCE.value),
+            self._event(state, "compliance.started", AgentName.RISK_COMPLIANCE.value, details={"review_round": 1}),
         ]
         result = self.compliance_agent.validate(
             state["request"],
@@ -1703,6 +1726,18 @@ class AgentOrchestrator:
             routing_rationale=state["routing_rationale"],
             follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
         )
+        def review_event(review, round_number):
+            return self._event(state, "compliance.completed", AgentName.RISK_COMPLIANCE.value,
+                details={"review_round": round_number, "blocked": review.blocked,
+                    "block_reasons": review.data.get("block_reasons", []),
+                    "review_block_categories": review.data.get("review_block_categories", []),
+                    "answer_complete": review.data.get("answer_complete"),
+                    "repairable": review.data.get("repairable"),
+                    "policy_note_count": len(review.policy_notes),
+                    "policy_source_count": len(review.data.get("policy_sources", [])),
+                    "policy_corpus_version": review.data.get("policy_corpus_version")})
+
+        events.append(review_event(result, 1))
         updated: OrchestratorState = {}
         calls = self.gateway.snapshot(state["trace_id"])
         used_tokens = sum(int(call.get("total_tokens") or 0) for call in calls)
@@ -1758,24 +1793,27 @@ class AgentOrchestrator:
             follow_up.status == "resolved"
             and follow_up.agent == AgentName.INVESTMENT_EDUCATION
         )
-        if (
-            repair_fits
-            and result.data.get("request_allowed") is not False
-            and (not result.blocked or result.data.get("repairable") is True)
-            and (result.data.get("answer_complete") is False or result.data.get("repairable") is True)
-            and not financial_advice_findings(state["sanitized_message"], is_request=True)
-            and not cross_user_data_findings(state["sanitized_message"])
-            and not state["guardrail_findings"]
-            and not any(item.blocked for item in state["agent_results"])
-            and (
-                not any(item.data.get("needs_input") for item in state["agent_results"])
-                or clarification_repairable
-            )
-            and len(state["agent_results"]) == 1
-            and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
-            and result.data.get("missing_points")
-            and perf_counter() - state.get("workflow_started", 0) < self.config.agent_timeout_seconds
-        ):
+        repair_conditions = [
+            ("REPAIR_BUDGET_UNAVAILABLE", repair_fits),
+            ("REPAIR_REQUEST_NOT_ALLOWED", result.data.get("request_allowed") is not False),
+            ("REPAIR_VERDICT_NOT_REPAIRABLE", not result.blocked or result.data.get("repairable") is True),
+            ("REPAIR_ANSWER_ALREADY_COMPLETE", result.data.get("answer_complete") is False or result.data.get("repairable") is True),
+            ("REPAIR_PROHIBITED_REQUEST", not financial_advice_findings(state["sanitized_message"], is_request=True)
+                and not cross_user_data_findings(state["sanitized_message"]) and not state["guardrail_findings"]),
+            ("REPAIR_SPECIALIST_BLOCKED", not any(item.blocked for item in state["agent_results"])),
+            ("REPAIR_NEEDS_INPUT", not any(item.data.get("needs_input") for item in state["agent_results"])
+                or clarification_repairable),
+            ("REPAIR_SPECIALIST_NOT_ELIGIBLE", len(state["agent_results"]) == 1
+                and state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION),
+            ("REPAIR_NO_MISSING_POINTS", bool(result.data.get("missing_points"))),
+            ("REPAIR_DEADLINE_EXCEEDED", perf_counter() - state.get("workflow_started", 0) < self.config.agent_timeout_seconds),
+        ]
+        repair_reason = next((code for code, passed in repair_conditions if not passed), "REPAIR_ELIGIBLE")
+        repair_allowed = repair_reason == "REPAIR_ELIGIBLE"
+        events.append(self._event(state, "education.completeness.repair_decision", "orchestrator",
+            details={"allowed": repair_allowed, "repair_round": 1, "decision_source": "deterministic_rule",
+                     "reason_code": repair_reason}))
+        if repair_allowed:
             # Admit repair within the configured specialist window, rather than
             # ending eligibility before a normal multi-call review can finish.
             # One semantic repair, reusing task timeout/call-budget controls and
@@ -1800,12 +1838,15 @@ class AgentOrchestrator:
                     repair_state.update(updated)
                     updated.update(self._synthesize(repair_state))
                     repair_state.update(updated)
+                    events = updated["audit_events"]
+                    events.append(self._event(state, "compliance.started", AgentName.RISK_COMPLIANCE.value,
+                        details={"review_round": 2}))
                     result = self.compliance_agent.validate(
                         state["request"], updated["agent_results"], updated["draft_answer"],
                         routing_rationale=state["routing_rationale"],
                         follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
                     )
-                    events = updated["audit_events"]
+                    events.append(review_event(result, 2))
                 except (ModelGatewayError, RetrievalError, TimeoutError):
                     # Keep only the original independently reviewed answer; an
                     # unavailable repair must never expose an unreviewed draft.
@@ -1815,21 +1856,6 @@ class AgentOrchestrator:
                         AgentName.INVESTMENT_EDUCATION.value,
                         details={"attempt": 1, "reason_code": "REPAIR_UNAVAILABLE"},
                     ))
-        events.append(
-            self._event(
-                state,
-                "compliance.completed",
-                AgentName.RISK_COMPLIANCE.value,
-                details={
-                    "blocked": result.blocked,
-                    "block_reasons": result.data.get("block_reasons", []),
-                    "review_block_categories": result.data.get("review_block_categories", []),
-                    "policy_note_count": len(result.policy_notes),
-                    "policy_source_count": len(result.data.get("policy_sources", [])),
-                    "policy_corpus_version": result.data.get("policy_corpus_version"),
-                },
-            )
-        )
         return {**updated, "compliance_result": result, "audit_events": events}
 
     @trace_method
@@ -2216,13 +2242,16 @@ class AgentOrchestrator:
         parent_task_id: str | None = None,
         details: dict | None = None,
     ) -> AuditEvent:
+        details = dict(details or {})
+        if event_type.startswith("dependency.") and task_id and parent_task_id:
+            details.update(requester_task_id=task_id, provider_task_id=parent_task_id)
         event = AuditEvent(
             trace_id=state["trace_id"],
             event_type=event_type,
             actor=actor,
             task_id=task_id,
             parent_task_id=parent_task_id,
-            details=details or {},
+            details=trace_details(details),
         )
         _write_workflow_log(
             trace_id=event.trace_id,
@@ -2331,6 +2360,7 @@ class AgentOrchestrator:
             details={"model_provider": self.config.model_provider,
                      "model_id": self.config.model_id, "prompt_set_version": self.prompts.version},
         )
+        workflow_token = workflow_id.set(trace_id)
         trace_token = self.gateway.bind_trace(trace_id)
         retrieval_token = self.education_retriever.begin_request()
         try:
@@ -2399,3 +2429,4 @@ class AgentOrchestrator:
             self.education_retriever.end_request(retrieval_token)
             self.gateway.reset_trace(trace_token)
             self.gateway.clear(trace_id)
+            workflow_id.reset(workflow_token)

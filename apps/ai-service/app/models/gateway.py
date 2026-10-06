@@ -11,7 +11,7 @@ from coach_i18n import input_pattern, load_data, translate
 
 from app.agents.education_access import education_gap_message, education_topics
 from app.core.config import Settings
-from app.core.run_trace import task_context
+from app.core.run_trace import last_model_call, task_context
 from app.core.telemetry import context_fields, log_event, trace_method
 from app.models.contracts import output_format
 
@@ -821,6 +821,7 @@ class TracingModelGateway:
     ) -> str:
         trace_id = _model_trace_id.get()
         call_id = str(uuid4())
+        last_model_call.set(call_id)
         started = perf_counter()
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         policy = self.settings.model_policy(component, max_tokens)

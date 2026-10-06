@@ -17,7 +17,7 @@ class TraceStreamClosed(RuntimeError):
     pass
 
 
-async def stream_run(orchestrator, request, trace_id: str):
+async def stream_run(orchestrator, request, trace_id: str, *, operation="coach"):
     if not _workers.acquire(blocking=False):
         yield json.dumps({"type": "error", "code": "WORKFLOW_CAPACITY"}) + "\n"
         return
@@ -37,8 +37,13 @@ async def stream_run(orchestrator, request, trace_id: str):
         trace_token = workflow_id.set(trace_id)
         sink_token = event_sink.set(lambda event: send({"type": "event", "event": event}))
         try:
-            log_event("coach.request.accepted", input_characters=len(request.message))
-            result = orchestrator.handle(request)
+            if operation == "composition":
+                from app.core.action_composition import compose_action
+
+                result = compose_action(request, orchestrator)
+            else:
+                log_event("coach.request.accepted", input_characters=len(request.message))
+                result = orchestrator.handle(request)
             log_event(
                 "coach.response.ready",
                 trace_id=trace_id,

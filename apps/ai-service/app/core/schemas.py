@@ -382,6 +382,7 @@ class CapabilityDefinition(StrictContractModel):
 
 
 class AuditEvent(StrictContractModel):
+    schema_version: Literal[1] = 1
     event_id: str = Field(default_factory=lambda: str(uuid4()))
     trace_id: str
     event_type: str

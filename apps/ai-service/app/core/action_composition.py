@@ -18,6 +18,7 @@ from app.core.schemas import (
     ConversationReferent,
 )
 from app.core.session_context import coaching_preferences
+from app.core.telemetry import log_event
 from app.models.gateway import (
     BedrockModelGateway,
     LocalFixtureModelGateway,
@@ -112,6 +113,7 @@ class CompositionGateway:
 
 
 def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResponse:
+    log_event("composition.started", phase="post_action")
     response = payload.response.model_copy(deep=True)
     if response.blocked:
         raise ModelGatewayError("Blocked evidence cannot be composed.", code="ACTION_COMPOSITION_BLOCKED")
@@ -138,6 +140,7 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
         )
     gateway = TracingModelGateway(raw_gateway, config)
     trace_id = str(response.audit.get("trace_id") or uuid4())
+    response.audit["trace_id"] = trace_id
     token = gateway.bind_trace(trace_id)
     try:
         reviewed = [item for item in response.agent_results
@@ -203,8 +206,10 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
                               if compliance.data.get("policy_corpus_version") else [])
         response.audit.update(reviewed_action_outcome=True, post_action_composed=True,
                               response_provenance="reviewed_backend_action_composition")
+        log_event("composition.completed", allowed=True, phase="post_action")
         return response
     except (ModelGatewayError, RetrievalError) as error:
+        log_event("composition.fallback", reason_code=error.code, phase="post_action")
         response.audit.update(post_action_composed=False, composition_fallback_code=error.code)
         return response
     finally:

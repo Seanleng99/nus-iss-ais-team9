@@ -5,6 +5,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app.core.run_trace import last_model_call
 from app.core.telemetry import log_event, trace_method
 from app.models.contracts import structured_contract
 from app.models.gateway import ModelGateway, ModelGatewayError
@@ -32,8 +33,13 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
             response_fields=list(response_type.model_fields),
             output_characters=len(raw),
         )
+        log_event("model.contract.validated", call_id=last_model_call.get(),
+                  response_type=response_type.__name__, validation_status="validated")
         return response
     except (json.JSONDecodeError, ValidationError) as exc:
+        log_event("model.contract.rejected", call_id=last_model_call.get(),
+                  response_type=response_type.__name__, validation_status="rejected",
+                  error_code="INVALID_STRUCTURED_RESPONSE")
         raise ModelGatewayError(
             "The model returned an invalid structured response.",
             code="INVALID_STRUCTURED_RESPONSE",
@@ -53,14 +59,25 @@ def generate_structured_response(
     validate_response: Callable[[StructuredModel], StructuredModel] | None = None,
 ) -> StructuredModel:
     """Generate a typed response with one explicit, bounded correction attempt."""
+    def accept(raw):
+        try:
+            parsed = parse_structured_response(raw, response_type)
+            result = validate_response(parsed) if validate_response else parsed
+        except ModelGatewayError as exc:
+            log_event("model.decision.rejected", call_id=last_model_call.get(),
+                      response_type=response_type.__name__, error_code=exc.code)
+            raise
+        log_event("model.decision.accepted", call_id=last_model_call.get(),
+                  response_type=response_type.__name__, validation_status="accepted")
+        return result
+
     with structured_contract(response_type):
         raw = gateway.generate(
             system_prompt=system_prompt, user_prompt=user_prompt,
             temperature=temperature, max_tokens=max_tokens,
         )
     try:
-        parsed = parse_structured_response(raw, response_type)
-        return validate_response(parsed) if validate_response else parsed
+        return accept(raw)
     except ModelGatewayError as exc:
         if exc.code not in {
             "INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_CITATION", "MISSING_CITATION",
@@ -70,6 +87,7 @@ def generate_structured_response(
             raise
         log_event(
             "model.correction.requested",
+            correction_of_call_id=last_model_call.get(),
             response_type=response_type.__name__,
             error_code=exc.code,
             attempt=2,
@@ -171,5 +189,4 @@ def generate_structured_response(
             system_prompt=correction_prompt, user_prompt=correction_input,
             temperature=min(temperature, 0.1), max_tokens=max_tokens,
         )
-    parsed = parse_structured_response(corrected, response_type)
-    return validate_response(parsed) if validate_response else parsed
+    return accept(corrected)

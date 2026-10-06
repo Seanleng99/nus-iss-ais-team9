@@ -1,0 +1,284 @@
+"""Versioned, content-free trace contract shared by producers, storage and viewers.
+
+Unknown fields and invalid values are discarded at every trust boundary. Never add
+prompts, answers, quotes, exception messages or unreviewed rationale to this contract.
+"""
+
+import re
+from datetime import UTC, datetime
+from math import isfinite
+from uuid import UUID, uuid4
+
+SCHEMA_VERSION = 1
+CODE = re.compile(r"^[A-Za-z0-9_./:@{}<>-]{1,180}$")
+COUNTS = {
+    "duration_ms",
+    "status_code",
+    "input_characters",
+    "output_characters",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "source_count",
+    "finding_count",
+    "agent_result_count",
+    "retrieved_chunk_count",
+    "accepted_chunk_count",
+    "rejected_chunk_count",
+    "attempt",
+    "attempts",
+    "top_k",
+    "history_count",
+    "message_count",
+    "model_call_count",
+    "timeout_seconds",
+    "response_bytes",
+    "question_characters",
+    "question_count",
+    "model_input_tokens",
+    "model_output_tokens",
+    "policy_note_count",
+    "policy_source_count",
+    "retrieval_source_count",
+    "queue_duration_ms",
+    "execution_duration_ms",
+    "dependency_wait_ms",
+    "backoff_duration_ms",
+    "max_output_tokens",
+    "review_round",
+    "repair_round",
+}
+FLAGS = {
+    "blocked",
+    "allowed",
+    "cache_hit",
+    "snapshot_found",
+    "authenticated",
+    "persisted",
+    "required",
+    "retryable",
+    "goal_capture",
+    "budget_capture",
+    "budget_planning",
+    "spending_capture",
+    "answer_complete",
+    "repairable",
+    "composition_usage_complete",
+}
+CODES = {
+    "source",
+    "category",
+    "agent",
+    "component",
+    "status",
+    "error_code",
+    "exception_type",
+    "reason_code",
+    "response_type",
+    "response_language",
+    "authentication_method",
+    "routing_mode",
+    "evidence_status",
+    "provider",
+    "model_id",
+    "prompt_id",
+    "prompt_set_version",
+    "corpus_version",
+    "knowledge_base_id",
+    "http_method",
+    "route",
+    "trace_id",
+    "request_id",
+    "task_id",
+    "call_id",
+    "event_id",
+    "capability",
+    "policy_corpus_version",
+    "requested_by",
+    "resolution",
+    "retrieval_consumer",
+    "input_fingerprint",
+    "model_provider",
+    "decision_source",
+    "rule_id",
+    "decision_id",
+    "parent_decision_id",
+    "requester_task_id",
+    "provider_task_id",
+    "question_id",
+    "coverage_status",
+    "passage_id",
+    "source_id",
+    "handler",
+    "operation",
+    "action_status",
+    "phase",
+    "execution_id",
+    "generation_id",
+    "correction_of_call_id",
+    "validation_status",
+    "reasoning_effort",
+}
+CODE_LISTS = {
+    "selected_agents",
+    "response_fields",
+    "source_ids",
+    "block_reasons",
+    "review_block_categories",
+    "capabilities",
+    "policy_corpus_versions",
+    "retrieval_consumers",
+    "retrieval_corpus_versions",
+    "evidence_refs",
+    "missing_fields",
+    "passage_ids",
+}
+DECISION_FIELDS = {
+    "selected_agents",
+    "query_topics",
+    "routing_mode",
+    "budget_status_query",
+    "memory_question",
+    "goal_capture",
+    "budget_capture",
+    "budget_planning",
+    "spending_capture",
+}
+
+
+def code(value):
+    return value if isinstance(value, str) and CODE.fullmatch(value) else None
+
+
+def topic_ids(values):
+    # Only governed public topic names may cross the incremental boundary.
+    from coach_i18n import load_data
+
+    vocabulary = load_data("education_vocabulary")
+    topics = {topic for _, topic in vocabulary["EDUCATION_TOPIC_PHRASES"]}
+    topics.update(topic for topic, _ in vocabulary["EDUCATION_DETAIL_PHRASES"])
+    topics.update({"investment basics", "general investment concepts"})
+    canonical = {topic.replace(" ", "_"): topic for topic in topics}
+    return list(
+        dict.fromkeys(
+            value.replace(" ", "_")
+            for value in values[:30]
+            if isinstance(value, str) and (value in topics or value in canonical)
+        )
+    )
+
+
+def safe_details(details, *, decision=False):
+    if not isinstance(details, dict):
+        return {}
+    result = {}
+    for key, value in details.items():
+        if decision and key not in DECISION_FIELDS:
+            continue
+        if (
+            key in COUNTS
+            and type(value) in (int, float)
+            and isfinite(value)
+            and value >= 0
+            or (key in FLAGS or key in {"budget_status_query", "memory_question"})
+            and type(value) is bool
+        ):
+            result[key] = value
+        elif (
+            key in {"error_code", "reason_code"}
+            and not code(value)
+            and value is not None
+        ):
+            result[key] = "UNSAFE_VALUE_REDACTED"
+        elif key in CODES and code(value):
+            result[key] = value
+        elif key in CODE_LISTS and isinstance(value, (list, tuple)):
+            result[key] = [item for item in value[:30] if code(item)]
+        elif key == "query_topics" and isinstance(value, (list, tuple)):
+            result[key] = topic_ids(value)
+        elif key in {"before", "after"} and not decision and isinstance(value, dict):
+            result[key] = safe_details(value, decision=True)
+    return result
+
+
+def safe_event(event, trace_id):
+    if not isinstance(event, dict) or event.get("trace_id") != trace_id:
+        raise ValueError("Invalid trace event")
+    version = event.get("schema_version", SCHEMA_VERSION)  # legacy frames
+    if type(version) is not int or version != SCHEMA_VERSION:
+        raise ValueError("Unsupported trace schema")
+    event_type = code(event.get("event_type"))
+    if not event_type:
+        raise ValueError("Invalid event type")
+    stamp = datetime.fromisoformat(event.get("timestamp") or event["occurred_at"])
+    if stamp.tzinfo is None:
+        raise ValueError("Missing event timezone")
+    result = {
+        "schema_version": version,
+        "event_id": str(UUID(event["event_id"])),
+        "trace_id": trace_id,
+        "event_type": event_type,
+        "timestamp": stamp.isoformat(),
+    }
+    for key in (
+        "task_id",
+        "parent_task_id",
+        "span_id",
+        "parent_span_id",
+        "actor",
+        "correlation_id",
+    ):
+        if code(event.get(key)):
+            result[key] = event[key]
+    result["details"] = safe_details(event.get("details", {}))
+    if type(event.get("attempt")) is int and event["attempt"] >= 1:
+        result["details"]["attempt"] = event["attempt"]
+    return result
+
+
+def make_event(event_type, trace_id, *, actor=None, details=None, **context):
+    return safe_event(
+        {
+            "schema_version": SCHEMA_VERSION,
+            "event_id": str(uuid4()),
+            "trace_id": trace_id,
+            "event_type": event_type,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "actor": actor,
+            "details": details or {},
+            **context,
+        },
+        trace_id,
+    )
+
+
+# Explicit semantic allowlist: routine method/HTTP logs do not flood the audit store.
+SEMANTIC_EVENTS = {
+    "synthesis.strategy",
+    "model.response.parsed",
+    "model.contract.validated",
+    "model.contract.rejected",
+    "model.decision.accepted",
+    "model.decision.rejected",
+    "model.correction.requested",
+    "agent.guardrail",
+    "agent.input.guardrail",
+    "agent.output.guardrail",
+    "agent.guardrail.evaluated",
+    "agent.output.evaluated",
+    "agent.grounding.ready",
+    "agent.grounding",
+    "agent.evidence_gap",
+    "education.coverage.assessed",
+    "education.answerability.rejected",
+    "education.answer.provenance",
+    "education.grounding.reused",
+    "education.question.coverage",
+    "composition.started",
+    "composition.completed",
+    "composition.fallback",
+}
+
+
+def is_durable_event(event_type):
+    return event_type.startswith("model.generation.") or event_type in SEMANTIC_EVENTS
