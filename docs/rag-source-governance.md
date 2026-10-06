@@ -1,6 +1,10 @@
-# Education RAG Source Governance
+# RAG Source Governance
 
 ## Current packaged-corpus governance
+
+The **RAG Source Governance** workflow validates both Education and Policy corpora.
+The duplicate Policy-only workflow has been retired; the combined weekly/manual
+workflow retains governance evidence for 90 days.
 
 The deployed Education retriever reads the ten approved documents and `source_manifest.json` from the AI image at `knowledge/investment_education`. It verifies manifest approval and review deadlines, canonical URL allowlists, UTF-8 text, content inspection, and SHA-256 checksums before serving evidence. `EDUCATION_CORPUS_VERSION` pins the exact reviewed version. For each release SHA, the release derives Education and Policy pins from their manifests, injects and verifies them on the task definition, and passes the same values to the post-deploy smoke check. The weekly `rag-source-governance.yml` workflow validates both packaged corpora offline with `contents: read` and retains evidence; it does not assume an AWS OIDC role or audit S3. A source change requires a reviewed manifest, new corpus version, rebuilt image, and passing retrieval/evaluation gates. Bedrock ingestion and AWS audit commands below are historical optional provider tooling, not prerequisites for the local-packaged deployment.
 

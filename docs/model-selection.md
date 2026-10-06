@@ -64,7 +64,7 @@ python infra/scripts/model_comparison.py `
   --review-key-output artifacts/model-comparison-review-key.json
 ```
 
-The former workflow used short-lived GitHub OIDC credentials and a least-privilege role limited to the two approved inference profiles and their exact APAC destination model ARNs. It uploaded the JSON report, blinded review CSV, and separately keyed rubric for 90 days. The raw artifact was not committed because it contains synthetic prompts and generated answers; this document retains the aggregate decision evidence. The current workflow is an inactive historical notice and never invokes Bedrock.
+The former workflow used short-lived GitHub OIDC credentials and a least-privilege role limited to the two approved inference profiles and their exact APAC destination model ARNs. It uploaded the JSON report, blinded review CSV, and separately keyed rubric for 90 days. The raw artifact was not committed because it contains synthetic prompts and generated answers; this document retains the aggregate decision evidence. The historical-notice workflow has been removed. Historical comparison scripts and evidence remain available for separately approved reproduction.
 
 The report records model/profile and foundation IDs, source Region, inference geography, catalog destinations, prompt version, commit SHA, case and repeat IDs, structural checks, latency, audited tokens, price assumptions, execution errors, gate failures, and the deterministic selection reason. Recheck current [Bedrock inference-profile support](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html) and [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) before every formal run.
 

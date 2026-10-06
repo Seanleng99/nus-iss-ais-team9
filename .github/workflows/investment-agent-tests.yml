@@ -1,0 +1,38 @@
+name: Investment Agent Tests
+
+# CI owns automatic execution; dispatch retains focused troubleshooting runs.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: investment-agent-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    name: Offline investment contracts
+    uses: ./.github/workflows/agent-test-suite.yml
+    with:
+      suite: investment-offline
+      label: "Offline investment contracts"
+
+  functional:
+    name: Functional tests — ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: beginner
+            label: "Beginner education scenarios"
+          - group: education
+            label: "Education and retrieval contracts"
+          - group: hybrid
+            label: "Grounded and general education"
+    uses: ./.github/workflows/agent-test-suite.yml
+    with:
+      suite: investment-functional-${{ matrix.group }}
+      label: "Investment Agent Tests — ${{ matrix.label }}"

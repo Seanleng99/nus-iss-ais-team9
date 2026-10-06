@@ -140,9 +140,27 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(all(value for key, value in result.items() if key != "migrations"))
         self.assertFalse(result["migrations"])
 
-    def test_model_comparison_workflow_validates_without_service_deployment(self):
+    def test_agent_workflow_changes_require_ai_checks_without_deployment(self):
+        for name in ("agent-test-suite", "spending-agent-tests", "budget-agent-tests", "goal-agent-tests",
+                     "investment-agent-tests", "risk-compliance-agent-tests"):
+            with self.subTest(name=name):
+                result = detect_changes.classify_changes([f".github/workflows/{name}.yml"])
+                self.assertTrue(result["ai_ci"])
+                self.assertTrue(result["infrastructure"])
+                self.assertTrue(result["sast"])
+                self.assertFalse(result["deploy"])
+
+    def test_agent_workflow_change_does_not_hide_an_application_release(self):
+        result = detect_changes.classify_changes([
+            ".github/workflows/budget-agent-tests.yml", "apps/frontend/app.py",
+        ])
+        self.assertTrue(result["ai_ci"])
+        self.assertTrue(result["frontend_deploy"])
+        self.assertTrue(result["deploy"])
+
+    def test_security_scan_workflow_validates_without_service_deployment(self):
         result = detect_changes.classify_changes(
-            [".github/workflows/model-comparison.yml"]
+            [".github/workflows/project-security-scan.yml"]
         )
 
         self.assertTrue(result["ai_ci"])
@@ -172,9 +190,9 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 
-    def test_policy_rag_governance_workflow_validates_without_service_deployment(self):
+    def test_security_scan_assets_validate_without_service_deployment(self):
         result = detect_changes.classify_changes(
-            [".github/workflows/policy-rag-source-governance.yml"]
+            ["security/promptfoo/cases.json"]
         )
 
         self.assertTrue(result["ai_ci"])

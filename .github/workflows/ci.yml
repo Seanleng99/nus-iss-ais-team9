@@ -83,6 +83,78 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  spending-agent-tests:
+    name: Spending agent tests
+    needs: changes
+    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
+    uses: ./.github/workflows/spending-agent-tests.yml
+
+  budget-agent-tests:
+    name: Budget agent tests
+    needs: changes
+    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
+    uses: ./.github/workflows/budget-agent-tests.yml
+
+  goal-agent-tests:
+    name: Goal agent tests
+    needs: changes
+    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
+    uses: ./.github/workflows/goal-agent-tests.yml
+
+  investment-agent-tests:
+    name: Investment agent tests
+    needs: changes
+    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
+    uses: ./.github/workflows/investment-agent-tests.yml
+
+  risk-compliance-agent-tests:
+    name: Risk & Compliance agent tests
+    needs: changes
+    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
+    uses: ./.github/workflows/risk-compliance-agent-tests.yml
+
+  project-security-scan:
+    name: Project OWASP security scan
+    needs: changes
+    # Required by the reusable workflow's optional manual live job. Its offline
+    # job keeps contents:read, and CI cannot enable the live job.
+    permissions:
+      contents: read
+      id-token: write
+    if: >-
+      needs.changes.outputs.sast == 'true' ||
+      needs.changes.outputs.ai_ci == 'true' ||
+      needs.changes.outputs.deploy == 'true'
+    uses: ./.github/workflows/project-security-scan.yml
+
+  agent-test-gate:
+    name: Required agent test gate
+    needs: [changes, spending-agent-tests, budget-agent-tests, goal-agent-tests, investment-agent-tests, risk-compliance-agent-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      AI_CI: ${{ needs.changes.outputs.ai_ci }}
+      DEPLOY: ${{ needs.changes.outputs.deploy }}
+      SPENDING_RESULT: ${{ needs.spending-agent-tests.result }}
+      BUDGET_RESULT: ${{ needs.budget-agent-tests.result }}
+      GOAL_RESULT: ${{ needs.goal-agent-tests.result }}
+      INVESTMENT_RESULT: ${{ needs.investment-agent-tests.result }}
+      COMPLIANCE_RESULT: ${{ needs.risk-compliance-agent-tests.result }}
+    steps:
+      - name: Require every selected agent suite to pass
+        run: |
+          [[ "$CHANGES_RESULT" == "success" ]] || exit 1
+          if [[ "$AI_CI" == "true" || "$DEPLOY" == "true" ]]; then
+            for result in "$SPENDING_RESULT" "$BUDGET_RESULT" "$GOAL_RESULT" "$INVESTMENT_RESULT" "$COMPLIANCE_RESULT"; do
+              [[ "$result" == "success" ]] || { echo "An agent suite did not pass: $result" >&2; exit 1; }
+            done
+            echo "All five agent suites passed." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Agent suites are not required for this change." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   ai-service:
     name: FastAPI tests and AI evals
     needs: changes
@@ -102,8 +174,20 @@ jobs:
         run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
       - name: Lint
         run: ruff check apps/ai-service apps/shared infra/scripts
-      - name: Unit and API tests
-        run: pytest apps/ai-service/tests
+      - name: Validate AI test ownership
+        run: python -m pytest -q infra/scripts/tests/test_agent_test_selection.py
+      - name: Remaining unit and API tests
+        run: >-
+          python infra/scripts/run_agent_tests.py --suite remaining
+          --junitxml=artifacts/remaining-ai-tests.xml
+      - name: Upload remaining AI test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: remaining-ai-tests
+          path: artifacts/remaining-ai-tests.xml
+          if-no-files-found: error
+          retention-days: 30
       - name: Coach conversational regression contracts (offline)
         run: >-
           pytest apps/ai-service/tests/test_conversational_pipeline.py
@@ -328,10 +412,12 @@ jobs:
 
   container-build:
     name: Build hardened containers
-    needs: [changes, frontend, backend, ai-service]
+    needs: [changes, frontend, backend, ai-service, agent-test-gate, project-security-scan]
     if: >-
       always() &&
       needs.changes.outputs.deploy == 'true' &&
+      needs.agent-test-gate.result == 'success' &&
+      needs.project-security-scan.result == 'success' &&
       (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
       (needs.backend.result == 'success' || needs.backend.result == 'skipped') &&
       (needs.ai-service.result == 'success' || needs.ai-service.result == 'skipped')

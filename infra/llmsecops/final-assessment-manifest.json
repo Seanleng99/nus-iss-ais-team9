@@ -48,8 +48,8 @@
       "evidence": [
         {"kind": "documentation", "path": "docs/model-selection.md"},
         {"kind": "implementation", "path": "apps/ai-service/app/models/gateway.py"},
-        {"kind": "implementation", "path": "apps/ai-service/prompts/v6/prompts.json"},
-        {"kind": "workflow", "path": ".github/workflows/model-comparison.yml"}
+        {"kind": "implementation", "path": "apps/ai-service/prompts/v8/prompts.json"},
+        {"kind": "policy", "path": "apps/ai-service/app/core/model-role-policy.json"}
       ],
       "demo_scenarios": ["DEMO-02"]
     },
@@ -132,8 +132,7 @@
         {"kind": "policy", "path": "docs/policy-rag-governance.md"},
         {"kind": "implementation", "path": "apps/ai-service/app/rag/retriever.py"},
         {"kind": "implementation", "path": "apps/ai-service/app/rag/policy.py"},
-        {"kind": "workflow", "path": ".github/workflows/rag-source-governance.yml"},
-        {"kind": "workflow", "path": ".github/workflows/policy-rag-source-governance.yml"}
+        {"kind": "workflow", "path": ".github/workflows/rag-source-governance.yml"}
       ],
       "demo_scenarios": ["DEMO-03", "DEMO-04"]
     },

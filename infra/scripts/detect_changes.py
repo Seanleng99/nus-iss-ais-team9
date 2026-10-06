@@ -34,6 +34,13 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 continue
 
             if path in {
+                ".github/workflows/agent-test-suite.yml",
+                ".github/workflows/spending-agent-tests.yml",
+                ".github/workflows/budget-agent-tests.yml",
+                ".github/workflows/goal-agent-tests.yml",
+                ".github/workflows/investment-agent-tests.yml",
+                ".github/workflows/risk-compliance-agent-tests.yml",
+                ".github/workflows/project-security-scan.yml",
                 ".github/workflows/aws-operational-validation.yml",
                 ".github/workflows/final-assessment.yml",
                 ".github/workflows/model-comparison.yml",
@@ -122,6 +129,10 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                     integration=True,
                     sast=True,
                 )
+                continue
+
+            if path.startswith("security/"):
+                result.update(ai_ci=True, infrastructure=True, sast=True)
                 continue
 
             if path.startswith("infra/llmsecops/"):

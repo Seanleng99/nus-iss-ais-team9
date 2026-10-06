@@ -1,0 +1,109 @@
+{
+  "ci_only_test_paths": [
+    "tests/test_conversational_pipeline.py"
+  ],
+  "suites": {
+    "spending-offline": {
+      "test_paths": ["tests/test_spending_analyzer.py"]
+    },
+    "spending-functional-capture": {
+      "test_paths": ["tests/test_spending_capture.py"]
+    },
+    "spending-functional-coverage": {
+      "test_paths": ["tests/test_spending_coverage.py"]
+    },
+    "spending-functional-integration": {
+      "test_paths": ["tests/test_spending_integration.py", "tests/test_risk_spending_coverage.py"]
+    },
+    "budget-offline": {
+      "test_paths": [
+        "tests/test_budget_agent.py",
+        "tests/test_budget_planner.py",
+        "tests/test_budget_methods.py"
+      ]
+    },
+    "budget-functional-capture": {
+      "test_paths": [
+        "tests/test_budget_capture.py",
+        "tests/test_budget_records.py"
+      ]
+    },
+    "budget-functional-reasoning": {
+      "test_paths": [
+        "tests/test_budget_reasoning.py",
+        "tests/test_budget_review.py"
+      ]
+    },
+    "budget-functional-boundaries": {
+      "test_paths": [
+        "tests/test_edge_budget_regressions.py"
+      ]
+    },
+    "goal-offline": {
+      "test_paths": [
+        "tests/test_goal_capture.py",
+        "tests/test_saved_budget_capacity.py"
+      ]
+    },
+    "goal-functional-feasibility": {
+      "test_paths": [
+        "tests/test_emergency_fund.py"
+      ]
+    },
+    "goal-functional-dependencies": {
+      "test_paths": [
+        "tests/test_dynamic_dependencies.py"
+      ]
+    },
+    "goal-functional-recovery": {
+      "test_paths": [
+        "tests/test_goal_education_recovery.py"
+      ]
+    },
+    "investment-offline": {
+      "test_paths": [
+        "tests/test_investment_education_safety.py",
+        "tests/test_investment_review_regressions.py"
+      ]
+    },
+    "investment-functional-beginner": {
+      "test_paths": [
+        "tests/test_beginner_investment_questions.py"
+      ]
+    },
+    "investment-functional-education": {
+      "test_paths": [
+        "tests/test_investment_education_agent.py"
+      ]
+    },
+    "investment-functional-hybrid": {
+      "test_paths": [
+        "tests/test_hybrid_investment_education.py"
+      ]
+    },
+    "risk-compliance-offline": {
+      "test_paths": [
+        "tests/test_risk_compliance.py",
+        "tests/test_guardrails.py"
+      ]
+    },
+    "risk-compliance-functional-blocks": {
+      "test_paths": [
+        "tests/test_risk_compliance_functional.py"
+      ],
+      "name_prefix": "test_blocks_unsafe_request"
+    },
+    "risk-compliance-functional-withholds": {
+      "test_paths": [
+        "tests/test_risk_compliance_functional.py"
+      ],
+      "name_prefix": "test_withholds_unsafe_answer"
+    },
+    "risk-compliance-functional-allows": {
+      "test_paths": [
+        "tests/test_risk_compliance_functional.py"
+      ],
+      "name_prefix": "test_allows_safe_answer"
+    }
+  }
+}
