@@ -148,8 +148,7 @@ safety blocks. A stronger APAC Nova Pro pilot also produced unsupported claims a
 citation errors. Neither pilot establishes generated-answer acceptance or approval
 for production financial use.
 
-Prompt set v7 remains opt-in; the application default is v6 and the existing demo
-was still running v5 at the time of the recovery check. The v7 candidate sets the
+As of 6 October, the running application accepts only v8; see [combined Education recovery](combined-education-recovery.md). The v7 evaluation candidate and v6 historical benchmark remain archived. At the earlier recovery check, the demo was still running v5. The v7 candidate sets the
 requested language explicitly, uses literal Unicode through policy review, retains
 a single education specialist's answer without a second generation, and requires
 a summary citation with at most one bounded contract correction. Policy review,

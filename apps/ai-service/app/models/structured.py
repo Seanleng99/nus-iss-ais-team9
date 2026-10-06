@@ -151,6 +151,12 @@ def generate_structured_response(
                 "Use only canonical topics allowed by the request. Keep sourced and model-only "
                 "claims in their respective fields; each cited source must support the claim."
             )
+        elif response_type.__name__ == "ScopedEducationComplianceDecision" and exc.code == "INVALID_STRUCTURED_RESPONSE" and not isinstance(cause, ValidationError):
+            validation_issues = (
+                str(exc) + " Identify only a supplied review_sections section_id. "
+                "Preserve the actual defect and its specialist ownership; never reassign "
+                "a financial defect to Education to make it eligible for correction."
+            )
         elif isinstance(cause, ValidationError):
             validation_issues = json.dumps(
                 [

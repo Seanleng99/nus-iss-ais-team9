@@ -323,9 +323,9 @@ Resources:
             - Name: MODEL_ID
               Value: !Ref OpenAiModelId
             - Name: MODEL_REASONING_EFFORT
-              Value: low
+              Value: medium
             - Name: PROMPT_SET_VERSION
-              Value: v6
+              Value: v8
             - Name: RAG_PROVIDER
               Value: local_documents
             - Name: EDUCATION_CORPUS_VERSION
@@ -339,9 +339,9 @@ Resources:
             - Name: POLICY_RAG_MINIMUM_SCORE
               Value: "0.6"
             - Name: MODEL_MAX_TOKENS
-              Value: "1600"
+              Value: "3200"
             - Name: MAX_MODEL_TOKENS_PER_RUN
-              Value: "50000"
+              Value: "80000"
             - Name: MODEL_READ_TIMEOUT_SECONDS
               Value: "30"
             - Name: AGENT_TIMEOUT_SECONDS

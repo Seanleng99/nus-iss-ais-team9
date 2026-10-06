@@ -28,7 +28,7 @@ Local verification for the Edge acceptance corrections on 5 October 2026:
 | Approved full-document retrieval and scope benchmark | 100/100 cases passed |
 | Ruff, whitespace and Chinese-character inventory | Passed |
 
-The focused regressions additionally cover read/compare without usable profile income, rejection of edits inside a read command, conceptual answers with existing income, mixed arithmetic/source gaps and separate Goal capacities across a range containing a missing month. The retrieval benchmark measures retrieval and scope, not generated-answer quality. Scripted gateway tests validate the new passage-reference and Compliance contracts; live-provider acceptance and deployed Edge results remain pending. The workflow token budget now defaults to 50,000 for conversation and specialist headroom. Governed Education access permissions remain unchanged.
+The focused regressions additionally cover read/compare without usable profile income, rejection of edits inside a read command, conceptual answers with existing income, mixed arithmetic/source gaps and separate Goal capacities across a range containing a missing month. The retrieval benchmark measures retrieval and scope, not generated-answer quality. Scripted gateway tests validate the new passage-reference and Compliance contracts; live-provider acceptance and deployed Edge results remain pending. The workflow token budget now defaults to 80,000 for conversation and specialist headroom. Governed Education access permissions remain unchanged.
 
 ## Everyday reasoning context
 

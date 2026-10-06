@@ -58,9 +58,9 @@ class InvestmentEducationAgent(BaseAgent):
         super().__init__(gateway, prompts, temperature, max_tokens)
         self.education_retriever = education_retriever
         self.semantic_grounding = semantic_grounding
-        if prompts.version in {"v5", "v6", "v7"}:
+        if prompts.version in {"v5", "v6", "v7", "v8"}:
             self.narrative_type = GroundedEducationNarrative
-        if prompts.version in {"v6", "v7"}:
+        if prompts.version in {"v6", "v7", "v8"}:
             self.narrative_type = HybridEducationNarrative
 
     @trace_method
@@ -79,10 +79,10 @@ class InvestmentEducationAgent(BaseAgent):
             return grounding
         response_language = task_language(task)
         unsupported_topics = unsupported_education_topics(sanitized_message)
-        semantic_assessment = self.semantic_grounding and self.prompts.version in {"v6", "v7"} and not is_fixture_gateway(self.gateway)
+        semantic_assessment = self.semantic_grounding and self.prompts.version in {"v6", "v7", "v8"} and not is_fixture_gateway(self.gateway)
         plan = None
         semantic_failure = None
-        if self.prompts.version in {"v6", "v7"}:
+        if self.prompts.version in {"v6", "v7", "v8"}:
             recognized_topics = list(dict.fromkeys(
                 topic for topic in education_topics(sanitized_message) + task.context_features.get("education_topics", [])
                 if topic in CANONICAL_EDUCATION_TOPICS
@@ -157,7 +157,7 @@ class InvestmentEducationAgent(BaseAgent):
             "General investment education about investment basics"
             if query_topics == ["source verification"] else query,
             scope="General investment education from approved sources without product advice.",
-            topics=independent_topics if self.prompts.version in {"v6", "v7"} else (),
+            topics=independent_topics if self.prompts.version in {"v6", "v7", "v8"} else (),
             search_terms=public_education_search_terms(list(dict.fromkeys(task.context_features.get("education_search_terms", []) + plan_terms))),
             subquestion_queries=[
                 (question.topic, "General investment education about " + question.topic
@@ -441,6 +441,24 @@ class InvestmentEducationAgent(BaseAgent):
 
     @trace_method
     def _format_summary(self, narrative: AgentNarrative, grounding: dict) -> str:
+        parts = []
+        review_sections = []
+
+        def add_section(text, provenance, topic=None):
+            if not text.strip():
+                return
+            start = sum(len(part) for part in parts) + 2 * len(parts)
+            parts.append(text)
+            review_sections.append({
+                "section_id": f"education_{len(review_sections) + 1}",
+                "provenance": provenance, "topic": topic,
+                "start": start, "end": start + len(text),
+            })
+
+        def finish():
+            grounding["review_sections"] = review_sections
+            return "\n\n".join(parts)
+
         # v6 can supply validated source IDs without inline markers. Attach those
         # references to its sourced summary before the combined safety review.
         if isinstance(narrative, GroundedEducationNarrative) and narrative.summary and not SOURCE_MARKER.search(narrative.summary):
@@ -448,25 +466,25 @@ class InvestmentEducationAgent(BaseAgent):
                 f"[source:{source_id}]" for source_id in dict.fromkeys(narrative.source_ids)
             )
         if isinstance(narrative, HybridEducationNarrative) and narrative.ordered_options:
-            parts = []
             for index, option in enumerate(narrative.ordered_options, 1):
                 label = topic_label(option.topic, grounding.get("response_language"), capitalize=True)
-                parts.append(f"{index}. {label}")
+                add_section(f"{index}. {label}", "topic_label", option.topic)
                 if option.sourced_text:
-                    parts.append(option.sourced_text)
+                    add_section(option.sourced_text, "retrieved", option.topic)
                 if option.model_text:
-                    parts.append(
+                    add_section(
                         translate('education.model_knowledge_label', grounding.get("response_language"))
-                        + "\n" + option.model_text
+                        + "\n" + option.model_text, "model_knowledge", option.topic,
                     )
             if narrative.uncertainties:
-                parts.extend(narrative.uncertainties)
+                for uncertainty in narrative.uncertainties:
+                    add_section(uncertainty, "limitation")
                 grounding["uncertainties_visible"] = True
             if grounding.get("coverage_assessment") == "semantic_contract_unverified":
-                parts.append(education_gap_message(grounding))
-            return "\n\n".join(parts)
+                add_section(education_gap_message(grounding), "limitation")
+            return finish()
         sourced_summary = narrative.summary
-        if self.prompts.version not in {"v6", "v7"} and sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
+        if self.prompts.version not in {"v6", "v7", "v8"} and sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
             sourced_summary = (
                 translate('education.rag_section', grounding.get("response_language"))
             ) + sourced_summary
@@ -475,32 +493,39 @@ class InvestmentEducationAgent(BaseAgent):
             # including when a supported portion precedes it.
             if getattr(narrative, "uncertainties", []):
                 grounding["uncertainties_visible"] = True
-                parts = [sourced_summary, *narrative.uncertainties]
+                add_section(sourced_summary, "retrieved")
+                for uncertainty in narrative.uncertainties:
+                    add_section(uncertainty, "limitation")
                 if grounding.get("coverage_assessment") == "semantic_contract_unverified":
-                    parts.append(education_gap_message(grounding))
-                return "\n\n".join(part for part in parts if part)
-            return sourced_summary or education_gap_message(grounding)
-        sections = []
+                    add_section(education_gap_message(grounding), "limitation")
+                return finish()
+            add_section(sourced_summary, "retrieved")
+            if not parts:
+                add_section(education_gap_message(grounding), "limitation")
+            return finish()
+        model_sections = []
         for section in narrative.general_knowledge:
             # Presentation belongs to the writer. Never flatten an explanation
             # or fabricate a one-row table after generation.
-            sections.append(section.text)
-        model_summary = (
-            translate('education.model_knowledge_label', grounding.get("response_language"))
-            + "\n" + "\n\n".join(sections)
-        )
+            model_sections.append((
+                translate('education.model_knowledge_label', grounding.get("response_language"))
+                + "\n" + section.text, "model_knowledge", section.topic,
+            ))
         # The writer selects the useful lead while the structured fields keep
         # independent source and model attribution intact for policy review.
-        blocks = ([model_summary, sourced_summary] if narrative.lead_section == "model"
-                  else [sourced_summary, model_summary])
-        parts = [block for block in blocks if block.strip()]
+        sourced_section = [(sourced_summary, "retrieved", None)]
+        blocks = (model_sections + sourced_section if narrative.lead_section == "model"
+                  else sourced_section + model_sections)
+        for text, provenance, topic in blocks:
+            add_section(text, provenance, topic)
         if narrative.uncertainties:
-            parts.extend(narrative.uncertainties)
+            for uncertainty in narrative.uncertainties:
+                add_section(uncertainty, "limitation")
             grounding["uncertainties_visible"] = True
         if grounding.get("coverage_assessment") == "semantic_contract_unverified":
-            parts.append(education_gap_message(grounding))
+            add_section(education_gap_message(grounding), "limitation")
         log_event("education.answer.provenance", component="hybrid" if narrative.summary else "general_knowledge")
-        return "\n\n".join(parts)
+        return finish()
 
     @trace_method
     def _model_message(
@@ -509,7 +534,7 @@ class InvestmentEducationAgent(BaseAgent):
         sanitized_message: str,
         grounding: dict,
     ) -> str:
-        if self.prompts.version in {"v6", "v7"}:
+        if self.prompts.version in {"v6", "v7", "v8"}:
             question = education_model_question(sanitized_message)
             separate_financial_part = task.context_features.get("financial_assessment_handled_separately")
             if separate_financial_part and grounding.get("subquestions"):

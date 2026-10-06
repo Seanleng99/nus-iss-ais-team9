@@ -1,0 +1,11 @@
+# Prompt set v8
+
+The running application accepts only v8 and rejects older prompt versions at startup. Based on the deployed v6 concepts and retrieval contracts; archived prompt sets remain available for explicitly pinned evaluations.
+
+Education model-knowledge topics each receive a visible provenance label. The formatter records exact character ranges for sourced, model-knowledge and limitation sections. Compliance receives those ranges and specialist ownership alongside the unchanged draft and approved evidence, rather than inferring label scope from blank paragraphs.
+
+The Education review contract returns `blocking_issues` containing a supplied `section_id` and a brief correction requirement. Completeness gaps remain in `missing_points`; an answer can be complete while requiring a safety correction. Safe but incomplete answers also require section-specific correction requirements matching every missing point. The v8 orchestrator requires server-derived repair eligibility for these answers as well as blocked drafts. Financial or unowned completeness gaps cannot enter Education correction. The server derives repairability only for allowed, safe citation/qualification defects entirely within Education sections. Financial, prohibited and unowned synthesized defects remain ineligible. Unknown section references get one contract correction and then fail closed. Every corrected combined answer receives a fresh independent review, preserving financial specialist text and sealed Education grounding.
+
+The request budget is 80,000 input/output tokens. Application defaults and deployment apply the checked-in role policy: Budget/Goal/Spending medium with 3,200 output tokens; Education medium with 4,000; Compliance medium with 3,000. Smaller routing/planning limits, call limits, deadlines and explicit lower request limits remain enforced.
+
+Budget reports capacity affirmatively and Goal Strategy owns feasibility. Independent review distinguishes that role deferral from a conflicting affordability conclusion, while still checking the amounts, shared pool and sustained-allocation conditions. A local backend-shaped combined replay passed independent review; deployed Edge acceptance remains pending.

@@ -1,5 +1,7 @@
 # Security And Guardrails
 
+Prompt set v8 identifies review defects through server-supplied section IDs and brief private correction requirements. The server derives Education-only repair eligibility from validated section ownership, allowed categories, request permission and financial safety, then applies the existing evidence, usage, call and deadline checks. Complete answers may still have safety defects; completeness gaps and blocking requirements remain separate. Unknown references receive one contract correction and fail closed if still invalid. Financial defects and prohibited or unowned claims remain ineligible. Every corrected answer receives an independent full review; rejected prose, section text and correction feedback stay out of logs and saved traces. See [combined Education recovery](combined-education-recovery.md).
+
 ## Core Principle
 
 Critical safeguards are distributed across all boundaries. The Risk & Compliance Agent is the final validator, not the only control point.

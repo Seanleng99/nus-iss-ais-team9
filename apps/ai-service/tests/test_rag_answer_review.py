@@ -694,12 +694,14 @@ def test_capture_answerability_forwards_bounded_multiturn_context_without_forcin
 
     monkeypatch.setattr(answer_review, "AgentOrchestrator", FakeOrchestrator)
     config = Settings(
+        _env_file=None,
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
         POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
         EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
         MAX_MODEL_TOKENS_PER_RUN=20000,
         AGENT_TIMEOUT_SECONDS=20,
         MODEL_READ_TIMEOUT_SECONDS=15,
+        MODEL_REASONING_EFFORT="low", MODEL_MAX_TOKENS=1600, MODEL_ROLE_OVERRIDES={},
     )
     case = answer_review.AnswerabilityCase(
         id="long-en", kind="quality", family="long", split="development", language="en",
@@ -759,6 +761,21 @@ def test_capture_answerability_rejects_runtime_mismatch_and_worker_overflow(tmp_
                 **answer_review.OPENAI_LOCAL_V6_RUNTIME_CONFIG,
                 "model_max_tokens": 4096,
             },
+        )
+
+
+def test_frozen_v6_capture_rejects_active_app_role_policies(tmp_path):
+    config = Settings(
+        _env_file=None, MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna",
+        RAG_PROVIDER="local_documents", POLICY_RAG_PROVIDER="local_documents",
+        PROMPT_SET_VERSION="v6", EDUCATION_CORPUS_VERSION=CORPUS_VERSION,
+        POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        **{name.upper(): setting for name, setting in answer_review.OPENAI_LOCAL_V6_RUNTIME_CONFIG.items()},
+    )
+    with pytest.raises(ValueError, match="MODEL_ROLE_OVERRIDES"):
+        answer_review.capture_answerability(
+            [answerability_cases()[0]], config, DATASET_DIGEST, tmp_path / "frozen.jsonl",
+            candidate_sha256="b" * 64,
         )
 
 
@@ -844,12 +861,14 @@ def test_capture_answerability_omits_blocked_assistant_from_followup_context(tmp
 
     monkeypatch.setattr(answer_review, "AgentOrchestrator", FakeOrchestrator)
     config = Settings(
+        _env_file=None,
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
         POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
         EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
         MAX_MODEL_TOKENS_PER_RUN=20000,
         AGENT_TIMEOUT_SECONDS=20,
         MODEL_READ_TIMEOUT_SECONDS=15,
+        MODEL_REASONING_EFFORT="low", MODEL_MAX_TOKENS=1600, MODEL_ROLE_OVERRIDES={},
     )
     case = answer_review.AnswerabilityCase(
         id="safe-en", kind="safety", family="safe", split="development", language="en",

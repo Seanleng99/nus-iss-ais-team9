@@ -235,7 +235,7 @@ class BaseAgent(ABC):
 
         # Hybrid profiles keep the complete writer contract in the versioned
         # prompt. Repeating the legacy guidance crowds out safe repair calls.
-        if self.name == AgentName.INVESTMENT_EDUCATION and self.prompts.version not in {"v6", "v7"}:
+        if self.name == AgentName.INVESTMENT_EDUCATION and self.prompts.version not in {"v6", "v7", "v8"}:
             system_prompt += (
                 "\nAnswer the requested concept and question_intent directly, with enough "
                 "detail for a beginner to understand the practical meaning and trade-offs. "

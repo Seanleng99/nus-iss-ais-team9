@@ -283,6 +283,8 @@ def capture_answerability(
     runtime_config = _runtime_config(config)
     if runtime_config != expected_runtime:
         raise ValueError("Configured bounded runtime does not match the expected answerability runtime")
+    if profile == "openai_local_v6" and config.model_role_overrides:
+        raise ValueError("The frozen v6 runtime requires explicit MODEL_ROLE_OVERRIDES={}")
     prompt_hashes = _prompt_file_hashes(identity["prompt_set_version"])
     providers = identity["providers"]
 

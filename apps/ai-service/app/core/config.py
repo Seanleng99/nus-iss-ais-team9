@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
@@ -12,6 +14,12 @@ class ModelRolePolicy(BaseModel):
         default=None, pattern=r"^(none|low|medium|high|xhigh|max)$",
     )
     max_tokens: int | None = Field(default=None, ge=1, le=8192)
+
+
+def default_model_role_policies() -> dict[str, ModelRolePolicy]:
+    path = Path(__file__).with_name("model-role-policy.json")
+    return {name: ModelRolePolicy.model_validate(policy)
+            for name, policy in json.loads(path.read_text(encoding="utf-8")).items()}
 
 
 class Settings(BaseSettings):
@@ -30,9 +38,9 @@ class Settings(BaseSettings):
         alias="MODEL_ID",
     )
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
-    model_reasoning_effort: str = Field(default="low", pattern=r"^(none|low|medium|high|xhigh|max)$", alias="MODEL_REASONING_EFFORT")
+    model_reasoning_effort: str = Field(default="medium", pattern=r"^(none|low|medium|high|xhigh|max)$", alias="MODEL_REASONING_EFFORT")
     model_role_overrides: dict[str, ModelRolePolicy] = Field(
-        default_factory=dict, alias="MODEL_ROLE_OVERRIDES",
+        default_factory=default_model_role_policies, alias="MODEL_ROLE_OVERRIDES",
     )
     embedding_model_id: str = Field(
         default="cohere.embed-multilingual-v3",
@@ -40,8 +48,8 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
     prompt_set_version: str = Field(
-        default="v6",
-        pattern=r"^v(?:2|3|4|5|6|7)$",
+        default="v8",
+        pattern=r"^v(?:2|3|4|5|6|7|8)$",
         alias="PROMPT_SET_VERSION",
     )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")
@@ -49,7 +57,7 @@ class Settings(BaseSettings):
     compliance_temperature: float = Field(
         default=0.1, ge=0.01, le=1.0, alias="COMPLIANCE_TEMPERATURE"
     )
-    model_max_tokens: int = Field(default=1600, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
+    model_max_tokens: int = Field(default=3200, ge=100, le=4096, alias="MODEL_MAX_TOKENS")
     max_dependency_rounds: int = Field(
         default=6,
         ge=1,
@@ -77,7 +85,7 @@ class Settings(BaseSettings):
         alias="MAX_MODEL_CALLS_PER_RUN",
     )
     max_model_tokens_per_run: int = Field(
-        default=50000,
+        default=80000,
         ge=100,
         le=200000,
         alias="MAX_MODEL_TOKENS_PER_RUN",
@@ -143,6 +151,10 @@ class Settings(BaseSettings):
             reasoning_effort=override.reasoning_effort or self.model_reasoning_effort,
             max_tokens=override.max_tokens or max_tokens,
         )
+
+    def require_active_app_prompt(self) -> None:
+        if self.prompt_set_version != "v8":
+            raise ValueError("The running application requires PROMPT_SET_VERSION=v8")
 
     @model_validator(mode="after")
     def require_deployment_api_key(self) -> Self:

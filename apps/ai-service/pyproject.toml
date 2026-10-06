@@ -29,5 +29,8 @@ pythonpath = ["."]
 include = ["app*"]
 exclude = ["prompts*"]
 
+[tool.setuptools.package-data]
+"app.core" = ["model-role-policy.json"]
+
 [tool.ruff]
 line-length = 100

@@ -520,7 +520,7 @@ class ComplianceDecision(BaseModel):
     def explain_verdict(self):
         if self.blocked and (not self.block_categories or not any(note.strip() for note in self.policy_notes)):
             raise ValueError("A blocking verdict requires block_categories and a brief policy note")
-        if not self.blocked and not isinstance(self, EducationComplianceDecision) and self.block_categories:
+        if not self.blocked and not isinstance(self, (EducationComplianceDecision, ScopedEducationComplianceDecision)) and self.block_categories:
             raise ValueError("An allowed verdict must have empty block_categories")
         return self
 
@@ -556,6 +556,53 @@ class EducationComplianceDecision(ComplianceDecision):
         if any(not point.strip() or len(point) > 200 for point in value):
             raise ValueError("Missing points must be brief, nonempty requirements.")
         return value
+
+
+class EducationReviewIssue(StrictContractModel):
+    section_id: str = Field(min_length=1, max_length=80)
+    requirement: str = Field(min_length=1, max_length=200)
+
+    @field_validator("requirement")
+    @classmethod
+    def nonempty_requirement(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Correction requirements must be nonempty")
+        return value
+
+
+class ScopedEducationComplianceDecision(ComplianceDecision):
+    """v8 ties defects to server-provided sections instead of a repairability guess."""
+
+    request_allowed: bool
+    complete: bool
+    missing_points: list[str] = Field(max_length=6)
+    financial_language_safe: bool = Field(default=False, strict=True)
+    blocking_issues: list[EducationReviewIssue] = Field(default_factory=list, max_length=6)
+    _repairable: bool = PrivateAttr(default=False)
+
+    @property
+    def repairable(self) -> bool:
+        return self._repairable
+
+    @model_validator(mode="after")
+    def validate_scoped_verdict(self):
+        veto = self.blocked or not self.request_allowed
+        if veto and (not self.block_categories or not self.policy_notes or not self.blocking_issues):
+            raise ValueError("A blocking verdict requires categories, a policy note and section-specific requirements")
+        if not veto and (self.block_categories or (self.complete and self.blocking_issues)):
+            raise ValueError("An allowed complete verdict cannot contain blocking categories or issues")
+        if not self.request_allowed and "prohibited_request" not in self.block_categories:
+            raise ValueError("A prohibited request requires the prohibited_request category")
+        if self.complete and self.missing_points:
+            raise ValueError("Complete answers have no missing_points; safety corrections belong in blocking_issues")
+        if not self.complete and (
+            not self.missing_points or not self.blocking_issues
+            or not set(self.missing_points) <= {issue.requirement for issue in self.blocking_issues}
+        ):
+            raise ValueError("Incomplete answers require missing_points with matching section-specific requirements")
+        if any(not point.strip() or len(point) > 200 for point in self.missing_points):
+            raise ValueError("Missing points must be brief, nonempty requirements")
+        return self
 
 
 # Spending Analysis Models

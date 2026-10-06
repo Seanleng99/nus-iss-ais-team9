@@ -28,8 +28,10 @@ class ReviewGateway(HybridGateway):
             blocked = not repairable or self.reviews == 1 or self.final_blocked
             return json.dumps({
                 "blocked": blocked, "request_allowed": self.category != "prohibited_request",
-                "complete": True, "repairable": blocked and repairable,
-                "missing_points": ["Preserve the source institution caveat."] if blocked else [],
+                "complete": True, "financial_language_safe": repairable,
+                "missing_points": [],
+                "blocking_issues": [{"section_id": "investment_education" if repairable else "request",
+                                     "requirement": "Preserve the source institution caveat."}] if blocked else [],
                 "block_categories": [self.category] if blocked else [],
                 "summary": "Independent source qualification review.",
                 "rationale": ["The explanatory scope was checked."],

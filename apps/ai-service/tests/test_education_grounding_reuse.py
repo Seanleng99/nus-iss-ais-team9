@@ -35,8 +35,9 @@ class RepairGateway(ScriptedSemanticGateway):
             blocked = self.reviews == 1 or self.outcome == "blocked"
             raw = json.dumps({
                 "blocked": blocked, "request_allowed": True, "complete": True,
-                "repairable": blocked, "financial_language_safe": True,
-                "missing_points": ["Retain the source conditions."] if blocked else [],
+                "financial_language_safe": True, "missing_points": [],
+                "blocking_issues": [{"section_id": "investment_education",
+                                     "requirement": "Retain the source conditions."}] if blocked else [],
                 "block_categories": ["factual_qualification"] if blocked else [],
                 "summary": "The source qualification was reviewed.",
                 "rationale": ["Source scope and conceptual completeness were checked."],
@@ -121,8 +122,10 @@ class SchemaThenPolicyRepairGateway(RepairGateway):
             raw = json.dumps(payload)
         if component == "risk_compliance" and self.prohibited_review:
             payload = json.loads(raw)
-            payload.update(request_allowed=False, blocked=True, repairable=False,
-                           block_categories=["prohibited_request"])
+            payload.update(request_allowed=False, blocked=True,
+                           block_categories=["prohibited_request"],
+                           blocking_issues=[{"section_id": "request",
+                                             "requirement": "Do not fulfill the prohibited request."}])
             raw = json.dumps(payload)
         if component == self.unknown_component:
             return raw

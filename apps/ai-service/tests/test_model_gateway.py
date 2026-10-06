@@ -195,14 +195,14 @@ def test_default_model_token_budget_finishes_all_assessment_and_review_stages(mo
     gateway = TracingModelGateway(UsageGateway(10_000), Settings(_env_file=None))
     token = gateway.bind_trace("full-reviewed-workflow")
     stages = ["education_query_planner", "education_answerability", "agent_investment_education",
-              "synthesizer", "risk_compliance"]
+              "synthesizer", "risk_compliance", "agent_investment_education", "synthesizer", "risk_compliance"]
     try:
         for component in stages:
             assert gateway.generate(system_prompt="PROMPT_ID: " + component, user_prompt="{}",
                                     temperature=0, max_tokens=500) == "ok"
         calls = gateway.snapshot("full-reviewed-workflow")
         assert [item["component"] for item in calls] == stages
-        assert sum(item["total_tokens"] for item in calls) == 50_000
+        assert sum(item["total_tokens"] for item in calls) == 80_000
         assert all(item["status"] == "completed" for item in calls)
         with pytest.raises(ModelGatewayError) as exhausted:
             gateway.generate(system_prompt="PROMPT_ID: synthesizer", user_prompt="{}",

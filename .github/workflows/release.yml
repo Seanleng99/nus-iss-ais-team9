@@ -309,6 +309,9 @@ jobs:
               for name, version in versions.items():
                   output.write(f"{name}={version}\n")
           PY
+      - name: Load AI role policy
+        run: |
+          python infra/scripts/load_model_role_policy.py --github-env "$GITHUB_ENV"
       - name: Validate deployment configuration
         run: |
           required=(
@@ -398,9 +401,11 @@ jobs:
             APP_ENV=demo
             MODEL_PROVIDER=openai
             MODEL_ID=gpt-6-luna
-            MODEL_REASONING_EFFORT=low
-            MAX_MODEL_TOKENS_PER_RUN=50000
-            PROMPT_SET_VERSION=v6
+            MODEL_REASONING_EFFORT=medium
+            MODEL_MAX_TOKENS=3200
+            MODEL_ROLE_OVERRIDES=${{ env.MODEL_ROLE_OVERRIDES }}
+            MAX_MODEL_TOKENS_PER_RUN=80000
+            PROMPT_SET_VERSION=v8
             RAG_PROVIDER=local_documents
             POLICY_RAG_PROVIDER=local_documents
             EDUCATION_CORPUS_VERSION=${{ env.EDUCATION_CORPUS_VERSION }}
@@ -409,6 +414,7 @@ jobs:
         if: needs.release-gate.outputs.ai == 'true'
         env:
           RENDERED_AI_TASK: ${{ steps.render-ai.outputs.task-definition }}
+          MODEL_ROLE_OVERRIDES: ${{ env.MODEL_ROLE_OVERRIDES }}
         run: >-
           python infra/scripts/verify_ecs_task_config.py
           --task-definition "$RENDERED_AI_TASK"
@@ -416,9 +422,11 @@ jobs:
           --expect APP_ENV=demo
           --expect MODEL_PROVIDER=openai
           --expect MODEL_ID=gpt-6-luna
-          --expect MODEL_REASONING_EFFORT=low
-          --expect MAX_MODEL_TOKENS_PER_RUN=50000
-          --expect PROMPT_SET_VERSION=v6
+          --expect MODEL_REASONING_EFFORT=medium
+          --expect MODEL_MAX_TOKENS=3200
+          --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES"
+          --expect MAX_MODEL_TOKENS_PER_RUN=80000
+          --expect PROMPT_SET_VERSION=v8
           --expect RAG_PROVIDER=local_documents
           --expect POLICY_RAG_PROVIDER=local_documents
           --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION"

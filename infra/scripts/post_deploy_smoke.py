@@ -5,11 +5,31 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 
 
 class SmokeRequestError(OSError):
     """HTTP failure with bounded, non-secret diagnostics for release logs."""
+
+
+def check_runtime_policy(audit: dict, required_role: str) -> None:
+    assert audit.get("prompt_set_version") == "v8", "unexpected runtime prompt version"
+    path = Path(__file__).resolve().parents[2] / "apps/ai-service/app/core/model-role-policy.json"
+    policies = json.loads(path.read_text(encoding="utf-8"))
+    calls = audit.get("model_calls", [])
+    assert any(call.get("component") == required_role for call in calls), (
+        f"{required_role} model-call telemetry was absent"
+    )
+    for call in calls:
+        policy = policies.get(call.get("component"))
+        if policy:
+            assert call.get("reasoning_effort") == policy["reasoning_effort"], (
+                f"{call['component']} reasoning policy drifted"
+            )
+            assert call.get("max_output_tokens") == policy["max_tokens"], (
+                f"{call['component']} output limit drifted"
+            )
 
 
 def require_http_url(url: str) -> str:
@@ -135,6 +155,7 @@ def check_model_backed_coaching(
     assert "budget" in response.get("selected_agents", []), "budget agent was not selected"
     assert response.get("answer"), "model-backed response did not include an answer"
     audit = response.get("audit", {})
+    check_runtime_policy(audit, "agent_budget")
     assert audit.get("model_provider") == expected_model_provider, (
         f"expected model provider {expected_model_provider!r}, "
         f"received {audit.get('model_provider')!r}"
@@ -149,8 +170,8 @@ def check_model_backed_coaching(
     assert trace_status == 200, f"trace retrieval returned HTTP {trace_status}"
     trace = json.loads(trace_body)
     assert trace.get("trace_id") == trace_id, "persisted trace ID did not match"
-    assert trace.get("prompt_set_version") == "v6", "unexpected persisted prompt version"
-    assert trace.get("audit", {}).get("model_calls"), "model-call telemetry was not persisted"
+    assert trace.get("prompt_set_version") == "v8", "unexpected persisted prompt version"
+    check_runtime_policy(trace.get("audit", {}), "agent_budget")
 
 
 def retrieval_provenance(

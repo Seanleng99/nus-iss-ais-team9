@@ -1674,10 +1674,10 @@ class AgentOrchestrator:
             len(state["agent_results"]) == 1
             and (
                 (state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
-                 and (self.prompts.version in {"v6", "v7"}
+                 and (self.prompts.version in {"v6", "v7", "v8"}
                       or state["agent_results"][0].data.get("evidence_status") == "insufficient"))
                 or (state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
-                    and self.prompts.version in {"v6", "v7"}
+                    and self.prompts.version in {"v6", "v7", "v8"}
                     and "emergency_fund" in state["agent_results"][0].data)
             )
         ):
@@ -1744,7 +1744,7 @@ class AgentOrchestrator:
     def _can_preserve_specialist_answers(self, state: OrchestratorState) -> bool:
         results = state["agent_results"]
         return (
-            self.prompts.version in {"v6", "v7"}
+            self.prompts.version in {"v6", "v7", "v8"}
             and any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
             and all(item.agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
                     and not item.blocked and not item.data.get("needs_input")
@@ -1835,7 +1835,8 @@ class AgentOrchestrator:
         )
         repair_conditions = [
             ("REPAIR_REQUEST_NOT_ALLOWED", result.data.get("request_allowed") is not False),
-            ("REPAIR_VERDICT_NOT_REPAIRABLE", not result.blocked or result.data.get("repairable") is True),
+            ("REPAIR_VERDICT_NOT_REPAIRABLE", result.data.get("repairable") is True
+                if self.prompts.version == "v8" else not result.blocked or result.data.get("repairable") is True),
             ("REPAIR_ANSWER_ALREADY_COMPLETE", result.data.get("answer_complete") is False or result.data.get("repairable") is True),
             ("REPAIR_PROHIBITED_REQUEST", not financial_advice_findings(state["sanitized_message"], is_request=True)
                 and not cross_user_data_findings(state["sanitized_message"]) and not state["guardrail_findings"]),

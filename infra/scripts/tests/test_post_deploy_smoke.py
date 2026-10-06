@@ -14,6 +14,23 @@ MODEL_SECTION_LABEL = (
 )
 
 
+def test_runtime_smoke_checks_v8_and_recommended_policies():
+    audit = {"prompt_set_version": "v8", "model_calls": [
+        {"component": "agent_budget", "reasoning_effort": "medium", "max_output_tokens": 3200},
+        {"component": "risk_compliance", "reasoning_effort": "medium", "max_output_tokens": 3000},
+    ]}
+    post_deploy_smoke.check_runtime_policy(audit, "agent_budget")
+    for field, stale in (("reasoning_effort", "low"), ("max_output_tokens", 1600)):
+        changed = copy.deepcopy(audit)
+        changed["model_calls"][0][field] = stale
+        with pytest.raises(AssertionError, match="drifted"):
+            post_deploy_smoke.check_runtime_policy(changed, "agent_budget")
+    with pytest.raises(AssertionError, match="prompt version"):
+        post_deploy_smoke.check_runtime_policy({**audit, "prompt_set_version": "v6"}, "agent_budget")
+    with pytest.raises(AssertionError, match="telemetry was absent"):
+        post_deploy_smoke.check_runtime_policy({**audit, "model_calls": []}, "agent_budget")
+
+
 @pytest.fixture
 def education_response():
     def source(source_id, corpus):

@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,11 +17,16 @@ STEPS = {step.get("name"): step for step in WORKFLOW["jobs"]["deploy-demo"]["ste
 
 
 def run_step(name, cwd, env):
+    # Use Git Bash on Windows; the system bash launcher can resolve to WSL.
+    bash = "bash"
+    if os.name == "nt":
+        git = Path(shutil.which("git"))
+        bash = str(git.parent.parent / "bin" / "bash.exe")
     return subprocess.run(
-        ["bash", "-eu", "-o", "pipefail", "-c", STEPS[name]["run"]],
+        [bash, "-eu", "-o", "pipefail", "-c", STEPS[name]["run"]],
         cwd=cwd,
         env={**os.environ, "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"], **env},
-        capture_output=True, text=True, timeout=10, check=False,
+        capture_output=True, text=True, timeout=30, check=False,
     )
 
 
@@ -43,10 +49,19 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
         "POLICY_CORPUS_VERSION": "financial-coach-policy-sg@next",
     }
     environment = {**dict.fromkeys(values, "stale-corpus@old"), "MAX_MODEL_TOKENS_PER_RUN": "40000"}
+    role_output = tmp_path / "role-env"
+    loaded = run_step("Load AI role policy", ROOT, {"GITHUB_ENV": str(role_output)})
+    assert loaded.returncode == 0, loaded.stderr
+    values.update(dict(line.split("=", 1) for line in role_output.read_text().splitlines()))
+    environment["MODEL_ROLE_OVERRIDES"] = '{}'
     rendered = STEPS["Render AI service task definition"]["with"]["environment-variables"]
     rendered = re.sub(r"\$\{\{ env\.(\w+) \}\}", lambda match: values[match[1]], rendered)
     environment.update(line.split("=", 1) for line in rendered.strip().splitlines())
-    assert environment["MAX_MODEL_TOKENS_PER_RUN"] == "50000"
+    assert environment["MAX_MODEL_TOKENS_PER_RUN"] == "80000"
+    assert environment["PROMPT_SET_VERSION"] == "v8"
+    assert json.loads(environment["MODEL_ROLE_OVERRIDES"])["risk_compliance"] == {
+        "reasoning_effort": "medium", "max_tokens": 3000,
+    }
     task = {"containerDefinitions": [{
         "name": "ai-service",
         "environment": [{"name": key, "value": value} for key, value in environment.items()],
@@ -57,10 +72,12 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     env = {**values, "RENDERED_AI_TASK": str(path), "AI_CONTAINER_NAME": "ai-service"}
     verified = run_step("Verify AI runtime configuration has not drifted", ROOT, env)
     assert verified.returncode == 0, verified.stderr + verified.stdout
-    for pin in [*values, "MAX_MODEL_TOKENS_PER_RUN"]:
+    for pin in [*values, "MAX_MODEL_TOKENS_PER_RUN", "MODEL_REASONING_EFFORT",
+                "MODEL_MAX_TOKENS", "PROMPT_SET_VERSION"]:
         item = next(item for item in task["containerDefinitions"][0]["environment"] if item["name"] == pin)
         expected_value = item["value"]
-        item["value"] = "40000" if pin == "MAX_MODEL_TOKENS_PER_RUN" else "stale-corpus@old"
+        item["value"] = ("40000" if pin == "MAX_MODEL_TOKENS_PER_RUN" else
+                         '{}' if pin == "MODEL_ROLE_OVERRIDES" else "stale-corpus@old")
         path.write_text(json.dumps(task))
         rejected = run_step("Verify AI runtime configuration has not drifted", ROOT, env)
         assert rejected.returncode != 0
