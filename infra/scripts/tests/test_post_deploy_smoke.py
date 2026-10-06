@@ -31,6 +31,69 @@ def test_runtime_smoke_checks_v8_and_recommended_policies():
         post_deploy_smoke.check_runtime_policy({**audit, "model_calls": []}, "agent_budget")
 
 
+def budget_response():
+    return {
+        "blocked": False, "selected_agents": ["budget"], "answer": "Illustrative disposable income is SGD 2,500.",
+        "agent_results": [{"agent": "budget", "data": {"disposable_income": 2500}}],
+        "audit": {"trace_id": "budget-analysis", "model_provider": "openai", "prompt_set_version": "v8",
+                  "model_calls": [
+                      {"component": "agent_budget", "reasoning_effort": "medium", "max_output_tokens": 3200},
+                      {"component": "risk_compliance", "reasoning_effort": "medium", "max_output_tokens": 3000},
+                  ]},
+    }
+
+
+def test_model_smoke_uses_fresh_read_only_inputs_and_checks_the_owned_persisted_trace(monkeypatch):
+    payloads, urls = [], []
+
+    def fake_request(url, **kwargs):
+        urls.append(url)
+        response = budget_response()
+        if kwargs.get("method") == "POST":
+            payloads.append(kwargs["body"])
+        else:
+            response = {"trace_id": "budget-analysis", "prompt_set_version": "v8", "audit": response["audit"]}
+        return 200, json.dumps(response)
+
+    monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
+    for _ in range(2):
+        post_deploy_smoke.check_model_backed_coaching("https://example.test/api/coach", "synthetic-key", "openai")
+    assert payloads[0]["user_id"] != payloads[1]["user_id"]
+    assert payloads[0]["session_id"] != payloads[1]["session_id"]
+    for index, payload in enumerate(payloads):
+        assert payload["user_id"].startswith("deployment-")
+        assert payload["message"] == "Calculate my monthly disposable income from the supplied income and recurring expense."
+        assert payload["snapshot"]["period_start"] == payload["budget_period_start"]
+        expense = payload["snapshot"]["recurring_expenses"][0]
+        assert expense["recurrence"]["frequency"] == "monthly"
+        assert expense["recurrence"]["next_due_on"] == payload["budget_period_start"]
+        assert payload["snapshot"]["monthly_income"]["amount"] - expense["amount"]["amount"] == 2500
+        assert urls[index * 2 + 1].endswith("?user_id=" + payload["user_id"])
+
+
+@pytest.mark.parametrize("failure", ["capture_only", "reasoning_drift", "output_drift", "wrong_calculation", "persisted_drift"])
+def test_model_smoke_keeps_calculation_and_runtime_policy_guards(monkeypatch, failure):
+    def fake_request(url, **kwargs):
+        response = budget_response()
+        persisted = kwargs.get("method") != "POST"
+        calls = response["audit"]["model_calls"]
+        if failure == "capture_only":
+            calls[0]["component"] = "budget_capture"
+        elif failure == "reasoning_drift" or (failure == "persisted_drift" and persisted):
+            calls[0]["reasoning_effort"] = "low"
+        elif failure == "output_drift":
+            calls[0]["max_output_tokens"] = 1600
+        elif failure == "wrong_calculation":
+            response["agent_results"][0]["data"]["disposable_income"] = 4000
+        if persisted:
+            response = {"trace_id": "budget-analysis", "prompt_set_version": "v8", "audit": response["audit"]}
+        return 200, json.dumps(response)
+
+    monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
+    with pytest.raises(AssertionError):
+        post_deploy_smoke.check_model_backed_coaching("https://example.test/api/coach", "synthetic-key", "openai")
+
+
 @pytest.fixture
 def education_response():
     def source(source_id, corpus):

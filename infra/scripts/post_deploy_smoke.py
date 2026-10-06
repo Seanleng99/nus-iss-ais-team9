@@ -141,11 +141,26 @@ def check_model_backed_coaching(
     api_key: str,
     expected_model_provider: str,
 ) -> None:
+    # Budget creation may use budget_capture without invoking agent_budget.
+    # Isolate this analysis from previous releases' saved profiles and plans.
+    user_id = "deployment-budget-analysis-smoke-" + uuid4().hex
+    period = datetime.now(timezone.utc).date().replace(day=1).isoformat()
     payload = {
-        "user_id": "deployment-smoke-test",
+        "user_id": user_id,
         "session_id": "deployment-model-smoke-test-" + uuid4().hex,
-        "message": "Help me create a simple monthly budget.",
-        "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
+        "message": (
+            "Calculate my monthly disposable income from the supplied income and recurring expense."
+        ),
+        "budget_period_start": period,
+        "snapshot": {
+            "period_start": period,
+            "monthly_income": {"currency": "SGD", "amount": 4000},
+            "recurring_expenses": [{
+                "description": "Synthetic monthly obligation", "category": "housing",
+                "amount": {"currency": "SGD", "amount": 1500}, "occurred_on": period,
+                "recurrence": {"frequency": "monthly", "first_on": period, "next_due_on": period},
+            }],
+        },
         "requested_agents": ["budget"],
     }
     status, body = request(url, method="POST", body=payload, api_key=api_key)
@@ -154,6 +169,11 @@ def check_model_backed_coaching(
     assert response.get("blocked") is False, "normal coaching request was blocked"
     assert "budget" in response.get("selected_agents", []), "budget agent was not selected"
     assert response.get("answer"), "model-backed response did not include an answer"
+    budget = next((item for item in response.get("agent_results", [])
+                   if item.get("agent") == "budget"), {})
+    assert budget.get("data", {}).get("disposable_income") == 2500, (
+        "budget analysis did not preserve the supplied income minus recurring expense"
+    )
     audit = response.get("audit", {})
     check_runtime_policy(audit, "agent_budget")
     assert audit.get("model_provider") == expected_model_provider, (
@@ -164,7 +184,7 @@ def check_model_backed_coaching(
     assert trace_id, "model-backed response did not include a trace ID"
     trace_url = (
         f"{url.removesuffix('/coach')}/coach/traces/"
-        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id=deployment-smoke-test"
+        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id={urllib.parse.quote(user_id, safe='')}"
     )
     trace_status, trace_body = request(trace_url, api_key=api_key)
     assert trace_status == 200, f"trace retrieval returned HTTP {trace_status}"

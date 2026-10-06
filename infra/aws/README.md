@@ -25,6 +25,8 @@ The AI request ceiling is `MAX_MODEL_TOKENS_PER_RUN=80000` and the application a
 
 Run `AWS Operational Validation` after the first deployment to collect repeated synthetic model/RAG results, bounded load data, ECS state, dashboard and alarm checks, and lifecycle evidence. The existing historical Bedrock measurements do not count as GPT-6 Luna acceptance. See [model selection](../../docs/model-selection.md) and [CI/CD](../../docs/cicd-pipeline.md).
 
+The basic model smoke uses a fresh synthetic user/session and a read-only disposable-income calculation with explicit monthly recurrence. It requires the Budget writer, checks the known SGD 2,500 result, and verifies v8 and canonical role settings in both response and persisted trace telemetry. A request to create a budget can instead use `budget_capture`, so it cannot establish that the narrative Budget writer ran. See [operations](../../docs/operations.md) for the 6 October smoke failure and rollback evidence.
+
 ## Security and network
 
 The frontend never receives the OpenAI or AI-service API keys. The backend uses a private AI-service endpoint and owner-scoped PostgreSQL records. RDS is encrypted in private subnets and accepts traffic only from the backend security group. The public-subnet ECS design avoids NAT cost for the synthetic demo; task security groups deny direct inbound internet traffic. Move tasks to private networking and complete a fresh privacy/location review before processing real financial data. The direct OpenAI API's Singapore data-residency option covers storage, not regional processing.
