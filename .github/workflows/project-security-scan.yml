@@ -3,11 +3,6 @@ name: Project OWASP Security Scan
 # CI owns automatic scans. Live model checks remain an explicit manual opt-in.
 on:
   workflow_call:
-    inputs:
-      run_live:
-        required: false
-        type: boolean
-        default: false
   workflow_dispatch:
     inputs:
       run_live:
