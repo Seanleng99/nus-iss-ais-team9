@@ -1,4 +1,4 @@
-name: Education RAG Source Governance
+name: RAG Source Governance
 
 on:
   workflow_dispatch:

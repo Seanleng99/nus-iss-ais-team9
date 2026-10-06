@@ -4,9 +4,10 @@ All model-assisted blocking decisions require `block_categories` and a brief pol
 
 The **Risk & Compliance Agent Tests** workflow
 (`.github/workflows/risk-compliance-agent-tests.yml`) checks the compliance
-agent offline on every push or pull request that touches `apps/shared/**` or
-`apps/ai-service/**`, and on manual runs. It never calls a paid model and uses
-no secrets.
+agent offline. CI and LLMSecOps calls it for AI checks and every selected
+application release; manual runs remain available. It never calls a paid model
+and uses no secrets. See [all agent workflows and release integration](agent-test-workflows.md)
+for triggers, test-file mappings and the required release gate.
 
 | Job | What it shows | Tests |
 | --- | --- | --- |
@@ -22,9 +23,9 @@ they do not measure the wording quality of a live model.
 ## Reading the results
 
 Each job writes a table to its GitHub Actions job summary: the scenario, the
-question asked, the result, the agent's final answer (first 500 characters) and
+question asked, the result, a truncated agent answer and
 any failure reason. The JUnit XML and the summary are uploaded as artifacts and
-kept for 7 days.
+kept for 30 days.
 
 ## Running locally
 

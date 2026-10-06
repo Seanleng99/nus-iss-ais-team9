@@ -1,0 +1,38 @@
+name: Goal Agent Tests
+
+# CI owns automatic execution; dispatch retains focused troubleshooting runs.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: goal-agent-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline:
+    name: Offline goal contracts
+    uses: ./.github/workflows/agent-test-suite.yml
+    with:
+      suite: goal-offline
+      label: "Offline goal contracts"
+
+  functional:
+    name: Functional tests — ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: feasibility
+            label: "Feasibility and emergency funds"
+          - group: dependencies
+            label: "Goal dependencies and capacity handoff"
+          - group: recovery
+            label: "Goal education and safe recovery"
+    uses: ./.github/workflows/agent-test-suite.yml
+    with:
+      suite: goal-functional-${{ matrix.group }}
+      label: "Goal Agent Tests — ${{ matrix.label }}"

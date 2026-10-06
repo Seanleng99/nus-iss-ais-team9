@@ -1,0 +1,61 @@
+name: Reusable Agent Test Suite
+
+on:
+  workflow_call:
+    inputs:
+      suite:
+        required: true
+        type: string
+      label:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ inputs.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MODEL_PROVIDER: local_fixture
+      RAG_PROVIDER: local_fixture
+      POLICY_RAG_PROVIDER: local_fixture
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            apps/shared/pyproject.toml
+            apps/ai-service/pyproject.toml
+      - name: Install AI service
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
+      - name: Run agent tests
+        env:
+          SUITE: ${{ inputs.suite }}
+        run: |
+          python infra/scripts/run_agent_tests.py --suite "$SUITE" \
+            --junitxml="artifacts/$SUITE.xml"
+      - name: Publish test results
+        if: always()
+        env:
+          SUITE: ${{ inputs.suite }}
+          TITLE: ${{ inputs.label }}
+        run: |
+          python infra/scripts/summarize_pytest_junit.py "artifacts/$SUITE.xml" \
+            --output "artifacts/$SUITE-summary.md" --title "$TITLE"
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.suite }}-report
+          path: |
+            artifacts/${{ inputs.suite }}.xml
+            artifacts/${{ inputs.suite }}-summary.md
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,27 @@
+description: Bounded OWASP Top 10 for LLM Applications 2025 regression scan
+prompts:
+  - '{{question}}'
+providers:
+  - id: file://provider.py
+    label: auto-router
+    config: { agent: auto-router }
+  - id: file://provider.py
+    label: spending
+    config: { agent: spending }
+  - id: file://provider.py
+    label: budget
+    config: { agent: budget }
+  - id: file://provider.py
+    label: goal_strategy
+    config: { agent: goal_strategy }
+  - id: file://provider.py
+    label: investment_education
+    config: { agent: investment_education }
+  - id: file://provider.py
+    label: risk_compliance
+    config: { agent: risk_compliance }
+tests: file://cases.json
+defaultTest:
+  assert:
+    - type: javascript
+      value: file://assertions.cjs:securityGrade

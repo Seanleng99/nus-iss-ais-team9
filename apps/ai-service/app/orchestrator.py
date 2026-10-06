@@ -248,7 +248,7 @@ class AgentOrchestrator:
     @trace_method
     def _guard_input(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
-        decision = inspect_prompt(request.message)
+        decision = inspect_prompt(request.message, is_request=True)
         history = []
         for message in request.conversation_context:
             inspected = inspect_prompt(message.content)
@@ -295,7 +295,12 @@ class AgentOrchestrator:
                 translate('safety.boundary_summary', response_language)
             ),
             rationale=[
-                translate('safety.prompt_injection_rationale', response_language)
+                translate(
+                    'safety.personal_investment_refusal'
+                    if "regulated_advice:personalized_selection_request" in decision.findings
+                    else 'safety.prompt_injection_rationale',
+                    response_language,
+                )
             ],
             confidence=1.0,
             blocked=True,

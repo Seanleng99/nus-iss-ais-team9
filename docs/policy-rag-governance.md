@@ -2,7 +2,7 @@
 
 ## Current packaged-corpus governance
 
-The deployed `LocalDocumentPolicyRetriever` reads the three approved Policy documents and manifest from the AI image at `knowledge/policy_controls`. It verifies approval, provenance, review deadlines, UTF-8 content, and SHA-256 checksums; a stale or altered corpus fails closed. `POLICY_CORPUS_VERSION` pins the exact reviewed version. The weekly `rag-source-governance.yml` workflow checks both corpora. A Policy update requires review, a new corpus version, a rebuilt image, and live compliance evaluation. The AWS Knowledge Base record below is historical.
+The deployed `LocalDocumentPolicyRetriever` reads the three approved Policy documents and manifest from the AI image at `knowledge/policy_controls`. It verifies approval, provenance, review deadlines, UTF-8 content, and SHA-256 checksums; a stale or altered corpus fails closed. `POLICY_CORPUS_VERSION` pins the exact reviewed version. The weekly **RAG Source Governance** workflow (`rag-source-governance.yml`) checks both corpora and retains their evidence together. The duplicate Policy-only workflow has been removed. A Policy update requires review, a new corpus version, a rebuilt image, and live compliance evaluation. The AWS Knowledge Base record below is historical.
 
 ## Historical AWS ingestion and governance
 
@@ -42,7 +42,7 @@ The deployed collection uses Policy Knowledge Base `MLOCSOIFML`, data source `WM
 
 CloudFormation pins the exact Knowledge Base ID into the ECS task and limits the task role to the configured Education and Policy knowledge bases. GitHub variables record the Policy knowledge-base ID, data-source ID, corpus version, bucket, and prefix. Release configuration checks require all Policy settings, and post-deployment smoke verifies governed Policy sources and the policy corpus version in both the live response and persisted trace.
 
-`.github/workflows/policy-rag-source-governance.yml` performs a weekly and on-demand read-only audit. Its OIDC scope can inspect only the approved Policy Knowledge Base and read its exact S3 prefix; it cannot upload, delete, or start ingestion. The first retained audit passed with three approved sources and zero issues in [run 33231041612](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33231041612). Artifact `policy-rag-governance-33231041612` is retained until 2026-11-27; subsequent successful runs replace it as the current operating evidence.
+The retired Policy governance workflow performed a weekly and on-demand read-only AWS audit. Its OIDC scope could inspect only the approved Policy Knowledge Base and read its exact S3 prefix; it could not upload, delete, or start ingestion. The first historical audit passed with three approved sources and zero issues in [run 33231041612](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33231041612). Artifact `policy-rag-governance-33231041612` was retained until 2026-11-27. Current operating evidence comes from the combined packaged-corpus workflow.
 
 ## Promotion Record And Ongoing Gate
 
