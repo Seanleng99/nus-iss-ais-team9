@@ -405,7 +405,7 @@ class AgentOrchestrator:
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
             routing_mode = "chat_memory"
             routing_actor = "orchestrator"
-        elif requested_agents and "budget_periods" not in request.budget_context:
+        elif requested_agents and "budget_periods" not in request.budget_context and self.prompts.version != "v9":
             decision = RouterDecision(
                 selected_agents=requested_agents,
                 rationale=[
@@ -438,6 +438,17 @@ class AgentOrchestrator:
             }
 
             def validate_router(value: RouterDecision) -> RouterDecision:
+                if self.prompts.version == "v9":
+                    assigned = [item.agent for item in value.task_assignments]
+                    if (len(set(assigned)) != len(assigned) or set(assigned) != set(value.selected_agents)
+                            or any(not quote.strip() or quote not in state["sanitized_message"]
+                                   for item in value.task_assignments for quote in item.source_quotes)):
+                        raise ModelGatewayError(
+                            "Supply one task_assignments entry per selected specialist, with an assigned "
+                            "question and exact current-message source_quotes. Scope requires_spending "
+                            "to Budget's own task, not another specialist's question.",
+                            code="INVALID_STRUCTURED_RESPONSE", component="router",
+                        )
                 # Only exact governed aliases can turn a public account/scam
                 # concept into its corpus term. Unrecognized account wording
                 # retains the privacy screen; this never rewrites arbitrary
@@ -1476,6 +1487,7 @@ class AgentOrchestrator:
                     state,
                     provider_agent,
                     requested_by=request.requester,
+                    provider_question=requester_task.sanitized_message,
                 )
                 tasks[provider_task.task_id] = provider_task
                 if provider_agent not in selected_agents:
@@ -2114,7 +2126,12 @@ class AgentOrchestrator:
         agent: AgentName,
         *,
         requested_by: AgentName | None = None,
+        provider_question: str | None = None,
     ) -> AgentTask:
+        assignment = next((item for item in state.get("turn_decision", {}).get("task_assignments", [])
+                           if item["agent"] == agent.value), None)
+        question = (assignment["question"] if assignment else
+                    provider_question or state["sanitized_message"])
         snapshot = state["request"].snapshot
         scoped_spending = snapshot.transaction_context.get("budget_spending_scope") or {}
         if agent == AgentName.SPENDING:
@@ -2167,10 +2184,11 @@ class AgentOrchestrator:
         memory_reply = income_memory_reply(state["request"]) if agent == AgentName.BUDGET else None
         return AgentTask(
             agent=agent,
-            sanitized_message=state["sanitized_message"],
+            sanitized_message=question,
             input_data=input_data,
             context_features={
                 "conditional_dependencies": self.prompts.version == "v9",
+                "task_assignment": assignment,
                 "response_locale": request_locale(state["request"]),
                 "coaching_preferences": coaching_preferences(snapshot.preferences),
                 "turn_observations": specialist_context(SessionContext(

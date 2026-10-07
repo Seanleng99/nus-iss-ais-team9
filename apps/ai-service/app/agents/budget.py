@@ -185,6 +185,8 @@ class BudgetAgent(BaseAgent):
         options: list[DependencyRequestDraft] = []
         if (
             self._has_spending_context(task)
+            and (not task.context_features.get("task_assignment")
+                 or task.context_features["task_assignment"]["requires_spending"])
             and CapabilityName.TRANSACTION_CATEGORY_TOTALS
             not in task.resolved_dependencies
             and not task.dependency_warnings

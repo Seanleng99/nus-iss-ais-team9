@@ -43,3 +43,27 @@ def fixture_budget_uses_spending(payload):
 def fixture_budget_message(message):
     parts = [part for part in _parts(message) if re.search(r"\b(?:budget\w*|capacity|disposable)\b", part)]
     return " ".join(parts) or message
+
+
+def fixture_task_assignments(agents, message):
+    """Offline adapter only. Production obtains attributed scopes from the model."""
+    parts = [part.strip() for part in re.split(
+        r"[.;!?]|\b(?:independently|separately)\b", message, flags=re.IGNORECASE,
+    ) if part.strip()]
+    terms = {
+        "spending": r"spend|expense|transaction|purchase",
+        "budget": r"budget|capacity|disposable|allocation",
+        "goal_strategy": r"goal|target|contribution|progress|emergency fund",
+        "investment_education": r"invest|diversif|bond|ETF|liquidity|risk|funds",
+    }
+    assignments = []
+    for agent in agents:
+        selected = [part for part in parts if re.search(terms[agent], part, re.IGNORECASE)]
+        question = ". ".join(selected) if selected else message
+        payload = {"message": question, "context_features": {
+            "goal_capacity_required": fixture_goal_requires_capacity({"message": message})
+        }}
+        assignments.append({"agent": agent, "question": question,
+                            "source_quotes": selected[:4] or [message],
+                            "requires_spending": agent == "budget" and fixture_budget_uses_spending(payload)})
+    return assignments

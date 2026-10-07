@@ -340,7 +340,12 @@ class LocalFixtureModelGateway:
             from app.models.spending_fixture import fixture_spending_draft
             return json.dumps(apply_recurring_terms(payload, fixture_spending_draft(payload)))
         if prompt_id == "PROMPT_ID: router":
-            return json.dumps(self._route(payload))
+            from app.models.dependency_fixture import fixture_task_assignments
+            decision = self._route(payload)
+            decision["task_assignments"] = fixture_task_assignments(
+                decision["selected_agents"], payload["message"],
+            )
+            return json.dumps(decision)
         if prompt_id == "PROMPT_ID: dependency_planner":
             return json.dumps(self._dependency_plan(payload))
         if prompt_id.startswith("PROMPT_ID: agent_"):

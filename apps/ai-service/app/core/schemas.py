@@ -422,7 +422,19 @@ class FollowUpResolution(StrictContractModel):
     reason_code: str = Field(default="NEW_QUESTION", max_length=128)
 
 
+class TaskAssignment(StrictContractModel):
+    """Model-selected work, attributed to this turn; never financial evidence."""
+
+    agent: AgentName
+    question: str = Field(min_length=1, max_length=5000)
+    source_quotes: list[str] = Field(min_length=1, max_length=4)
+    requires_spending: bool = False
+    requires_income: bool | None = None
+    requires_capacity: bool | None = None
+
+
 class RouterDecision(BaseModel):
+    task_assignments: list[TaskAssignment] = Field(default_factory=list, max_length=4)
     budget_scope: BudgetScope | None = None
     budget_scope_unclear: bool = False
     follow_up_source_index: int | None = Field(default=None, ge=0, le=7)
