@@ -27,6 +27,9 @@ def logout(reason_code: str = "user_requested") -> None:
         with call_span("streamlit.user_info.logout"):
             log_event("auth.logout_requested", reason_code=reason_code)
             st.logout()
+        # Streamlit queues a browser redirect and returns. Halt this run before
+        # any page reads the cleared session or makes another backend request.
+        st.stop()
 
 
 def authentication_required() -> bool:

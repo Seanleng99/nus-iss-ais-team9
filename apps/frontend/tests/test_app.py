@@ -215,8 +215,8 @@ def test_multipage_app_renders_without_runtime_errors() -> None:
     assert "Currency: SGD (fixed)" in [item.value for item in app.sidebar.caption]
     assert app.sidebar.selectbox[0].label == "Active profile"
     assert app.sidebar.selectbox[0].options == ["Alex Lee · alex", "Sam Tan · sam"]
-    assert app.sidebar.selectbox[1].label == "Period"
-    assert app.sidebar.selectbox[1].disabled is False
+    assert app.sidebar.button(key="workspace-period-month-1").disabled is False
+    assert app.sidebar.number_input(key="workspace-period-year").label == "Year"
     assert app.session_state["active_user_id"] == "alex"
     page_links = {item.label: item for item in app.sidebar.get("page_link")}
     assert page_links["Overview"].proto.page == ""
@@ -230,8 +230,8 @@ def test_no_profiles_defaults_to_create_profile_and_disables_workspace() -> None
 
     assert not app.exception
     assert "active_user_id" not in app.session_state
-    assert [item.label for item in app.sidebar.selectbox] == ["Period"]
-    assert app.sidebar.selectbox[0].disabled is True
+    assert not app.sidebar.selectbox
+    assert app.sidebar.button(key="workspace-period-month-1").disabled is True
 
     page_links = {item.label: item for item in app.sidebar.get("page_link")}
     assert page_links["Create profile"].proto.page == ""
@@ -426,6 +426,7 @@ def test_coach_starter_persists_conversation_and_new_chat_keeps_history() -> Non
     assert app.session_state["coach_rename_open"] == "coach-session-1"
     assert app.sidebar.text_input[0].value == "Review my monthly spending"
 
+    next(button for button in app.sidebar.button if button.label == "Cancel").click().run()
     app.sidebar.button(key="coach-delete-action-coach-session-1").click().run(timeout=30)
     assert "coach_rename_open" not in app.session_state
     assert app.session_state["coach_delete_open"] == "coach-session-1"

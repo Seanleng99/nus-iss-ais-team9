@@ -449,7 +449,7 @@ def test_sidebar_signout_calls_actual_logout_and_clears_journey(monkeypatch, cap
 
     def logout():
         calls.append(True)
-        raise StopException()
+        # The real Streamlit logout queues a redirect and returns normally.
 
     monkeypatch.setattr(auth.st, "logout", logout)
     app = AppTest.from_file(Path(__file__).parents[1] / "app.py")
@@ -457,10 +457,16 @@ def test_sidebar_signout_calls_actual_logout_and_clears_journey(monkeypatch, cap
     app.session_state["backend_client_journey_id"] = JOURNEY
     app.session_state["journey_id"] = JOURNEY
     app.run(timeout=30)
+
+    def forbidden_profile_request():
+        raise AssertionError("No backend request is allowed after clicking Sign out")
+
+    app.session_state["backend_client"].list_profiles = forbidden_profile_request
     next(button for button in app.sidebar.button if button.label == "Sign out").click().run(
         timeout=30
     )
     assert not app.exception
+    assert not app.error
     assert calls == [True]
     assert "journey_id" not in app.session_state
     assert "backend_client" not in app.session_state

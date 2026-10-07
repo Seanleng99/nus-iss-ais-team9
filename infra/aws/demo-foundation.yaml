@@ -452,6 +452,7 @@ Resources:
   FrontendUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
+      AccessTokenValidity: 3
       AllowedOAuthFlows:
         - code
       AllowedOAuthFlowsUserPoolClient: true
@@ -478,7 +479,7 @@ Resources:
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_SRP_AUTH
       GenerateSecret: false
-      IdTokenValidity: 1
+      IdTokenValidity: 3
       LogoutURLs:
         - !If
           - HasCustomDomain
@@ -497,6 +498,7 @@ Resources:
       SupportedIdentityProviders:
         - COGNITO
       TokenValidityUnits:
+        AccessToken: hours
         IdToken: hours
         RefreshToken: days
       UserPoolId: !Ref UserPool

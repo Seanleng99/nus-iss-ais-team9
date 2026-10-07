@@ -3,7 +3,7 @@ import streamlit as st
 from ui.auth import logout, require_authenticated_user, signed_in_label
 from ui.coach_language import render_language_header
 from ui.components import apply_styles, backend_call
-from ui.i18n import month_formatter, ui_text
+from ui.i18n import ui_text
 from ui.pages import (
     budget_page,
     coach_page,
@@ -13,7 +13,8 @@ from ui.pages import (
     profile_page,
     transactions_page,
 )
-from ui.state import get_client, period_options, today_singapore
+from ui.period_picker import render_period_picker
+from ui.state import get_client
 from ui.styles import SPENDING_INSIGHTS_CSS
 from ui.telemetry import configure_logging
 from ui.trace_viewer import trace_page
@@ -122,8 +123,7 @@ with st.sidebar:
     st.caption(ui_text('Currency: SGD (fixed)'))
     if identity_label := signed_in_label():
         st.caption(ui_text('Signed in as {v0}', v0=identity_label))
-        if st.button(ui_text('Sign out'), use_container_width=True):
-            logout()
+        st.button(ui_text('Sign out'), use_container_width=True, on_click=logout)
 
     st.markdown('<div class="sidebar-section">' + ui_text("ACCOUNT") + '</div>', unsafe_allow_html=True)
     if has_active_profile:
@@ -187,18 +187,7 @@ with st.sidebar:
         disabled=not has_active_profile,
     )
 
-    periods = period_options()
-    current = today_singapore()
-    current_period = current.replace(day=1)
-    selected_period = st.session_state.get("active_period", current_period)
-    selected_index = periods.index(selected_period) if selected_period in periods else 2
-    st.session_state.active_period = st.selectbox(
-        ui_text('Period'),
-        periods,
-        index=selected_index,
-        format_func=month_formatter(),
-        disabled=not has_active_profile,
-    )
+    render_period_picker(disabled=not has_active_profile)
 
     st.markdown('<div class="sidebar-section">' + ui_text("GUIDANCE") + '</div>', unsafe_allow_html=True)
     st.page_link(

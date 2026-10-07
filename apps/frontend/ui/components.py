@@ -36,6 +36,8 @@ def apply_styles() -> None:
         .st-key-workspace-language-header [data-testid="stPopoverButton"] [aria-hidden="true"] { display: none; }
         /* The deployed workspace exposes viewer controls, not Streamlit deployment. */
         [data-testid="stAppDeployButton"] { display: none; }
+        /* Page-level spinners still show progress without covering Language. */
+        [data-testid="stStatusWidget"] { display: none; }
         [data-testid="stSidebarContent"] { gap: 0; }
         [data-testid="stSidebarHeader"] {
             height: 2.5rem; position: absolute; right: 0.5rem; top: 0.5rem; z-index: 1;
@@ -74,37 +76,77 @@ def apply_styles() -> None:
             margin-bottom: 0.65rem;
         }
         .stApp:has(.coach-shell) .coach-conversation-section { margin-top: 1rem; }
+        .st-key-coach-conversation-list { gap: 0.15rem !important; }
+        .st-key-workspace-period-picker > [data-testid="stVerticalBlock"] { gap: 0.3rem; }
+        .st-key-workspace-period-picker [data-testid="stHorizontalBlock"],
+        .st-key-workspace-period-months [data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+        }
+        .st-key-workspace-period-picker [data-testid="stColumn"],
+        .st-key-workspace-period-months [data-testid="stColumn"] {
+            min-width: 0 !important;
+        }
+        .st-key-workspace-period-picker button { padding-left: 0.3rem; padding-right: 0.3rem; }
+        .st-key-workspace-period-months { gap: 0.5rem !important; }
+        .st-key-workspace-period-months button {
+            padding: 0.25rem 0.35rem; min-height: 2.125rem; white-space: nowrap;
+        }
+        .st-key-workspace-period-months button p { font-size: 0.875rem; white-space: nowrap; }
         .stApp:has(.coach-shell) .st-key-coach-new-chat button,
         .stApp:has(.coach-shell) [class*="st-key-coach-session-"] button {
-            gap: 0.5rem; justify-content: flex-start; min-height: 2.5rem;
+            gap: 0.5rem; justify-content: flex-start; min-height: 2.125rem;
             overflow: hidden; padding-left: 0.65rem; padding-right: 0.65rem; text-align: left;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"] {
-            margin-bottom: 0.15rem;
+            margin: 0; padding: 0; position: relative;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"]
+        > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-coach-conversation-actions-"]) {
+            position: absolute; top: 0.125rem; right: 0.125rem;
+            width: 4rem; z-index: 1;
+        }
+        .stApp:has(.coach-shell) [class*="st-key-coach-conversation-actions-"] {
+            background: #ffffff; border-radius: 6px; gap: 0.125rem !important;
+        }
+        @media (hover: hover) and (pointer: fine) {
+            .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"]
+            > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-coach-conversation-actions-"]) {
+                opacity: 0; pointer-events: none;
+            }
+            .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"]:is(:hover, :has(:focus-visible))
+            > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-coach-conversation-actions-"]) {
+                opacity: 1; pointer-events: auto;
+            }
+        }
+        .stApp:has(.coach-shell) .st-key-coach-conversation-list [data-testid="stForm"] {
+            border: 0; padding: 0;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-conversation-row-"]
         [data-testid="stHorizontalBlock"] { gap: 0; }
         .stApp:has(.coach-shell) [class*="st-key-coach-session-"] button p {
             flex: 1 1 0 !important; min-width: 0; overflow: hidden; text-align: left;
-            max-width: calc(100% - 1.5rem); text-overflow: ellipsis; white-space: nowrap;
-            width: auto !important;
+            max-width: none; text-overflow: clip; white-space: nowrap;
+            line-height: 1.35; width: auto !important;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-session-"]
         button > div > span {
-            justify-content: flex-start; overflow: hidden; width: 100%;
+            justify-content: flex-start; align-items: flex-start; overflow: visible; width: 100%;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-session-"]
         [data-testid="stIconMaterial"] {
             flex: 0 0 1rem;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-rename-action-"] button,
-        .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button {
+        .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button,
+        .stApp:has(.coach-shell) .st-key-coach-conversation-list [data-testid="stFormSubmitButton"] button {
             height: 1.875rem; justify-content: center; min-height: 1.875rem;
             min-width: 1.875rem; padding: 0.2rem; width: 1.875rem !important;
         }
         .stApp:has(.coach-shell) [class*="st-key-coach-rename-action-"] button p,
-        .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button p {
-            display: none;
+        .stApp:has(.coach-shell) [class*="st-key-coach-delete-action-"] button p,
+        .stApp:has(.coach-shell) .st-key-coach-conversation-list [data-testid="stFormSubmitButton"] button p {
+            position: absolute; width: 1px; height: 1px; overflow: hidden;
+            clip-path: inset(50%); white-space: nowrap;
         }
         .stApp:has(.coach-shell) [data-testid="stChatMessage"] {
             background: transparent; border: 0; padding: 0.75rem 0;
