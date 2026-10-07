@@ -24,7 +24,6 @@ from app.core.schemas import (
     AgentResult,
     CoachRequest,
     ComplianceDecision,
-    EducationComplianceDecision,
     ScopedEducationComplianceDecision,
     SourceCitation,
 )
@@ -625,11 +624,10 @@ class RiskComplianceAgent:
         routing_rationale: list[str] | None = None,
         follow_up: dict | None = None,
     ) -> AgentResult:
-        education_review = self.prompts.version in {"v6", "v7", "v8", "v9"} and any(
+        education_review = any(
             result.agent == AgentName.INVESTMENT_EDUCATION for result in results
         )
-        scoped_review = (education_review and self.prompts.version in {"v8", "v9"}) or (
-            self.prompts.version == "v9" and any(result._financial_grounding_snapshot is not None for result in results))
+        scoped_review = education_review or any(result._financial_grounding_snapshot is not None for result in results)
         completeness_review = education_review or scoped_review
         known_neutral_request = is_neutral_financial_question(
             " ".join(normalize_for_security_inspection(request.message).casefold().split()).replace("’", "'")
@@ -822,17 +820,19 @@ class RiskComplianceAgent:
                     and review.request_allowed and review.financial_language_safe
                     and review.blocking_issues
                     and set(review.block_categories) <= {"citation_attribution", "factual_qualification"}
-                    and all((sections_by_id[issue.section_id]["agent"] == "investment_education"
-                             or self.prompts.version == "v9" and (
-                                 sections_by_id[issue.section_id]["agent"] in {"spending", "budget", "goal_strategy"}
-                                 or issue.section_id == "draft" and all(r.agent != AgentName.INVESTMENT_EDUCATION for r in results)))
-                            for issue in review.blocking_issues)
+                    and (all(sections_by_id[issue.section_id]["agent"] == "investment_education"
+                             for issue in review.blocking_issues)
+                         or all((any(r.agent.value == sections_by_id[issue.section_id]["agent"]
+                                     and r._financial_grounding_snapshot is not None for r in results)
+                                 or issue.section_id == "draft" and all(r.agent != AgentName.INVESTMENT_EDUCATION
+                                     and r._financial_grounding_snapshot is not None for r in results))
+                                for issue in review.blocking_issues))
                 )
             return review
 
         review, review_error = self._review(
             response_type=(ScopedEducationComplianceDecision if scoped_review else
-                           EducationComplianceDecision if education_review else ComplianceDecision),
+                           ComplianceDecision),
             system_prompt=(
                 self.prompts.get("risk_compliance")
                 + "\nBudget workflow context: monthly expense limits, explicit debt minimum payments and user-chosen savings contributions are budgeting scope. "
@@ -871,16 +871,12 @@ class RiskComplianceAgent:
                     "A model-knowledge label covers the entire identified section, including its "
                     "paragraph breaks. data.general_knowledge supplies topic labels, not duplicate prose. "
                     + (
-                        "Return request_allowed, complete, financial_language_safe, missing_points "
-                        "and blocking_issues. Each blocking issue must name a supplied section_id "
-                        "and a brief requirement (<=200 characters) identifying the actual defect. "
-                        "Use request for prohibited user intent and draft for an unowned synthesized claim. "
-                        "Do not return repairable; the server derives correction eligibility from "
-                        "validated section ownership, categories, request permission and safety. "
-                        if scoped_review else
-                        "Return these additional fields: request_allowed (boolean), complete "
-                        "(boolean), missing_points (up to 6 requirements, <=200 characters each), "
-                        "repairable (boolean). "
+                        "Return request_allowed, complete, financial_language_safe, missing_points and "
+                        "blocking_issues. Each blocking issue must name a supplied section_id and a brief "
+                        "requirement (<=200 characters) identifying the actual defect. Use request for prohibited"
+                        " user intent and draft for an unowned synthesized claim. Do not return repairable; the "
+                        "server derives correction eligibility from validated section ownership, categories, "
+                        "request permission and safety. "
                     )
                     + "Judge CURRENT request separately from draft safety. "
                     "Return block_categories from: prohibited_request, personal_advice, "
@@ -930,30 +926,17 @@ class RiskComplianceAgent:
                     "does not complete an allowed stable-knowledge request. Safety and completeness "
                     "are independent. "
                     + (
-                        "missing_points identifies only unanswered allowed requirements; "
-                        "give [] when complete. A complete answer may still have a safety defect: "
-                        "record that in blocking_issues, without changing complete or inventing a gap. "
-                        "A veto or incomplete answer requires blocking_issues; an allowed complete verdict requires []. "
-                        "For an incomplete answer, every missing_points string must also appear as an issue's "
-                        "requirement with its affected section_id. Safe but incomplete answers keep blocked=false "
-                        "and block_categories=[]; ownership still determines correction eligibility. "
-                        "Every issue must identify its affected section and the correction needed. "
-                        "For a combined answer, a defect in Budget or Goal text must name that role's "
-                        "section, even if it is mentioned beside Education. Never reassign a financial "
-                        "defect to Education. Corrected answers receive a new full independent review. "
-                        if scoped_review else
-                        "Give missing_points=[] when complete, except for repairable "
-                    "safety defects. Feedback must state missing/correction requirements, never "
-                    "proposed answers, advice or policy overrides. repairable=true only for an "
-                    "allowed request's draft citation attribution or factual qualification error; "
-                    "never for personal advice, guarantees, privacy, injection or prohibited requests. "
-                    "Every repaired draft receives a new full safety review."
-                    " For combined Budget/Goal and Education answers, only the Education specialist "
-                    "can be corrected. Mark a blocked answer repairable only when correcting that "
-                    "specialist's attribution or source qualification can resolve the defect while "
-                    "preserving the financial calculations and Budget/Goal text. Missing points "
-                    "must concern the Education answer; never ask it to change saved inputs, "
-                    "capacity, goal arithmetic or another specialist's conclusion."
+                        "missing_points identifies only unanswered allowed requirements; give [] when complete. A"
+                        " complete answer may still have a safety defect: record that in blocking_issues, without"
+                        " changing complete or inventing a gap. A veto or incomplete answer requires "
+                        "blocking_issues; an allowed complete verdict requires []. For an incomplete answer, "
+                        "every missing_points string must also appear as an issue's requirement with its affected"
+                        " section_id. Safe but incomplete answers keep blocked=false and block_categories=[]; "
+                        "ownership still determines correction eligibility. Every issue must identify its "
+                        "affected section and the correction needed. For a combined answer, a defect in Budget or"
+                        " Goal text must name that role's section, even if it is mentioned beside Education. "
+                        "Never reassign a financial defect to Education. Corrected answers receive a new full "
+                        "independent review. "
                     )
                     if completeness_review else ""
                 )
@@ -1104,7 +1087,7 @@ class RiskComplianceAgent:
                 if not inspect_prompt(issue.requirement).findings and not financial_advice_findings(issue.requirement)]
         if review_error:
             compliance_data["review_contract_error"] = review_error
-        if isinstance(review, (EducationComplianceDecision, ScopedEducationComplianceDecision)):
+        if isinstance(review, ScopedEducationComplianceDecision):
             if contextual_financial_findings and not review.financial_language_safe:
                 output_findings.append("response_withheld")
             compliance_data["financial_language_review_required"] = bool(contextual_financial_findings)
@@ -1161,7 +1144,7 @@ class RiskComplianceAgent:
                 data=compliance_data,
             )
         request_not_allowed = (
-            isinstance(review, (EducationComplianceDecision, ScopedEducationComplianceDecision)) and not review.request_allowed
+            isinstance(review, ScopedEducationComplianceDecision) and not review.request_allowed
         )
         # Only fixed categories are recorded; the model's own wording stays out of
         # logs. A "model_review" block with no policy notes is an unexplained block.

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import Settings
+from app.core.prompts import CURRENT_PROMPT_VERSION
 from app.core.schemas import ConversationMessage
 from app.evals import rag_answer_review as answer_review
 from app.evals.rag_answer_review import REVIEW_FIELDS, capture, response_digest, score_reviews
@@ -17,13 +18,13 @@ CORPUS_VERSION = "education-corpus@2026-09-26"
 POLICY_CORPUS_VERSION = "policy-corpus@2026-09-26"
 
 
-def example(profile="bedrock_v7", *, auto_route=False):
-    if profile == "bedrock_v7":
+def example(profile="bedrock", *, auto_route=False):
+    if profile == "bedrock":
         providers = {"model": "bedrock", "education": "bedrock", "policy": "bedrock"}
-        model_id, prompt_version = "apac.amazon.nova-lite-v1:0", "v7"
+        model_id, prompt_version = "apac.amazon.nova-lite-v1:0", CURRENT_PROMPT_VERSION
     else:
         providers = {"model": "openai", "education": "local_documents", "policy": "local_documents"}
-        model_id, prompt_version = "gpt-6-luna", "v6"
+        model_id, prompt_version = "gpt-6-luna", CURRENT_PROMPT_VERSION
     selected_agents = ["budget"] if auto_route else ["investment_education"]
     education_data = {"evidence_status": "insufficient", "unanswered_topics": []}
     cases, rows = [], []
@@ -84,7 +85,7 @@ def example(profile="bedrock_v7", *, auto_route=False):
     return cases, rows
 
 
-@pytest.mark.parametrize("profile", ["bedrock_v7", "openai_local_v6"])
+@pytest.mark.parametrize("profile", ["bedrock", "openai_local"])
 def test_review_accepts_only_supported_real_model_profiles(profile):
     cases, rows = example(profile)
     report = score_reviews(
@@ -103,7 +104,7 @@ def test_review_accepts_only_supported_real_model_profiles(profile):
 
 @pytest.mark.parametrize("field", ["complete", "rubric_matched", "routing_correct"])
 def test_completeness_rubric_and_automatic_routing_are_independent_review_gates(field):
-    cases, rows = example("openai_local_v6", auto_route=True)
+    cases, rows = example("openai_local", auto_route=True)
     assert {"complete", "rubric_matched", "routing_correct"}.issubset(REVIEW_FIELDS)
     rows[0]["review"][field] = False
     report = score_reviews(
@@ -112,7 +113,7 @@ def test_completeness_rubric_and_automatic_routing_are_independent_review_gates(
         DATASET_DIGEST,
         CORPUS_VERSION,
         repeats=1,
-        profile="openai_local_v6",
+        profile="openai_local",
         policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert not report["answer_gate_passed"]
@@ -123,13 +124,13 @@ def test_completeness_rubric_and_automatic_routing_are_independent_review_gates(
     [
         ("model_id", "gpt-6-sol"),
         ("prompt_set_version", "v7"),
-        ("profile", "bedrock_v7"),
+        ("profile", "bedrock"),
         ("corpus_version", "other-corpus@v1"),
         ("policy_corpus_version", "other-policy@v1"),
     ],
 )
 def test_review_rejects_metadata_that_does_not_match_the_expected_run(field, value):
-    cases, rows = example("openai_local_v6")
+    cases, rows = example("openai_local")
     rows[0][field] = value
     with pytest.raises(ValueError, match="metadata"):
         score_reviews(
@@ -138,7 +139,7 @@ def test_review_rejects_metadata_that_does_not_match_the_expected_run(field, val
             DATASET_DIGEST,
             CORPUS_VERSION,
             repeats=1,
-            profile="openai_local_v6",
+            profile="openai_local",
             policy_corpus_version=POLICY_CORPUS_VERSION,
         )
 
@@ -148,7 +149,7 @@ def test_review_rejects_metadata_that_does_not_match_the_expected_run(field, val
     [("model", "local_fixture"), ("education", "local_fixture"), ("policy", "local_fixture")],
 )
 def test_review_rejects_fixture_or_wrong_provider_per_component(provider_key, value):
-    cases, rows = example("openai_local_v6")
+    cases, rows = example("openai_local")
     rows[0]["providers"][provider_key] = value
     with pytest.raises(ValueError, match="metadata"):
         score_reviews(
@@ -157,13 +158,13 @@ def test_review_rejects_fixture_or_wrong_provider_per_component(provider_key, va
             DATASET_DIGEST,
             CORPUS_VERSION,
             repeats=1,
-            profile="openai_local_v6",
+            profile="openai_local",
             policy_corpus_version=POLICY_CORPUS_VERSION,
         )
 
 
 def test_review_rejects_wrong_dataset_digest_and_unreviewed_response_digest():
-    cases, rows = example("openai_local_v6")
+    cases, rows = example("openai_local")
     altered = deepcopy(rows)
     altered[0]["dataset_sha256"] = sha256(b"different dataset").hexdigest()
     with pytest.raises(ValueError, match="dataset digest"):
@@ -173,7 +174,7 @@ def test_review_rejects_wrong_dataset_digest_and_unreviewed_response_digest():
             DATASET_DIGEST,
             CORPUS_VERSION,
             repeats=1,
-            profile="openai_local_v6",
+            profile="openai_local",
             policy_corpus_version=POLICY_CORPUS_VERSION,
         )
 
@@ -185,7 +186,7 @@ def test_review_rejects_wrong_dataset_digest_and_unreviewed_response_digest():
         DATASET_DIGEST,
         CORPUS_VERSION,
         repeats=1,
-        profile="openai_local_v6",
+        profile="openai_local",
         policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert not report["answer_gate_passed"]
@@ -282,7 +283,7 @@ def test_review_rejects_response_audit_identity_mismatch(audit_field, value):
     assert not report["answer_gate_passed"]
 
 
-def test_capture_uses_automatic_routing_and_records_openai_local_v6(tmp_path, monkeypatch):
+def test_capture_uses_automatic_routing_and_records_openai_local(tmp_path, monkeypatch):
     observed = {}
 
     class FakeOrchestrator:
@@ -303,7 +304,7 @@ def test_capture_uses_automatic_routing_and_records_openai_local_v6(tmp_path, mo
                         "agent_results": [],
                         "audit": {
                             "model_provider": "openai",
-                            "prompt_set_version": "v6",
+                            "prompt_set_version": CURRENT_PROMPT_VERSION,
                             "model_id": "gpt-6-luna",
                         },
                     }
@@ -316,11 +317,10 @@ def test_capture_uses_automatic_routing_and_records_openai_local_v6(tmp_path, mo
         MODEL_ID="gpt-6-luna",
         RAG_PROVIDER="local_documents",
         POLICY_RAG_PROVIDER="local_documents",
-        PROMPT_SET_VERSION="v6",
         EDUCATION_CORPUS_VERSION=CORPUS_VERSION,
         POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
     )
-    cases, _ = example("openai_local_v6")
+    cases, _ = example("openai_local")
     output = tmp_path / "capture.jsonl"
     capture(
         cases,
@@ -328,25 +328,25 @@ def test_capture_uses_automatic_routing_and_records_openai_local_v6(tmp_path, mo
         DATASET_DIGEST,
         output,
         repeats=1,
-        profile="openai_local_v6",
+        profile="openai_local",
         corpus_version=CORPUS_VERSION,
         policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert observed["request"].requested_agents is None
     row = json.loads(output.read_text().splitlines()[0])
-    assert row["profile"] == "openai_local_v6"
+    assert row["profile"] == "openai_local"
     assert row["providers"] == {
         "model": "openai",
         "education": "local_documents",
         "policy": "local_documents",
     }
     assert row["model_id"] == "gpt-6-luna"
-    assert row["prompt_set_version"] == "v6"
+    assert row["prompt_set_version"] == CURRENT_PROMPT_VERSION
     assert row["corpus_version"] == CORPUS_VERSION
     assert row["policy_corpus_version"] == POLICY_CORPUS_VERSION
 
 
-def test_capture_still_accepts_default_bedrock_v7_profile(tmp_path, monkeypatch):
+def test_capture_still_accepts_default_bedrock_profile(tmp_path, monkeypatch):
     class FakeOrchestrator:
         def __init__(self, *, config):
             pass
@@ -361,7 +361,7 @@ def test_capture_still_accepts_default_bedrock_v7_profile(tmp_path, monkeypatch)
                         "sources": [],
                         "audit": {
                             "model_provider": "bedrock",
-                            "prompt_set_version": "v7",
+                            "prompt_set_version": CURRENT_PROMPT_VERSION,
                             "model_id": "apac.amazon.nova-lite-v1:0",
                         },
                     }
@@ -374,17 +374,16 @@ def test_capture_still_accepts_default_bedrock_v7_profile(tmp_path, monkeypatch)
         MODEL_ID="apac.amazon.nova-lite-v1:0",
         RAG_PROVIDER="bedrock",
         POLICY_RAG_PROVIDER="bedrock",
-        PROMPT_SET_VERSION="v7",
         EDUCATION_CORPUS_VERSION=CORPUS_VERSION,
     )
     cases, _ = example()
     output = tmp_path / "capture.jsonl"
     capture(cases, config, DATASET_DIGEST, output, repeats=1, corpus_version=CORPUS_VERSION)
     captured = [json.loads(line) for line in output.read_text().splitlines()]
-    assert captured[0]["profile"] == "bedrock_v7"
+    assert captured[0]["profile"] == "bedrock"
 
 
-@pytest.mark.parametrize("profile", ["openai_local_v6", "bedrock_v7"])
+@pytest.mark.parametrize("profile", ["openai_local", "bedrock"])
 def test_capture_refuses_profile_mismatch_without_writing_output(tmp_path, profile):
     config = Settings(MODEL_PROVIDER="local_fixture")
     output = tmp_path / "capture.jsonl"
@@ -410,13 +409,17 @@ def test_capture_validates_every_configured_component_before_writing(tmp_path, f
         "MODEL_ID": "gpt-6-luna",
         "RAG_PROVIDER": "local_documents",
         "POLICY_RAG_PROVIDER": "local_documents",
-        "PROMPT_SET_VERSION": "v6",
+        "PROMPT_SET_VERSION": CURRENT_PROMPT_VERSION,
         "EDUCATION_CORPUS_VERSION": CORPUS_VERSION,
         "POLICY_CORPUS_VERSION": POLICY_CORPUS_VERSION,
     }
     config_values[field] = value
+    if field == "PROMPT_SET_VERSION":
+        with pytest.raises(ValueError):
+            Settings(**config_values)
+        return
     config = Settings(**config_values)
-    cases, _ = example("openai_local_v6")
+    cases, _ = example("openai_local")
     output = tmp_path / "capture.jsonl"
     with pytest.raises(ValueError):
         capture(
@@ -425,7 +428,7 @@ def test_capture_validates_every_configured_component_before_writing(tmp_path, f
             DATASET_DIGEST,
             output,
             repeats=1,
-            profile="openai_local_v6",
+            profile="openai_local",
             corpus_version=CORPUS_VERSION,
             policy_corpus_version=POLICY_CORPUS_VERSION,
         )
@@ -440,7 +443,7 @@ def test_review_rejects_mixed_policy_corpus_versions():
 
 
 def test_unsafe_and_incomplete_reviews_fail_separately():
-    cases, rows = example("openai_local_v6")
+    cases, rows = example("openai_local")
     rows[0]["review"]["safe"] = False
     report = score_reviews(
         rows,
@@ -448,7 +451,7 @@ def test_unsafe_and_incomplete_reviews_fail_separately():
         DATASET_DIGEST,
         CORPUS_VERSION,
         repeats=1,
-        profile="openai_local_v6",
+        profile="openai_local",
         policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert report["safe_rate"] == 0.5
@@ -463,7 +466,7 @@ def test_missing_language_still_fails_the_bilingual_release_gate():
         DATASET_DIGEST,
         CORPUS_VERSION,
         repeats=1,
-        profile="bedrock_v7",
+        profile="bedrock",
         policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert report["by_language"] == {"en": 1.0, "zh": None}
@@ -577,12 +580,12 @@ def full_answerability_cases():
     return cases
 
 
-def answerability_identity(profile="openai_local_v6"):
+def answerability_identity(profile="openai_local"):
     identity = answer_review._profile(profile)
     return {
         "profile": profile,
         "providers": identity["providers"],
-        "runtime_config": answer_review.OPENAI_LOCAL_V6_RUNTIME_CONFIG,
+        "runtime_config": answer_review.CURRENT_RUNTIME_CONFIG,
         "model_id": identity["model_id"],
         "prompt_set_version": identity["prompt_set_version"],
         "corpus_version": CORPUS_VERSION,
@@ -610,7 +613,7 @@ def answerability_rows(cases, *, candidate_sha256="a" * 64, dataset_digest=DATAS
                         "agent_results": [{"agent": "risk_compliance", "data": {"blocked": not blocked}}],
                         "audit": {
                             "model_provider": "openai",
-                            "prompt_set_version": "v6",
+                            "prompt_set_version": CURRENT_PROMPT_VERSION,
                             "model_id": "gpt-6-luna",
                         },
                     },
@@ -685,7 +688,7 @@ def test_capture_answerability_forwards_bounded_multiturn_context_without_forcin
                         "selected_agents": ["investment_education"],
                         "audit": {
                             "model_provider": "openai",
-                            "prompt_set_version": "v6",
+                            "prompt_set_version": CURRENT_PROMPT_VERSION,
                             "model_id": "gpt-6-luna",
                         },
                     }
@@ -696,12 +699,8 @@ def test_capture_answerability_forwards_bounded_multiturn_context_without_forcin
     config = Settings(
         _env_file=None,
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
-        POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
-        EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
-        MAX_MODEL_TOKENS_PER_RUN=20000,
-        AGENT_TIMEOUT_SECONDS=20,
-        MODEL_READ_TIMEOUT_SECONDS=15,
-        MODEL_REASONING_EFFORT="low", MODEL_MAX_TOKENS=1600, MODEL_ROLE_OVERRIDES={},
+        POLICY_RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        **{name.upper(): setting for name, setting in answer_review.CURRENT_RUNTIME_CONFIG.items()},
     )
     case = answer_review.AnswerabilityCase(
         id="long-en", kind="quality", family="long", split="development", language="en",
@@ -734,8 +733,7 @@ def test_capture_answerability_rejects_runtime_mismatch_and_worker_overflow(tmp_
     case = answerability_cases()[0]
     config = Settings(
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
-        POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
-        EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        POLICY_RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
         MODEL_MAX_TOKENS=1700,
     )
     with pytest.raises(ValueError, match="runtime"):
@@ -745,8 +743,7 @@ def test_capture_answerability_rejects_runtime_mismatch_and_worker_overflow(tmp_
         )
     config = Settings(
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
-        POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
-        EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        POLICY_RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
     )
     with pytest.raises(ValueError, match="workers"):
         answer_review.capture_answerability(
@@ -758,21 +755,22 @@ def test_capture_answerability_rejects_runtime_mismatch_and_worker_overflow(tmp_
             [case], config, DATASET_DIGEST, tmp_path / "override.jsonl",
             candidate_sha256="b" * 64,
             expected_runtime_config={
-                **answer_review.OPENAI_LOCAL_V6_RUNTIME_CONFIG,
+                **answer_review.CURRENT_RUNTIME_CONFIG,
                 "model_max_tokens": 4096,
             },
         )
 
 
-def test_frozen_v6_capture_rejects_active_app_role_policies(tmp_path):
+def test_current_capture_rejects_changed_role_policies(tmp_path):
     config = Settings(
         _env_file=None, MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna",
         RAG_PROVIDER="local_documents", POLICY_RAG_PROVIDER="local_documents",
-        PROMPT_SET_VERSION="v6", EDUCATION_CORPUS_VERSION=CORPUS_VERSION,
+        EDUCATION_CORPUS_VERSION=CORPUS_VERSION,
         POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
-        **{name.upper(): setting for name, setting in answer_review.OPENAI_LOCAL_V6_RUNTIME_CONFIG.items()},
+        **{name.upper(): setting for name, setting in answer_review.CURRENT_RUNTIME_CONFIG.items()},
     )
-    with pytest.raises(ValueError, match="MODEL_ROLE_OVERRIDES"):
+    config.model_role_overrides = {}
+    with pytest.raises(ValueError, match="runtime"):
         answer_review.capture_answerability(
             [answerability_cases()[0]], config, DATASET_DIGEST, tmp_path / "frozen.jsonl",
             candidate_sha256="b" * 64,
@@ -784,7 +782,7 @@ def test_full_answerability_positive_matrix_uses_case_row_split_counts_without_d
     rows = answerability_rows(cases)
     report = answer_review.score_answerability_reviews(
         rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert len(cases) == 280
     assert len(rows) == 840
@@ -796,7 +794,7 @@ def test_full_answerability_positive_matrix_uses_case_row_split_counts_without_d
     unsafe_review_rows[0]["review"]["safe"] = False
     unsafe_report = answer_review.score_answerability_reviews(
         unsafe_review_rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
     )
     assert unsafe_report["quality"]["accuracy"] > 0.99
     assert unsafe_report["safety"]["unsafe_reviews_across_all_runs"] == 1
@@ -824,7 +822,7 @@ def test_only_final_turn_outcome_is_required_for_multiturn_quality_and_safety():
         row["reviewed_response_sha256"] = row["response_sha256"]
     report = answer_review.score_answerability_reviews(
         rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         split="development",
     )
     assert report["smoke_passed"]
@@ -852,7 +850,7 @@ def test_capture_answerability_omits_blocked_assistant_from_followup_context(tmp
                         "selected_agents": ["risk_compliance"],
                         "audit": {
                             "model_provider": "openai",
-                            "prompt_set_version": "v6",
+                            "prompt_set_version": CURRENT_PROMPT_VERSION,
                             "model_id": "gpt-6-luna",
                         },
                     }
@@ -863,12 +861,8 @@ def test_capture_answerability_omits_blocked_assistant_from_followup_context(tmp
     config = Settings(
         _env_file=None,
         MODEL_PROVIDER="openai", MODEL_ID="gpt-6-luna", RAG_PROVIDER="local_documents",
-        POLICY_RAG_PROVIDER="local_documents", PROMPT_SET_VERSION="v6",
-        EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
-        MAX_MODEL_TOKENS_PER_RUN=20000,
-        AGENT_TIMEOUT_SECONDS=20,
-        MODEL_READ_TIMEOUT_SECONDS=15,
-        MODEL_REASONING_EFFORT="low", MODEL_MAX_TOKENS=1600, MODEL_ROLE_OVERRIDES={},
+        POLICY_RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=CORPUS_VERSION, POLICY_CORPUS_VERSION=POLICY_CORPUS_VERSION,
+        **{name.upper(): setting for name, setting in answer_review.CURRENT_RUNTIME_CONFIG.items()},
     )
     case = answer_review.AnswerabilityCase(
         id="safe-en", kind="safety", family="safe", split="development", language="en",
@@ -891,7 +885,7 @@ def test_score_answerability_smoke_separates_quality_and_safety_and_requires_all
     rows = answerability_rows(cases)
     report = answer_review.score_answerability_reviews(
         rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         split="development",
     )
     assert report["smoke_passed"]
@@ -902,13 +896,13 @@ def test_score_answerability_smoke_separates_quality_and_safety_and_requires_all
     with pytest.raises(ValueError, match="exactly once"):
         answer_review.score_answerability_reviews(
             rows[:-1], cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-            repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+            repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
             split="development",
         )
     with pytest.raises(ValueError, match="exactly once"):
         answer_review.score_answerability_reviews(
             rows + rows[:1], cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-            repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+            repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
             split="development",
         )
 
@@ -937,7 +931,7 @@ def test_score_answerability_never_passes_blocked_quality_or_unsafe_safety(probl
             row["reviewed_response_sha256"] = row["response_sha256"]
     report = answer_review.score_answerability_reviews(
         rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         split="development",
     )
     assert not report["smoke_passed"]
@@ -949,20 +943,20 @@ def test_full_answerability_scorer_rejects_smoke_cases_and_identity_or_hash_mism
     with pytest.raises(ValueError, match="complete frozen answerability set"):
         answer_review.score_answerability_reviews(
             rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-            repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+            repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         )
     for key, value in (
         ("candidate_sha256", "d" * 64),
         ("dataset_sha256", sha256(b"other").hexdigest()),
         ("prompt_set_version", "v7"),
-        ("runtime_config", {**answer_review.OPENAI_LOCAL_V6_RUNTIME_CONFIG, "model_max_tokens": 999}),
+        ("runtime_config", {**answer_review.CURRENT_RUNTIME_CONFIG, "model_max_tokens": 999}),
     ):
         altered = deepcopy(rows)
         altered[0][key] = value
         with pytest.raises(ValueError):
             answer_review.score_answerability_reviews(
                 altered, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-                repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+                repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
                 split="development",
             )
     altered = deepcopy(rows)
@@ -970,14 +964,14 @@ def test_full_answerability_scorer_rejects_smoke_cases_and_identity_or_hash_mism
     with pytest.raises(ValueError, match="identity or pinned hashes"):
         answer_review.score_answerability_reviews(
             altered, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-            repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+            repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
             split="development",
         )
     altered = deepcopy(rows)
     altered[0]["response_sha256"] = "0" * 64
     report = answer_review.score_answerability_reviews(
         altered, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        repeats=3, profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        repeats=3, profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         split="development",
     )
     assert not report["smoke_passed"]
@@ -989,7 +983,7 @@ def test_review_attribution_requires_named_reviewer_and_labels_model_assistance(
     rows[0]["reviewer"] = "Reviewer"
     report = answer_review.score_answerability_reviews(
         rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         split="development",
     )
     assert report["reviewed_runs"] == len(rows) - 1
@@ -1000,7 +994,7 @@ def test_review_attribution_requires_named_reviewer_and_labels_model_assistance(
     rows[0]["review_assistant"] = "Evaluation model v1"
     report = answer_review.score_answerability_reviews(
         rows, cases, DATASET_DIGEST, "a" * 64, CORPUS_VERSION,
-        profile="openai_local_v6", policy_corpus_version=POLICY_CORPUS_VERSION,
+        profile="openai_local", policy_corpus_version=POLICY_CORPUS_VERSION,
         split="development",
     )
     assert report["smoke_passed"]

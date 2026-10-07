@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, StrictBool
 
 from app.agents.base import BaseAgent
 from app.agents.calculation_summary import goal_calculation_summary
-from app.agents.education_access import education_topics, should_request_education_context
 from app.agents.goal_capture import extract_goal_draft
 from app.core.guardrails import inspect_prompt
 from app.core.schemas import (
@@ -103,8 +102,7 @@ class GoalStrategyAgent(BaseAgent):
     def _emergency_fund_request(self, task: AgentTask) -> bool:
         return (
             "emergency_fund" in task.input_data
-            or "emergency fund readiness" in (task.context_features.get("education_topics", [])
-                if self.prompts.version == "v9" else education_topics(task.sanitized_message))
+            or "emergency fund readiness" in (task.context_features.get("education_topics", []))
         )
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
@@ -126,8 +124,7 @@ class GoalStrategyAgent(BaseAgent):
             )
         if (
             (self._emergency_fund_request(task) or
-             (bool(task.context_features.get("education_topics")) if self.prompts.version == "v9"
-              else should_request_education_context(task.sanitized_message)))
+             (bool(task.context_features.get("education_topics"))))
             and (self._emergency_fund_request(task) or not task.context_features.get("education_handled_separately"))
             and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
             and not any(
@@ -182,8 +179,6 @@ class GoalStrategyAgent(BaseAgent):
         if task.context_features.get("goal_capture") or self._illustrative_goal(task) or self._emergency_fund_request(task):
             return False
         # Archived catalogues retain their original broad saved-goal policy.
-        if self.prompts.version != "v9":
-            return bool(task.input_data.get("goals"))
         if task._goal_requires_capacity is None:
             decision = generate_structured_response(
                 self.gateway, response_type=GoalInputRequirements,

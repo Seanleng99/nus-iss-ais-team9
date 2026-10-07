@@ -176,7 +176,7 @@ def test_emergency_fund_readiness_retrieves_monthly_expense_benchmark():
 ])
 def test_beginner_topics_retrieve_substantive_governed_evidence(message, source_id, passage):
     agent = InvestmentEducationAgent(
-        LocalFixtureModelGateway(), PromptCatalog("v6"), 0.35, 800,
+        LocalFixtureModelGateway(), PromptCatalog(), 0.35, 800,
         LocalDocumentEducationRetriever(),
     )
     grounding = agent._ground(AgentTask(

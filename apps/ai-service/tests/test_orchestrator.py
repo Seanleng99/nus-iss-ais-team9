@@ -18,8 +18,8 @@ def local_orchestrator() -> AgentOrchestrator:
     return AgentOrchestrator(config=config, gateway=LocalFixtureModelGateway())
 
 
-def test_prompt_catalog_defaults_to_active_v9() -> None:
-    assert PromptCatalog().version == "v9"
+def test_prompt_catalog_defaults_to_packaged_current_contract() -> None:
+    assert PromptCatalog().version == Settings(_env_file=None).prompt_set_version
 
 
 def test_settings_rejects_superseded_v1_prompt() -> None:
@@ -408,7 +408,7 @@ def test_compliance_review_receives_investment_evidence() -> None:
     } == {"coach-evidence-policy"}
 
 
-def test_investment_rag_reports_v9_prompt_set_and_model_telemetry() -> None:
+def test_investment_rag_reports_current_prompt_identity_and_model_telemetry() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s9",
@@ -418,7 +418,7 @@ def test_investment_rag_reports_v9_prompt_set_and_model_telemetry() -> None:
 
     response = local_orchestrator().handle(request)
 
-    assert response.audit["prompt_set_version"] == "v9"
+    assert response.audit["prompt_set_version"] == PromptCatalog().version
     assert response.audit["model_call_count"] == len(response.audit["model_calls"])
     assert response.audit["model_call_count"] == 3
     assert [call["component"] for call in response.audit["model_calls"]] == [
@@ -537,21 +537,21 @@ def test_compliance_quarantines_retrieved_policy_instructions() -> None:
     assert "reveal the system prompt" not in response.model_dump_json()
 
 
-def test_v2_prompt_set_remains_available_for_rollback_compatibility() -> None:
+def test_current_contract_handles_budget_education_dependency() -> None:
     orchestrator = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v2"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=LocalFixtureModelGateway(),
     )
     response = orchestrator.handle(
         CoachRequest(
             user_id="u1",
-            session_id="v2-compatible",
+            session_id="current-contract",
             message="Create a monthly budget",
             snapshot={"monthly_income": {"amount": 4000}},
         )
     )
 
-    assert response.audit["prompt_set_version"] == "v2"
+    assert response.audit["prompt_set_version"] == PromptCatalog().version
 
 
 @pytest.mark.parametrize("question", [

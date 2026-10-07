@@ -28,8 +28,8 @@ MODEL_TEXT = [
 ]
 
 
-def formatted(version="v8", locale="en", lead="sourced"):
-    agent = InvestmentEducationAgent(LocalFixtureModelGateway(), PromptCatalog(version),
+def formatted(locale="en", lead="sourced"):
+    agent = InvestmentEducationAgent(LocalFixtureModelGateway(), PromptCatalog(),
                                     0.2, 4000, LocalEducationRetriever())
     data = {"response_language": locale, "general_knowledge": MODEL_TEXT,
             "fallback_topics": [item["topic"] for item in MODEL_TEXT]}
@@ -41,11 +41,10 @@ def formatted(version="v8", locale="en", lead="sourced"):
                        rationale=["Concept explanation."], confidence=0.9, data=data)
 
 
-@pytest.mark.parametrize("version", ["v6", "v7", "v8"])
 @pytest.mark.parametrize("locale", ["en", "zh-Hans"])
 @pytest.mark.parametrize("lead", ["sourced", "model"])
-def test_each_model_topic_has_a_visible_label_and_exact_review_range(version, locale, lead):
-    result = formatted(version, locale, lead)
+def test_each_model_topic_has_a_visible_label_and_exact_review_range(locale, lead):
+    result = formatted(locale, lead)
     label = translate("education.model_knowledge_label", locale)
     assert result.summary.count(label) == 2
     for item in MODEL_TEXT:
@@ -75,7 +74,7 @@ class ReviewGateway:
 
 def review(decisions):
     gateway = ReviewGateway(decisions)
-    agent = RiskComplianceAgent(gateway, PromptCatalog("v8"), 0.1, 3000, LocalPolicyRetriever())
+    agent = RiskComplianceAgent(gateway, PromptCatalog(), 0.1, 3000, LocalPolicyRetriever())
     education = formatted()
     budget = AgentResult(agent=AgentName.BUDGET, summary="The confirmed plan assigns SGD 1,000 to savings.",
                          rationale=["Saved plan."], confidence=0.9)
@@ -174,20 +173,21 @@ class IncompleteGoalGateway(ScopedGoalGateway):
 
 
 @pytest.mark.parametrize("section,corrections", [("investment_education", 1), ("budget", 0)])
-def test_incomplete_combined_answer_cannot_bypass_v8_ownership(section, corrections):
+def test_incomplete_combined_answer_repairs_only_its_owned_specialist(section, corrections):
     gateway = IncompleteGoalGateway(section)
-    response = ask(gateway, version="v8", MAX_MODEL_TOKENS_PER_RUN=80000)
+    response = ask(gateway, MAX_MODEL_TOKENS_PER_RUN=80000)
     assert not response.blocked
-    assert gateway.writers == gateway.reviews == 1 + corrections
-    assert len(gateway.calls_for("agent_budget")) == len(gateway.calls_for("agent_goal_strategy")) == 1
+    assert gateway.writers == 1 + corrections and gateway.reviews == 2
+    assert len(gateway.calls_for("agent_budget")) == 2 - corrections
+    assert len(gateway.calls_for("agent_goal_strategy")) == 1
     for result in response.agent_results:
         if result.agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
             assert result.summary in response.answer
 
 
-def test_combined_v8_correction_keeps_financial_text_and_uses_one_independent_rereview():
+def test_combined_current_correction_keeps_financial_text_and_uses_one_independent_rereview():
     gateway = ScopedGoalGateway()
-    response = ask(gateway, version="v8", MAX_MODEL_TOKENS_PER_RUN=80000)
+    response = ask(gateway, MAX_MODEL_TOKENS_PER_RUN=80000)
     assert not response.blocked and gateway.writers == gateway.reviews == 2
     for role in ("agent_budget", "agent_goal_strategy", "education_query_planner", "education_answerability"):
         assert len(gateway.calls_for(role)) == 1
@@ -203,16 +203,13 @@ def test_application_default_is_80000_and_explicit_smaller_limit_is_preserved():
     assert Settings(_env_file=None, MAX_MODEL_TOKENS_PER_RUN=10000).max_model_tokens_per_run == 10000
 
 
-@pytest.mark.parametrize("version", ["v2", "v3", "v4", "v5", "v6", "v7", "v8"])
-def test_running_app_rejects_every_historical_prompt_set(version):
-    settings = Settings(_env_file=None, PROMPT_SET_VERSION=version)
-    with pytest.raises(ValueError, match="requires PROMPT_SET_VERSION=v9"):
-        settings.require_active_app_prompt()
+def test_configuration_cannot_select_a_retired_prompt_set():
+    with pytest.raises(ValueError, match="requires PROMPT_SET_VERSION="):
+        Settings(_env_file=None, PROMPT_SET_VERSION="retired-release")
 
 
 def test_active_app_defaults_include_all_recommended_role_policies():
     settings = Settings(_env_file=None)
-    settings.require_active_app_prompt()
     assert settings.model_reasoning_effort == "medium"
     assert settings.model_max_tokens == 3200
     for role in ("agent_budget", "agent_goal_strategy", "agent_spending"):

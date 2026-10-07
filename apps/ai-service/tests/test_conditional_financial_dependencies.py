@@ -44,7 +44,7 @@ def request(message, agents, *, income=False, capacity=False):
 
 
 def run(req, gateway=None):
-    return AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v9"),
+    return AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", ),
                              gateway=gateway).handle(req)
 
 
@@ -183,13 +183,14 @@ def test_saved_goal_arithmetic_and_independent_specialists_execute_concurrently(
     assert len(response.selected_agents) == 3
 
 
-def test_archived_goal_dependency_policy_is_preserved():
+def test_goal_arithmetic_does_not_require_budget_even_when_income_is_known():
     req = request("Calculate contributions for my saved goals.", ["goal_strategy"], capacity=True)
     req.snapshot.recent_transactions = []
-    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v8")).handle(
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", )).handle(
         req,
     )
-    assert response.selected_agents == [AgentName.GOAL_STRATEGY, AgentName.BUDGET]
+    assert response.selected_agents == [AgentName.GOAL_STRATEGY]
+    assert response.audit["dependency_edges"] == []
 
 
 def test_direct_goal_spending_edge_remains_unauthorized():

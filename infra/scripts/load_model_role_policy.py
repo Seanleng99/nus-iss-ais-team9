@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 POLICY_PATH = Path(__file__).resolve().parents[2] / "apps/ai-service/app/core/model-role-policy.json"
+PROMPT_MANIFEST_PATH = Path(__file__).resolve().parents[2] / "apps/ai-service/prompts/current/manifest.json"
 
 
 def load_policy(path: Path = POLICY_PATH) -> str:
@@ -28,6 +29,8 @@ def main() -> None:
     policy = load_policy()
     with args.github_env.open("a", encoding="utf-8") as output:
         output.write(f"MODEL_ROLE_OVERRIDES={policy}\n")
+        version = json.loads(PROMPT_MANIFEST_PATH.read_text(encoding="utf-8"))["version"]
+        output.write(f"PROMPT_SET_VERSION={version}\n")
 
 
 if __name__ == "__main__":

@@ -24,7 +24,6 @@ from app.agents.education_access import (
     PUBLIC_EDUCATION_SEARCH_ALIASES,
     education_gap_message,
     education_topics,
-    should_request_education_context,
 )
 from app.agents.goal_capture import goal_change_request
 from app.agents.goal_strategy import GoalStrategyAgent
@@ -190,7 +189,7 @@ class AgentOrchestrator:
             if isinstance(raw_gateway, TracingModelGateway)
             else TracingModelGateway(raw_gateway, self.config)
         )
-        self.prompts = prompts or PromptCatalog(self.config.prompt_set_version)
+        self.prompts = prompts or PromptCatalog()
         self.education_retriever = RequestScopedEducationRetriever(
             education_retriever or create_education_retriever(self.config)
         )
@@ -334,7 +333,7 @@ class AgentOrchestrator:
                 "trace_id": state["trace_id"],
                 "executed_at": state["executed_at"],
                 "guardrail_findings": decision.findings,
-                "prompt_set_version": self.prompts.version,
+                **self.prompts.identity(self.config.build_commit),
                 "model_provider": self.config.model_provider,
                 "model_id": self.config.model_id,
                 "answer_status": "refused",
@@ -411,15 +410,6 @@ class AgentOrchestrator:
             decision = RouterDecision(selected_agents=[AgentName.BUDGET], rationale=memory_reply.rationale)
             routing_mode = "chat_memory"
             routing_actor = "orchestrator"
-        elif requested_agents and "budget_periods" not in request.budget_context and self.prompts.version != "v9":
-            decision = RouterDecision(
-                selected_agents=requested_agents,
-                rationale=[
-                    translate('routing.explicit_selection', response_language)
-                ],
-            )
-            routing_mode = "explicit"
-            routing_actor = "orchestrator"
         else:
             payload = {
                 "message": state["sanitized_message"],
@@ -444,28 +434,27 @@ class AgentOrchestrator:
             }
 
             def validate_router(value: RouterDecision) -> RouterDecision:
-                if self.prompts.version == "v9":
-                    if not value.task_assignments and len(value.selected_agents) == 1:
-                        # A single specialist owns the complete question; no semantic split
-                        # is inferred. Older model contracts still use its scoped planner.
-                        value.task_assignments = [TaskAssignment(
-                            agent=value.selected_agents[0], question=state["sanitized_message"],
-                            source_quotes=[state["sanitized_message"]], education_topics=value.education_topics,
-                        )]
-                    assigned = [item.agent for item in value.task_assignments]
-                    if (len(set(assigned)) != len(assigned) or set(assigned) != set(value.selected_agents)
-                            or any(not quote.strip() or quote not in state["sanitized_message"]
-                                   for item in value.task_assignments for quote in item.source_quotes)):
-                        raise ModelGatewayError(
-                            "Supply one task_assignments entry per selected specialist, with an assigned "
-                            "question and exact current-message source_quotes. Scope requires_spending "
-                            "to Budget's own task, not another specialist's question.",
-                            code="INVALID_STRUCTURED_RESPONSE", component="router",
-                        )
-                    if any(topic not in CANONICAL_EDUCATION_TOPICS
-                           for item in value.task_assignments for topic in item.education_topics):
-                        raise ModelGatewayError("Task education_topics must use supplied canonical labels.",
-                                                code="UNAPPROVED_EDUCATION_TOPIC", component="router")
+                if not value.task_assignments and len(value.selected_agents) == 1:
+                    # A single specialist owns the complete question; no semantic split
+                    # is inferred. Its scoped planner determines required inputs.
+                    value.task_assignments = [TaskAssignment(
+                        agent=value.selected_agents[0], question=state["sanitized_message"],
+                        source_quotes=[state["sanitized_message"]], education_topics=value.education_topics,
+                    )]
+                assigned = [item.agent for item in value.task_assignments]
+                if (len(set(assigned)) != len(assigned) or set(assigned) != set(value.selected_agents)
+                        or any(not quote.strip() or quote not in state["sanitized_message"]
+                               for item in value.task_assignments for quote in item.source_quotes)):
+                    raise ModelGatewayError(
+                        "Supply one task_assignments entry per selected specialist, with an assigned "
+                        "question and exact current-message source_quotes. Scope requires_spending "
+                        "to Budget's own task, not another specialist's question.",
+                        code="INVALID_STRUCTURED_RESPONSE", component="router",
+                    )
+                if any(topic not in CANONICAL_EDUCATION_TOPICS
+                       for item in value.task_assignments for topic in item.education_topics):
+                    raise ModelGatewayError("Task education_topics must use supplied canonical labels.",
+                                            code="UNAPPROVED_EDUCATION_TOPIC", component="router")
                 # Only exact governed aliases can turn a public account/scam
                 # concept into its corpus term. Unrecognized account wording
                 # retains the privacy screen; this never rewrites arbitrary
@@ -752,9 +741,7 @@ class AgentOrchestrator:
             # without adding a second Education narrative. Capture paths return
             # drafts before dependency preflight, so they still need a specialist.
             detected_topics = ({topic for item in decision.task_assignments
-                                for topic in item.education_topics}
-                               if self.prompts.version == "v9" else
-                               set(education_topics(state["sanitized_message"])))
+                                for topic in item.education_topics})
             has_conditional_consumer = (
                 AgentName.BUDGET in decision.selected_agents and not decision.budget_capture
                 or AgentName.GOAL_STRATEGY in decision.selected_agents and not decision.goal_capture
@@ -773,8 +760,7 @@ class AgentOrchestrator:
                 or conditional_education or emergency_goal
             )
             if not has_education_access and (
-                decision.education_topics or (self.prompts.version != "v9"
-                    and should_request_education_context(state["sanitized_message"]))
+                decision.education_topics
             ):
                 decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
                 decision.rationale.append(translate('routing.education_specialist', response_language))
@@ -852,16 +838,15 @@ class AgentOrchestrator:
                 goal_capacity_required = goal_agent._requires_capacity(goal_task)
             finally:
                 task_context.reset(token)
-            if self.prompts.version == "v9":
-                events.append(self._event(state, "task.capacity_requirement.evaluated", goal_task.agent.value,
-                    task_id=goal_task.task_id, details={"reason_code": "GOAL_FEASIBILITY_REQUIRES_CAPACITY"
-                        if goal_capacity_required else "GOAL_CAPACITY_NOT_REQUIRED"}))
+            events.append(self._event(state, "task.capacity_requirement.evaluated", goal_task.agent.value,
+                task_id=goal_task.task_id, details={"reason_code": "GOAL_FEASIBILITY_REQUIRES_CAPACITY"
+                    if goal_capacity_required else "GOAL_CAPACITY_NOT_REQUIRED"}))
         for task in tasks.values():
             if task.agent == AgentName.BUDGET:
                 assignment = task.context_features.get("task_assignment") or {}
                 task.context_features["provides_goal_capacity"] = goal_capacity_required
                 task.context_features["goal_capacity_required"] = goal_capacity_required and (
-                    self.prompts.version != "v9" or assignment.get("requires_capacity") is not False
+                    assignment.get("requires_capacity") is not False
                 )
         return {
             "goal_capacity_required": goal_capacity_required,
@@ -1776,16 +1761,11 @@ class AgentOrchestrator:
         elif (
             len(state["agent_results"]) == 1
             and (
-                (self.prompts.version == "v9" and not state.get("synthesis_feedback")
-                 and not any(state.get(flag) for flag in
-                    ("budget_capture", "goal_capture", "spending_capture"))
+                (not state.get("synthesis_feedback")
+                 and not any(state.get(flag) for flag in ("budget_capture", "goal_capture", "spending_capture"))
                  and not state["agent_results"][0].blocked)
-                or
-                (state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
-                 and (self.prompts.version in {"v6", "v7", "v8", "v9"}
-                      or state["agent_results"][0].data.get("evidence_status") == "insufficient"))
+                or state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
                 or (state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
-                    and self.prompts.version in {"v6", "v7", "v8", "v9"}
                     and "emergency_fund" in state["agent_results"][0].data)
             )
         ):
@@ -1853,12 +1833,9 @@ class AgentOrchestrator:
         results = state["agent_results"]
         allowed = {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
         return (
-            self.prompts.version in {"v6", "v7", "v8", "v9"}
-            and any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
-            and all(item.agent in allowed
-                    and not item.blocked and not item.data.get("needs_input")
-                    and not any(key in item.data for key in ("budget_draft", "goal_draft"))
-                    for item in results)
+            any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
+            and all(item.agent in allowed and not item.blocked and not item.data.get("needs_input")
+                    and not any(key in item.data for key in ("budget_draft", "goal_draft")) for item in results)
             and not any(state.get(key) for key in ("budget_capture", "goal_capture", "spending_capture"))
         )
 
@@ -1946,14 +1923,13 @@ class AgentOrchestrator:
             and follow_up.agent == AgentName.INVESTMENT_EDUCATION
         )
         repair_conditions = [
-            ("REPAIR_SECTION_NOT_OWNED", self.prompts.version != "v9" or all(
+            ("REPAIR_SECTION_NOT_OWNED", all(
                 issue["section_id"] == "investment_education" or (
                     issue["section_id"] == "draft" and len(state["agent_results"]) == 1
                 ) for issue in result.data.get("blocking_issues", [])
             )),
             ("REPAIR_REQUEST_NOT_ALLOWED", result.data.get("request_allowed") is not False),
-            ("REPAIR_VERDICT_NOT_REPAIRABLE", result.data.get("repairable") is True
-                if self.prompts.version in {"v8", "v9"} else not result.blocked or result.data.get("repairable") is True),
+            ("REPAIR_VERDICT_NOT_REPAIRABLE", result.data.get("repairable") is True),
             ("REPAIR_ANSWER_ALREADY_COMPLETE", result.data.get("answer_complete") is False or result.data.get("repairable") is True),
             ("REPAIR_PROHIBITED_REQUEST", not financial_advice_findings(state["sanitized_message"], is_request=True)
                 and not cross_user_data_findings(state["sanitized_message"]) and not state["guardrail_findings"]),
@@ -2033,15 +2009,17 @@ class AgentOrchestrator:
             return None
         calls = self.gateway.snapshot(state["trace_id"])
         owners = [item for item in state["agent_results"] if item.agent.value in financial]
-        eligible = (self.prompts.version == "v9" and review.data.get("repairable") is True
-                    and review.data.get("request_allowed") is True
-                    and not any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
-                    and all(not item.blocked and not item.data.get("needs_input") for item in state["agent_results"])
-                    and all(isinstance(item._financial_grounding_snapshot, FinancialGroundingSnapshot) for item in owners)
-                    and len(calls) + 2 * len(targets & financial) + 4 <= self.config.max_model_calls_per_run
-                    and (self.config.model_provider == "local_fixture" or all(
-                        call.get("status") == "completed" and type(call.get("total_tokens")) is int for call in calls))
-                    and (remaining_seconds() is None or remaining_seconds() > 0))
+        eligible = (
+            review.data.get("repairable") is True
+            and review.data.get("request_allowed") is True
+            and not any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
+            and all(not item.blocked and not item.data.get("needs_input") for item in state["agent_results"])
+            and all(isinstance(item._financial_grounding_snapshot, FinancialGroundingSnapshot) for item in owners)
+            and len(calls) + 2 * len(targets & financial) + 4 <= self.config.max_model_calls_per_run
+            and (self.config.model_provider == "local_fixture" or all(
+                call.get("status") == "completed" and type(call.get("total_tokens")) is int for call in calls))
+            and (remaining_seconds() is None or remaining_seconds() > 0)
+        )
         required = {"agent_" + target for target in targets & financial} | {"risk_compliance", "synthesizer"}
         latest = {}
         for call in reversed(calls):
@@ -2060,7 +2038,7 @@ class AgentOrchestrator:
             tasks = {key: task.model_copy(deep=True) for key, task in state["tasks"].items()}
             for original in owners:
                 task = self._find_task_by_agent(tasks, original.agent)
-                original._financial_grounding_snapshot.for_repair(task, original.data)
+                original._financial_grounding_snapshot.for_repair(task, original.data, prompt_content_hash=self.prompts.content_hash)
                 if original.agent.value in targets:
                     task.status = AgentTaskStatus.READY
                     task.attempt = 1
@@ -2246,7 +2224,7 @@ class AgentOrchestrator:
                         ])),
                     }
                 ),
-                "prompt_set_version": self.prompts.version,
+                **self.prompts.identity(self.config.build_commit),
                 "retrieval_corpus_versions": corpus_versions,
                 "retrieval_sources": retrieval_evidence,
                 "retrieval_consumers": retrieval_consumers,
@@ -2316,7 +2294,7 @@ class AgentOrchestrator:
             }
             if "emergency fund readiness" in (
                 assignment.get("education_topics", []) if assignment else
-                ([] if self.prompts.version == "v9" else education_topics(question))
+                []
             ):
                 # Share aggregates, not raw transaction descriptions, with Goal Strategy.
                 input_data["emergency_fund"] = call_tool(agent, "emergency_fund_summary", snapshot)
@@ -2340,7 +2318,7 @@ class AgentOrchestrator:
             sanitized_message=question,
             input_data=input_data,
             context_features={
-                "conditional_dependencies": self.prompts.version == "v9",
+                "conditional_dependencies": True,
                 "task_assignment": assignment,
                 "response_locale": request_locale(state["request"]),
                 "coaching_preferences": coaching_preferences(snapshot.preferences),
@@ -2611,7 +2589,7 @@ class AgentOrchestrator:
             trace_id=trace_id,
             provider=self.config.model_provider,
             model_id=self.config.model_id,
-            prompt_set_version=self.prompts.version,
+            **self.prompts.identity(self.config.build_commit),
         )
         executed_at = datetime.now(UTC).isoformat()
         workflow_started = perf_counter()
@@ -2630,7 +2608,7 @@ class AgentOrchestrator:
             event_id=started_event.event_id,
             actor=started_event.actor,
             details={"model_provider": self.config.model_provider,
-                     "model_id": self.config.model_id, "prompt_set_version": self.prompts.version,
+                     "model_id": self.config.model_id, **self.prompts.identity(self.config.build_commit),
                      "timeout_seconds": limit},
         )
         workflow_token = workflow_id.set(trace_id)

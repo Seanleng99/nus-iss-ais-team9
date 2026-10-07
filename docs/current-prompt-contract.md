@@ -1,0 +1,52 @@
+# Current prompt contract
+
+The application and executable evaluations use one supported prompt contract. The
+catalog loads `apps/ai-service/prompts/current/prompts.json`; its adjacent
+`manifest.json` names the release (`v9` at this change). This designation is explicit
+and packaged with the application. It does not search for the highest numbered
+folder or fetch prompts during a request.
+
+Routing, task assignments, conditional financial dependencies, hybrid Education
+grounding, scoped compliance review and bounded correction all use the current
+behavior. There are no prompt-version switches in those paths. Goal contribution
+arithmetic remains independent; Goal feasibility requests Budget capacity. Budget
+requests Spending only when its own assigned question needs transaction evidence.
+The direct Goal-to-Spending capability remains deferred.
+
+`PROMPT_SET_VERSION` is optional. If a deployment supplies it, configuration loading
+checks that it matches the packaged manifest once. It cannot select an old behavior.
+Local defaults and the bootstrap task omit it; the release workflow derives its
+assertion from the manifest and verifies the rendered ECS definition. A stale
+inherited value is replaced before release.
+
+Every response audit and workflow trace identifies the prompt release, a SHA-256
+hash of the effective prompt content (including the shared currency policy), and
+`BUILD_COMMIT`. Releases inject the Git commit; local builds report `unknown` unless
+explicitly identified. These are provenance fields, not routing rules. Private
+Education and financial grounding snapshots bind correction to the same prompt
+identity as well as the original question, task and evidence. Changing instructions
+under the same release label invalidates reuse.
+
+Behavior tests run against the current catalog once, with cases parametrized by
+meaningful inputs and failure conditions. Evaluation profiles distinguish providers,
+not historical prompt versions; current answerability captures also pin the complete
+bounded runtime and role policies. Comparing capture/review identities still rejects
+mixed or stale evidence. Dataset and corpus versions remain separate evidence
+contracts and are not removed by this simplification.
+
+Historical prompt files are recoverable from Git rather than shipped as selectable
+runtime catalogs. Historical reports remain evidence of their recorded revisions;
+they do not establish acceptance of the current implementation. To reproduce an old
+run, check out its exact commit with its then-current prompts, dependencies and
+evaluation protocol. New releases require fresh evaluation evidence.
+
+To update prompts, edit the current catalog, update the manifest's release label
+when instruction meaning changes, and run the current regressions and relevant
+model evaluations. Runtime code does not need a new version allowlist or branch.
+
+Offline validation on 2026-10-08 passed 1,805 AI-service tests (one skipped), 942
+backend tests, 46 shared tracing tests, and 331 infrastructure tests (five skipped,
+16 subtests passed). The final focused check passed 169 tests. Lint, the language
+source scan, and prompt packaging checks passed. These checks do not establish a
+new production-model acceptance result; this change has not been deployed or
+retested in the live application.

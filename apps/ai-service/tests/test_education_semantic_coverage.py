@@ -117,7 +117,7 @@ def test_paraphrase_becomes_public_concepts_and_quote_backed_answer():
 def test_keyword_presence_does_not_upgrade_unsupported_subquestion():
     retriever = RecordingRetriever("An ETF tracks an index. Fees are mentioned in this guide.")
     gateway = ScriptedSemanticGateway(support=coverage(status="unsupported"))
-    agent = InvestmentEducationAgent(gateway, PromptCatalog("v6"), 0.2, 1600, retriever)
+    agent = InvestmentEducationAgent(gateway, PromptCatalog(), 0.2, 1600, retriever)
     grounding = agent._ground(task(), "Explain why an ETF can differ from its index.")
     assert grounding["subquestion_coverage"][0]["status"] == "unsupported"
     assert not grounding["coverage_source_ids"]
@@ -146,7 +146,7 @@ def test_resolved_convexity_keeps_distinct_fallback_scope_for_writer_and_review(
     gateway = ConvexityGateway(plan={"subquestions": [{"question_id": "q1", "topic": "bond convexity",
         "public_question": "How does bond convexity describe price-yield curvature?", "query_terms": ["convexity"]}]},
         support=coverage(status="unsupported"))
-    prompts = PromptCatalog("v6")
+    prompts = PromptCatalog()
     agent = InvestmentEducationAgent(gateway, prompts, 0.2, 1600, RecordingRetriever())
     request_task = task("Tell me more, with a simple example.")
     request_task.context_features.update(education_topics=["bonds"], conversation_context=[
@@ -172,7 +172,7 @@ def test_resolved_convexity_keeps_distinct_fallback_scope_for_writer_and_review(
 def test_unverified_source_status_is_rendered_once_without_dropping_concept_scope():
     from app.agents.education_access import education_gap_message
 
-    agent = InvestmentEducationAgent(ScriptedSemanticGateway(), PromptCatalog("v6"), 0, 1600, RecordingRetriever())
+    agent = InvestmentEducationAgent(ScriptedSemanticGateway(), PromptCatalog(), 0, 1600, RecordingRetriever())
     grounding = {"coverage_assessment": "semantic_contract_unverified", "sources": [], "contexts": [],
         "fallback_topics": ["bonds"], "unanswered_topics": ["bonds"], "excluded_topics": [],
         "response_language": "English"}
@@ -309,11 +309,10 @@ def test_fixture_does_not_claim_semantic_coverage_from_keyword_presence():
     assert "not been assessed" in result.coverage[0].limitation
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_active_prompts_allow_requested_layout_and_ordinary_brackets(version):
-    prompt = PromptCatalog(version).get("agent_investment_education")
-    synthesizer = PromptCatalog(version).get("synthesizer")
-    composer = PromptCatalog(version).get("response_composer")
+def test_active_prompts_allow_requested_layout_and_ordinary_brackets():
+    prompt = PromptCatalog().get("agent_investment_education")
+    synthesizer = PromptCatalog().get("synthesizer")
+    composer = PromptCatalog().get("response_composer")
     assert "Use no square brackets" not in prompt
     assert "Otherwise use concise bullet points" not in prompt
     assert "Ordinary brackets" in prompt
@@ -323,7 +322,7 @@ def test_active_prompts_allow_requested_layout_and_ordinary_brackets(version):
 
 
 def test_generated_multiline_model_text_is_preserved_without_table_fabrication():
-    agent = InvestmentEducationAgent(LocalFixtureModelGateway(), PromptCatalog("v6"), 0.2, 1600, RecordingRetriever())
+    agent = InvestmentEducationAgent(LocalFixtureModelGateway(), PromptCatalog(), 0.2, 1600, RecordingRetriever())
     text = "First, compare costs.\n\nThen consider [risk-return] trade-offs."
     narrative = HybridEducationNarrative(
         summary="", source_ids=[], rationale=["General explanation."], confidence=0.8,

@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from contract_fixtures import scoped_verdict
 
 from app.agents.risk_compliance import RiskComplianceAgent
 from app.core.prompts import PromptCatalog
@@ -25,7 +26,7 @@ class ReviewGateway:
 
     def generate(self, **kwargs):
         self.calls.append(kwargs)
-        return json.dumps(self.verdict)
+        return json.dumps(scoped_verdict(self.verdict))
 
 
 def review(gateway):
@@ -36,7 +37,7 @@ def review(gateway):
         data={"fallback_topics": ["fixed deposits"], "general_knowledge": [{"topic": "fixed deposits"}]},
     )
     return RiskComplianceAgent(
-        gateway, PromptCatalog("v6"), 0.1, 1600, LocalPolicyRetriever(),
+        gateway, PromptCatalog(), 0.1, 1600, LocalPolicyRetriever(),
     ).validate(
         CoachRequest(user_id="synthetic", session_id="qualification-review", message="Explain fixed deposits."),
         [result], draft,
@@ -54,8 +55,9 @@ def test_typed_qualification_repair_preserves_initial_financial_veto(categories)
     assert result.blocked
     assert result.data["financial_language_safe"] is False
     assert "response_withheld" in result.policy_notes
-    assert result.data["repairable"] is True
-    assert result.data["missing_points"] == gateway.verdict["missing_points"]
+    assert result.data["repairable"] is False
+    assert result.data["missing_points"] == []
+    assert result.data["blocking_issues"][0]["requirement"] == gateway.verdict["missing_points"][0]
     assert result.data["review_block_categories"] == categories
 
 
@@ -74,9 +76,9 @@ def test_mixed_unsafe_category_cannot_become_a_qualification_repair(unsafe_categ
 def test_model_cannot_mark_a_mixed_unsafe_category_repairable(unsafe_category):
     gateway = ReviewGateway(block_categories=["factual_qualification", unsafe_category])
     result = review(gateway)
-    assert result.blocked and result.data["block_reasons"] == ["review_contract_unverified"]
+    assert result.blocked and result.data["block_reasons"] == ["financial_language_unsafe"]
     assert result.data.get("repairable") is not True
-    assert len(gateway.calls) == 2  # One bounded contract correction; no accepted unsafe verdict.
+    assert len(gateway.calls) == 1  # The reviewed veto is valid; server eligibility remains false.
 
 
 @pytest.mark.parametrize("unsafe_summary", [

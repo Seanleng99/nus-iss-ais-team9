@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.config import Settings
+from app.core.prompts import CURRENT_PROMPT_VERSION, PROMPT_ROOT, PromptCatalog
 from app.core.schemas import CoachRequest, ConversationMessage
 from app.evals.rag_evidence import load_cases
 from app.models.gateway import ModelGatewayError
@@ -34,30 +35,27 @@ ANSWERABILITY_REVIEW_FIELDS = REVIEW_FIELDS
 BLOCKED_CONTEXT_OMISSION = "[blocked assistant response omitted]"
 FAILED_CONTEXT_OMISSION = "[unavailable assistant response omitted]"
 FROZEN_ANSWERABILITY_CASES = 280
-OPENAI_LOCAL_V6_RUNTIME_CONFIG = {
-    "model_reasoning_effort": "low",
-    "model_max_tokens": 1600,
-    "router_temperature": 0.2,
-    "agent_temperature": 0.35,
-    "compliance_temperature": 0.1,
-    "max_model_calls_per_run": 20,
-    "max_model_tokens_per_run": 20000,
-    "model_read_timeout_seconds": 15.0,
-    "agent_timeout_seconds": 20.0,
-}
+RUNTIME_FIELDS = (
+    "model_reasoning_effort", "model_max_tokens", "model_role_overrides",
+    "router_temperature", "agent_temperature", "compliance_temperature",
+    "max_model_calls_per_run", "max_model_tokens_per_run", "model_read_timeout_seconds",
+    "agent_timeout_seconds", "workflow_timeout_seconds",
+)
+# Derive packaged defaults without inheriting the evaluator's shell environment.
+CURRENT_RUNTIME_CONFIG = Settings.model_construct().model_dump(mode="json", include=set(RUNTIME_FIELDS))
 
 
 def _runtime_config(config: Settings) -> dict:
-    return {key: getattr(config, key) for key in OPENAI_LOCAL_V6_RUNTIME_CONFIG}
+    return config.model_dump(mode="json", include=set(RUNTIME_FIELDS))
 
 
 def _expected_runtime_config(profile: str, expected: dict | None = None) -> dict:
-    if profile == "openai_local_v6":
-        if expected is not None and expected != OPENAI_LOCAL_V6_RUNTIME_CONFIG:
-            raise ValueError("openai_local_v6 runtime pin is fixed to its safe evaluation profile")
-        return dict(OPENAI_LOCAL_V6_RUNTIME_CONFIG)
+    if profile == "openai_local":
+        if expected is not None and expected != CURRENT_RUNTIME_CONFIG:
+            raise ValueError("openai_local runtime pin is fixed to its safe evaluation profile")
+        return dict(CURRENT_RUNTIME_CONFIG)
     if expected is not None:
-        if set(expected) != set(OPENAI_LOCAL_V6_RUNTIME_CONFIG):
+        if set(expected) != set(CURRENT_RUNTIME_CONFIG):
             raise ValueError("Expected runtime config must pin every bounded runtime field")
         return dict(expected)
     raise ValueError("Answerability scoring requires an explicit runtime pin for this profile")
@@ -112,7 +110,9 @@ def load_answerability_cases(
 
 
 def _prompt_file_hashes(prompt_set_version: str) -> dict[str, str]:
-    prompt_dir = Path(__file__).resolve().parents[2] / "prompts" / prompt_set_version
+    if prompt_set_version != CURRENT_PROMPT_VERSION:
+        raise ValueError("Only the packaged current prompt identity is supported")
+    prompt_dir = PROMPT_ROOT
     if not prompt_dir.is_dir():
         raise ValueError("Prompt set directory is unavailable")
     files = sorted(
@@ -120,21 +120,24 @@ def _prompt_file_hashes(prompt_set_version: str) -> dict[str, str]:
     )
     if not files:
         raise ValueError("Prompt set has no hashable files")
-    return {path.name: sha256(path.read_bytes()).hexdigest() for path in files}
+    return {
+        **{path.name: sha256(path.read_bytes()).hexdigest() for path in files},
+        "effective_prompt_catalog": PromptCatalog().content_hash,
+    }
 
 PROFILES = {
-    "bedrock_v7": {
+    "bedrock": {
         "providers": {"model": "bedrock", "education": "bedrock", "policy": "bedrock"},
-        "prompt_set_version": "v7",
+        "prompt_set_version": CURRENT_PROMPT_VERSION,
         "default_model_id": "apac.amazon.nova-lite-v1:0",
     },
-    "openai_local_v6": {
+    "openai_local": {
         "providers": {
             "model": "openai",
             "education": "local_documents",
             "policy": "local_documents",
         },
-        "prompt_set_version": "v6",
+        "prompt_set_version": CURRENT_PROMPT_VERSION,
         "default_model_id": "gpt-6-luna",
     },
 }
@@ -149,8 +152,8 @@ def _profile(profile: str, model_id: str | None = None) -> dict:
         raise ValueError(f"Unsupported answer-review profile: {profile}")
     expected = PROFILES[profile]
     selected_model_id = model_id or expected["default_model_id"]
-    if profile == "openai_local_v6" and selected_model_id != "gpt-6-luna":
-        raise ValueError("openai_local_v6 requires model gpt-6-luna")
+    if profile == "openai_local" and selected_model_id != "gpt-6-luna":
+        raise ValueError("openai_local requires model gpt-6-luna")
     return {**expected, "model_id": selected_model_id}
 
 
@@ -194,7 +197,7 @@ def capture(
     dataset_digest: str,
     output: Path,
     repeats: int,
-    profile: str = "bedrock_v7",
+    profile: str = "bedrock",
     corpus_version: str | None = None,
     policy_corpus_version: str | None = None,
     expected_model_id: str | None = None,
@@ -263,7 +266,7 @@ def capture_answerability(
     workers: int = 4,
     *,
     candidate_sha256: str,
-    profile: str = "openai_local_v6",
+    profile: str = "openai_local",
     corpus_version: str | None = None,
     policy_corpus_version: str | None = None,
     expected_model_id: str | None = None,
@@ -283,8 +286,6 @@ def capture_answerability(
     runtime_config = _runtime_config(config)
     if runtime_config != expected_runtime:
         raise ValueError("Configured bounded runtime does not match the expected answerability runtime")
-    if profile == "openai_local_v6" and config.model_role_overrides:
-        raise ValueError("The frozen v6 runtime requires explicit MODEL_ROLE_OVERRIDES={}")
     prompt_hashes = _prompt_file_hashes(identity["prompt_set_version"])
     providers = identity["providers"]
 
@@ -385,7 +386,7 @@ def score_answerability_reviews(
     corpus_version: str,
     repeats: int = 3,
     expected_model_id: str | None = None,
-    profile: str = "openai_local_v6",
+    profile: str = "openai_local",
     policy_corpus_version: str | None = None,
     split: Literal["all", "development"] = "all",
     expected_runtime_config: dict | None = None,
@@ -627,7 +628,7 @@ def score_reviews(
     corpus_version: str,
     repeats: int = 3,
     expected_model_id: str | None = None,
-    profile: str = "bedrock_v7",
+    profile: str = "bedrock",
     policy_corpus_version: str | None = None,
 ) -> dict:
     if not cases or not 1 <= repeats <= 5:
@@ -764,7 +765,7 @@ def main():
     parser.add_argument("--dataset", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--reviews", type=Path)
-    parser.add_argument("--profile", choices=sorted(PROFILES), default="bedrock_v7")
+    parser.add_argument("--profile", choices=sorted(PROFILES), default="bedrock")
     parser.add_argument("--model-id")
     parser.add_argument("--policy-corpus-version")
     parser.add_argument("--dataset-kind", choices=["evidence", "answerability"], default="evidence")

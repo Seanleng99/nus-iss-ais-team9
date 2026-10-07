@@ -25,9 +25,9 @@ class InvalidNarrativeGateway(LocalFixtureModelGateway):
         return response
 
 
-def handle(gateway, version):
+def handle(gateway, ):
     return AgentOrchestrator(config=Settings(
-        MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION=version, MAX_TASK_ATTEMPTS=1,
+        MODEL_PROVIDER="local_fixture",  MAX_TASK_ATTEMPTS=1,
     ), gateway=gateway).handle(CoachRequest(
         user_id="synthetic-narrative-test", session_id="synthetic-narrative-test",
         message="Explain this monthly budget.", requested_agents=["budget"],
@@ -36,10 +36,9 @@ def handle(gateway, version):
 
 
 @pytest.mark.parametrize("component", ["agent_budget", "risk_compliance"])
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_specialist_and_compliance_citations_correct_before_publication(component, version):
+def test_specialist_and_compliance_citations_correct_before_publication(component, ):
     gateway = InvalidNarrativeGateway(component)
-    response = handle(gateway, version)
+    response = handle(gateway)
     assert not response.blocked
     assert len(gateway.target_calls) == 2
     assert "CORRECTION:" in gateway.target_calls[1]["system_prompt"]
@@ -51,6 +50,6 @@ def test_specialist_and_compliance_citations_correct_before_publication(componen
 def test_twice_invalid_narrative_is_never_published(component):
     gateway = InvalidNarrativeGateway(component, repeat_invalid=True)
     with pytest.raises(ModelGatewayError) as raised:
-        handle(gateway, "v6")
+        handle(gateway)
     assert raised.value.code == "UNAPPROVED_CITATION"
     assert len(gateway.target_calls) == 2

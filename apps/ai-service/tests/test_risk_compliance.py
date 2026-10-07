@@ -10,6 +10,7 @@ network call is made.
 import json
 
 import pytest
+from contract_fixtures import scoped_verdict
 from language_fixtures import language_case
 
 from app.agents.risk_compliance import (
@@ -67,7 +68,7 @@ class _EmptyPolicyRetriever:
 
 
 def _education_decision(**overrides) -> dict:
-    return {
+    return scoped_verdict({
         "blocked": False,
         "summary": "The response stays within education boundaries.",
         "rationale": ["The response gives general information."],
@@ -79,7 +80,7 @@ def _education_decision(**overrides) -> dict:
         "repairable": False,
         "financial_language_safe": True,
         **overrides,
-    }
+    }, section="draft")
 
 
 def _review_input(request: CoachRequest, gateway: _RecordingGateway):
@@ -87,8 +88,7 @@ def _review_input(request: CoachRequest, gateway: _RecordingGateway):
         config=Settings(
             MODEL_PROVIDER="local_fixture",
             POLICY_RAG_PROVIDER="local_fixture",
-            PROMPT_SET_VERSION="v6",
-        ),
+            ),
         gateway=gateway,
         policy_retriever=LocalPolicyRetriever(),
     ).handle(request)
@@ -102,7 +102,7 @@ def _review_input(request: CoachRequest, gateway: _RecordingGateway):
 def _agent(gateway: LocalFixtureModelGateway | None = None) -> RiskComplianceAgent:
     return RiskComplianceAgent(
         gateway=gateway or LocalFixtureModelGateway(),
-        prompts=PromptCatalog("v6"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         policy_retriever=LocalPolicyRetriever(),
@@ -407,7 +407,7 @@ def test_education_block_categories_are_logged_without_model_wording(caplog):
             return super().generate(**kwargs)
 
     response = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=ExplainedBlockGateway(), policy_retriever=LocalPolicyRetriever(),
     ).handle(CoachRequest(user_id="synthetic-review", session_id="s", message="Explain bonds."))
     assert response.blocked
@@ -419,15 +419,12 @@ def test_education_block_categories_are_logged_without_model_wording(caplog):
 
 @pytest.mark.parametrize("category", ["personal_advice", "return_guarantee", "privacy", "injection", "prohibited_request"])
 def test_hard_policy_review_cannot_mark_a_block_repairable(category):
-    from pydantic import ValidationError
-
-    from app.core.schemas import EducationComplianceDecision
-
-    with pytest.raises(ValidationError, match="can be repairable"):
-        EducationComplianceDecision.model_validate(_education_decision(
-            blocked=True, block_categories=[category], policy_notes=["Policy defect."],
-            repairable=True, missing_points=["Correct the defect."],
-        ))
+    value = _education_decision(blocked=True, block_categories=[category], policy_notes=["Policy defect."],
+                                request_allowed=category != "prohibited_request", repairable=True)
+    gateway = _DecisionGateway(value)
+    result = _agent(gateway).validate(CoachRequest(user_id="synthetic", session_id="s", message="Explain ETFs."),
+        [AgentResult(agent="investment_education", summary="An ETF explanation.")], "An ETF explanation.")
+    assert result.blocked and result.data.get("repairable") is not True
 
 
 @pytest.mark.parametrize(("message", "draft"), [
@@ -460,7 +457,7 @@ def test_missing_policy_evidence_blocks_before_model_even_with_safe_flag():
     gateway = _DecisionGateway(_education_decision())
     agent = RiskComplianceAgent(
         gateway=gateway,
-        prompts=PromptCatalog("v6"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         policy_retriever=_EmptyPolicyRetriever(),
@@ -513,7 +510,7 @@ def test_compliance_review_receives_calculations_and_derived_goal_and_spending_d
     request = CoachRequest(
         user_id="private-user-id-should-not-be-forwarded",
         session_id="compliance-derived-data",
-        message="Create a budget, assess my savings goal, and summarize recent spending.",
+        message="Calculate my disposable income, assess my savings goal, and summarize recent spending.",
         requested_agents=["budget", "goal_strategy", "spending"],
         snapshot={
             "monthly_income": {"currency": "SGD", "amount": 4000},
@@ -588,14 +585,14 @@ def test_compliance_review_receives_calculations_and_derived_goal_and_spending_d
 def test_unsafe_recommendation_stays_blocked_with_budget_calculation_data():
     gateway = _RecordingGateway(unsafe_synthesis=True)
     response = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=gateway,
         policy_retriever=LocalPolicyRetriever(),
     ).handle(CoachRequest(
         user_id="synthetic-safety",
         session_id="unsafe-budget-answer",
         message="Create a monthly budget.",
-        requested_agents=["budget"],
+        requested_agents=["budget", "spending"],
         snapshot={"monthly_income": {"currency": "SGD", "amount": 4000}},
     ))
     assert response.blocked
@@ -659,7 +656,7 @@ def test_plural_product_education_questions_remain_allowed(message):
 
 def test_plural_etf_purchase_request_gets_the_specific_refusal():
     response = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=LocalFixtureModelGateway(),
         policy_retriever=LocalPolicyRetriever(),
     ).handle(CoachRequest(
@@ -696,7 +693,7 @@ class _EmptyPolicyRetriever:
 def _validate(message, *, gateway=None, policy_retriever=None, draft="A budget explains income and spending."):
     agent = RiskComplianceAgent(
         gateway=gateway or LocalFixtureModelGateway(),
-        prompts=PromptCatalog("v6"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         policy_retriever=policy_retriever or LocalPolicyRetriever(),
@@ -737,14 +734,14 @@ def test_unexplained_model_review_block_is_attributed_to_the_model():
 def test_block_reasons_reach_the_compliance_event_and_safe_log(caplog):
     caplog.set_level("INFO", logger="service.ai.workflow")
     response = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=_BlockingReviewGateway(),
         policy_retriever=LocalPolicyRetriever(),
     ).handle(CoachRequest(
         user_id="synthetic-safety",
         session_id="block-reason-log",
         message="Create a monthly budget.",
-        requested_agents=["budget"],
+        requested_agents=["budget", "spending"],
         snapshot={"monthly_income": {"currency": "SGD", "amount": 4000}},
     ))
     assert response.blocked

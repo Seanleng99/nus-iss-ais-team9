@@ -17,7 +17,6 @@ from app.models.gateway import ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 from app.rag.retriever import RetrievalError
 
-settings.require_active_app_prompt()
 configure_logging(settings.log_level)
 
 app = FastAPI(title="AI Financial Wellness Coach AI Service", version="0.1.0")

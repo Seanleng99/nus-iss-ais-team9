@@ -240,7 +240,7 @@ def test_correction_keeps_call_reserve_for_bounded_contract_repairs():
 def original_grounding():
     original_task = task("Explain tracking error.")
     agent = InvestmentEducationAgent(
-        ScriptedSemanticGateway(), PromptCatalog("v6"), 0.2, 1600, RecordingRetriever(),
+        ScriptedSemanticGateway(), PromptCatalog(), 0.2, 1600, RecordingRetriever(),
     )
     grounding = agent._ground(original_task, original_task.sanitized_message)
     return original_task, grounding, original_task._education_grounding_snapshot
@@ -260,10 +260,11 @@ def test_repair_rejects_changed_source_corpus_or_scope(field, value):
     assert failed.value.code == "INVALID_EDUCATION_REPAIR_CONTEXT"
 
 
-@pytest.mark.parametrize("change", ["task", "question", "language", "prompt", "corpus", "seal"])
+@pytest.mark.parametrize("change", ["task", "question", "language", "prompt", "prompt_content", "corpus", "seal"])
 def test_repair_cannot_reuse_another_task_or_modified_internal_snapshot(change):
     original_task, _grounding, snapshot = original_grounding()
-    prompt_version = "v6"
+    prompt_version = snapshot.prompt_version
+    prompt_content_hash = snapshot.prompt_content_hash
     corpus_version = "investment-education-sg@test-v1"
     message = original_task.sanitized_message
     if change == "task":
@@ -274,13 +275,15 @@ def test_repair_cannot_reuse_another_task_or_modified_internal_snapshot(change):
         original_task.context_features["response_language"] = "zh"
     elif change == "prompt":
         prompt_version = "v7"
+    elif change == "prompt_content":
+        prompt_content_hash = "changed-under-the-same-release-label"
     elif change == "corpus":
         corpus_version = "changed@v1"
     else:
         snapshot.grounding["contexts"][0]["text"] = "An invented promotion of a source."
     with pytest.raises(ModelGatewayError) as failed:
         snapshot.for_repair(
-            original_task, sanitized_message=message, prompt_version=prompt_version,
+            original_task, sanitized_message=message, prompt_version=prompt_version, prompt_content_hash=prompt_content_hash,
             expected_corpus_version=corpus_version,
         )
     assert failed.value.code == "INVALID_EDUCATION_REPAIR_CONTEXT"
@@ -294,7 +297,7 @@ def test_internal_snapshot_is_not_serialized_and_each_repair_gets_an_independent
     snapshot.authorize_result(repaired_task, grounding)
     repaired = snapshot.for_repair(
         repaired_task, sanitized_message=repaired_task.sanitized_message,
-        prompt_version="v6", expected_corpus_version="investment-education-sg@test-v1",
+        prompt_version=snapshot.prompt_version, prompt_content_hash=snapshot.prompt_content_hash, expected_corpus_version="investment-education-sg@test-v1",
     )
     repaired["contexts"][0]["text"] = "A temporary writer-side mutation."
     assert grounding["contexts"][0]["text"] == QUOTE
@@ -313,7 +316,7 @@ def test_user_context_marker_does_not_authorize_reusing_grounding():
     original_task.context_features["_education_grounding_snapshot"] = {
         "sources": [{"source_id": "invented-source"}], "coverage_source_ids": ["invented-source"],
     }
-    agent = InvestmentEducationAgent(gateway, PromptCatalog("v6"), 0.2, 1600, RecordingRetriever())
+    agent = InvestmentEducationAgent(gateway, PromptCatalog(), 0.2, 1600, RecordingRetriever())
     grounding = agent._ground(original_task, original_task.sanitized_message)
     assert len(calls_for(gateway, "education_query_planner")) == 1
     assert len(calls_for(gateway, "education_answerability")) == 1

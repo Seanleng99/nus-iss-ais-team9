@@ -44,8 +44,7 @@ targets and balances. It carries no affordability result or unsolicited capacity
 contract omits irrelevant income, capacity-source and budget-month questions for this path.
 Non-SGD amounts still require clarification; no conversion is introduced.
 
-Budget no longer creates the optional Spending request from a whole-message keyword test under
-v9. The existing typed dependency planner evaluates the relationship between Budget's own work
+Budget does not create the optional Spending request from a whole-message keyword test. The existing typed dependency planner evaluates the relationship between Budget's own work
 and recorded expense context. Capability options retain their required fields and optional status;
 the model cannot grant itself a new provider, broaden fields or make the optional edge required.
 Role-scoped Budget income classification also excludes independent Goal arithmetic and Spending.
@@ -55,7 +54,7 @@ Routing may select additional specialists. An exact parallel result requires no 
 edges and overlapping ready-task execution, not simply a multi-agent result list.
 
 The v8 Education grounding, hybrid evidence modes, scoped review and bounded repair contracts are
-retained in v9. Archived prompt catalogues retain their broad saved-goal policy for pinned evaluations.
+retained in v9. Historical behavior is recoverable from Git; executable evaluations use the [single current contract](current-prompt-contract.md).
 The active source default, local development configuration, deployment template and smoke assertions
 target v9. Changing the template does not deploy it or restart running services.
 
@@ -104,6 +103,6 @@ The frozen `orchestration_live_regression_v1.json` suite contains all 34 approve
 - `app/orchestrator.py`: cached requirement shared with preselected capacity providers.
 - `app/core/schemas.py`: private task classification cache.
 - `app/models/dependency_fixture.py`: offline-only test decisions.
-- `prompts/v9/prompts.json`: new Goal requirement contract and scoped planner/writer instructions.
+- `prompts/current/prompts.json`: Goal requirement contract and scoped planner/writer instructions.
 
 Paths above are relative to `apps/ai-service`.

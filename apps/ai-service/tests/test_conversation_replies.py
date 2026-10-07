@@ -62,9 +62,9 @@ class ContextReplyGateway(LocalFixtureModelGateway):
         ))
 
 
-def reply(agent, gateway, history, version="v6", message="Explain that more simply."):
+def reply(agent, gateway, history, message="Explain that more simply."):
     return AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION=version),
+        config=Settings(MODEL_PROVIDER="local_fixture"),
         gateway=gateway,
     ).handle(CoachRequest(
         user_id="synthetic-context-user", session_id="context-chat",
@@ -73,15 +73,14 @@ def reply(agent, gateway, history, version="v6", message="Explain that more simp
     ))
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
 @pytest.mark.parametrize("agent,question,subject", CASES)
-def test_follow_up_reaches_writer_and_final_answer(agent, question, subject, version):
+def test_follow_up_reaches_writer_and_final_answer(agent, question, subject, ):
     gateway = ContextReplyGateway(agent, subject)
     history = [
         {"role": "user", "content": question},
         {"role": "assistant", "content": "Let's discuss " + subject + "."},
     ]
-    response = reply(agent, gateway, history, version)
+    response = reply(agent, gateway, history)
 
     assert not response.blocked
     assert "Continuing our discussion of " + subject in response.answer

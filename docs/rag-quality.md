@@ -102,7 +102,9 @@ model context unless selected. The candidate pool and final context stay bounded
 These are regression results on the same frozen benchmark, not an independent holdout.
 
 For answer capture, configure `MODEL_PROVIDER=bedrock`, `RAG_PROVIDER=bedrock`,
-`POLICY_RAG_PROVIDER=bedrock`, both approved KB IDs/pins, and `PROMPT_SET_VERSION=v7`:
+`POLICY_RAG_PROVIDER=bedrock` and both approved KB IDs/pins. The evaluator uses the
+packaged [current prompt contract](current-prompt-contract.md); omit
+`PROMPT_SET_VERSION` or supply its manifest release as a deployment assertion:
 
 ```sh
 python -m app.evals.rag_answer_review capture \

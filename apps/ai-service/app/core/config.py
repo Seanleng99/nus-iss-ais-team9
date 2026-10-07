@@ -5,6 +5,8 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.prompts import CURRENT_PROMPT_VERSION
+
 
 class ModelRolePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -48,8 +50,7 @@ class Settings(BaseSettings):
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
     prompt_set_version: str = Field(
-        default="v9",
-        pattern=r"^v(?:2|3|4|5|6|7|8|9)$",
+        default=CURRENT_PROMPT_VERSION,
         alias="PROMPT_SET_VERSION",
     )
     router_temperature: float = Field(default=0.2, ge=0.01, le=1.0, alias="ROUTER_TEMPERATURE")
@@ -72,6 +73,7 @@ class Settings(BaseSettings):
         le=120,
         alias="AGENT_TIMEOUT_SECONDS",
     )
+    build_commit: str = Field(default="unknown", pattern=r"^(unknown|[a-f0-9]{40})$", alias="BUILD_COMMIT")
     workflow_timeout_seconds: float = Field(default=85, gt=0, le=115, alias="WORKFLOW_TIMEOUT_SECONDS")
     review_diagnostics_dir: str | None = Field(default=None, alias="REVIEW_DIAGNOSTICS_DIR")
     retry_backoff_seconds: float = Field(
@@ -154,12 +156,11 @@ class Settings(BaseSettings):
             max_tokens=override.max_tokens or max_tokens,
         )
 
-    def require_active_app_prompt(self) -> None:
-        if self.prompt_set_version != "v9":
-            raise ValueError("The running application requires PROMPT_SET_VERSION=v9")
-
     @model_validator(mode="after")
     def require_deployment_api_key(self) -> Self:
+        # Optional deployment assertion, never a selector for historical behavior.
+        if self.prompt_set_version != CURRENT_PROMPT_VERSION:
+            raise ValueError(f"The packaged application requires PROMPT_SET_VERSION={CURRENT_PROMPT_VERSION}")
         roles = {
             "router", "dependency_planner", "follow_up", "synthesizer", "risk_compliance",
             "agent_spending", "agent_budget", "agent_goal_strategy", "agent_investment_education",

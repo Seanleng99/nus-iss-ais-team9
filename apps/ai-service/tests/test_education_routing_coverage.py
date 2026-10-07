@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from contract_fixtures import task_assignments
 from language_fixtures import language_case
 
 from app.core.config import Settings
@@ -20,14 +21,17 @@ class RouterGateway(LocalFixtureModelGateway):
     def generate(self, **kwargs):
         self.calls.append(kwargs)
         if kwargs["system_prompt"].startswith("PROMPT_ID: router\n"):
-            return json.dumps({"selected_agents": self.selected, "rationale": ["Model-selected scope."]})
+            payload = json.loads(kwargs["user_prompt"])
+            return json.dumps({"selected_agents": self.selected, "rationale": ["Model-selected scope."],
+                               "education_topics": ["diversification"],
+                               "task_assignments": [{**item, "education_topics": ["diversification"]} for item in task_assignments(self.selected, payload["message"], ["diversification"])]})
         return super().generate(**kwargs)
 
 
 def orchestrator(gateway):
     return AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture", RAG_PROVIDER="local_fixture",
-                        POLICY_RAG_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+                        POLICY_RAG_PROVIDER="local_fixture", ),
         gateway=gateway, education_retriever=LocalEducationRetriever(),
         policy_retriever=LocalPolicyRetriever(),
     )
@@ -57,7 +61,7 @@ def test_education_topic_cannot_be_routed_only_to_spending(message):
 
 
 def test_explicit_budget_only_selection_remains_authoritative():
-    gateway = RouterGateway(["spending"])
+    gateway = RouterGateway(["budget"])
     response = orchestrator(gateway).handle(CoachRequest(
         user_id="synthetic-routing", session_id="synthetic-routing",
         message="Explain diversification using only my requested budget specialist.",
@@ -65,10 +69,10 @@ def test_explicit_budget_only_selection_remains_authoritative():
         snapshot={"monthly_income": {"amount": 4000, "currency": "SGD"}},
     ))
     assert response.selected_agents == [AgentName.BUDGET]
-    assert not any(c["system_prompt"].startswith("PROMPT_ID: router\n") for c in gateway.calls)
+    assert any(c["system_prompt"].startswith("PROMPT_ID: router\n") for c in gateway.calls)
 
 
-def test_v6_single_education_answer_is_not_rewritten_but_is_reviewed():
+def test_current_single_education_answer_is_not_rewritten_but_is_reviewed():
     gateway = RouterGateway(["investment_education"])
     response = orchestrator(gateway).handle(CoachRequest(
         user_id="synthetic-routing", session_id="synthetic-routing",

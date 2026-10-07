@@ -2,6 +2,9 @@ import importlib.util
 import json
 from pathlib import Path
 
+CURRENT_PROMPT_VERSION = json.loads((Path(__file__).resolve().parents[3] / "apps/ai-service/prompts/current/manifest.json").read_text(encoding="utf-8"))["version"]
+
+
 MODULE_PATH = Path(__file__).parents[1] / "model_comparison.py"
 SPEC = importlib.util.spec_from_file_location("model_comparison", MODULE_PATH)
 assert SPEC and SPEC.loader
@@ -27,7 +30,7 @@ def test_policy_defines_one_baseline_and_a_lower_cost_candidate() -> None:
     candidate = next(model for model in policy["models"] if model["role"] == "candidate")
 
     assert policy["comparison_id"] == "nova-lite-vs-nova-micro-v4-2026-08-31"
-    assert policy["prompt_set_version"] == "v4"
+    assert policy["prompt_set_version"] == CURRENT_PROMPT_VERSION
     assert baseline["model_id"] == "apac.amazon.nova-lite-v1:0"
     assert candidate["model_id"] == "apac.amazon.nova-micro-v1:0"
     assert candidate["aws_region"] == "ap-southeast-1"

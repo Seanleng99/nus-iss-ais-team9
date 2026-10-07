@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from contract_fixtures import scoped_verdict, task_assignments
 from language_fixtures import language_case
 
 from app.core.config import Settings
@@ -454,6 +455,7 @@ class RecordingGateway(LocalFixtureModelGateway):
             return json.dumps(
                 {
                     "selected_agents": ["budget", "goal_strategy"],
+                    "task_assignments": task_assignments(["budget", "goal_strategy"], json.loads(kwargs["user_prompt"])["message"]),
                     "rationale": ["Pending draft."],
                     "budget_capture": True,
                     "goal_capture": True,
@@ -462,8 +464,7 @@ class RecordingGateway(LocalFixtureModelGateway):
                 }
             )
         response = json.loads(super().generate(**kwargs))
-        # v7 requires inline citations; the ordinary fixture uses the older
-        # source_ids-only contract. Keep the strict production validator intact.
+        # Exercise explicit attribution in the writer's current contract.
         if kwargs["system_prompt"].startswith(
             "PROMPT_ID: agent_investment_education"
         ) and response.get("summary"):
@@ -483,15 +484,14 @@ class RecordingRetriever(LocalEducationRetriever):
         return super().retrieve(query, top_k)
 
 
-def handle(value, gateway=None, retriever=None, version="v6"):
+def handle(value, gateway=None, retriever=None, ):
     return AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION=version),
+        config=Settings(MODEL_PROVIDER="local_fixture"),
         gateway=gateway or LocalFixtureModelGateway(),
         education_retriever=retriever,
     ).handle(value)
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
 @pytest.mark.parametrize(
     "previous,agent",
     [
@@ -502,10 +502,9 @@ def handle(value, gateway=None, retriever=None, version="v6"):
     ],
 )
 def test_automatic_follow_up_routing_reaches_writer_and_preserves_calculations(
-    previous, agent, version
-):
+    previous, agent, ):
     gateway = RecordingGateway()
-    response = handle(request(previous=previous, snapshot=SNAPSHOT), gateway, version=version)
+    response = handle(request(previous=previous, snapshot=SNAPSHOT), gateway, )
     assert response.selected_agents[0] == agent and not response.blocked
     router = next(c for c in gateway.calls if c["system_prompt"].startswith("PROMPT_ID: router"))
     assert json.loads(router["user_prompt"])["message"] == "Explain that more simply."
@@ -558,7 +557,7 @@ def test_ambiguous_reference_asks_one_question_without_education_retrieval_or_wr
 
 
 @pytest.mark.parametrize("final_blocked", [False, True])
-def test_mistaken_clarification_with_resolved_subject_gets_one_reviewed_repair(monkeypatch, final_blocked):
+def test_unsealed_clarification_cannot_enter_grounding_reuse(monkeypatch, final_blocked):
     from app.agents.investment_education import InvestmentEducationAgent
     from app.core.schemas import NeedsInputInvocation
 
@@ -581,14 +580,14 @@ def test_mistaken_clarification_with_resolved_subject_gets_one_reviewed_repair(m
                 self.calls.append(kwargs)
                 self.reviews += 1
                 blocked = self.reviews > 1 and final_blocked
-                return json.dumps({
+                return json.dumps(scoped_verdict({
                     "blocked": blocked, "summary": "Draft reviewed.", "rationale": ["Scope checked."],
                     "policy_notes": ["The draft contains an unverifiable claim."] if blocked else [],
                     "block_categories": ["unverifiable_claim"] if blocked else [],
                     "confidence": 0.9, "request_allowed": True, "complete": self.reviews > 1,
                     "missing_points": ["Explain the selected concept instead of asking which option."] if self.reviews == 1 else [],
                     "financial_language_safe": True,
-                })
+                }, section="draft"))
             return super().generate(**kwargs)
 
     gateway, retriever = Reviewer(), RecordingRetriever()
@@ -596,13 +595,11 @@ def test_mistaken_clarification_with_resolved_subject_gets_one_reviewed_repair(m
         {"role": "user", "content": "Compare bonds and fixed deposits."},
         {"role": "assistant", "content": "1. Bonds.\n2. Fixed deposits."},
     ]), gateway, retriever)
-    assert gateway.reviews == 2 and len(attempts) == 2
-    assert retriever.queries == ["General investment education about fixed deposits"]
-    assert response.blocked == final_blocked
-    assert response.audit["answer_status"] == ("refused" if final_blocked else "answered")
-    assert response.answer != "Which option?"
-    if final_blocked:
-        assert response.sources == [] and all(item.blocked for item in response.agent_results)
+    assert gateway.reviews == 1 and len(attempts) == 1
+    assert retriever.queries == [] and not response.sources
+    assert not response.blocked and response.audit["answer_status"] == "needs_input"
+    assert "Which option?" in response.answer
+    assert not any(c["system_prompt"].startswith("PROMPT_ID: agent_") for c in gateway.calls)
 
 
 @pytest.mark.parametrize(
@@ -625,7 +622,7 @@ def test_clarification_stays_concise_when_reviewer_marks_it_incomplete(message, 
         def generate(self, **kwargs):
             if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
                 self.calls.append(kwargs)
-                return json.dumps({
+                return json.dumps(scoped_verdict({
                     "blocked": blocked, "summary": "Review completed.",
                     "rationale": ["The subject needs clarification."],
                     "policy_notes": ["The draft needs qualification."] if blocked else [],
@@ -633,7 +630,7 @@ def test_clarification_stays_concise_when_reviewer_marks_it_incomplete(message, 
                     "request_allowed": True, "complete": False,
                     "missing_points": ["Clarify the subject."], "repairable": True,
                     "financial_language_safe": True,
-                })
+                }, section="draft"))
             return super().generate(**kwargs)
 
     gateway, retriever = IncompleteReviewer(), RecordingRetriever()

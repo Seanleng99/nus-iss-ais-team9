@@ -72,9 +72,9 @@ def test_changed_authority_cannot_be_used_for_financial_correction():
     from app.core.financial_grounding import FinancialGroundingSnapshot
     from app.core.schemas import AgentTask
     task = AgentTask(agent="budget", sanitized_message="Explain the saved allocation.")
-    snapshot = FinancialGroundingSnapshot.capture(task, {"savings": 1600})
+    snapshot = FinancialGroundingSnapshot.capture(task, {"savings": 1600}, prompt_content_hash="original")
     with pytest.raises(ModelGatewayError, match="authority changed"):
-        snapshot.for_repair(task, {"savings": 1700})
+        snapshot.for_repair(task, {"savings": 1700}, prompt_content_hash="original")
 
 
 def test_private_diagnostic_redacts_identifiers_and_is_not_returned(tmp_path):

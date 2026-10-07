@@ -24,26 +24,28 @@ class CitationGateway(LocalFixtureModelGateway):
             self.education_calls += 1
             payload = json.loads(kwargs["user_prompt"])
             source_id = payload["grounding"]["sources"][0]["source_id"]
-            summary = language_case("v7_response_contract.summary")
+            summary = language_case("current_response_contract.summary")
             if self.correct and self.education_calls > 1:
                 summary += f" [source:{source_id}]"
+            else:
+                summary += " [source:invented-source]"
             return json.dumps({
-                "summary": summary, "rationale": [language_case("v7_response_contract.generate")],
+                "summary": summary, "rationale": [language_case("current_response_contract.generate")],
                 "confidence": 0.8, "source_ids": [source_id], "uncertainties": [],
             }, ensure_ascii=False)
         return super().generate(**kwargs)
 
 
-def test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review():
+def test_current_corrects_missing_summary_citation_and_preserves_chinese_through_review():
     gateway = CitationGateway()
     result = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v7"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=gateway,
     ).handle(
         CoachRequest(
             user_id="contract-test",
             session_id="citation-correction",
-            message=language_case("v7_response_contract.result"),
+            message=language_case("current_response_contract.result"),
             response_locale="zh-Hans",
             requested_agents=["investment_education"],
         )
@@ -51,7 +53,7 @@ def test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_revi
     assert not result.blocked
     assert (
         language_case(
-            "v7_response_contract.test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review"
+            "current_response_contract.test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review"
         )
         in result.answer
     )
@@ -61,13 +63,13 @@ def test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_revi
     review = next(call for call in gateway.calls if call["system_prompt"].startswith("PROMPT_ID: risk_compliance"))
     assert (
         language_case(
-            "v7_response_contract.test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review_2"
+            "current_response_contract.test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review_2"
         )
         in review["user_prompt"]
     )
     assert (
         language_case(
-            "v7_response_contract.test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review_3"
+            "current_response_contract.test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_review_3"
         )
         not in review["user_prompt"]
     )
@@ -75,20 +77,20 @@ def test_v7_corrects_missing_summary_citation_and_preserves_chinese_through_revi
     assert "Required output language for THIS request: Chinese" in education["system_prompt"]
 
 
-def test_v7_fails_after_one_unsuccessful_citation_correction():
+def test_current_fails_after_one_unsuccessful_citation_correction():
     gateway = CitationGateway(correct=False)
     agent = InvestmentEducationAgent(
-        gateway, PromptCatalog("v7"), 0.35, 800, LocalEducationRetriever(),
+        gateway, PromptCatalog(), 0.35, 800, LocalEducationRetriever(),
     )
     with pytest.raises(ModelGatewayError) as error:
         agent.run_task(
             AgentTask(
                 agent="investment_education",
                 sanitized_message=language_case(
-                    "v7_response_contract.test_v7_fails_after_one_unsuccessful_citation_correction"
+                    "current_response_contract.test_v7_fails_after_one_unsuccessful_citation_correction"
                 ),
                 input_data={},
             )
         )
-    assert error.value.code == "MISSING_CITATION"
+    assert error.value.code == "UNAPPROVED_CITATION"
     assert gateway.education_calls == 2

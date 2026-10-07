@@ -25,8 +25,8 @@ class RecordingEmptyEducationRetriever:
         return []
 
 
-def test_v5_prompt_requires_grounded_plain_language_output() -> None:
-    prompt = PromptCatalog("v5").get("agent_investment_education")
+def test_current_prompt_requires_grounded_plain_language_output() -> None:
+    prompt = PromptCatalog().get("agent_investment_education")
 
     assert "source_ids" in prompt
     assert "uncertainties" in prompt
@@ -283,10 +283,11 @@ def test_all_injected_retrieval_evidence_is_not_sent_to_the_model() -> None:
 
     invocation = InvestmentEducationAgent(
         gateway=ModelMustNotRun(),
-        prompts=PromptCatalog("v5"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         education_retriever=InjectedOnlyRetriever(),
+    semantic_grounding=False,
     ).run_task(
         AgentTask(
             agent="investment_education",
@@ -316,7 +317,7 @@ def test_investment_agent_rejects_model_citation_not_present_in_grounding() -> N
 
     agent = InvestmentEducationAgent(
         gateway=FabricatedCitationGateway(),
-        prompts=PromptCatalog("v5"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         education_retriever=LocalEducationRetriever(),
@@ -369,10 +370,11 @@ def test_investment_agent_corrects_once_when_citation_fields_are_missing() -> No
     gateway = CorrectingGateway()
     invocation = InvestmentEducationAgent(
         gateway=gateway,
-        prompts=PromptCatalog("v5"),
+        prompts=PromptCatalog(),
         temperature=0.35,
         max_tokens=800,
         education_retriever=LocalEducationRetriever(),
+    semantic_grounding=False,
     ).run_task(
         AgentTask(
             agent="investment_education",
@@ -810,10 +812,11 @@ def test_investment_agent_quarantines_injected_narrative_before_synthesis() -> N
 
     agent = InvestmentEducationAgent(
         gateway=InjectedNarrativeGateway(),
-        prompts=PromptCatalog("v5"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         education_retriever=LocalEducationRetriever(),
+    semantic_grounding=False,
     )
 
     invocation = agent.run_task(
@@ -851,10 +854,11 @@ def test_investment_agent_quarantines_injection_hidden_in_uncertainty() -> None:
 
     invocation = InvestmentEducationAgent(
         gateway=InjectedUncertaintyGateway(),
-        prompts=PromptCatalog("v5"),
+        prompts=PromptCatalog(),
         temperature=0.1,
         max_tokens=800,
         education_retriever=LocalEducationRetriever(),
+    semantic_grounding=False,
     ).run_task(
         AgentTask(
             agent="investment_education",

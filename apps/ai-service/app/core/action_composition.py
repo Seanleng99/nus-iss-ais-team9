@@ -119,7 +119,7 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
         raise ModelGatewayError("Blocked evidence cannot be composed.", code="ACTION_COMPOSITION_BLOCKED")
     response.audit.update(model_provider=orchestrator.config.model_provider,
                           model_id=orchestrator.config.model_id,
-                          prompt_set_version=orchestrator.prompts.version)
+                          **orchestrator.prompts.identity(orchestrator.config.build_commit))
     prior_calls = list(response.audit.get("model_calls", []))
     remaining_calls = orchestrator.config.max_model_calls_per_run - len(prior_calls)
     remaining_tokens = orchestrator.config.max_model_tokens_per_run - sum(

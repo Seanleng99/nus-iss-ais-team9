@@ -28,7 +28,7 @@ def narrative(**fields):
 
 def agent():
     return InvestmentEducationAgent(
-        LocalFixtureModelGateway(), PromptCatalog("v6"), 0.2, 1600, LocalEducationRetriever(),
+        LocalFixtureModelGateway(), PromptCatalog(), 0.2, 1600, LocalEducationRetriever(),
     )
 
 

@@ -13,6 +13,7 @@ from time import perf_counter
 
 from app.core.config import Settings
 from app.core.guardrails import redact_sensitive_text
+from app.core.prompts import PromptCatalog
 from app.core.schemas import CoachRequest
 from app.models.gateway import ModelGatewayError
 from app.orchestrator import AgentOrchestrator
@@ -168,6 +169,7 @@ def run_suite(path, *, config, repeats=3, build_commit="unknown", orchestrator=N
             "retrievers": {"education": type(coach.education_retriever).__name__,
                            "policy": type(coach.policy_retriever).__name__},
             "prompt_version": config.prompt_set_version,
+            "prompt_content_hash": PromptCatalog().content_hash,
             "workflow_timeout_seconds": config.workflow_timeout_seconds,
             "repeats": repeats, "checked": len(rows), "checks_passed": sum(row["checks_passed"] for row in rows),
             "acceptance": "pending_content_review",

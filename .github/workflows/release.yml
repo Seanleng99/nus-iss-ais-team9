@@ -407,7 +407,8 @@ jobs:
             MODEL_MAX_TOKENS=3200
             MODEL_ROLE_OVERRIDES=${{ env.MODEL_ROLE_OVERRIDES }}
             MAX_MODEL_TOKENS_PER_RUN=80000
-            PROMPT_SET_VERSION=v9
+            PROMPT_SET_VERSION=${{ env.PROMPT_SET_VERSION }}
+            BUILD_COMMIT=${{ github.sha }}
             RAG_PROVIDER=local_documents
             POLICY_RAG_PROVIDER=local_documents
             EDUCATION_CORPUS_VERSION=${{ env.EDUCATION_CORPUS_VERSION }}
@@ -428,7 +429,8 @@ jobs:
           --expect MODEL_MAX_TOKENS=3200
           --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES"
           --expect MAX_MODEL_TOKENS_PER_RUN=80000
-          --expect PROMPT_SET_VERSION=v9
+          --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION"
+          --expect "BUILD_COMMIT=${{ github.sha }}"
           --expect RAG_PROVIDER=local_documents
           --expect POLICY_RAG_PROVIDER=local_documents
           --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION"

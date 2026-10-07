@@ -14,7 +14,7 @@ def transaction(amount, day, currency="SGD"):
 
 
 def ground(snapshot):
-    agent = SpendingAgent(LocalFixtureModelGateway(), PromptCatalog("v6"), 0.2, 800)
+    agent = SpendingAgent(LocalFixtureModelGateway(), PromptCatalog(), 0.2, 800)
     task = AgentTask(agent="spending", sanitized_message="Explain my recorded spending.", input_data=snapshot)
     return agent, task, agent._ground(task, task.sanitized_message)
 

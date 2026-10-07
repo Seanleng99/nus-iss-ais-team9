@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from contract_fixtures import scoped_verdict
 from language_fixtures import language_case
 from test_hybrid_investment_education import (
     FixedRetriever,
@@ -254,11 +255,11 @@ def test_incomplete_safe_answer_gets_only_one_repair_and_a_new_review(fixed):
             if kwargs["system_prompt"].startswith("PROMPT_ID: risk_compliance"):
                 self.reviews += 1
                 complete = fixed and self.reviews > 1
-                return json.dumps({
+                return json.dumps(scoped_verdict({
                     "blocked": False, "summary": "Education reviewed.",
                     "rationale": ["Scope reviewed."], "policy_notes": [], "confidence": 0.9,
                     "request_allowed": True, "complete": complete, "missing_points": [] if complete else ["Explain the requested distinction."],
-                })
+                }))
             return super().generate(**kwargs)
 
     gateway = ReviewingGateway()
@@ -286,7 +287,7 @@ def test_safe_repair_fits_observed_token_usage_without_repeating_the_draft():
             if component.endswith('risk_compliance'):
                 self.reviews += 1
                 complete = self.reviews > 1
-                raw = json.dumps({
+                raw = json.dumps(scoped_verdict({
                     'blocked': not complete, 'summary': 'Citation scope reviewed.',
                     'rationale': ['A source qualification needs correction.'],
                     'policy_notes': [] if complete else ['The source qualification needs correction.'],
@@ -294,7 +295,7 @@ def test_safe_repair_fits_observed_token_usage_without_repeating_the_draft():
                     'confidence': 0.9, 'request_allowed': True,
                     'complete': complete, 'repairable': not complete,
                     'missing_points': [] if complete else ['Preserve the source qualification.'],
-                })
+                }))
                 usage = (3590, 586)
             else:
                 raw = super().generate(**kwargs)
@@ -351,9 +352,9 @@ def test_repairable_draft_must_pass_a_fresh_review_before_release(repair_outcome
             if kwargs['system_prompt'].startswith('PROMPT_ID: risk_compliance'):
                 self.reviews += 1
                 if self.reviews == 2 and repair_outcome == 'unavailable':
-                    raise ModelGatewayError('Synthetic unavailable review')
+                    raise ModelGatewayError('Synthetic unavailable review', code='OPENAI_AUTHENTICATION_FAILED')
                 blocked = self.reviews == 1 or repair_outcome == 'blocked'
-                return json.dumps({
+                return json.dumps(scoped_verdict({
                     'blocked': blocked, 'summary': 'Draft reviewed.',
                     'rationale': ['Citation qualification checked.'],
                     'policy_notes': ['The citation attribution needs correction.'] if blocked else [],
@@ -361,7 +362,7 @@ def test_repairable_draft_must_pass_a_fresh_review_before_release(repair_outcome
                     'confidence': 0.9, 'request_allowed': True, 'complete': not blocked,
                     'repairable': self.reviews == 1,
                     'missing_points': ['Correct the citation attribution.'] if blocked else [],
-                })
+                }))
             return super().generate(**kwargs)
 
     gateway = ReviewingGateway()
@@ -456,7 +457,7 @@ def test_prohibited_intent_is_refused_even_when_model_draft_is_harmless():
         def generate(self, **kwargs):
             if kwargs['system_prompt'].startswith('PROMPT_ID: risk_compliance'):
                 self.reviews += 1
-                return json.dumps({
+                return json.dumps(scoped_verdict({
                     'blocked': False, 'request_allowed': False,
                     'summary': 'The draft is safe; the requested action is prohibited.',
                     'rationale': ['Do not perform the action.'],
@@ -464,7 +465,7 @@ def test_prohibited_intent_is_refused_even_when_model_draft_is_harmless():
                     'block_categories': ['prohibited_request'],
                     'confidence': 0.99, 'complete': False, 'repairable': False,
                     'missing_points': ['Clearly refuse the action.'],
-                })
+                }))
             return super().generate(**kwargs)
 
     gateway = IntentGateway()

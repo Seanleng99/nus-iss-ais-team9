@@ -23,7 +23,7 @@ from app.rag.answerability import build_query_plan
 
 
 def agent(gateway, retriever=None):
-    return InvestmentEducationAgent(gateway, PromptCatalog("v6"), 0.2, 1600, retriever or RecordingRetriever())
+    return InvestmentEducationAgent(gateway, PromptCatalog(), 0.2, 1600, retriever or RecordingRetriever())
 
 
 @pytest.mark.parametrize("question", [

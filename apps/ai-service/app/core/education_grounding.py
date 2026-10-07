@@ -44,17 +44,19 @@ class EducationGroundingSnapshot:
     authority_fingerprint: str
     sanitized_message_fingerprint: str
     prompt_version: str
+    prompt_content_hash: str
     expected_corpus_version: str | None
 
     @classmethod
-    def capture(cls, task: AgentTask, grounding: dict, *, sanitized_message: str, prompt_version: str, expected_corpus_version: str | None):
+    def capture(cls, task: AgentTask, grounding: dict, *, sanitized_message: str, prompt_version: str, prompt_content_hash: str, expected_corpus_version: str | None):
         snapshot = deepcopy(grounding)
         return cls(
             grounding=snapshot, task_fingerprint=_task_fingerprint(task),
             grounding_fingerprint=_fingerprint(snapshot),
             authority_fingerprint=_authority_fingerprint(snapshot),
             sanitized_message_fingerprint=sha256(sanitized_message.encode("utf-8")).hexdigest(),
-            prompt_version=prompt_version, expected_corpus_version=expected_corpus_version,
+            prompt_version=prompt_version, prompt_content_hash=prompt_content_hash,
+            expected_corpus_version=expected_corpus_version,
         )
 
     def _validate(self, task: AgentTask) -> None:
@@ -76,10 +78,11 @@ class EducationGroundingSnapshot:
                 code="INVALID_EDUCATION_REPAIR_CONTEXT", component="investment_education",
             )
 
-    def for_repair(self, task: AgentTask, *, sanitized_message: str, prompt_version: str, expected_corpus_version: str | None) -> dict:
+    def for_repair(self, task: AgentTask, *, sanitized_message: str, prompt_version: str, prompt_content_hash: str, expected_corpus_version: str | None) -> dict:
         self._validate(task)
         if (
             prompt_version != self.prompt_version
+            or prompt_content_hash != self.prompt_content_hash
             or expected_corpus_version != self.expected_corpus_version
             or sha256(sanitized_message.encode("utf-8")).hexdigest() != self.sanitized_message_fingerprint
         ):

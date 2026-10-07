@@ -49,7 +49,6 @@ def test_locale_reaches_specialist_generation_compliance_and_audit(
     workflow = AgentOrchestrator(
         config=Settings(
             MODEL_PROVIDER="local_fixture",
-            PROMPT_SET_VERSION="v6",
             RAG_PROVIDER="local_fixture",
             POLICY_RAG_PROVIDER="local_fixture",
         ),
@@ -102,8 +101,7 @@ def test_locale_reaches_specialist_generation_compliance_and_audit(
     ]
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_chinese_definition_with_english_selection_reviews_current_language_and_scope(version):
+def test_chinese_definition_with_english_selection_reviews_current_language_and_scope():
     class DefinitionGateway(RecordingGateway):
         def generate(self, **kwargs):
             raw = super().generate(**kwargs)
@@ -120,7 +118,7 @@ def test_chinese_definition_with_english_selection_reviews_current_language_and_
 
     gateway = DefinitionGateway()
     workflow = AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION=version),
+        config=Settings(MODEL_PROVIDER="local_fixture"),
         gateway=gateway,
     )
     response = workflow.handle(CoachRequest(

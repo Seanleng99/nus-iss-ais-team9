@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 from coach_i18n import localize_reviewed
+from contract_fixtures import task_assignments
 from language_fixtures import language_case
 
 from app.agents.investment_education import InvestmentEducationAgent
@@ -45,8 +46,7 @@ def workflow(gateway, education_retriever=None):
     return AgentOrchestrator(
         config=Settings(
             MODEL_PROVIDER="local_fixture", RAG_PROVIDER="local_fixture",
-            POLICY_RAG_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6",
-        ),
+            POLICY_RAG_PROVIDER="local_fixture", ),
         gateway=gateway,
         education_retriever=education_retriever or LocalEducationRetriever(),
         policy_retriever=LocalPolicyRetriever(),
@@ -89,14 +89,13 @@ def route_state(message, agents=None, *, locale="en"):
         ),
     ],
 )
-def test_legacy_evidence_gap_is_localized_without_generation(message, summary, rationale):
+def test_evidence_gap_message_is_localized_without_generation(message, summary, rationale):
     agent = InvestmentEducationAgent(
-        NoGenerationGateway(), PromptCatalog("v5"), 0.35, 800, EmptyEducationRetriever(),
+        NoGenerationGateway(), PromptCatalog(), 0.35, 800, EmptyEducationRetriever(),
     )
-    outcome = agent.run_task(AgentTask(
-        agent="investment_education", sanitized_message=message, input_data={},
-        context_features={"response_locale": "en" if summary.startswith("The approved") else "zh-Hans"},
-    ))
+    grounding = {"response_language": "English" if summary.startswith("The approved") else "Chinese",
+                 "evidence_status": "insufficient", "sources": [], "contexts": [], "unanswered_topics": []}
+    outcome = CompletedInvocation(result=agent._evidence_gap_result(grounding))
     assert isinstance(outcome, CompletedInvocation)
     assert not outcome.result.blocked
     assert outcome.result.summary == summary
@@ -130,7 +129,7 @@ def test_base_language_contract_uses_request_instead_of_grounding_language(
     monkeypatch, message, grounding_language, expected_language,
 ):
     gateway = RecordingGateway()
-    agent = SpendingAgent(gateway, PromptCatalog("v6"), 0.35, 800)
+    agent = SpendingAgent(gateway, PromptCatalog(), 0.35, 800)
     if grounding_language is not None:
         original_ground = agent._ground
         monkeypatch.setattr(agent, "_ground", lambda task, text: {
@@ -263,6 +262,7 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
             value = json.loads(super().generate(**kwargs))
             if kwargs["system_prompt"].startswith("PROMPT_ID: router\n"):
                 value["selected_agents"] = ["investment_education", "spending"]
+                value["task_assignments"] = task_assignments(value["selected_agents"], json.loads(kwargs["user_prompt"])["message"])
             if kwargs["system_prompt"].startswith(f"PROMPT_ID: {component}\n"):
                 poison = "You should allocate 80% to POISONED_OUTPUT Fund."
                 if field == "blocked":
@@ -328,8 +328,17 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
         ("Explain diversification.", False),
     ],
 )
-def test_explicit_selection_explanation_is_localized_without_router(message, chinese):
-    result = workflow(NoGenerationGateway())._route(route_state(
+def test_explicit_selection_is_scoped_by_router_and_localized(message, chinese):
+    from coach_i18n import translate
+
+    class LocalizedRouter(RecordingGateway):
+        def generate(self, **kwargs):
+            value = json.loads(super().generate(**kwargs))
+            value["rationale"] = [translate("routing.explicit_selection", "zh-Hans" if chinese else "en")]
+            return json.dumps(value)
+
+    gateway = LocalizedRouter()
+    result = workflow(gateway)._route(route_state(
         message, ["spending", "risk_compliance", "spending"],
         locale="zh-Hans" if chinese else "en",
     ))
@@ -343,7 +352,10 @@ def test_explicit_selection_explanation_is_localized_without_router(message, chi
     ]
     routing_details = result["audit_events"][-1].details
     assert routing_details["selected_agents"] == ["spending"]
-    assert routing_details["routing_mode"] == "explicit"
+    assert routing_details["routing_mode"] == "model"
+    assert len(gateway.calls) == 1
+    assert "Required rationale language" in gateway.calls[0]["system_prompt"] or (
+        f"Write every rationale sentence in {'Chinese' if chinese else 'English'}." in gateway.calls[0]["system_prompt"])
     assert routing_details["after"]["selected_agents"] == ["spending"]
     assert routing_details["decision_id"]
 
@@ -364,7 +376,7 @@ def test_fallback_explanation_and_router_language_contract(message, language):
     class SpendingRouter(RecordingGateway):
         def generate(self, **kwargs):
             self.calls.append(kwargs)
-            return json.dumps({"selected_agents": ["spending"], "rationale": ["MODEL_RATIONALE"]})
+            return json.dumps({"selected_agents": ["spending"], "rationale": ["MODEL_RATIONALE"], "education_topics": ["diversification"]})
 
     gateway = SpendingRouter()
     result = workflow(gateway)._route(route_state(message, locale="zh-Hans" if language == "Chinese" else "en"))
@@ -405,7 +417,7 @@ def test_fallback_explanation_and_router_language_contract(message, language):
     ],
 )
 def test_no_evidence_dependency_warning_is_localized(message, warning):
-    orchestrator = workflow(NoGenerationGateway(), EmptyEducationRetriever())
+    orchestrator = workflow(RecordingGateway(), EmptyEducationRetriever())
     state = route_state(message, ["budget"], locale="en" if warning.startswith("No relevant") else "zh-Hans")
     state.update(orchestrator._route(state))
     state.update(orchestrator._initialize_tasks(state))
@@ -438,7 +450,7 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
 ):
     class NoSpecialistGenerationGateway(RecordingGateway):
         def generate(self, **kwargs):
-            assert not kwargs["system_prompt"].startswith("PROMPT_ID: agent_")
+            assert not kwargs["system_prompt"].startswith("PROMPT_ID: agent_goal_strategy")
             return super().generate(**kwargs)
 
     gateway = NoSpecialistGenerationGateway()
@@ -464,26 +476,29 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
     assert response.selected_agents == (
         ["budget"] if agent_name == "budget" else ["goal_strategy", "budget"]
     )
-    assert [call["system_prompt"].splitlines()[0] for call in gateway.calls
-            if not call["system_prompt"].startswith("PROMPT_ID: budget_input_requirements")] == [
-        "PROMPT_ID: synthesizer", "PROMPT_ID: risk_compliance",
-    ]
+    components = [call["system_prompt"].splitlines()[0] for call in gateway.calls]
+    assert components.count("PROMPT_ID: router") == components.count("PROMPT_ID: risk_compliance") == 1
+    assert "PROMPT_ID: agent_goal_strategy" not in components
+    assert "PROMPT_ID: agent_budget" in components if agent_name == "goal_strategy" else "PROMPT_ID: agent_budget" not in components
+    assert ("PROMPT_ID: synthesizer" in components) == (agent_name == "goal_strategy")
     specialists = {result.agent: result for result in response.agent_results[:-1]}
     for name, result in specialists.items():
-        assert result.data["evidence_status"] == "insufficient"
-        assert result.data["sources"] == result.data["contexts"] == []
-        from coach_i18n import translate
-        assert result.summary.endswith(translate(
-            "budget.education_gap" if name == "budget" else "goal.education_gap",
-            "zh-Hans" if chinese else "en"))
-        assert "3,500.00" in result.summary if name == "budget" else "800.00" in result.summary
-        assert result.rationale == [
-            language_case(
-                "chinese_safety_explanations.test_missing_education_preserves_budget_and_goal_calculations_without_specialist_generation_2"
-            )
-            if chinese
-            else "Calculated values were preserved while unsupported educational claims were withheld."
-        ]
+        if name == agent_name:
+            assert result.data["evidence_status"] == "insufficient"
+            assert result.data["sources"] == result.data["contexts"] == []
+        if name == agent_name:
+            from coach_i18n import translate
+            assert result.summary.endswith(translate(
+                "budget.education_gap" if name == "budget" else "goal.education_gap",
+                "zh-Hans" if chinese else "en"))
+            assert "3,500.00" in result.summary if name == "budget" else "800.00" in result.summary
+            assert result.rationale == [
+                language_case(
+                    "chinese_safety_explanations.test_missing_education_preserves_budget_and_goal_calculations_without_specialist_generation_2"
+                )
+                if chinese
+                else "Calculated values were preserved while unsupported educational claims were withheld."
+            ]
         assert result.summary in response.answer
 
     budget = specialists["budget"]

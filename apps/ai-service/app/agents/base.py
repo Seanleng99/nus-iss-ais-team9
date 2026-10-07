@@ -74,14 +74,14 @@ class BaseAgent(ABC):
                 reason_code="AMBIGUOUS_FOLLOW_UP", questions=[follow_up["question"]],
             )
         if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot):
-            task._financial_grounding_snapshot.for_repair(task)
+            task._financial_grounding_snapshot.for_repair(task, prompt_content_hash=self.prompts.content_hash)
             preflight = None
         else:
             preflight = self._preflight(task, decision.sanitized_text)
         if preflight is not None:
             return preflight
 
-        grounding = (task._financial_grounding_snapshot.for_repair(task)
+        grounding = (task._financial_grounding_snapshot.for_repair(task, prompt_content_hash=self.prompts.content_hash)
                      if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot)
                      else self._ground(task, decision.sanitized_text))
         grounding["response_language"] = task_language(task)
@@ -245,60 +245,6 @@ class BaseAgent(ABC):
             # generated uncertainties or citation selections to public data yet.
             return self._validate_narrative(narrative, dict(grounding))
 
-        # Hybrid profiles keep the complete writer contract in the versioned
-        # prompt. Repeating the legacy guidance crowds out safe repair calls.
-        if self.name == AgentName.INVESTMENT_EDUCATION and self.prompts.version not in {"v6", "v7", "v8", "v9"}:
-            system_prompt += (
-                "\nAnswer the requested concept and question_intent directly, with enough "
-                "detail for a beginner to understand the practical meaning and trade-offs. "
-                "Prior dialogue may resolve references but is not financial evidence. "
-                "If the subject of a follow-up is genuinely unclear, ask one short question "
-                "to clarify it; do not invent the subject or claim it is unsafe. "
-                "For scam warning questions, explain the warning and concrete independent "
-                "verification of the provider, offer documents and promise terms, without "
-                "declaring a particular offer legitimate or fraudulent. "
-                "Do not expand into adjacent topics. Preserve each source's qualifications, "
-                "account/product scope and conditions; do not generalize a statement about "
-                "one type of fund to all funds. Keep summary grounded in the supplied "
-                "passages. Preserve the user's requested table, analogy and language. "
-                "For a requested table, put every requested concept in a table row. "
-                "When both evidence modes are needed, use separate tables with matching columns "
-                "in summary and general_knowledge text; do not leave blank placeholder rows. "
-                "Otherwise use short bullet points. A beginner explanation needs the plain-language "
-                "meaning, how it works and a simple illustrative example where useful; define "
-                "unfamiliar terms. A comparison needs the practical differences and trade-offs. "
-                "Include material risks, costs, uncertainty and limitations relevant to the question, "
-                "not only a definition. Readiness discussions cover cash access, debt costs versus "
-                "uncertain investment returns, and time horizon without deciding for the user. "
-                "Explain how to verify unavailable current data through an appropriate official "
-                "source category, without inventing a URL or claiming a live check. "
-                "Keep unrelated details out. "
-                "For investment categories, explain ownership or lending, the underlying assets, "
-                "where income comes from, how value can change, relevant fees and material risks "
-                "(including concentration, liquidity, interest rates and leverage where applicable). "
-                "For readiness or a potential decision, explain general factors: goals, horizon, "
-                "cash flow stability, dependants/obligations, access to cash, borrowing costs, "
-                "uncertain returns and loss capacity; make no personal decision. For small regular "
-                "contributions, explain fixed versus percentage costs, minimums, diversification "
-                "and checking disclosures without inventing provider terms. For investment "
-                "growth explain purchasing power as well as nominal value; illustrative "
-                "calculations need their assumptions and arithmetic. "
-                "State assumptions for numerical examples and label them hypothetical, "
-                "never forecasts. Describe options neutrally: no persuasion, urgency, "
-                "product rankings or instructions to buy, sell, hold, allocate or borrow "
-                "to invest. Rephrase any source's recommendations as general educational "
-                "considerations rather than telling the user what to do. Source dates "
-                "describe captured documents, not a live market or provider verification. "
-                "Only when grounding.source_verification is true, identify the source organizations, "
-                "document_version and published_at dates using grounding.sources. "
-                "These sources were retrieved for this request; do not claim they "
-                "supported earlier messages unavailable in this context. "
-                "A review_due_at is a review deadline, not proof of current accuracy. "
-                "For that verification question, state that current rates and provider status "
-                "were not checked live. Otherwise omit source-date and verification commentary. "
-                "Keep rationale to one brief assessment sentence "
-                "without additional financial facts."
-            )
         response_language = task_language(task)
         if response_language in {"English", "Chinese"}:
             system_prompt += (
@@ -373,7 +319,7 @@ class BaseAgent(ABC):
         if self.name == AgentName.INVESTMENT_EDUCATION:
             result._education_grounding_snapshot = task._education_grounding_snapshot
         elif self.name in {AgentName.SPENDING, AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
-            result._financial_grounding_snapshot = FinancialGroundingSnapshot.capture(task, grounding)
+            result._financial_grounding_snapshot = FinancialGroundingSnapshot.capture(task, grounding, prompt_content_hash=self.prompts.content_hash)
         result.rationale = require_explanation(result.rationale)
         return CompletedInvocation(
             result=result,
@@ -407,13 +353,6 @@ class BaseAgent(ABC):
         task: AgentTask,
         sanitized_message: str,
     ) -> NeedsDependencyInvocation | NeedsInputInvocation | None:
-        if self.prompts.version == "v2":
-            dependencies = list(self._dependency_requests(task))
-            return (
-                NeedsDependencyInvocation(dependency_requests=dependencies)
-                if dependencies
-                else None
-            )
         if not self.dependency_planning_enabled:
             return None
 

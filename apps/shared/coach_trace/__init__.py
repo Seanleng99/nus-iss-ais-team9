@@ -87,6 +87,8 @@ CODES = {
     "model_id",
     "prompt_id",
     "prompt_set_version",
+    "prompt_content_hash",
+    "build_commit",
     "corpus_version",
     "knowledge_base_id",
     "http_method",

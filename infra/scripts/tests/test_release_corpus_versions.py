@@ -23,7 +23,7 @@ def run_step(name, cwd, env):
         git = Path(shutil.which("git"))
         bash = str(git.parent.parent / "bin" / "bash.exe")
     return subprocess.run(
-        [bash, "-eu", "-o", "pipefail", "-c", STEPS[name]["run"]],
+        [bash, "-eu", "-o", "pipefail", "-c", STEPS[name]["run"].replace("${{ github.sha }}", "0123456789abcdef0123456789abcdef01234567")],
         cwd=cwd,
         env={**os.environ, "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"], **env},
         capture_output=True, text=True, timeout=30, check=False,
@@ -55,10 +55,11 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     values.update(dict(line.split("=", 1) for line in role_output.read_text().splitlines()))
     environment["MODEL_ROLE_OVERRIDES"] = '{}'
     rendered = STEPS["Render AI service task definition"]["with"]["environment-variables"]
+    rendered = rendered.replace("${{ github.sha }}", "0123456789abcdef0123456789abcdef01234567")
     rendered = re.sub(r"\$\{\{ env\.(\w+) \}\}", lambda match: values[match[1]], rendered)
     environment.update(line.split("=", 1) for line in rendered.strip().splitlines())
     assert environment["MAX_MODEL_TOKENS_PER_RUN"] == "80000"
-    assert environment["PROMPT_SET_VERSION"] == "v9"
+    assert environment["PROMPT_SET_VERSION"] == values["PROMPT_SET_VERSION"]
     assert json.loads(environment["MODEL_ROLE_OVERRIDES"])["risk_compliance"] == {
         "reasoning_effort": "medium", "max_tokens": 3000,
     }

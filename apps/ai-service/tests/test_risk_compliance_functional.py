@@ -29,7 +29,7 @@ from app.rag.policy import LocalPolicyRetriever
 _REVIEW_PROMPT = "PROMPT_ID: risk_compliance"
 _SYNTHESIZER_PROMPT = "PROMPT_ID: synthesizer"
 _BUDGET_REQUEST = {
-    "requested_agents": ["budget"],
+    "requested_agents": ["budget", "spending"],
     "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},
 }
 
@@ -48,7 +48,10 @@ class _ScriptedGateway(LocalFixtureModelGateway):
         if self.draft is not None and prompt_id == _SYNTHESIZER_PROMPT:
             return json.dumps({"answer": self.draft})
         if self.decision is not None and prompt_id == _REVIEW_PROMPT:
-            return json.dumps(self.decision)
+            value = {"request_allowed": True, "complete": True, "financial_language_safe": True,
+                     "missing_points": [], **self.decision}
+            value["blocking_issues"] = [{"section_id": "draft", "requirement": "Verify the draft claim."}] if value["blocked"] else []
+            return json.dumps(value)
         return super().generate(**kwargs)
 
 
@@ -61,7 +64,7 @@ class _EmptyPolicyRetriever:
 
 def _handle(message: str, gateway, *, policy_retriever=None, **request_fields) -> CoachResponse:
     return AgentOrchestrator(
-        config=Settings(MODEL_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+        config=Settings(MODEL_PROVIDER="local_fixture", ),
         gateway=gateway,
         policy_retriever=policy_retriever or LocalPolicyRetriever(),
     ).handle(CoachRequest(

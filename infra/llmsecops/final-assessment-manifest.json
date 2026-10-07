@@ -48,7 +48,7 @@
       "evidence": [
         {"kind": "documentation", "path": "docs/model-selection.md"},
         {"kind": "implementation", "path": "apps/ai-service/app/models/gateway.py"},
-        {"kind": "implementation", "path": "apps/ai-service/prompts/v8/prompts.json"},
+        {"kind": "implementation", "path": "apps/ai-service/prompts/current/prompts.json"},
         {"kind": "policy", "path": "apps/ai-service/app/core/model-role-policy.json"}
       ],
       "demo_scenarios": ["DEMO-02"]

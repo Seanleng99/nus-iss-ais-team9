@@ -26,11 +26,11 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
-exclude = ["prompts*"]
+include = ["app*", "prompts*"]
 
 [tool.setuptools.package-data]
 "app.core" = ["model-role-policy.json"]
+"prompts.current" = ["*.json"]
 
 [tool.ruff]
 line-length = 100

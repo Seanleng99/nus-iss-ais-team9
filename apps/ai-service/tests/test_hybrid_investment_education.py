@@ -1,4 +1,4 @@
-"""Bounded behavior regressions for hybrid investment education (v6/v7)."""
+"""Bounded behavior regressions for the current hybrid investment education contract."""
 
 import json
 from dataclasses import replace
@@ -83,13 +83,13 @@ class HybridGateway(LocalFixtureModelGateway):
         return [call for call in self.calls if call["system_prompt"].startswith(f"PROMPT_ID: {prompt_id}")]
 
 
-def workflow(gateway, retriever, *, version="v6", policy=None):
+def workflow(gateway, retriever, *, policy=None):
     return AgentOrchestrator(
         config=Settings(
             MODEL_PROVIDER="local_fixture",
             RAG_PROVIDER="local_fixture",
             POLICY_RAG_PROVIDER="local_fixture",
-            PROMPT_SET_VERSION=version,
+
         ),
         gateway=gateway,
         education_retriever=retriever,
@@ -106,9 +106,8 @@ def request(message, agents=("investment_education",)):
     )
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
 @pytest.mark.parametrize("reverse", [False, True])
-def test_mixed_evidence_numbered_options_preserve_order_and_next_reference(version, reverse):
+def test_mixed_evidence_numbered_options_preserve_order_and_next_reference(reverse):
     options = [
         {"topic": "bonds", "model_text": "A bond is a loan to an issuer."},
         {"topic": "fixed deposits", "sourced_text": "A fixed deposit is held for a set term. [source:deposit-source]",
@@ -122,7 +121,7 @@ def test_mixed_evidence_numbered_options_preserve_order_and_next_reference(versi
     gateway = HybridGateway(summary="", source_ids=[], options=options)
     response = workflow(gateway, FixedRetriever([
         source("deposit-source", "A fixed deposit is held for a set term."),
-    ]), version=version).handle(request(message))
+    ]), ).handle(request(message))
     assert not response.blocked
     assert response.answer.index("1. " + options[0]["topic"].capitalize()) < response.answer.index(
         "2. " + options[1]["topic"].capitalize()
@@ -144,7 +143,7 @@ def test_mixed_evidence_numbered_options_preserve_order_and_next_reference(versi
         [{"topic": options[1]["topic"], "text": "This is a stable general definition."}],
         summary="", source_ids=[],
     )
-    follow_response = workflow(follow_gateway, FixedRetriever(), version=version).handle(CoachRequest(
+    follow_response = workflow(follow_gateway, FixedRetriever(), ).handle(CoachRequest(
         user_id="hybrid-regression", session_id="hybrid-regression",
         message="Explain the second option more simply.",
         conversation_context=[{"role": "user", "content": message},
@@ -212,14 +211,13 @@ def test_numbered_options_keep_independent_safety_review():
     assert "I recommend buying" not in response.model_dump_json()
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_etf_evidence_and_three_requested_general_definitions_form_hybrid(version):
+def test_etf_evidence_and_three_requested_general_definitions_form_hybrid():
     gateway = HybridGateway([
         {"topic": "shares", "text": "A share represents ownership in a company."},
         {"topic": "bonds", "text": "A bond is a loan to an issuer."},
         {"topic": "funds", "text": "A mutual fund pools investors' money."},
     ])
-    response = workflow(gateway, FixedRetriever([source()]), version=version).handle(
+    response = workflow(gateway, FixedRetriever([source()]), ).handle(
         request(
             "What are stocks, bonds, mutual funds, and ETFs?"
         )
@@ -255,16 +253,15 @@ def test_all_rag_answer_keeps_grounded_status_and_empty_general_sections():
     assert "[MoneySense ETF guide](https://www.moneysense.gov.sg/investments/etfs)" in response.answer
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
 @pytest.mark.parametrize("lead", ["model", "sourced"])
-def test_plain_definition_can_lead_before_narrow_sourced_example_with_reviewed_attribution(version, lead):
+def test_plain_definition_can_lead_before_narrow_sourced_example_with_reviewed_attribution(lead):
     definition = "A bond is a loan to an issuer."
     sourced = "SGS bonds pay coupons every six months."
     gateway = HybridGateway(
         [{"topic": "bonds", "text": definition}],
         summary=sourced + " [source:bond-source]", source_ids=["bond-source"], lead=lead,
     )
-    response = workflow(gateway, FixedRetriever([source("bond-source", sourced)]), version=version).handle(
+    response = workflow(gateway, FixedRetriever([source("bond-source", sourced)]), ).handle(
         request("Explain bonds in simple terms.")
     )
     assert not response.blocked
@@ -276,7 +273,7 @@ def test_plain_definition_can_lead_before_narrow_sourced_example_with_reviewed_a
     assert review["agent_results"][0]["data"]["general_knowledge"] == [{"topic": "bonds"}]
 
 
-def test_v6_source_ids_become_visible_references_before_safety_review():
+def test_current_source_ids_become_visible_references_before_safety_review():
     gateway = HybridGateway(summary="An ETF trades on an exchange.")
     response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain ETFs."))
     assert not response.blocked
@@ -330,12 +327,11 @@ def test_model_only_answer_does_not_list_unused_retrieved_sources():
     assert "not verified against retrieved sources" in response.answer
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_empty_rag_allows_general_only_narrative_without_fabricated_sources(version):
+def test_empty_rag_allows_general_only_narrative_without_fabricated_sources():
     gateway = HybridGateway([
         {"topic": "shares", "text": "A share represents ownership in a company."},
     ])
-    response = workflow(gateway, FixedRetriever(), version=version).handle(
+    response = workflow(gateway, FixedRetriever(), ).handle(
         request("Explain stocks.")
     )
     result = response.agent_results[0]

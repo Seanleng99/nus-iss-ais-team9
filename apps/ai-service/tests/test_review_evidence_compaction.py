@@ -41,7 +41,7 @@ def test_multi_specialist_review_elides_only_summary_text_already_present_in_dra
                AgentResult(agent="goal_strategy", summary="A goal names a savings target."),
                AgentResult(agent="spending", summary="This caveat appears only in the specialist.")]
     draft = results[0].summary + "\n\n" + results[1].summary
-    verdict = RiskComplianceAgent(gateway=gateway, prompts=PromptCatalog("v6"), temperature=0,
+    verdict = RiskComplianceAgent(gateway=gateway, prompts=PromptCatalog(), temperature=0,
                                   max_tokens=800, policy_retriever=LocalPolicyRetriever()).validate(
         CoachRequest(user_id="review-test", session_id="review-test", message="Discuss budgeting methods and savings goals."),
         results, draft)

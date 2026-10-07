@@ -52,7 +52,7 @@ def test_dated_spending_coverage_reaches_independent_review_without_overriding_v
             "transaction_context": {"records_complete": False, "history_end": "2026-05-31"},
         },
     )
-    prompts = PromptCatalog("v6")
+    prompts = PromptCatalog()
     task = AgentTask(
         agent="spending", sanitized_message=request.message,
         input_data=request.snapshot.model_dump(mode="json", include={

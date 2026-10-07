@@ -539,42 +539,9 @@ class ComplianceDecision(BaseModel):
     def explain_verdict(self):
         if self.blocked and (not self.block_categories or not any(note.strip() for note in self.policy_notes)):
             raise ValueError("A blocking verdict requires block_categories and a brief policy note")
-        if not self.blocked and not isinstance(self, (EducationComplianceDecision, ScopedEducationComplianceDecision)) and self.block_categories:
+        if not self.blocked and not isinstance(self, ScopedEducationComplianceDecision) and self.block_categories:
             raise ValueError("An allowed verdict must have empty block_categories")
         return self
-
-
-class EducationComplianceDecision(ComplianceDecision):
-    request_allowed: bool
-    complete: bool
-    missing_points: list[str] = Field(max_length=6)
-    repairable: bool = False
-    financial_language_safe: bool = Field(default=False, strict=True)
-
-    @model_validator(mode="after")
-    def validate_block_explanation(self):
-        veto = self.blocked or not self.request_allowed
-        if veto and (not self.block_categories or not any(note.strip() for note in self.policy_notes)):
-            raise ValueError("A blocking verdict requires block_categories and a brief policy note")
-        if not veto and self.block_categories:
-            raise ValueError("An allowed verdict must have empty block_categories")
-        if not self.request_allowed and "prohibited_request" not in self.block_categories:
-            raise ValueError("A prohibited request requires the prohibited_request category")
-        if self.repairable and (
-            not self.request_allowed or not self.missing_points
-            or (self.blocked and not set(self.block_categories) <= {
-                "citation_attribution", "factual_qualification",
-            })
-        ):
-            raise ValueError("Only an allowed draft with correction requirements can be repairable")
-        return self
-
-    @field_validator("missing_points")
-    @classmethod
-    def bound_missing_points(cls, value: list[str]) -> list[str]:
-        if any(not point.strip() or len(point) > 200 for point in value):
-            raise ValueError("Missing points must be brief, nonempty requirements.")
-        return value
 
 
 class EducationReviewIssue(StrictContractModel):
@@ -590,7 +557,7 @@ class EducationReviewIssue(StrictContractModel):
 
 
 class ScopedEducationComplianceDecision(ComplianceDecision):
-    """v8 ties defects to server-provided sections instead of a repairability guess."""
+    """Tie Education and financial defects to server-owned review sections."""
 
     request_allowed: bool
     complete: bool

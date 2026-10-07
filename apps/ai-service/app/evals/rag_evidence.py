@@ -86,7 +86,7 @@ def evaluate(cases: list[EvidenceCase], retriever) -> dict:
     # This frozen benchmark measures retrieval evidence alone, independent of
     # generated query interpretation or model-assisted answerability decisions.
     agent = InvestmentEducationAgent(
-        NoGeneration(), PromptCatalog("v6"), 0.1, 800, retriever, semantic_grounding=False,
+        NoGeneration(), PromptCatalog(), 0.1, 800, retriever, semantic_grounding=False,
     )
     results = []
     for case in cases:

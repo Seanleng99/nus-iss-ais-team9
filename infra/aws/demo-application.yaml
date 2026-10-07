@@ -324,8 +324,6 @@ Resources:
               Value: !Ref OpenAiModelId
             - Name: MODEL_REASONING_EFFORT
               Value: medium
-            - Name: PROMPT_SET_VERSION
-              Value: v9
             - Name: RAG_PROVIDER
               Value: local_documents
             - Name: EDUCATION_CORPUS_VERSION

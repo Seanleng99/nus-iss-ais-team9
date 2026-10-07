@@ -161,7 +161,7 @@ class RecordingRetriever(LocalEducationRetriever):
 def workflow(gateway, retriever):
     return AgentOrchestrator(
         config=Settings(MODEL_PROVIDER="local_fixture", RAG_PROVIDER="local_fixture",
-                        POLICY_RAG_PROVIDER="local_fixture", PROMPT_SET_VERSION="v6"),
+                        POLICY_RAG_PROVIDER="local_fixture", ),
         gateway=gateway, education_retriever=retriever,
         policy_retriever=LocalPolicyRetriever(),
     )
@@ -224,7 +224,7 @@ def test_missing_compound_interest_evidence_cannot_be_replaced_with_unrelated_pa
             return super().retrieve("ETF tracking error", top_k)
 
     agent = InvestmentEducationAgent(
-        LocalFixtureModelGateway(), PromptCatalog("v6"), 0.35, 800, UnrelatedRetriever(),
+        LocalFixtureModelGateway(), PromptCatalog(), 0.35, 800, UnrelatedRetriever(),
     )
     message = "Explain compound interest."
     grounding = agent._ground(AgentTask(

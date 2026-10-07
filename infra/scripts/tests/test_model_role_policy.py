@@ -19,7 +19,7 @@ def test_release_role_policy_matches_local_and_bootstrap_configuration():
     assert json.loads(local["MODEL_ROLE_OVERRIDES"]) == expected
     assert json.loads(environment["MODEL_ROLE_OVERRIDES"]) == expected
     assert local["MAX_MODEL_TOKENS_PER_RUN"] == environment["MAX_MODEL_TOKENS_PER_RUN"] == "80000"
-    assert local["PROMPT_SET_VERSION"] == environment["PROMPT_SET_VERSION"] == "v9"
+    assert "PROMPT_SET_VERSION" not in local and "PROMPT_SET_VERSION" not in environment
     assert local["MODEL_REASONING_EFFORT"] == environment["MODEL_REASONING_EFFORT"] == "medium"
     assert local["MODEL_MAX_TOKENS"] == environment["MODEL_MAX_TOKENS"] == "3200"
     assert expected["agent_investment_education"]["max_tokens"] == 4000

@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 
 import pytest
+from contract_fixtures import scoped_verdict, task_assignments
 from test_education_semantic_coverage import RecordingRetriever
 
 from app.core.config import Settings
@@ -129,6 +130,13 @@ class GoalEducationGateway:
             }
         else:
             value = json.loads(LocalFixtureModelGateway().generate(**kwargs))
+        if component == "router":
+            value["task_assignments"] = task_assignments(value["selected_agents"], payload["message"], TOPICS)
+            for assignment in value["task_assignments"]:
+                if assignment["agent"] == "budget":
+                    assignment["requires_income"] = assignment["requires_capacity"] = True
+        if component == "risk_compliance":
+            value = scoped_verdict(value)
         raw = json.dumps(value)
         if component == "router" and self.unknown_usage:
             return raw
@@ -144,10 +152,10 @@ class GoalEducationGateway:
             "outputTokens": output_tokens, "totalTokens": input_tokens + output_tokens})
 
 
-def ask(gateway, *, follow_up=False, version="v6", **settings):
+def ask(gateway, *, follow_up=False, **settings):
     retriever = RecordingRetriever(PASSAGE)
     orchestrator = AgentOrchestrator(
-        config=Settings(_env_file=None, MODEL_PROVIDER="openai", PROMPT_SET_VERSION=version, **settings),
+        config=Settings(_env_file=None, MODEL_PROVIDER="openai",  **settings),
         gateway=gateway, education_retriever=retriever,
     )
     values = {
@@ -177,10 +185,9 @@ def ask(gateway, *, follow_up=False, version="v6", **settings):
     return response
 
 
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_goal_reference_preserves_new_education_intent_and_topics(version):
+def test_goal_reference_preserves_new_education_intent_and_topics():
     gateway = GoalEducationGateway(follow_up=True)
-    response = ask(gateway, follow_up=True, version=version)
+    response = ask(gateway, follow_up=True, )
     assert response.selected_agents == ["investment_education"]
     assert response.audit["follow_up"]["reason_code"] == "SEMANTIC_PERSISTED_REFERENCE"
     assert not response.blocked
@@ -193,10 +200,9 @@ def test_goal_reference_preserves_new_education_intent_and_topics(version):
 
 
 @pytest.mark.parametrize("limit", [50000, 100000])
-@pytest.mark.parametrize("version", ["v6", "v7"])
-def test_combined_repair_preserves_calculations_and_evidence_within_configured_budget(limit, version):
+def test_combined_repair_preserves_calculations_and_evidence_within_configured_budget(limit, ):
     gateway = GoalEducationGateway()
-    response = ask(gateway, version=version, MAX_MODEL_TOKENS_PER_RUN=limit)
+    response = ask(gateway, MAX_MODEL_TOKENS_PER_RUN=limit)
     assert not response.blocked
     assert len(response.agent_results) == 4  # Three specialists and independent Compliance.
     assert gateway.writers == gateway.reviews == 2
