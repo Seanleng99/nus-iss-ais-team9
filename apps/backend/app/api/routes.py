@@ -440,6 +440,8 @@ async def _coach(request, http_response, ai_service, session, principal, x_synth
         http_response.headers["X-Trace-ID"] = run.trace_id
         return _finalize_coach_response(response)
     except AIServiceUnavailableError as error:
+        if error.timed_out:
+            run.record_event("backend.ai.timeout", component=error.timeout_origin or "unknown")
         run.fail(
             "timed_out" if error.timed_out else "failed",
             "AI_SERVICE_TIMEOUT" if error.timed_out else "AI_SERVICE_UNAVAILABLE",

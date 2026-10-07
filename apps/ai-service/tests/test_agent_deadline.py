@@ -43,6 +43,27 @@ class MultiCallAgent:
         )
 
 
+def test_workflow_deadline_stops_a_late_result_and_prevents_more_calls(monkeypatch):
+    from app.core import deadline
+    from app.models.gateway import TracingModelGateway
+    clock = [0.0]
+    monkeypatch.setattr(deadline, "perf_counter", lambda: clock[0])
+    class LateGateway:
+        def generate(self, **kwargs):
+            clock[0] = 6.0
+            return "{}"
+    gateway = TracingModelGateway(LateGateway(), Settings(MODEL_PROVIDER="local_fixture"))
+    token = deadline.workflow_deadline.set(5.0)
+    try:
+        for _ in range(2):
+            with pytest.raises(ModelGatewayError) as failed:
+                gateway.generate(system_prompt="PROMPT_ID: agent_spending", user_prompt="{}",
+                                 temperature=0.2, max_tokens=100)
+            assert failed.value.code == "WORKFLOW_TIMEOUT"
+    finally:
+        deadline.workflow_deadline.reset(token)
+
+
 @pytest.mark.parametrize("deadline", [None, 20])
 def test_multicall_specialist_finishes_under_default_but_exhausts_explicit_deadline(
     monkeypatch, deadline

@@ -187,7 +187,7 @@ class BudgetAgent(BaseAgent):
         if (
             self._has_spending_context(task)
             and (not task.context_features.get("task_assignment")
-                 or task.context_features["task_assignment"]["requires_spending"])
+                 or task.context_features["task_assignment"].get("requires_spending") is not False)
             and CapabilityName.TRANSACTION_CATEGORY_TOTALS
             not in task.resolved_dependencies
             and not task.dependency_warnings
@@ -240,6 +240,9 @@ class BudgetAgent(BaseAgent):
                     task.context_features.get("historical_transaction_count", 0))
 
     def _requires_income(self, task):
+        assignment = task.context_features.get("task_assignment") or {}
+        if type(assignment.get("requires_income")) is bool:
+            task._budget_requires_income = assignment["requires_income"]
         if task.requested_by == AgentName.GOAL_STRATEGY or task.context_features.get("goal_capacity_required"):
             task._budget_requires_income = True
         if task._budget_requires_income is None:

@@ -80,10 +80,11 @@ def install(monkeypatch, db_session_factory, outcome, *, blocked=False):
                 raise httpx.ReadTimeout("private exception")
             if outcome == "truncated":
                 return
-            if outcome in {"error", "agent_timeout"}:
+            if outcome in {"error", "agent_timeout", "workflow_timeout", "model_timeout"}:
                 frame = {
                     "type": "error",
-                    "code": "AGENT_TIMEOUT" if outcome == "agent_timeout" else "WORKFLOW_FAILED",
+                    "code": {"agent_timeout": "AGENT_TIMEOUT", "workflow_timeout": "WORKFLOW_TIMEOUT",
+                             "model_timeout": "OPENAI_TIMEOUT"}.get(outcome, "WORKFLOW_FAILED"),
                 }
             elif outcome == "malformed":
                 frame = ["private malformed frame"]
@@ -117,6 +118,8 @@ def install(monkeypatch, db_session_factory, outcome, *, blocked=False):
         ("error", "failed"),
         ("timeout", "timed_out"),
         ("agent_timeout", "timed_out"),
+        ("workflow_timeout", "timed_out"),
+        ("model_timeout", "timed_out"),
         ("truncated", "failed"),
         ("malformed", "failed"),
         ("mismatch", "failed"),

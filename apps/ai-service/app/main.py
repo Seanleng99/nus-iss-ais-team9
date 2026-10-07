@@ -105,10 +105,12 @@ async def coach_stream(
     request: CoachRequest,
     agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
     x_workflow_id: Annotated[UUID, Header()],
+    x_workflow_timeout_seconds: Annotated[float | None, Header(ge=1, le=115)] = None,
 ) -> StreamingResponse:
     """Private transport: validated metadata events followed by one final response."""
     return StreamingResponse(
-        stream_run(agent_orchestrator, request, str(x_workflow_id)),
+        stream_run(agent_orchestrator, request, str(x_workflow_id),
+                   timeout_seconds=x_workflow_timeout_seconds),
         media_type="application/x-ndjson",
         headers={"X-Trace-ID": str(x_workflow_id), "Cache-Control": "no-store"},
     )

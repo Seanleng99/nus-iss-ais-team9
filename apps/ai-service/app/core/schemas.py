@@ -428,7 +428,7 @@ class TaskAssignment(StrictContractModel):
     agent: AgentName
     question: str = Field(min_length=1, max_length=5000)
     source_quotes: list[str] = Field(min_length=1, max_length=4)
-    requires_spending: bool = False
+    requires_spending: bool | None = None
     requires_income: bool | None = None
     requires_capacity: bool | None = None
     education_topics: list[str] = Field(default_factory=list, max_length=12)

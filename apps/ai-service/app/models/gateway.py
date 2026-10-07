@@ -11,6 +11,7 @@ from coach_i18n import input_pattern, load_data, translate
 
 from app.agents.education_access import education_gap_message, education_topics
 from app.core.config import Settings
+from app.core.deadline import check_deadline
 from app.core.run_trace import last_model_call, task_context
 from app.core.telemetry import context_fields, log_event, trace_method
 from app.models.contracts import output_format
@@ -84,6 +85,7 @@ class BedrockModelGateway:
         self.model_id = settings.model_id
         self.aws_region = settings.aws_region
         self._client = client
+        self._provided_client = client is not None
         self._total_max_attempts = total_max_attempts
 
     @property
@@ -116,7 +118,16 @@ class BedrockModelGateway:
         policy = self.settings.model_policy(component, max_tokens)
         try:
             log_event("bedrock.converse.request", model_id=policy.model_id, provider="bedrock")
-            response = self.client.converse(
+            remaining = check_deadline(component)
+            if remaining is not None and not self._provided_client:
+                limited = self.settings.model_copy(update={
+                    "model_read_timeout_seconds": min(self.settings.model_read_timeout_seconds, remaining),
+                    "model_connect_timeout_seconds": min(self.settings.model_connect_timeout_seconds, remaining),
+                })
+                client = BedrockModelGateway(limited, total_max_attempts=1).client
+            else:
+                client = self.client
+            response = client.converse(
                 modelId=policy.model_id,
                 system=[{"text": system_prompt}],
                 messages=[{"role": "user", "content": [{"text": user_prompt}]}],
@@ -137,6 +148,8 @@ class BedrockModelGateway:
                 usage=response.get("usage", {}),
                 provider_metrics=response.get("metrics", {}),
             )
+        except ModelGatewayError:
+            raise
         except Exception as exc:
             raise ModelGatewayError(
                 "The configured model could not produce a response.",
@@ -196,6 +209,7 @@ class OpenAIModelGateway:
                 reasoning_effort=policy.reasoning_effort, max_output_tokens=policy.max_tokens,
                 temperature_supported=False,
             )
+            remaining = check_deadline(component)
             response = self.client.responses.create(
                 model=policy.model_id,
                 instructions=system_prompt,
@@ -207,6 +221,8 @@ class OpenAIModelGateway:
                 max_output_tokens=policy.max_tokens,
                 text={"format": output_format()},
                 store=False,
+                **({"timeout": min(self.settings.model_read_timeout_seconds, remaining)}
+                   if remaining is not None else {}),
             )
             if response.status == "incomplete":
                 reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
@@ -850,6 +866,7 @@ class TracingModelGateway:
         last_model_call.set(call_id)
         started = perf_counter()
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
+        check_deadline(component)
         policy = self.settings.model_policy(component, max_tokens)
         if trace_id:
             with self._lock:
@@ -911,6 +928,7 @@ class TracingModelGateway:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            check_deadline(component)
             return generation
         except Exception as exc:
             status = "failed"

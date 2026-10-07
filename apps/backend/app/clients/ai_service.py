@@ -5,7 +5,7 @@ import logging
 import httpx
 
 from app.core.config import Settings
-from app.core.run_trace import active_run
+from app.core.run_trace import active_run, record_event
 from app.core.telemetry import call_span, log_event, outbound_headers, trace_method
 from app.domain.schemas import CoachRequest, CoachResponse
 
@@ -13,9 +13,10 @@ from app.domain.schemas import CoachRequest, CoachResponse
 class AIServiceUnavailableError(RuntimeError):
     """Raised when the private AI service cannot produce a valid response."""
 
-    def __init__(self, *, timed_out=False):
+    def __init__(self, *, timed_out=False, timeout_origin=None):
         super().__init__("AI service unavailable")
         self.timed_out = timed_out
+        self.timeout_origin = timeout_origin
 
 
 class AIServiceClient:
@@ -55,9 +56,11 @@ class AIServiceClient:
 
     @trace_method
     async def coach(self, request: CoachRequest) -> CoachResponse:
+        record_event("backend.ai.deadline", timeout_seconds=self._timeout, component="ai_transport")
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 headers = {"X-API-Key": self._api_key, **outbound_headers()}
+                headers["X-Workflow-Timeout-Seconds"] = str(max(1, min(115, self._timeout - 5)))
                 run = active_run.get()
                 if run is not None:
                     headers["X-Workflow-ID"] = run.trace_id
@@ -93,7 +96,9 @@ class AIServiceClient:
                 ),
             )
             raise AIServiceUnavailableError(
-                timed_out=isinstance(error, (httpx.TimeoutException, TimeoutError))
+                timed_out=isinstance(error, (httpx.TimeoutException, TimeoutError)),
+                timeout_origin=("workflow" if isinstance(error, TimeoutError) else
+                                "transport" if isinstance(error, httpx.TimeoutException) else None),
             ) from error
 
     async def _stream(self, client, request, headers, run, *, path="/coach/stream", payload=None):
@@ -128,7 +133,11 @@ class AIServiceClient:
                     log_event(
                         "ai_service.failed", error_code="AI_WORKFLOW_FAILED", trace_id=run.trace_id
                     )
-                    raise AIServiceUnavailableError(timed_out=item.get("code") == "AGENT_TIMEOUT")
+                    code = item.get("code")
+                    timed_out = code in {"AGENT_TIMEOUT", "WORKFLOW_TIMEOUT", "OPENAI_TIMEOUT"}
+                    raise AIServiceUnavailableError(timed_out=timed_out,
+                        timeout_origin={"AGENT_TIMEOUT": "specialist", "WORKFLOW_TIMEOUT": "workflow",
+                                        "OPENAI_TIMEOUT": "model"}.get(code))
                 else:
                     raise ValueError("Invalid trace frame")
             raise ValueError("Incomplete trace stream")

@@ -17,7 +17,7 @@ class TraceStreamClosed(RuntimeError):
     pass
 
 
-async def stream_run(orchestrator, request, trace_id: str, *, operation="coach"):
+async def stream_run(orchestrator, request, trace_id: str, *, operation="coach", timeout_seconds=None):
     if not _workers.acquire(blocking=False):
         yield json.dumps({"type": "error", "code": "WORKFLOW_CAPACITY"}) + "\n"
         return
@@ -43,7 +43,8 @@ async def stream_run(orchestrator, request, trace_id: str, *, operation="coach")
                 result = compose_action(request, orchestrator)
             else:
                 log_event("coach.request.accepted", input_characters=len(request.message))
-                result = orchestrator.handle(request)
+                result = (orchestrator.handle(request, timeout_seconds=timeout_seconds)
+                          if timeout_seconds is not None else orchestrator.handle(request))
             log_event(
                 "coach.response.ready",
                 trace_id=trace_id,
@@ -62,7 +63,8 @@ async def stream_run(orchestrator, request, trace_id: str, *, operation="coach")
                         {
                             "type": "error",
                             "code": (
-                                "AGENT_TIMEOUT" if code == "AGENT_TIMEOUT" else "WORKFLOW_FAILED"
+                                code if code in {"AGENT_TIMEOUT", "WORKFLOW_TIMEOUT", "OPENAI_TIMEOUT"}
+                                else "WORKFLOW_FAILED"
                             ),
                         }
                     )

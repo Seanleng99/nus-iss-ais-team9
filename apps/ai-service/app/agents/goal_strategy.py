@@ -176,6 +176,9 @@ class GoalStrategyAgent(BaseAgent):
         return ()
 
     def _requires_capacity(self, task: AgentTask) -> bool:
+        assignment = task.context_features.get("task_assignment") or {}
+        if type(assignment.get("requires_capacity")) is bool:
+            task._goal_requires_capacity = assignment["requires_capacity"]
         if task.context_features.get("goal_capture") or self._illustrative_goal(task) or self._emergency_fund_request(task):
             return False
         # Archived catalogues retain their original broad saved-goal policy.

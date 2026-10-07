@@ -346,6 +346,8 @@ Resources:
               Value: "30"
             - Name: AGENT_TIMEOUT_SECONDS
               Value: "45"
+            - Name: WORKFLOW_TIMEOUT_SECONDS
+              Value: "85"
             - Name: MODEL_ROLE_OVERRIDES
               Value: '{"router":{"reasoning_effort":"low","max_tokens":1800},"dependency_planner":{"reasoning_effort":"low","max_tokens":1000},"goal_input_requirements":{"reasoning_effort":"low","max_tokens":1000},"agent_spending":{"reasoning_effort":"medium","max_tokens":3200},"agent_budget":{"reasoning_effort":"medium","max_tokens":3200},"agent_goal_strategy":{"reasoning_effort":"medium","max_tokens":3200},"agent_investment_education":{"reasoning_effort":"medium","max_tokens":4000},"synthesizer":{"reasoning_effort":"low","max_tokens":2400},"risk_compliance":{"reasoning_effort":"medium","max_tokens":3000},"education_query_planner":{"reasoning_effort":"low","max_tokens":1600},"education_answerability":{"reasoning_effort":"low","max_tokens":2400},"response_composer":{"reasoning_effort":"low","max_tokens":2400},"action_grounding_review":{"reasoning_effort":"low","max_tokens":1600}}'
           Secrets:

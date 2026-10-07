@@ -41,6 +41,7 @@ from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryErro
 from app.core.citations import citation_contract, render_citations, validate_citations
 from app.core.config import Settings
 from app.core.config import settings as runtime_settings
+from app.core.deadline import check_deadline, remaining_seconds, workflow_deadline
 from app.core.education_grounding import EducationGroundingSnapshot
 from app.core.follow_up import resolve_follow_up, specialist_follow_up
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
@@ -73,6 +74,7 @@ from app.core.schemas import (
     SessionContext,
     SourceCitation,
     SynthesisDecision,
+    TaskAssignment,
 )
 from app.core.session_context import (
     attributed_turn_context,
@@ -440,6 +442,13 @@ class AgentOrchestrator:
 
             def validate_router(value: RouterDecision) -> RouterDecision:
                 if self.prompts.version == "v9":
+                    if not value.task_assignments and len(value.selected_agents) == 1:
+                        # A single specialist owns the complete question; no semantic split
+                        # is inferred. Older model contracts still use its scoped planner.
+                        value.task_assignments = [TaskAssignment(
+                            agent=value.selected_agents[0], question=state["sanitized_message"],
+                            source_quotes=[state["sanitized_message"]], education_topics=value.education_topics,
+                        )]
                     assigned = [item.agent for item in value.task_assignments]
                     if (len(set(assigned)) != len(assigned) or set(assigned) != set(value.selected_agents)
                             or any(not quote.strip() or quote not in state["sanitized_message"]
@@ -889,8 +898,11 @@ class AgentOrchestrator:
             futures[future] = task.task_id
 
         fatal_failure: tuple[str, str] | None = None
-        for task, execution in self._task_outcomes(futures, tasks, executor, self.config.agent_timeout_seconds):
+        remaining = check_deadline("specialists")
+        timeout = min(self.config.agent_timeout_seconds, remaining) if remaining is not None else self.config.agent_timeout_seconds
+        for task, execution in self._task_outcomes(futures, tasks, executor, timeout):
             if execution is None:
+                check_deadline("specialists")
                 task.status = AgentTaskStatus.TIMED_OUT
                 events.append(
                     self._event(
@@ -1719,6 +1731,10 @@ class AgentOrchestrator:
         elif (
             len(state["agent_results"]) == 1
             and (
+                (self.prompts.version == "v9" and not any(state.get(flag) for flag in
+                    ("budget_capture", "goal_capture", "spending_capture"))
+                 and not state["agent_results"][0].blocked)
+                or
                 (state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
                  and (self.prompts.version in {"v6", "v7", "v8", "v9"}
                       or state["agent_results"][0].data.get("evidence_status") == "insufficient"))
@@ -1895,7 +1911,8 @@ class AgentOrchestrator:
             ("REPAIR_USAGE_UNAVAILABLE", fixture or (usage_known and len(latest_repair_calls) == 2)),
             ("REPAIR_CALL_BUDGET_EXCEEDED", len(calls) + 4 <= self.config.max_model_calls_per_run),
             ("REPAIR_TOKEN_BUDGET_EXCEEDED", used_tokens + estimated_repair_tokens < self.config.max_model_tokens_per_run),
-            ("REPAIR_DEADLINE_EXCEEDED", perf_counter() - state.get("workflow_started", 0) < self.config.agent_timeout_seconds),
+            ("REPAIR_DEADLINE_EXCEEDED", remaining_seconds() > 0 if remaining_seconds() is not None else
+             perf_counter() - state.get("workflow_started", 0) < self.config.workflow_timeout_seconds),
         ]
         repair_blockers = [code for code, passed in repair_conditions if not passed]
         repair_reason = repair_blockers[0] if repair_blockers else "REPAIR_ELIGIBLE"
@@ -2452,7 +2469,7 @@ class AgentOrchestrator:
         return evidence
 
     @trace_method
-    def handle(self, request: CoachRequest) -> CoachResponse:
+    def handle(self, request: CoachRequest, *, timeout_seconds: float | None = None) -> CoachResponse:
         request = request.model_copy(update={"response_locale": request_locale(request)})
         trace_id = workflow_id.get() or str(uuid4())
         log_event(
@@ -2464,11 +2481,14 @@ class AgentOrchestrator:
         )
         executed_at = datetime.now(UTC).isoformat()
         workflow_started = perf_counter()
+        limit = min(self.config.workflow_timeout_seconds, timeout_seconds or self.config.workflow_timeout_seconds)
+        deadline_token = workflow_deadline.set(workflow_started + limit)
         started_event = AuditEvent(
             trace_id=trace_id,
             event_type="workflow.started",
             actor="orchestrator",
             occurred_at=executed_at,
+            details={"timeout_seconds": limit},
         )
         _write_workflow_log(
             trace_id=trace_id,
@@ -2476,7 +2496,8 @@ class AgentOrchestrator:
             event_id=started_event.event_id,
             actor=started_event.actor,
             details={"model_provider": self.config.model_provider,
-                     "model_id": self.config.model_id, "prompt_set_version": self.prompts.version},
+                     "model_id": self.config.model_id, "prompt_set_version": self.prompts.version,
+                     "timeout_seconds": limit},
         )
         workflow_token = workflow_id.set(trace_id)
         trace_token = self.gateway.bind_trace(trace_id)
@@ -2492,6 +2513,7 @@ class AgentOrchestrator:
                 }
             )
             response = result["response"]
+            check_deadline("finalize")
             response.audit["response_locale"] = request_locale(request)
             response.audit["response_language"] = request_language(request)
             model_calls = self.gateway.snapshot(trace_id)
@@ -2544,6 +2566,7 @@ class AgentOrchestrator:
             )
             raise
         finally:
+            workflow_deadline.reset(deadline_token)
             self.education_retriever.end_request(retrieval_token)
             self.gateway.reset_trace(trace_token)
             self.gateway.clear(trace_id)
