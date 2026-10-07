@@ -100,11 +100,11 @@ class GoalStrategyAgent(BaseAgent):
                 ), capabilities=[])
         return super().run_task(task)
 
-    @staticmethod
-    def _emergency_fund_request(task: AgentTask) -> bool:
+    def _emergency_fund_request(self, task: AgentTask) -> bool:
         return (
             "emergency_fund" in task.input_data
-            or "emergency fund readiness" in education_topics(task.sanitized_message)
+            or "emergency fund readiness" in (task.context_features.get("education_topics", [])
+                if self.prompts.version == "v9" else education_topics(task.sanitized_message))
         )
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
@@ -125,7 +125,9 @@ class GoalStrategyAgent(BaseAgent):
                 ),
             )
         if (
-            (self._emergency_fund_request(task) or should_request_education_context(task.sanitized_message))
+            (self._emergency_fund_request(task) or
+             (bool(task.context_features.get("education_topics")) if self.prompts.version == "v9"
+              else should_request_education_context(task.sanitized_message)))
             and (self._emergency_fund_request(task) or not task.context_features.get("education_handled_separately"))
             and CapabilityName.EDUCATION_CONTEXT not in task.resolved_dependencies
             and not any(

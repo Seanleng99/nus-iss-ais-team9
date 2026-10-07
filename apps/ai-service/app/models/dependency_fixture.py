@@ -2,6 +2,8 @@
 
 import re
 
+from app.agents.education_access import education_topics
+
 
 def _parts(message):
     return [part.strip() for part in re.split(
@@ -59,11 +61,12 @@ def fixture_task_assignments(agents, message):
     assignments = []
     for agent in agents:
         selected = [part for part in parts if re.search(terms[agent], part, re.IGNORECASE)]
-        question = ". ".join(selected) if selected else message
+        question = ". ".join(selected) if selected and len(agents) > 1 else message
         payload = {"message": question, "context_features": {
             "goal_capacity_required": fixture_goal_requires_capacity({"message": message})
         }}
         assignments.append({"agent": agent, "question": question,
                             "source_quotes": selected[:4] or [message],
+                            "education_topics": education_topics(question),
                             "requires_spending": agent == "budget" and fixture_budget_uses_spending(payload)})
     return assignments

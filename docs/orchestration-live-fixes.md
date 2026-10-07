@@ -29,3 +29,12 @@ Persistence collapses aliases with the same position, option index, owner and ca
 topics, while conflicting identities remain ambiguous. Malformed historical metadata
 can fall back to the available displayed option set using the existing dialogue
 boundaries. Unavailable answers and genuinely missing subjects still clarify.
+
+## 3. Semantic Education grounding
+
+The v9 router assigns canonical educational topics to each task according to the
+meaning of its question. Budget and Goal request grounding from that assignment,
+not whole-question vocabulary matches. The generic `pool`/`pooled` aliases are
+removed. Shared goal funding is arithmetic; explaining investment pooling remains
+an educational request. A separately selected Education specialist continues to
+own the independent educational part. Emergency-fund aggregates use Goal's scope.

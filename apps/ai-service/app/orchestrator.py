@@ -132,6 +132,7 @@ def _write_workflow_log(
 
 
 class OrchestratorState(TypedDict, total=False):
+    task_assignments: list[dict]
     workflow_started: float
     request: CoachRequest
     trace_id: str
@@ -449,6 +450,10 @@ class AgentOrchestrator:
                             "to Budget's own task, not another specialist's question.",
                             code="INVALID_STRUCTURED_RESPONSE", component="router",
                         )
+                    if any(topic not in CANONICAL_EDUCATION_TOPICS
+                           for item in value.task_assignments for topic in item.education_topics):
+                        raise ModelGatewayError("Task education_topics must use supplied canonical labels.",
+                                                code="UNAPPROVED_EDUCATION_TOPIC", component="router")
                 # Only exact governed aliases can turn a public account/scam
                 # concept into its corpus term. Unrecognized account wording
                 # retains the privacy screen; this never rewrites arbitrary
@@ -734,7 +739,10 @@ class AgentOrchestrator:
             # specialists. Recognized topics can use their governed capability
             # without adding a second Education narrative. Capture paths return
             # drafts before dependency preflight, so they still need a specialist.
-            detected_topics = set(education_topics(state["sanitized_message"]))
+            detected_topics = (set(topic for item in decision.task_assignments
+                                   for topic in item.education_topics)
+                               if self.prompts.version == "v9" else
+                               set(education_topics(state["sanitized_message"])))
             has_conditional_consumer = (
                 AgentName.BUDGET in decision.selected_agents and not decision.budget_capture
                 or AgentName.GOAL_STRATEGY in decision.selected_agents and not decision.goal_capture
@@ -753,13 +761,15 @@ class AgentOrchestrator:
                 or conditional_education or emergency_goal
             )
             if not has_education_access and (
-                decision.education_topics or should_request_education_context(state["sanitized_message"])
+                decision.education_topics or (self.prompts.version != "v9"
+                    and should_request_education_context(state["sanitized_message"]))
             ):
                 decision.selected_agents.append(AgentName.INVESTMENT_EDUCATION)
                 decision.rationale.append(translate('routing.education_specialist', response_language))
         checkpoint("EDUCATION_ACCESS_REQUIRED")
         from app.tools.budget_context import scope_budget_request
         request = scope_budget_request(request, decision)
+        decision.selected_agents = [AgentName(agent) for agent in decision.selected_agents]
         event = self._event(
             state,
             "routing.completed",
@@ -772,7 +782,8 @@ class AgentOrchestrator:
         )
         return {
             "request": request,
-            "turn_decision": decision.model_dump(mode="json"),
+            "turn_decision": decision.model_dump(mode="json", exclude={"task_assignments"}),
+            "task_assignments": [item.model_dump(mode="json") for item in decision.task_assignments],
             "selected_agents": decision.selected_agents,
             "follow_up": resolution,
             "routing_rationale": decision.rationale,
@@ -2131,7 +2142,8 @@ class AgentOrchestrator:
         requested_by: AgentName | None = None,
         provider_question: str | None = None,
     ) -> AgentTask:
-        assignment = next((item for item in state.get("turn_decision", {}).get("task_assignments", [])
+        agent = AgentName(agent)
+        assignment = next((item for item in state.get("task_assignments", [])
                            if item["agent"] == agent.value), None)
         question = (assignment["question"] if assignment else
                     provider_question or state["sanitized_message"])
@@ -2166,7 +2178,8 @@ class AgentOrchestrator:
                 "goals": [item.model_dump(mode="json") for item in snapshot.goals]
             }
             if "emergency fund readiness" in (
-                education_topics(state["sanitized_message"]) + state.get("education_topics", [])
+                (assignment.get("education_topics", []) if assignment else
+                 ([] if self.prompts.version == "v9" else education_topics(question)))
             ):
                 # Share aggregates, not raw transaction descriptions, with Goal Strategy.
                 input_data["emergency_fund"] = call_tool(agent, "emergency_fund_summary", snapshot)
@@ -2218,7 +2231,8 @@ class AgentOrchestrator:
                     requested_by == AgentName.GOAL_STRATEGY or state.get("goal_capacity_required", False)
                 ) and not state.get("goal_capture"),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
-                "education_topics": state.get("education_topics", []),
+                "education_topics": (assignment.get("education_topics", []) if assignment else
+                                     state.get("education_topics", []) if agent == AgentName.INVESTMENT_EDUCATION else []),
                 "education_handled_separately": (
                     agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY}
                     and AgentName.INVESTMENT_EDUCATION in state.get("selected_agents", [])

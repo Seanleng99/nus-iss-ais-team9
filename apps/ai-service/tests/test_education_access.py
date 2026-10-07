@@ -1,4 +1,9 @@
 import pytest
+
+
+def test_shared_savings_pool_does_not_request_investment_pooling():
+    assert "investment pooling" not in education_topics("Assess my goals against one shared savings pool.")
+    assert "investment pooling" in education_topics("Explain how pooled investments work.")
 from language_fixtures import language_case
 
 from app.agents.education_access import (

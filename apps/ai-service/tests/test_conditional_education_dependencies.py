@@ -118,10 +118,13 @@ def test_semantic_calendar_routing_uses_conditional_education(agent) -> None:
     assert "agent_investment_education" not in gateway.components
     assert "budget_capture" not in gateway.components
     assert "investment_education" not in response.selected_agents
-    assert response.audit["retrieval_consumers"] == (["budget"] if agent == "budget" else ["budget", "goal_strategy"])
+    assert response.audit["retrieval_consumers"] == (["budget"] if agent == "budget" else ["goal_strategy"])
     assert set(retriever.executors) == {"investment_education"}
     budget = next(result for result in response.agent_results if result.agent == "budget")
-    assert budget.data["evidence_status"] == "grounded"
+    if agent == "budget":
+        assert budget.data["evidence_status"] == "grounded"
+    else:
+        assert "evidence_status" not in budget.data
     assert budget.data["saved_budget_context"]["selected_period"] == "2026-11-01"
     assert [row["period_start"] for row in budget.data["spending_context"]["periods"]] == ["2026-11-01"]
     assert any(
@@ -522,8 +525,8 @@ def test_goal_budget_spending_and_education_chain_completes_within_bound() -> No
     response = orchestrator(retriever).handle(CoachRequest.model_validate(payload))
 
     assert response.selected_agents == ["goal_strategy", "budget", "spending"]
-    # v9 evaluates Budget's optional Spending need after its Education request.
-    assert response.audit["dependency_rounds"] == 6
+    # Capacity providers do not inherit Goal's unrelated educational explanation.
+    assert response.audit["dependency_rounds"] == 5
     assert response.audit["dependency_rounds"] <= Settings().max_dependency_rounds
     assert len(retriever.queries) == 3
     assert len(retriever.queries) == len(set(retriever.queries))

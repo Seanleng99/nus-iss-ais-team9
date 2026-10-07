@@ -431,6 +431,7 @@ class TaskAssignment(StrictContractModel):
     requires_spending: bool = False
     requires_income: bool | None = None
     requires_capacity: bool | None = None
+    education_topics: list[str] = Field(default_factory=list, max_length=12)
 
 
 class RouterDecision(BaseModel):
