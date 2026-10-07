@@ -24,6 +24,9 @@ jobs:
     name: Detect affected services
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
     outputs:
       frontend_ci: ${{ steps.classify.outputs.frontend_ci }}
       backend_ci: ${{ steps.classify.outputs.backend_ci }}
@@ -43,32 +46,41 @@ jobs:
           persist-credentials: false
       - name: Test change classifier
         run: python -m unittest discover -s infra/scripts/tests -p 'test_detect_changes.py'
+      - name: Test deployment baseline selection
+        run: python -m unittest discover -s infra/scripts/tests -p 'test_deployment_baseline.py'
       - name: Keep Chinese language data out of code
         run: >-
           python scripts/scan_chinese.py
           --output artifacts/chinese-character-inventory.json
           --check-code
+      - id: deployment-baseline
+        name: Find last successful application deployment
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python infra/scripts/deployment_baseline.py
+          --repository "$GITHUB_REPOSITORY"
+          --json-output artifacts/deployment-baseline.json
+          --github-output "$GITHUB_OUTPUT"
       - id: classify
         name: Classify changed paths
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
+          DEPLOYED_SHA: ${{ steps.deployment-baseline.outputs.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           mkdir -p artifacts
-          if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" || ( "$EVENT_NAME" == "push" && -z "$DEPLOYED_SHA" ) ]]; then
             python infra/scripts/detect_changes.py --all \
               --json-output artifacts/change-manifest.json \
               --github-output "$GITHUB_OUTPUT"
           else
             if [[ "$EVENT_NAME" == "pull_request" ]]; then
               git diff --name-only "$BASE_SHA" "$HEAD_SHA" > artifacts/changed-files.txt
-            elif [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
-              git diff-tree --root --no-commit-id --name-only -r "$HEAD_SHA" \
-                > artifacts/changed-files.txt
             else
-              git diff --name-only "$BEFORE_SHA" "$HEAD_SHA" > artifacts/changed-files.txt
+              git diff --name-only "$DEPLOYED_SHA" "$HEAD_SHA" > artifacts/changed-files.txt
             fi
             python infra/scripts/detect_changes.py \
               --changed-files artifacts/changed-files.txt \
@@ -79,7 +91,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: change-manifest
-          path: artifacts/change-manifest.json
+          path: |
+            artifacts/change-manifest.json
+            artifacts/deployment-baseline.json
           if-no-files-found: error
           retention-days: 7
 

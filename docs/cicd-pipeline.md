@@ -4,6 +4,15 @@
 
 A push to `main` runs CI and starts `Release to AWS` only after CI succeeds for the current commit. Application releases build and scan all three service images from that tested SHA so recovery also includes earlier fixes. The backend deployment runs Alembic before the service update. Post-deployment smoke verifies unauthenticated denial, scoped automation access, Education citations, independent Policy evidence, corpus pins, and persisted trace provenance. Failed checks restore the task definitions that were updated during the release; ECS deployment circuit breakers cover failed service starts.
 
+Main pushes classify all changes since the last successful `Deploy demo environment`
+job, rather than just the newest push. Failed CI or deployment leaves application
+changes pending; a successful release with a skipped deployment does not advance
+the baseline. This lets a later security or pipeline fix release the pending
+application changes. If no deployment is retained or its commit is outside the
+checkout history, CI runs every service check. Pull requests retain their normal
+base-to-head comparison. The change-manifest artifact also records the deployment
+baseline used for classification.
+
 The AI task check requires `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, medium default reasoning with the reviewed role overrides, the [packaged current prompt identity](current-prompt-contract.md), both RAG providers set to `local_documents`, exact nonempty Education and Policy corpus versions, and an ECS `OPENAI_API_KEY` secret reference. The key is stored in AWS Secrets Manager and is never a GitHub variable or repository secret.
 
 ## Validation workflows
