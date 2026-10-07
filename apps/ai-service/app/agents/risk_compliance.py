@@ -1037,6 +1037,7 @@ class RiskComplianceAgent:
                                     "category_totals",
                                     "transaction_count",
                                     "monthly_category_totals",
+                                    "comparison_periods",
                                     "historical_months",
                                     "historical_transaction_count",
                                     "recorded_totals_complete",

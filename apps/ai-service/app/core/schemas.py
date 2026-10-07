@@ -438,6 +438,9 @@ class TaskAssignment(StrictContractModel):
 
 class RouterDecision(BaseModel):
     task_assignments: list[TaskAssignment] = Field(default_factory=list, max_length=4)
+    spending_scope: BudgetScope | None = None
+    spending_scope_unclear: bool = False
+    spending_analysis_period: date | None = None
     budget_scope: BudgetScope | None = None
     budget_scope_unclear: bool = False
     follow_up_source_index: int | None = Field(default=None, ge=0, le=7)
@@ -467,7 +470,7 @@ class RouterDecision(BaseModel):
             raise ValueError("risk_compliance is a mandatory post-routing agent")
         return list(dict.fromkeys(value))
 
-    @field_validator("budget_status_period_start")
+    @field_validator("budget_status_period_start", "spending_analysis_period")
     @classmethod
     def validate_status_period(cls, value):
         if value is not None and value.day != 1:

@@ -135,6 +135,7 @@ def _write_workflow_log(
 
 
 class OrchestratorState(TypedDict, total=False):
+    spending_request: CoachRequest
     synthesis_feedback: list[str]
     task_assignments: list[dict]
     workflow_started: float
@@ -779,6 +780,24 @@ class AgentOrchestrator:
                 decision.rationale.append(translate('routing.education_specialist', response_language))
         checkpoint("EDUCATION_ACCESS_REQUIRED")
         from app.tools.budget_context import scope_budget_request
+        spending_request = (scope_budget_request(request, decision.model_copy(update={
+            "budget_scope": decision.spending_scope, "budget_scope_unclear": decision.spending_scope_unclear,
+        })) if decision.spending_scope is not None or decision.spending_scope_unclear else None)
+        if spending_request is not None and decision.spending_analysis_period:
+            period = decision.spending_analysis_period.isoformat()
+            context = dict(spending_request.snapshot.transaction_context)
+            scoped = dict(context.get("budget_spending_scope") or {})
+            if scoped and period not in {row["period_start"] for row in scoped.get("periods", [])}:
+                raise ModelGatewayError("The Spending analysis period must belong to its resolved scope.",
+                                        code="INVALID_STRUCTURED_RESPONSE", component="router")
+            if not scoped and spending_request.snapshot.period_start != period:
+                raise ModelGatewayError("Spending analysis period is outside its selected month.",
+                                        code="INVALID_STRUCTURED_RESPONSE", component="router")
+            if scoped:
+                scoped["analysis_period_start"] = period
+                context["budget_spending_scope"] = scoped
+            spending_request = spending_request.model_copy(update={"snapshot": spending_request.snapshot.model_copy(
+                update={"period_start": period, "transaction_context": context})})
         request = scope_budget_request(request, decision)
         decision.selected_agents = [AgentName(agent) for agent in decision.selected_agents]
         event = self._event(
@@ -793,6 +812,7 @@ class AgentOrchestrator:
         )
         return {
             "request": request,
+            **({"spending_request": spending_request} if spending_request is not None else {}),
             "turn_decision": decision.model_dump(mode="json", exclude={"task_assignments"}),
             "task_assignments": [item.model_dump(mode="json") for item in decision.task_assignments],
             "selected_agents": decision.selected_agents,
@@ -929,7 +949,7 @@ class AgentOrchestrator:
                 task_results[task.task_id] = outcome.result
                 for capability in outcome.capabilities:
                     definition = self._validate_produced_capability(task, capability)
-                    fingerprint = self._capability_input_fingerprint(state, definition)
+                    fingerprint = self._capability_input_fingerprint(state, definition, task=task)
                     capability.input_fingerprint = fingerprint
                     capabilities[self._capability_key(capability.capability, fingerprint)] = capability
                 completion_details = {
@@ -2237,7 +2257,9 @@ class AgentOrchestrator:
                            if item["agent"] == agent.value), None)
         question = (assignment["question"] if assignment else
                     provider_question or state["sanitized_message"])
-        snapshot = state["request"].snapshot
+        snapshot = (state["spending_request"].snapshot
+                    if agent == AgentName.SPENDING and requested_by is None and state.get("spending_request")
+                    else state["request"].snapshot)
         scoped_spending = snapshot.transaction_context.get("budget_spending_scope") or {}
         if agent == AgentName.SPENDING:
             input_data = {
@@ -2402,8 +2424,20 @@ class AgentOrchestrator:
     def _capability_input_fingerprint(
         state: OrchestratorState,
         definition: CapabilityDefinition,
+        task: AgentTask | None = None,
     ) -> str:
         snapshot = state["request"].snapshot.model_dump(mode="json")
+        if definition.capability == CapabilityName.TRANSACTION_CATEGORY_TOTALS and task is not None:
+            snapshot.update(task.input_data)
+        if definition.capability == CapabilityName.TRANSACTION_CATEGORY_TOTALS:
+            context = dict(snapshot.get("transaction_context") or {})
+            context.pop("requested_budget_scope", None)
+            scoped = dict(context.get("budget_spending_scope") or {})
+            if scoped:
+                scoped.pop("scope", None)
+                scoped.pop("analysis_period_start", None)
+                context["budget_spending_scope"] = scoped
+            snapshot["transaction_context"] = context
         values = {}
         for field in definition.required_inputs:
             if field == "sanitized_message":

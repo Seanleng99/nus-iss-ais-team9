@@ -72,3 +72,13 @@ draft, verdict, section ownership and original financial grounding. They never e
 public traces or responses. The ECS template uses a private ephemeral `/tmp` folder;
 retention is at most 128 files, with 24-hour expiry enforced on subsequent writes.
 Operator access is required. Local diagnostics are disabled unless configured.
+
+## 6. Spending analysis and comparison periods
+
+The router supplies Spending's own calendar scope and optional primary analysis
+month. Budget retains its independent scope. November's zero-record result remains
+the main analysis even when October has comparison records. Aggregate grounding
+keeps the primary totals, comparison rows and earlier history distinct. Raw dated
+records can supply multi-month aggregates without borrowing another month's totals.
+Unclear periods clarify. Validated scopes survive the content-free trace boundary.
+Capability fingerprints bind produced expense totals to their actual task inputs.

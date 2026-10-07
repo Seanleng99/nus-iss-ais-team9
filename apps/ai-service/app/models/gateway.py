@@ -361,6 +361,13 @@ class LocalFixtureModelGateway:
             decision["task_assignments"] = fixture_task_assignments(
                 decision["selected_agents"], payload["message"],
             )
+            if "spending" in decision["selected_agents"]:
+                from app.models.budget_fixture import fixture_budget_scope
+                spending_question = next(item["question"] for item in decision["task_assignments"] if item["agent"] == "spending")
+                scope, unclear = fixture_budget_scope(spending_question, payload.get("today"))
+                decision.update(spending_scope=scope, spending_scope_unclear=unclear)
+                if scope["kind"] == "periods":
+                    decision["spending_analysis_period"] = scope["periods"][0]
             return json.dumps(decision)
         if prompt_id == "PROMPT_ID: dependency_planner":
             return json.dumps(self._dependency_plan(payload))

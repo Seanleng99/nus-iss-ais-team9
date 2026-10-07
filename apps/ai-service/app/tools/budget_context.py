@@ -55,6 +55,18 @@ def scope_budget_request(request, decision):
         ]
 
     snapshot = request.snapshot
+    if spending is None and len(periods) > 1:
+        spending = {}
+        for txn in [*snapshot.recent_transactions, *snapshot.historical_transactions]:
+            period = txn.occurred_on[:7] + "-01"
+            row = spending.setdefault(period, _expense_month({}, period))
+            if txn.amount.currency != "SGD":
+                row["excluded_currencies"] = sorted(set(row["excluded_currencies"]) | {txn.amount.currency})
+                continue
+            row["transaction_count"] += 1
+            row["category_totals"][txn.category] = float(Decimal(str(row["category_totals"].get(txn.category, 0))) + Decimal(str(txn.amount.amount)))
+            row["first_recorded_on"] = min(row["first_recorded_on"] or txn.occurred_on, txn.occurred_on)
+            row["last_recorded_on"] = max(row["last_recorded_on"] or txn.occurred_on, txn.occurred_on)
     if spending is not None and periods:
         first = month_number(periods[0])
         history_periods = [date(n // 12, n % 12 + 1, 1) for n in range(max(12, first - 6), first)]

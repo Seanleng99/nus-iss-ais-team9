@@ -225,7 +225,7 @@ class SpendingAgent(BaseAgent):
             "total_amount": round(sum(scoped["category_totals"].values()), 2),
         }
         last = date.fromisoformat(rows[-1]["period_start"]) if rows else None
-        return {
+        result = {
             **scoped, "monthly_category_totals": rows, "historical_months": history,
             "category_trends": [], "temporal_patterns": [], "anomalies": [],
             "data_quality": "insufficient" if scoped["transaction_count"] < 5 else "limited",
@@ -236,6 +236,24 @@ class SpendingAgent(BaseAgent):
             "temporal_pattern_scope": "monthly_aggregates_only",
             "excluded_currencies": sorted({c for r in [*rows, *history] for c in r.get("excluded_currencies", [])}),
         }
+        primary = next((row for row in rows if row["period_start"] == scoped.get("analysis_period_start")), None)
+        if primary is not None:
+            start = date.fromisoformat(primary["period_start"])
+            coverage = {"record_count": primary["transaction_count"], "dated_record_count": primary["transaction_count"],
+                        "first_recorded_on": primary.get("first_recorded_on"), "last_recorded_on": primary.get("last_recorded_on"),
+                        "total_amount": round(sum(primary["category_totals"].values()), 2)}
+            result.update(category_totals=primary["category_totals"], transaction_count=primary["transaction_count"],
+                          analysis_period_start=primary["period_start"], analysis_coverage=coverage,
+                          analysis_period_end=str(start.replace(day=calendar.monthrange(start.year, start.month)[1])),
+                          selected_month_coverage=coverage,
+                          comparison_periods=[row for row in rows if row is not primary],
+                          data_quality="insufficient" if primary["transaction_count"] < 5 else "limited")
+        return result
+
+    def _missing_input_questions(self, task):
+        if task.input_data.get("transaction_context", {}).get("scope_unclear"):
+            return ["Specify the requested month and year or an unambiguous range."]
+        return []
 
     def _compute_category_totals(self, transactions: list) -> dict:
         """Compute category totals from transactions."""

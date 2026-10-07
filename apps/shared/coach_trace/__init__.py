@@ -139,6 +139,7 @@ CODE_LISTS = {
     "repair_blockers",
 }
 DECISION_FIELDS = {
+    "budget_scope", "spending_scope", "spending_analysis_period", "budget_scope_unclear", "spending_scope_unclear",
     "selected_agents",
     "query_topics",
     "routing_mode",
@@ -180,6 +181,25 @@ def safe_details(details, *, decision=False):
     result = {}
     for key, value in details.items():
         if decision and key not in DECISION_FIELDS:
+            continue
+        if key in {"budget_scope", "spending_scope"} and isinstance(value, dict):
+            from coach_math.budget_scope import BudgetScope
+            try:
+                result[key] = BudgetScope.model_validate(value).model_dump(mode="json", exclude_none=True)
+            except ValueError:
+                pass
+            continue
+        if key == "spending_analysis_period" and isinstance(value, str):
+            from datetime import date
+            try:
+                parsed = date.fromisoformat(value)
+                if parsed.day == 1:
+                    result[key] = parsed.isoformat()
+            except ValueError:
+                pass
+            continue
+        if key in {"budget_scope_unclear", "spending_scope_unclear"} and type(value) is bool:
+            result[key] = value
             continue
         if (
             key in COUNTS
