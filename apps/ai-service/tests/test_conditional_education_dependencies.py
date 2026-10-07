@@ -522,7 +522,9 @@ def test_goal_budget_spending_and_education_chain_completes_within_bound() -> No
     response = orchestrator(retriever).handle(CoachRequest.model_validate(payload))
 
     assert response.selected_agents == ["goal_strategy", "budget", "spending"]
-    assert response.audit["dependency_rounds"] == 5
+    # v9 evaluates Budget's optional Spending need after its Education request.
+    assert response.audit["dependency_rounds"] == 6
+    assert response.audit["dependency_rounds"] <= Settings().max_dependency_rounds
     assert len(retriever.queries) == 3
     assert len(retriever.queries) == len(set(retriever.queries))
     assert {

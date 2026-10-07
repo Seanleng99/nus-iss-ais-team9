@@ -18,8 +18,8 @@ def local_orchestrator() -> AgentOrchestrator:
     return AgentOrchestrator(config=config, gateway=LocalFixtureModelGateway())
 
 
-def test_prompt_catalog_defaults_to_active_v8() -> None:
-    assert PromptCatalog().version == "v8"
+def test_prompt_catalog_defaults_to_active_v9() -> None:
+    assert PromptCatalog().version == "v9"
 
 
 def test_settings_rejects_superseded_v1_prompt() -> None:
@@ -406,7 +406,7 @@ def test_compliance_review_receives_investment_evidence() -> None:
     } == {"coach-evidence-policy"}
 
 
-def test_investment_rag_reports_v8_prompt_set_and_model_telemetry() -> None:
+def test_investment_rag_reports_v9_prompt_set_and_model_telemetry() -> None:
     request = CoachRequest(
         user_id="u1",
         session_id="s9",
@@ -416,7 +416,7 @@ def test_investment_rag_reports_v8_prompt_set_and_model_telemetry() -> None:
 
     response = local_orchestrator().handle(request)
 
-    assert response.audit["prompt_set_version"] == "v8"
+    assert response.audit["prompt_set_version"] == "v9"
     assert response.audit["model_call_count"] == len(response.audit["model_calls"])
     assert response.audit["model_call_count"] == 3
     assert [call["component"] for call in response.audit["model_calls"]] == [

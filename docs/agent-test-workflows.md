@@ -39,7 +39,7 @@ All test paths below are relative to `apps/ai-service/tests/`.
 | Budget | Boundaries | `test_edge_budget_regressions.py` | Evidence for read-only records, rejected mutation fields and qualified calculations when education is unavailable |
 | Goal | Offline | `test_goal_capture.py`, `test_saved_budget_capacity.py` | Create/delete drafts, follow-up details, currency and confirmed savings capacity without double subtraction |
 | Goal | Feasibility | `test_emergency_fund.py` | Emergency-fund evidence, dated spending, separate balances/currencies and execution refusal |
-| Goal | Dependencies | `test_dynamic_dependencies.py` | Goal requests to Budget, required capabilities, dependency resumption, fan-in and optional failures |
+| Goal | Dependencies | `test_dynamic_dependencies.py`, `test_conditional_financial_dependencies.py` | Conditional saved-goal arithmetic, required capacity, resumption, reuse, independent concurrency, fan-in and optional failures |
 | Goal | Recovery | `test_goal_education_recovery.py` | Goal references, combined affordability and education, bounded correction, model failures and token/usage limits |
 | Investment | Offline | `test_investment_education_safety.py`, `test_investment_review_regressions.py` | Advice/execution/return guarantees, independent review and citation integrity |
 | Investment | Beginner | `test_beginner_investment_questions.py` | Thirty learner scenarios plus dataset integrity |

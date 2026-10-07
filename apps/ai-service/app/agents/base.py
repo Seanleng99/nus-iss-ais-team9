@@ -217,14 +217,15 @@ class BaseAgent(ABC):
                     "claim goal data is missing because it is not in your role's grounding. "
                     "Keep this response focused on budget capacity without narrating other tasks."
                 )
-            system_prompt += (
-                "\nState the capacity source and budget month. A confirmed_plan uses its saved savings allocation, "
-                "not a percentage baseline; unallocated income remains separate and is not assigned to goals. "
-                "An illustrative_fallback must be labeled as an estimate without a confirmed plan. "
-                "Never describe either as cash available or observed savings. Goals share one monthly pool; "
-                "use combined_feasibility for concurrent goals and never promise each the whole pool. "
-                "Future goal feasibility is conditional on sustaining the stated monthly amount."
-            )
+            if grounding.get("calculation_scope") != "saved_goal_arithmetic":
+                system_prompt += (
+                    "\nState the capacity source and budget month. A confirmed_plan uses its saved savings allocation, "
+                    "not a percentage baseline; unallocated income remains separate and is not assigned to goals. "
+                    "An illustrative_fallback must be labeled as an estimate without a confirmed plan. "
+                    "Never describe either as cash available or observed savings. Goals share one monthly pool; "
+                    "use combined_feasibility for concurrent goals and never promise each the whole pool. "
+                    "Future goal feasibility is conditional on sustaining the stated monthly amount."
+                )
 
         def validate_narrative(narrative: AgentNarrative) -> AgentNarrative:
             for text in (narrative.summary, *narrative.rationale):
@@ -235,7 +236,7 @@ class BaseAgent(ABC):
 
         # Hybrid profiles keep the complete writer contract in the versioned
         # prompt. Repeating the legacy guidance crowds out safe repair calls.
-        if self.name == AgentName.INVESTMENT_EDUCATION and self.prompts.version not in {"v6", "v7", "v8"}:
+        if self.name == AgentName.INVESTMENT_EDUCATION and self.prompts.version not in {"v6", "v7", "v8", "v9"}:
             system_prompt += (
                 "\nAnswer the requested concept and question_intent directly, with enough "
                 "detail for a beginner to understand the practical meaning and trade-offs. "

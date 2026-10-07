@@ -14,8 +14,8 @@ MODEL_SECTION_LABEL = (
 )
 
 
-def test_runtime_smoke_checks_v8_and_recommended_policies():
-    audit = {"prompt_set_version": "v8", "model_calls": [
+def test_runtime_smoke_checks_v9_and_recommended_policies():
+    audit = {"prompt_set_version": "v9", "model_calls": [
         {"component": "agent_budget", "reasoning_effort": "medium", "max_output_tokens": 3200},
         {"component": "risk_compliance", "reasoning_effort": "medium", "max_output_tokens": 3000},
     ]}
@@ -35,7 +35,7 @@ def budget_response():
     return {
         "blocked": False, "selected_agents": ["budget"], "answer": "Illustrative disposable income is SGD 2,500.",
         "agent_results": [{"agent": "budget", "data": {"disposable_income": 2500}}],
-        "audit": {"trace_id": "budget-analysis", "model_provider": "openai", "prompt_set_version": "v8",
+        "audit": {"trace_id": "budget-analysis", "model_provider": "openai", "prompt_set_version": "v9",
                   "model_calls": [
                       {"component": "agent_budget", "reasoning_effort": "medium", "max_output_tokens": 3200},
                       {"component": "risk_compliance", "reasoning_effort": "medium", "max_output_tokens": 3000},
@@ -52,7 +52,7 @@ def test_model_smoke_uses_fresh_read_only_inputs_and_checks_the_owned_persisted_
         if kwargs.get("method") == "POST":
             payloads.append(kwargs["body"])
         else:
-            response = {"trace_id": "budget-analysis", "prompt_set_version": "v8", "audit": response["audit"]}
+            response = {"trace_id": "budget-analysis", "prompt_set_version": "v9", "audit": response["audit"]}
         return 200, json.dumps(response)
 
     monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
@@ -86,7 +86,7 @@ def test_model_smoke_keeps_calculation_and_runtime_policy_guards(monkeypatch, fa
         elif failure == "wrong_calculation":
             response["agent_results"][0]["data"]["disposable_income"] = 4000
         if persisted:
-            response = {"trace_id": "budget-analysis", "prompt_set_version": "v8", "audit": response["audit"]}
+            response = {"trace_id": "budget-analysis", "prompt_set_version": "v9", "audit": response["audit"]}
         return 200, json.dumps(response)
 
     monkeypatch.setattr(post_deploy_smoke, "request", fake_request)

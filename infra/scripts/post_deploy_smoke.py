@@ -14,7 +14,7 @@ class SmokeRequestError(OSError):
 
 
 def check_runtime_policy(audit: dict, required_role: str) -> None:
-    assert audit.get("prompt_set_version") == "v8", "unexpected runtime prompt version"
+    assert audit.get("prompt_set_version") == "v9", "unexpected runtime prompt version"
     path = Path(__file__).resolve().parents[2] / "apps/ai-service/app/core/model-role-policy.json"
     policies = json.loads(path.read_text(encoding="utf-8"))
     calls = audit.get("model_calls", [])
@@ -190,7 +190,7 @@ def check_model_backed_coaching(
     assert trace_status == 200, f"trace retrieval returned HTTP {trace_status}"
     trace = json.loads(trace_body)
     assert trace.get("trace_id") == trace_id, "persisted trace ID did not match"
-    assert trace.get("prompt_set_version") == "v8", "unexpected persisted prompt version"
+    assert trace.get("prompt_set_version") == "v9", "unexpected persisted prompt version"
     check_runtime_policy(trace.get("audit", {}), "agent_budget")
 
 

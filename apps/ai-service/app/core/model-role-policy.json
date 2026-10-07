@@ -7,6 +7,10 @@
     "reasoning_effort": "low",
     "max_tokens": 1000
   },
+  "goal_input_requirements": {
+    "reasoning_effort": "low",
+    "max_tokens": 1000
+  },
   "agent_spending": {
     "reasoning_effort": "medium",
     "max_tokens": 3200

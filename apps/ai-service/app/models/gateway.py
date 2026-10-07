@@ -319,6 +319,9 @@ class LocalFixtureModelGateway:
         if prompt_id == "PROMPT_ID: budget_input_requirements":
             # Offline fixture only; production uses the semantic classifier.
             text = payload["message"].casefold()
+            if payload.get("conditional_dependencies"):
+                from app.models.dependency_fixture import fixture_budget_message
+                text = fixture_budget_message(text)
             if payload.get("follow_up", {}).get("status") == "resolved":
                 text += " " + payload["follow_up"].get("subject", "").casefold()
             conceptual = any(term in text for term in ("explain", "in general", "definition", "formula", "example", "how does", "how do", "what is", "what are"))
@@ -329,6 +332,9 @@ class LocalFixtureModelGateway:
                 or bool(re.search(input_pattern("ai.models.gateway.personal_budget_input"), text))
             )
             return json.dumps({"requires_income": personal_calculation or personal and not conceptual})
+        if prompt_id == "PROMPT_ID: goal_input_requirements":
+            from app.models.dependency_fixture import fixture_goal_requires_capacity
+            return json.dumps({"requires_capacity": fixture_goal_requires_capacity(payload)})
         if prompt_id == "PROMPT_ID: spending_capture":
             from app.models.recurring_fixture import apply_recurring_terms
             from app.models.spending_fixture import fixture_spending_draft
@@ -382,6 +388,10 @@ class LocalFixtureModelGateway:
                 "reason_code": "MISSING_REQUIRED_INPUT",
             }
         allowed = list(payload.get("allowed_requests", []))
+        if payload.get("context_features", {}).get("conditional_dependencies"):
+            from app.models.dependency_fixture import fixture_budget_uses_spending
+            allowed = [item for item in allowed if item["capability"] != "transaction_category_totals"
+                       or fixture_budget_uses_spending(payload)]
         if allowed:
             requests = [
                 {
@@ -705,7 +715,17 @@ class LocalFixtureModelGateway:
         elif prompt_id.endswith("goal_strategy"):
             projections = grounding.get("projections", [])
             summary = "No goals were provided for projection."
-            if projections:
+            if grounding.get("calculation_scope") == "saved_goal_arithmetic":
+                progress = {row["name"]: row for row in grounding.get("goal_progress", [])}
+                summary = " ".join(
+                    f"{row['name']}: remaining SGD {row['remaining']:.2f}; "
+                    f"equal monthly contribution SGD {row['monthly_required']:.2f} "
+                    f"over {row['target_months']} months. "
+                    + (f"Progress: {progress[row['name']]['progress_percent']:.2f}%."
+                       if progress.get(row["name"], {}).get("progress_percent") is not None else "")
+                    for row in projections
+                ) or summary
+            elif projections:
                 first = projections[0]
                 summary = (
                     f"To reach {first['name']}, estimated monthly savings required are "

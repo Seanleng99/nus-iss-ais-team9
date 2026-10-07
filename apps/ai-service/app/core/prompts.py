@@ -14,7 +14,7 @@ CURRENCY_POLICY = (
 
 
 class PromptCatalog:
-    def __init__(self, version: str = "v8", root: Path | None = None) -> None:
+    def __init__(self, version: str = "v9", root: Path | None = None) -> None:
         prompt_root = root or Path(__file__).resolve().parents[2] / "prompts"
         path = prompt_root / version / "prompts.json"
         with path.open(encoding="utf-8") as handle:

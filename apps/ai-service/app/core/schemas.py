@@ -270,6 +270,7 @@ class DependencyEdge(StrictContractModel):
 class AgentTask(StrictContractModel):
     _education_grounding_snapshot: Any = PrivateAttr(default=None)
     _budget_requires_income: bool | None = PrivateAttr(default=None)
+    _goal_requires_capacity: bool | None = PrivateAttr(default=None)
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     agent: AgentName
     sanitized_message: str

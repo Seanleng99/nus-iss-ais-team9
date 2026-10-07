@@ -48,6 +48,7 @@ def test_preflight_acknowledges_income_instead_of_asking_for_it_again():
     response = reply(
         RecordingGateway(),
         state(monthly_income="4200"),
+        message="Can I afford to fund my saved goal?",
         requested_agents=["goal_strategy"],
         snapshot={
             "goals": [{"name": "Holiday", "target_amount": {"amount": 1200}, "target_months": 12}]
@@ -89,6 +90,7 @@ def test_uncertain_income_is_not_used_by_preflight():
     response = reply(
         RecordingGateway(),
         context,
+        message="Can I afford to fund my saved goal?",
         requested_agents=["goal_strategy"],
         snapshot={
             "goals": [{"name": "Holiday", "target_amount": {"amount": 1200}, "target_months": 12}]

@@ -147,6 +147,7 @@ class OrchestratorState(TypedDict, total=False):
     budget_capture: bool
     budget_planning: bool
     spending_capture: bool
+    goal_capacity_required: bool
     turn_decision: dict
     answer_referents: list[dict]
     tasks: dict[str, AgentTask]
@@ -789,7 +790,24 @@ class AgentOrchestrator:
                     details={"agent": agent.value, "requested_by": "router"},
                 )
             )
+        goal_task = self._find_task_by_agent(tasks, AgentName.GOAL_STRATEGY)
+        goal_agent = self.agents.get(AgentName.GOAL_STRATEGY)
+        goal_capacity_required = bool(goal_task and goal_task.input_data.get("goals"))
+        if goal_task and isinstance(goal_agent, GoalStrategyAgent):
+            token = task_context.set({"task_id": goal_task.task_id, "attempt": goal_task.attempt})
+            try:
+                goal_capacity_required = goal_agent._requires_capacity(goal_task)
+            finally:
+                task_context.reset(token)
+            if self.prompts.version == "v9":
+                events.append(self._event(state, "task.capacity_requirement.evaluated", goal_task.agent.value,
+                    task_id=goal_task.task_id, details={"reason_code": "GOAL_FEASIBILITY_REQUIRES_CAPACITY"
+                        if goal_capacity_required else "GOAL_CAPACITY_NOT_REQUIRED"}))
+        for task in tasks.values():
+            if task.agent == AgentName.BUDGET:
+                task.context_features["goal_capacity_required"] = goal_capacity_required
         return {
+            "goal_capacity_required": goal_capacity_required,
             "tasks": tasks,
             "task_results": {},
             "agent_results": [],
@@ -1679,10 +1697,10 @@ class AgentOrchestrator:
             len(state["agent_results"]) == 1
             and (
                 (state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
-                 and (self.prompts.version in {"v6", "v7", "v8"}
+                 and (self.prompts.version in {"v6", "v7", "v8", "v9"}
                       or state["agent_results"][0].data.get("evidence_status") == "insufficient"))
                 or (state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
-                    and self.prompts.version in {"v6", "v7", "v8"}
+                    and self.prompts.version in {"v6", "v7", "v8", "v9"}
                     and "emergency_fund" in state["agent_results"][0].data)
             )
         ):
@@ -1749,7 +1767,7 @@ class AgentOrchestrator:
     def _can_preserve_specialist_answers(self, state: OrchestratorState) -> bool:
         results = state["agent_results"]
         return (
-            self.prompts.version in {"v6", "v7", "v8"}
+            self.prompts.version in {"v6", "v7", "v8", "v9"}
             and any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
             and all(item.agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
                     and not item.blocked and not item.data.get("needs_input")
@@ -1841,7 +1859,7 @@ class AgentOrchestrator:
         repair_conditions = [
             ("REPAIR_REQUEST_NOT_ALLOWED", result.data.get("request_allowed") is not False),
             ("REPAIR_VERDICT_NOT_REPAIRABLE", result.data.get("repairable") is True
-                if self.prompts.version == "v8" else not result.blocked or result.data.get("repairable") is True),
+                if self.prompts.version in {"v8", "v9"} else not result.blocked or result.data.get("repairable") is True),
             ("REPAIR_ANSWER_ALREADY_COMPLETE", result.data.get("answer_complete") is False or result.data.get("repairable") is True),
             ("REPAIR_PROHIBITED_REQUEST", not financial_advice_findings(state["sanitized_message"], is_request=True)
                 and not cross_user_data_findings(state["sanitized_message"]) and not state["guardrail_findings"]),
@@ -2152,6 +2170,7 @@ class AgentOrchestrator:
             sanitized_message=state["sanitized_message"],
             input_data=input_data,
             context_features={
+                "conditional_dependencies": self.prompts.version == "v9",
                 "response_locale": request_locale(state["request"]),
                 "coaching_preferences": coaching_preferences(snapshot.preferences),
                 "turn_observations": specialist_context(SessionContext(
@@ -2174,9 +2193,9 @@ class AgentOrchestrator:
                     or scoped_spending.get("historical_transaction_count", 0)
                 ),
                 "goal_count": len(snapshot.goals),
-                "goal_capacity_required": agent == AgentName.BUDGET and bool(snapshot.goals)
-                    and AgentName.GOAL_STRATEGY in state["selected_agents"]
-                    and not state.get("goal_capture"),
+                "goal_capacity_required": agent == AgentName.BUDGET and (
+                    requested_by == AgentName.GOAL_STRATEGY or state.get("goal_capacity_required", False)
+                ) and not state.get("goal_capture"),
                 "has_risk_tolerance": snapshot.risk_tolerance is not None,
                 "education_topics": state.get("education_topics", []),
                 "education_handled_separately": (

@@ -58,7 +58,7 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     rendered = re.sub(r"\$\{\{ env\.(\w+) \}\}", lambda match: values[match[1]], rendered)
     environment.update(line.split("=", 1) for line in rendered.strip().splitlines())
     assert environment["MAX_MODEL_TOKENS_PER_RUN"] == "80000"
-    assert environment["PROMPT_SET_VERSION"] == "v8"
+    assert environment["PROMPT_SET_VERSION"] == "v9"
     assert json.loads(environment["MODEL_ROLE_OVERRIDES"])["risk_compliance"] == {
         "reasoning_effort": "medium", "max_tokens": 3000,
     }

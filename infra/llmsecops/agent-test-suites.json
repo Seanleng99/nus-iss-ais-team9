@@ -52,7 +52,8 @@
     },
     "goal-functional-dependencies": {
       "test_paths": [
-        "tests/test_dynamic_dependencies.py"
+        "tests/test_dynamic_dependencies.py",
+        "tests/test_conditional_financial_dependencies.py"
       ]
     },
     "goal-functional-recovery": {

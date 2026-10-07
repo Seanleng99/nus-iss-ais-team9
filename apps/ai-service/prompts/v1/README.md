@@ -30,4 +30,4 @@ Historical v1 behavior: use the legacy trusted retriever for sanitized policy co
 
 ## Change Control
 
-Prompt changes require a pull request, updated evaluation evidence, and a version increment when behavior or policy meaning changes. Production should identify the prompt-set version in audit metadata.
+Prompt changes include updated evaluation evidence and a version increment when behavior or policy meaning changes. Production should identify the prompt-set version in audit metadata.

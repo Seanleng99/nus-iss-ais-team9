@@ -127,7 +127,7 @@ def test_history_only_can_be_requested_and_is_published_by_spending():
     state = {"request": r, "sanitized_message": r.message}
     budget = o._create_task(state, AgentName.BUDGET)
     assert (
-        o.agents[AgentName.BUDGET]._dependency_requests(budget)[0].capability.value
+        o.agents[AgentName.BUDGET]._preflight(budget, r.message).dependency_requests[0].capability.value
         == "transaction_category_totals"
     )
     spending = o._create_task(state, AgentName.SPENDING)

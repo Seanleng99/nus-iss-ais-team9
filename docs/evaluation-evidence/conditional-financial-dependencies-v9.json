@@ -1,0 +1,43 @@
+{
+  "prompt_set_version": "v9",
+  "results": {
+    "dynamic_dependencies": {
+      "measurement": "offline_fixture_contract",
+      "total": 14,
+      "passed": 14,
+      "accuracy": 1.0,
+      "failed_case_ids": [],
+      "dependency_accuracy": 1.0
+    },
+    "orchestrator_routing": {
+      "measurement": "offline_fixture_contract",
+      "total": 6,
+      "passed": 6,
+      "accuracy": 1.0,
+      "failed_case_ids": [],
+      "routing_accuracy": 1.0,
+      "critical_block_rate": 1.0
+    }
+  },
+  "verified_at": "2026-10-07",
+  "measurement": "offline_fixture_contract",
+  "tests": {
+    "ai_service": {
+      "tests": 1834,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "infrastructure": {
+      "tests": 85,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "lint": {
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "live_routing_acceptance": "pending"
+}

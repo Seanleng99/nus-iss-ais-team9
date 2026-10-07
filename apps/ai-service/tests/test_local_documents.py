@@ -107,6 +107,7 @@ def test_full_document_provider_requires_exact_pin_and_stays_local():
         create_education_retriever(Settings(RAG_PROVIDER="local_documents"))
     deployed = Settings(
         APP_ENV="demo", AI_SERVICE_API_KEY="x" * 24, OPENAI_API_KEY="test-key",
+        MODEL_PROVIDER="openai",
         RAG_PROVIDER="local_documents", EDUCATION_CORPUS_VERSION=corpus,
         POLICY_RAG_PROVIDER="local_documents",
         POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-08-29.1",

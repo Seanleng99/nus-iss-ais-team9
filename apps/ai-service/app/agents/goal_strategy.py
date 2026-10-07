@@ -1,8 +1,10 @@
+import json
 import math
 import re
 from collections.abc import Sequence
 
 from coach_i18n import translate
+from pydantic import BaseModel, ConfigDict, StrictBool
 
 from app.agents.base import BaseAgent
 from app.agents.calculation_summary import goal_calculation_summary
@@ -21,7 +23,13 @@ from app.core.schemas import (
 )
 from app.core.session_context import reported_value
 from app.core.telemetry import trace_method
+from app.models.structured import generate_structured_response
 from app.tools.registry import call_tool
+
+
+class GoalInputRequirements(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    requires_capacity: StrictBool
 
 
 class GoalStrategyAgent(BaseAgent):
@@ -102,7 +110,7 @@ class GoalStrategyAgent(BaseAgent):
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         goals = task.input_data.get("goals", [])
         if (
-            goals and not self._illustrative_goal(task) and not self._emergency_fund_request(task)
+            goals and self._requires_capacity(task)
             and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies
         ):
             return (
@@ -148,7 +156,7 @@ class GoalStrategyAgent(BaseAgent):
         if self._illustrative_goal(task):
             return ()
         goals = task.input_data.get("goals", [])
-        if goals and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies:
+        if goals and self._requires_capacity(task) and CapabilityName.MONTHLY_SAVINGS_CAPACITY not in task.resolved_dependencies:
             return (
                 DependencyRequestDraft(
                     capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,
@@ -164,6 +172,23 @@ class GoalStrategyAgent(BaseAgent):
                 ),
             )
         return ()
+
+    def _requires_capacity(self, task: AgentTask) -> bool:
+        if task.context_features.get("goal_capture") or self._illustrative_goal(task) or self._emergency_fund_request(task):
+            return False
+        # Archived catalogues retain their original broad saved-goal policy.
+        if self.prompts.version != "v9":
+            return bool(task.input_data.get("goals"))
+        if task._goal_requires_capacity is None:
+            decision = generate_structured_response(
+                self.gateway, response_type=GoalInputRequirements,
+                system_prompt=self.prompts.get("goal_input_requirements"),
+                user_prompt=json.dumps({"message": task.sanitized_message,
+                    "follow_up": task.context_features.get("follow_up", {})}, ensure_ascii=False),
+                temperature=self.temperature, max_tokens=self.max_tokens,
+            )
+            task._goal_requires_capacity = decision.requires_capacity
+        return task._goal_requires_capacity
 
     def _missing_input_questions(self, task: AgentTask) -> Sequence[str]:
         if self._illustrative_goal(task):
@@ -194,7 +219,7 @@ class GoalStrategyAgent(BaseAgent):
                 questions.append(f"You told me the duration is {months} months (user-reported). What goal amount would you like to plan for?")
             else:
                 questions.append("What goal amount and target date would you like to plan for?")
-        elif not task.context_features.get("has_monthly_income"):
+        elif self._requires_capacity(task) and not task.context_features.get("has_monthly_income"):
             income = reported_value(task, "monthly_income")
             questions.append((
                 f"You told me your monthly income is SGD {income} (user-reported). "
@@ -204,14 +229,14 @@ class GoalStrategyAgent(BaseAgent):
                 "What is your monthly income so the goal feasibility can be assessed?"
             ))
         if any(goal.get("target_amount", {}).get("currency", "SGD") != "SGD" or goal.get("current_amount", {}).get("currency", "SGD") != "SGD" for goal in task.input_data.get("goals", [])):
-            questions.append("Please provide goal targets and current amounts in SGD before comparing them with SGD budget capacity; no conversion is assumed.")
+            questions.append("Please provide goal targets and current amounts in SGD before goal calculations; no conversion is assumed.")
         return questions
 
     def _missing_input_fields(self, task):
         if not task.input_data.get("goals"):
             return [field for field in ("goal_target_amount", "goal_target_months")
                     if not reported_value(task, field)]
-        return ["monthly_income"] if not task.context_features.get("has_monthly_income") else []
+        return ["monthly_income"] if self._requires_capacity(task) and not task.context_features.get("has_monthly_income") else []
 
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
@@ -227,8 +252,17 @@ class GoalStrategyAgent(BaseAgent):
                           if goal.current_amount.currency == goal.target_amount.currency],
             })
         projections = call_tool(self.name, "goal_projection", projection_snapshot)
-        capacity = task.resolved_dependencies.get(CapabilityName.MONTHLY_SAVINGS_CAPACITY) if not illustrative else None
+        capacity = task.resolved_dependencies.get(CapabilityName.MONTHLY_SAVINGS_CAPACITY) if self._requires_capacity(task) else None
         grounding: dict = {"projections": projections}
+        if not illustrative and not self._emergency_fund_request(task) and not self._requires_capacity(task):
+            grounding["calculation_scope"] = "saved_goal_arithmetic"
+            grounding["goal_progress"] = [
+                {"name": goal.name, "target_amount": goal.target_amount.amount,
+                 "current_amount": goal.current_amount.amount,
+                 "progress_percent": round(goal.current_amount.amount / goal.target_amount.amount * 100, 2)
+                    if goal.target_amount.amount else None}
+                for goal in snapshot.goals
+            ]
         if illustrative:
             grounding["calculation_scope"] = "Illustrative calculation from user-reported inputs; no goal saved and affordability not assessed."
             grounding["calculation_assumptions"] = {

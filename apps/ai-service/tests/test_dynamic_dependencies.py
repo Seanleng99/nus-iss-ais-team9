@@ -484,7 +484,7 @@ def test_goal_budget_spending_dependency_chain_fans_in() -> None:
         "transaction_category_totals",
     }
     assert all(item["input_fingerprint"] for item in resolutions)
-    assert not any(
+    assert any(
         call["system_prompt"].startswith("PROMPT_ID: dependency_planner")
         for call in gateway.calls
     )
@@ -663,6 +663,7 @@ class UnavailableSpendingAgent:
 def test_optional_dependency_failure_allows_budget_and_goal_to_continue() -> None:
     request = goal_request(requested_agents=["goal_strategy"])
     payload = request.model_dump(mode="json")
+    payload["message"] = "Use my spending patterns to assess whether I can reach my home deposit goal."
     payload["snapshot"]["recent_transactions"] = [
         {
             "description": "Groceries",

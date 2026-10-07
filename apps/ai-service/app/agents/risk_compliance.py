@@ -624,10 +624,10 @@ class RiskComplianceAgent:
         routing_rationale: list[str] | None = None,
         follow_up: dict | None = None,
     ) -> AgentResult:
-        education_review = self.prompts.version in {"v6", "v7", "v8"} and any(
+        education_review = self.prompts.version in {"v6", "v7", "v8", "v9"} and any(
             result.agent == AgentName.INVESTMENT_EDUCATION for result in results
         )
-        scoped_review = education_review and self.prompts.version == "v8"
+        scoped_review = education_review and self.prompts.version in {"v8", "v9"}
         known_neutral_request = is_neutral_financial_question(
             " ".join(normalize_for_security_inspection(request.message).casefold().split()).replace("’", "'")
         )

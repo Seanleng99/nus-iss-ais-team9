@@ -58,9 +58,9 @@ class InvestmentEducationAgent(BaseAgent):
         super().__init__(gateway, prompts, temperature, max_tokens)
         self.education_retriever = education_retriever
         self.semantic_grounding = semantic_grounding
-        if prompts.version in {"v5", "v6", "v7", "v8"}:
+        if prompts.version in {"v5", "v6", "v7", "v8", "v9"}:
             self.narrative_type = GroundedEducationNarrative
-        if prompts.version in {"v6", "v7", "v8"}:
+        if prompts.version in {"v6", "v7", "v8", "v9"}:
             self.narrative_type = HybridEducationNarrative
 
     @trace_method
@@ -79,10 +79,10 @@ class InvestmentEducationAgent(BaseAgent):
             return grounding
         response_language = task_language(task)
         unsupported_topics = unsupported_education_topics(sanitized_message)
-        semantic_assessment = self.semantic_grounding and self.prompts.version in {"v6", "v7", "v8"} and not is_fixture_gateway(self.gateway)
+        semantic_assessment = self.semantic_grounding and self.prompts.version in {"v6", "v7", "v8", "v9"} and not is_fixture_gateway(self.gateway)
         plan = None
         semantic_failure = None
-        if self.prompts.version in {"v6", "v7", "v8"}:
+        if self.prompts.version in {"v6", "v7", "v8", "v9"}:
             recognized_topics = list(dict.fromkeys(
                 topic for topic in education_topics(sanitized_message) + task.context_features.get("education_topics", [])
                 if topic in CANONICAL_EDUCATION_TOPICS
@@ -157,7 +157,7 @@ class InvestmentEducationAgent(BaseAgent):
             "General investment education about investment basics"
             if query_topics == ["source verification"] else query,
             scope="General investment education from approved sources without product advice.",
-            topics=independent_topics if self.prompts.version in {"v6", "v7", "v8"} else (),
+            topics=independent_topics if self.prompts.version in {"v6", "v7", "v8", "v9"} else (),
             search_terms=public_education_search_terms(list(dict.fromkeys(task.context_features.get("education_search_terms", []) + plan_terms))),
             subquestion_queries=[
                 (question.topic, "General investment education about " + question.topic
@@ -484,7 +484,7 @@ class InvestmentEducationAgent(BaseAgent):
                 add_section(education_gap_message(grounding), "limitation")
             return finish()
         sourced_summary = narrative.summary
-        if self.prompts.version not in {"v6", "v7", "v8"} and sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
+        if self.prompts.version not in {"v6", "v7", "v8", "v9"} and sourced_summary and isinstance(narrative, GroundedEducationNarrative) and narrative.source_ids:
             sourced_summary = (
                 translate('education.rag_section', grounding.get("response_language"))
             ) + sourced_summary
@@ -534,7 +534,7 @@ class InvestmentEducationAgent(BaseAgent):
         sanitized_message: str,
         grounding: dict,
     ) -> str:
-        if self.prompts.version in {"v6", "v7", "v8"}:
+        if self.prompts.version in {"v6", "v7", "v8", "v9"}:
             question = education_model_question(sanitized_message)
             separate_financial_part = task.context_features.get("financial_assessment_handled_separately")
             if separate_financial_part and grounding.get("subquestions"):

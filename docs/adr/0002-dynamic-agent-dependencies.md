@@ -37,6 +37,25 @@ records the tool invocation as a dependency provider. Spending and Risk and Comp
 that capability. Optional retrieval failure preserves deterministic calculations and becomes an
 explicit evidence gap.
 
+## Conditional financial dependencies, 7 October 2026
+
+Prompt set v9 makes Goal's Budget dependency conditional on the Goal question. A typed
+`goal_input_requirements` decision requires capacity for personal feasibility, affordability,
+on-track assessments and funding strategy. Saved-goal remaining amounts, progress percentages
+and equal monthly contribution arithmetic can finish without income or Budget. Any feasibility
+part in a mixed Goal request retains the required capacity dependency. The task caches this
+decision and shares its capacity requirement with an already selected Budget provider.
+
+Budget's existing dependency planner evaluates whether its own work consumes recorded Spending
+totals. A spending keyword in another independent part no longer forces a capability request.
+Required Goal capacity and optional Spending context retain their server-owned contracts; provider
+reuse, fingerprint checks, role data boundaries and Compliance review are unchanged.
+
+The direct Goal–Spending edge remains deferred. Spending-informed feasibility continues through
+Goal → Budget → Spending; unrelated Spending analysis and saved-goal arithmetic can run independently.
+See [conditional financial dependencies](../conditional-financial-dependencies.md) for examples,
+verification and rollout limitations.
+
 ## Consequences
 
 - Dynamic collaboration remains centrally governed and traceable.

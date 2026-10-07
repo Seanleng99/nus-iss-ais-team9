@@ -203,10 +203,10 @@ def test_application_default_is_80000_and_explicit_smaller_limit_is_preserved():
     assert Settings(_env_file=None, MAX_MODEL_TOKENS_PER_RUN=10000).max_model_tokens_per_run == 10000
 
 
-@pytest.mark.parametrize("version", ["v2", "v3", "v4", "v5", "v6", "v7"])
+@pytest.mark.parametrize("version", ["v2", "v3", "v4", "v5", "v6", "v7", "v8"])
 def test_running_app_rejects_every_historical_prompt_set(version):
     settings = Settings(_env_file=None, PROMPT_SET_VERSION=version)
-    with pytest.raises(ValueError, match="requires PROMPT_SET_VERSION=v8"):
+    with pytest.raises(ValueError, match="requires PROMPT_SET_VERSION=v9"):
         settings.require_active_app_prompt()
 
 
