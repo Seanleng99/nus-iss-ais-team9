@@ -151,6 +151,8 @@ def generate_structured_response(
                 "Use only canonical topics allowed by the request. Keep sourced and model-only "
                 "claims in their respective fields; each cited source must support the claim."
             )
+        elif response_type.__name__ == "RouterDecision" and exc.code == "INVALID_STRUCTURED_RESPONSE" and not isinstance(cause, ValidationError):
+            validation_issues = str(exc) + " Replan the assignments using the original request and supplied selection."
         elif response_type.__name__ == "ScopedEducationComplianceDecision" and exc.code == "INVALID_STRUCTURED_RESPONSE" and not isinstance(cause, ValidationError):
             validation_issues = (
                 str(exc) + " Identify only a supplied review_sections section_id. "

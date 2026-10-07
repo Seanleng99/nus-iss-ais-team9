@@ -9,6 +9,35 @@ from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
 
 
+def test_explicit_selection_repairs_unselected_task_before_education_is_discarded():
+    class Gateway(LocalFixtureModelGateway):
+        router_calls = 0
+
+        def generate(self, **kwargs):
+            if kwargs["system_prompt"].startswith("PROMPT_ID: router"):
+                self.router_calls += 1
+                payload = json.loads(kwargs["user_prompt"])
+                if self.router_calls == 1:
+                    return json.dumps({"selected_agents": ["budget", "investment_education"],
+                        "rationale": ["Split before honoring the caller's selection."],
+                        "task_assignments": [
+                            {"agent": "budget", "question": "Calculate disposable income", "source_quotes": ["Calculate disposable income"]},
+                            {"agent": "investment_education", "question": "explain diversification", "source_quotes": ["explain diversification"]}]})
+                assert "requested_agents" in payload["correction_feedback"]["validation_issues"]
+            return super().generate(**kwargs)
+
+    gateway = Gateway()
+    request = CoachRequest(user_id="u", session_id="s", requested_agents=["budget"],
+        message="Calculate disposable income from my profile income and explain diversification using approved education sources.",
+        snapshot={"monthly_income": {"amount": 4000}})
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway).handle(request)
+    assert gateway.router_calls == 2
+    assert not response.blocked and response.selected_agents == ["budget"]
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert budget.data["income"] == 4000 and budget.data["contexts"]
+    assert response.audit["retrieval_consumers"] == ["budget"]
+
+
 def test_confirmed_capacity_does_not_require_raw_income_for_saved_allocation_arithmetic():
     coach = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=LocalFixtureModelGateway())
     task = AgentTask(agent="budget", sanitized_message="Calculate capacity from the confirmed allocation.",

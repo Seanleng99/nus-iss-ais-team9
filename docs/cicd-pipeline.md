@@ -15,6 +15,22 @@ baseline used for classification.
 
 The AI task check requires `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, medium default reasoning with the reviewed role overrides, the [packaged current prompt identity](current-prompt-contract.md), both RAG providers set to `local_documents`, exact nonempty Education and Policy corpus versions, and an ECS `OPENAI_API_KEY` secret reference. The key is stored in AWS Secrets Manager and is never a GitHub variable or repository secret.
 
+Release rendering also replaces inherited timeout settings: model reads are bounded
+at 30 seconds, specialist execution at 45 seconds, the whole AI workflow at 85
+seconds, and backend AI transport at 90 seconds. Both rendered task definitions
+are checked before deployment. The foundation sets the ALB idle timeout and
+CloudFront origin response timeout to 120 seconds; the smoke client also waits
+up to 120 seconds. This keeps the outer connections open long enough for the
+bounded workflow to return. Existing environments need the gateway settings
+updated when adopting these limits; an image update alone does not change them.
+CloudFront's supported range is documented in the [AWS quotas](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html).
+
+The conditional Education smoke asks Budget to explain education relevant to its
+own budget calculation. An independent education clause belongs to an Investment
+specialist and does not demonstrate a Budget dependency. The smoke still requires
+Budget as the sole selected specialist, a resolved Education tool dependency,
+approved sources, grounded evidence and persisted retrieval provenance.
+
 ## Validation workflows
 
 `AWS Operational Validation` runs weekly or on demand against the deployed synthetic demo. It repeats the live OpenAI/RAG cases, measures bounded load and estimated model cost, checks service state, lifecycle controls, dashboard and alarms, and can exercise backend task replacement. Its current model expectation is GPT-6 Luna. This is the required live acceptance evidence for the migration; historical Nova results cannot validate it.

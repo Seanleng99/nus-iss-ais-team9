@@ -383,7 +383,7 @@ def test_request_reports_bounded_http_diagnostics(monkeypatch) -> None:
     )
 
     def fail_request(*args, **kwargs):
-        del args, kwargs
+        assert kwargs["timeout"] == 120  # Outlive the backend's 90-second deadline.
         raise http_error
 
     monkeypatch.setattr(urllib.request, "urlopen", fail_request)
@@ -531,7 +531,8 @@ def test_conditional_education_smoke_verifies_tool_trace(monkeypatch) -> None:
     assert calls[0][1]["body"]["requested_agents"] == ["budget"]
     message = calls[0][1]["body"]["message"]
     assert "Calculate my monthly disposable income and savings capacity" in message
-    assert "Separately, define diversification and investment risk" in message
+    assert "include public definitions of diversification and investment risk" in message
+    assert "in the same budget explanation" in message
     assert "approved education sources" in message and "read-only analysis" in message
     assert calls[1][0][0].endswith(
         "?user_id=deployment-conditional-rag-smoke-test"

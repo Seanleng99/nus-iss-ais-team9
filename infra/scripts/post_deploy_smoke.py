@@ -59,7 +59,7 @@ def request(
     try:
         # B310 is contained by require_http_url before the request is constructed.
         with urllib.request.urlopen(  # nosec B310
-            http_request, timeout=60
+            http_request, timeout=120
         ) as response:
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
@@ -390,7 +390,8 @@ def check_conditional_education_rag(
         "session_id": session_id,
         "message": (
             "Calculate my monthly disposable income and savings capacity from the supplied "
-            "income. Separately, define diversification and investment risk using approved "
+            "income, and include public definitions of diversification and investment risk "
+            "in the same budget explanation using approved "
             "education sources. This is a read-only analysis."
         ),
         "snapshot": {"monthly_income": {"currency": "SGD", "amount": 4000}},

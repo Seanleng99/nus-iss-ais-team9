@@ -294,6 +294,9 @@ Resources:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
       Type: application
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "120"
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -350,7 +353,7 @@ Resources:
               HTTPPort: 80
               HTTPSPort: 443
               OriginProtocolPolicy: !If [HasCustomDomain, https-only, http-only]
-              OriginReadTimeout: 60
+              OriginReadTimeout: 120
               OriginSSLProtocols: !If
                 - HasCustomDomain
                 - [TLSv1.2]

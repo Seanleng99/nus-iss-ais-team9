@@ -48,7 +48,9 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
         "EDUCATION_CORPUS_VERSION": "investment-education-sg@next",
         "POLICY_CORPUS_VERSION": "financial-coach-policy-sg@next",
     }
-    environment = {**dict.fromkeys(values, "stale-corpus@old"), "MAX_MODEL_TOKENS_PER_RUN": "40000"}
+    environment = {**dict.fromkeys(values, "stale-corpus@old"), "MAX_MODEL_TOKENS_PER_RUN": "40000",
+                   "MODEL_READ_TIMEOUT_SECONDS": "15", "AGENT_TIMEOUT_SECONDS": "20",
+                   "WORKFLOW_TIMEOUT_SECONDS": "40"}
     role_output = tmp_path / "role-env"
     loaded = run_step("Load AI role policy", ROOT, {"GITHUB_ENV": str(role_output)})
     assert loaded.returncode == 0, loaded.stderr
@@ -74,7 +76,8 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     verified = run_step("Verify AI runtime configuration has not drifted", ROOT, env)
     assert verified.returncode == 0, verified.stderr + verified.stdout
     for pin in [*values, "MAX_MODEL_TOKENS_PER_RUN", "MODEL_REASONING_EFFORT",
-                "MODEL_MAX_TOKENS", "PROMPT_SET_VERSION"]:
+                "MODEL_MAX_TOKENS", "PROMPT_SET_VERSION", "MODEL_READ_TIMEOUT_SECONDS",
+                "AGENT_TIMEOUT_SECONDS", "WORKFLOW_TIMEOUT_SECONDS"]:
         item = next(item for item in task["containerDefinitions"][0]["environment"] if item["name"] == pin)
         expected_value = item["value"]
         item["value"] = ("40000" if pin == "MAX_MODEL_TOKENS_PER_RUN" else
@@ -87,6 +90,48 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     smoke = STEPS["Run health and AI safety smoke tests"]["run"]
     assert '--expected-corpus-version "$EDUCATION_CORPUS_VERSION"' in smoke
     assert '--expected-policy-corpus-version "$POLICY_CORPUS_VERSION"' in smoke
+
+
+def test_release_replaces_stale_backend_transport_timeout(tmp_path):
+    template = yaml.load((ROOT / "infra/aws/demo-application.yaml").read_text(), Loader=yaml.BaseLoader)
+    container = template["Resources"]["BackendTaskDefinition"]["Properties"]["ContainerDefinitions"][0]
+    configured = {item["Name"]: item["Value"] for item in container["Environment"]
+                  if isinstance(item, dict) and "Name" in item}
+    rendered = dict(line.split("=", 1) for line in
+                    STEPS["Render application backend task definition"]["with"]["environment-variables"].strip().splitlines())
+    assert rendered["AI_SERVICE_TIMEOUT_SECONDS"] == configured["AI_SERVICE_TIMEOUT_SECONDS"] == "90"
+    environment = {"AI_SERVICE_TIMEOUT_SECONDS": "45", **rendered}
+    task = {"containerDefinitions": [{"name": "backend", "environment": [
+        {"name": key, "value": value} for key, value in environment.items()]}]}
+    path = tmp_path / "backend-task.json"
+    path.write_text(json.dumps(task))
+    env = {"RENDERED_BACKEND_TASK": str(path), "BACKEND_CONTAINER_NAME": "backend"}
+    verified = run_step("Verify backend data-lifecycle configuration has not drifted", ROOT, env)
+    assert verified.returncode == 0, verified.stderr + verified.stdout
+    next(item for item in task["containerDefinitions"][0]["environment"]
+         if item["name"] == "AI_SERVICE_TIMEOUT_SECONDS")["value"] = "45"
+    path.write_text(json.dumps(task))
+    rejected = run_step("Verify backend data-lifecycle configuration has not drifted", ROOT, env)
+    assert rejected.returncode != 0
+    assert "AI_SERVICE_TIMEOUT_SECONDS" in rejected.stderr + rejected.stdout
+
+
+def test_release_timeout_budgets_fit_the_public_gateway():
+    template = yaml.load((ROOT / "infra/aws/demo-application.yaml").read_text(), Loader=yaml.BaseLoader)
+    ai_container = template["Resources"]["AiTaskDefinition"]["Properties"]["ContainerDefinitions"][0]
+    configured = {item["Name"]: item["Value"] for item in ai_container["Environment"]
+                  if isinstance(item, dict) and "Name" in item}
+    rendered = dict(line.split("=", 1) for line in
+                    STEPS["Render AI service task definition"]["with"]["environment-variables"].strip().splitlines())
+    names = ("MODEL_READ_TIMEOUT_SECONDS", "AGENT_TIMEOUT_SECONDS", "WORKFLOW_TIMEOUT_SECONDS")
+    assert all(rendered[name] == configured[name] for name in names)
+    foundation = yaml.load((ROOT / "infra/aws/demo-foundation.yaml").read_text(), Loader=yaml.BaseLoader)["Resources"]
+    origin = foundation["FrontendDistribution"]["Properties"]["DistributionConfig"]["Origins"][0]
+    cloudfront_timeout = int(origin["CustomOriginConfig"]["OriginReadTimeout"])
+    alb_timeout = int(next(item["Value"] for item in foundation["LoadBalancer"]["Properties"]["LoadBalancerAttributes"]
+                           if item["Key"] == "idle_timeout.timeout_seconds"))
+    assert 0 < int(rendered[names[0]]) <= int(rendered[names[1]]) < int(rendered[names[2]]) < 90
+    assert 90 < min(cloudfront_timeout, alb_timeout)
 
 
 @pytest.mark.parametrize("invalid", [None, 42, "", "x\nINJECTED=value", "investment-education-sg@local-fixture-v1"])

@@ -407,6 +407,9 @@ jobs:
             MODEL_MAX_TOKENS=3200
             MODEL_ROLE_OVERRIDES=${{ env.MODEL_ROLE_OVERRIDES }}
             MAX_MODEL_TOKENS_PER_RUN=80000
+            MODEL_READ_TIMEOUT_SECONDS=30
+            AGENT_TIMEOUT_SECONDS=45
+            WORKFLOW_TIMEOUT_SECONDS=85
             PROMPT_SET_VERSION=${{ env.PROMPT_SET_VERSION }}
             BUILD_COMMIT=${{ github.sha }}
             RAG_PROVIDER=local_documents
@@ -429,6 +432,9 @@ jobs:
           --expect MODEL_MAX_TOKENS=3200
           --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES"
           --expect MAX_MODEL_TOKENS_PER_RUN=80000
+          --expect MODEL_READ_TIMEOUT_SECONDS=30
+          --expect AGENT_TIMEOUT_SECONDS=45
+          --expect WORKFLOW_TIMEOUT_SECONDS=85
           --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION"
           --expect "BUILD_COMMIT=${{ github.sha }}"
           --expect RAG_PROVIDER=local_documents
@@ -458,6 +464,7 @@ jobs:
           container-name: ${{ env.BACKEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.backend-image }}
           environment-variables: |
+            AI_SERVICE_TIMEOUT_SECONDS=90
             TRACE_RETENTION_DAYS=30
             CHAT_RETENTION_DAYS=90
             SYNTHETIC_USER_RETENTION_DAYS=30
@@ -470,6 +477,7 @@ jobs:
           python infra/scripts/verify_ecs_task_config.py
           --task-definition "$RENDERED_BACKEND_TASK"
           --container "$BACKEND_CONTAINER_NAME"
+          --expect AI_SERVICE_TIMEOUT_SECONDS=90
           --expect TRACE_RETENTION_DAYS=30
           --expect CHAT_RETENTION_DAYS=90
           --expect SYNTHETIC_USER_RETENTION_DAYS=30

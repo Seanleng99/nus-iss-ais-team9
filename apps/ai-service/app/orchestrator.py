@@ -434,6 +434,22 @@ class AgentOrchestrator:
             }
 
             def validate_router(value: RouterDecision) -> RouterDecision:
+                if requested_agents:
+                    expected_agents = set(requested_agents)
+                    if value.goal_capture:
+                        expected_agents.add(AgentName.GOAL_STRATEGY)
+                    if value.budget_capture or value.budget_planning or value.budget_status_query:
+                        expected_agents.add(AgentName.BUDGET)
+                    if value.spending_capture:
+                        expected_agents.add(AgentName.SPENDING)
+                    if set(value.selected_agents) != expected_agents:
+                        raise ModelGatewayError(
+                            "Plan selected_agents and task_assignments within requested_agents. "
+                            "Only specialists required by a declared record operation may be added. "
+                            "Assign supported educational parts to the selected Budget/Goal consumer "
+                            "so its planner can request education_context; do not discard those parts.",
+                            code="INVALID_STRUCTURED_RESPONSE", component="router",
+                        )
                 if not value.task_assignments and len(value.selected_agents) == 1:
                     # A single specialist owns the complete question; no semantic split
                     # is inferred. Its scoped planner determines required inputs.
@@ -488,6 +504,16 @@ class AgentOrchestrator:
                 response_type=RouterDecision,
                 system_prompt=(
                     self.prompts.get("router")
+                    + "\nWhen requested_agents is supplied, plan within that primary selection "
+                    "from the outset. Add another specialist only for a declared record operation "
+                    "that requires its owner. With a single selected specialist, preserve all "
+                    "parts of the current question it can answer in its task assignment, including "
+                    "Budget/Goal educational explanations that can request education_context. "
+                    "Do not assign those parts to an unselected Investment specialist. With "
+                    "multiple selected specialists, keep independent questions scoped to their "
+                    "owners; a dependency provider is not another primary selection. If the "
+                    "selection cannot answer a part, preserve that limitation rather than invent "
+                    "an answer or silently change the selection."
                     + "\ncoaching_preferences contains validated presentation needs. Apply them to "
                     "routing and clarification; current explicit user preferences take precedence. "
                     "Return session_observations for useful facts, preferences, objectives and "

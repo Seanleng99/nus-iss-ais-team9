@@ -13,6 +13,14 @@ arithmetic remains independent; Goal feasibility requests Budget capacity. Budge
 requests Spending only when its own assigned question needs transaction evidence.
 The direct Goal-to-Spending capability remains deferred.
 
+Explicit specialist selection constrains the model's initial plan and task
+assignments. A mismatched plan receives one bounded correction with the actual
+contract error. Budget/Goal keep the educational parts they own and may request
+Education context; an unselected primary specialist cannot take those parts and
+then disappear when the selection is applied. Declared record operations still
+require their owning specialist. Automatic routing continues to split independent
+questions among the appropriate specialists when no selection is supplied.
+
 `PROMPT_SET_VERSION` is optional. If a deployment supplies it, configuration loading
 checks that it matches the packaged manifest once. It cannot select an old behavior.
 Local defaults and the bootstrap task omit it; the release workflow derives its
@@ -52,6 +60,7 @@ model evaluations. Runtime code does not need a new version allowlist or branch.
 Offline validation on 2026-10-08 passed 1,805 AI-service tests (one skipped), 942
 backend tests, 46 shared tracing tests, and 331 infrastructure tests (five skipped,
 16 subtests passed). The final focused check passed 169 tests. Lint, the language
-source scan, and prompt packaging checks passed. These checks do not establish a
-new production-model acceptance result; this change has not been deployed or
-retested in the live application.
+source scan, and prompt packaging checks passed. These offline checks do not
+establish production-model acceptance. The release workflow separately verifies
+deployed model behavior, conditional source retrieval and persisted trace
+provenance; its deployment job records the current release outcome.
