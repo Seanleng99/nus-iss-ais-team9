@@ -7,6 +7,7 @@ from coach_i18n import task_language, translate
 from app.agents.education_access import education_gap_message
 from app.core.citations import citation_contract, compact_evidence, validate_citations
 from app.core.guardrails import inspect_prompt, require_explanation
+from app.core.financial_grounding import FinancialGroundingSnapshot
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
     AgentName,
@@ -72,11 +73,17 @@ class BaseAgent(ABC):
             return NeedsInputInvocation(
                 reason_code="AMBIGUOUS_FOLLOW_UP", questions=[follow_up["question"]],
             )
-        preflight = self._preflight(task, decision.sanitized_text)
+        if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot):
+            task._financial_grounding_snapshot.for_repair(task)
+            preflight = None
+        else:
+            preflight = self._preflight(task, decision.sanitized_text)
         if preflight is not None:
             return preflight
 
-        grounding = self._ground(task, decision.sanitized_text)
+        grounding = (task._financial_grounding_snapshot.for_repair(task)
+                     if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot)
+                     else self._ground(task, decision.sanitized_text))
         grounding["response_language"] = task_language(task)
         log_event(
             "agent.grounding.ready", agent=self.name.value,
@@ -99,6 +106,10 @@ class BaseAgent(ABC):
             grounding,
         )
         system_prompt = self.prompts.get(self.prompt_id)
+        if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot):
+            system_prompt += ("\nCorrect only the independently identified defects in missing_points. "
+                              "Use the unchanged server grounding. Preserve amounts, periods, sources and "
+                              "qualifications; do not fill missing facts, add advice or invent records.")
         preferences = task.context_features.get("coaching_preferences", {})
         if preferences:
             system_prompt += (
@@ -307,6 +318,8 @@ class BaseAgent(ABC):
                     "coaching_preferences": preferences,
                     "turn_observations": task.context_features.get("turn_observations", []),
                     "grounding": compact_evidence(grounding),
+                    **({"missing_points": task.context_features["missing_points"]}
+                       if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot) else {}),
                     **({"follow_up": follow_up} if follow_up.get("status") == "resolved" else {}),
                     **({"conversation_context": conversation_context} if conversation_context else {}),
                     **({"session_context": session_context}
@@ -359,6 +372,8 @@ class BaseAgent(ABC):
         )
         if self.name == AgentName.INVESTMENT_EDUCATION:
             result._education_grounding_snapshot = task._education_grounding_snapshot
+        elif self.name in {AgentName.SPENDING, AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
+            result._financial_grounding_snapshot = FinancialGroundingSnapshot.capture(task, grounding)
         result.rationale = require_explanation(result.rationale)
         return CompletedInvocation(
             result=result,

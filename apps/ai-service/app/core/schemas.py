@@ -219,6 +219,7 @@ class CoachRequest(BaseModel):
 
 
 class AgentResult(BaseModel):
+    _financial_grounding_snapshot: Any = PrivateAttr(default=None)
     # Server-created grounding authority never crosses a JSON/API boundary.
     _education_grounding_snapshot: Any = PrivateAttr(default=None)
     agent: AgentName
@@ -268,6 +269,7 @@ class DependencyEdge(StrictContractModel):
 
 
 class AgentTask(StrictContractModel):
+    _financial_grounding_snapshot: Any = PrivateAttr(default=None)
     _education_grounding_snapshot: Any = PrivateAttr(default=None)
     _budget_requires_income: bool | None = PrivateAttr(default=None)
     _goal_requires_capacity: bool | None = PrivateAttr(default=None)

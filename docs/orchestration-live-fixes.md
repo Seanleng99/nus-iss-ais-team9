@@ -57,3 +57,18 @@ read-only specialist answer is reused before independent compliance review.
 The attempted ECS timeout inspection was blocked by expired AWS CLI credentials.
 The actual deployed limits and the historical 45-second cutoff remain unverified;
 this change does not claim to have modified a deployed ECS service.
+
+## 5. Financial review and bounded correction
+
+v9 financial writers retain a private, fingerprinted grounding snapshot. Review
+identifies defects by server-owned section ID. An allowed factual-qualification
+defect can receive one correction using unchanged task inputs and tool results,
+then a second independent review. Prohibited advice, unverifiable claims, changed
+authority, missing usage, exhausted budgets and unavailable inputs do not authorize
+correction. A rejected or unavailable correction remains withheld.
+
+`REVIEW_DIAGNOSTICS_DIR` enables redacted diagnostic files containing the rejected
+draft, verdict, section ownership and original financial grounding. They never enter
+public traces or responses. The ECS template uses a private ephemeral `/tmp` folder;
+retention is at most 128 files, with 24-hour expiry enforced on subsequent writes.
+Operator access is required. Local diagnostics are disabled unless configured.

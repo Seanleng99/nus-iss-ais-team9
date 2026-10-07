@@ -73,6 +73,7 @@ class Settings(BaseSettings):
         alias="AGENT_TIMEOUT_SECONDS",
     )
     workflow_timeout_seconds: float = Field(default=85, gt=0, le=115, alias="WORKFLOW_TIMEOUT_SECONDS")
+    review_diagnostics_dir: str | None = Field(default=None, alias="REVIEW_DIAGNOSTICS_DIR")
     retry_backoff_seconds: float = Field(
         default=0.25,
         ge=0,

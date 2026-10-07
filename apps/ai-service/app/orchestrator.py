@@ -43,6 +43,7 @@ from app.core.config import Settings
 from app.core.config import settings as runtime_settings
 from app.core.deadline import check_deadline, remaining_seconds, workflow_deadline
 from app.core.education_grounding import EducationGroundingSnapshot
+from app.core.financial_grounding import FinancialGroundingSnapshot
 from app.core.follow_up import resolve_follow_up, specialist_follow_up
 from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_tool_permission
 from app.core.income_memory import income_memory_reply
@@ -134,6 +135,7 @@ def _write_workflow_log(
 
 
 class OrchestratorState(TypedDict, total=False):
+    synthesis_feedback: list[str]
     task_assignments: list[dict]
     workflow_started: float
     request: CoachRequest
@@ -1678,6 +1680,10 @@ class AgentOrchestrator:
             "sources": [source.model_dump() for source in sources],
         }
         synthesis_prompt = self.prompts.get("synthesizer")
+        if state.get("synthesis_feedback"):
+            payload["missing_points"] = state["synthesis_feedback"]
+            synthesis_prompt += ("\nCorrect only the identified draft defects using the unchanged specialist "
+                                 "facts. Preserve periods, amounts and unavailable-data qualifications.")
         synthesis_prompt += (
             "\nApply coaching_preferences to language complexity, accessibility, style and "
             "length; the current user's explicit choices take precedence. Retain relevant "
@@ -1731,7 +1737,8 @@ class AgentOrchestrator:
         elif (
             len(state["agent_results"]) == 1
             and (
-                (self.prompts.version == "v9" and not any(state.get(flag) for flag in
+                (self.prompts.version == "v9" and not state.get("synthesis_feedback")
+                 and not any(state.get(flag) for flag in
                     ("budget_capture", "goal_capture", "spending_capture"))
                  and not state["agent_results"][0].blocked)
                 or
@@ -1840,6 +1847,9 @@ class AgentOrchestrator:
                     "policy_corpus_version": review.data.get("policy_corpus_version")})
 
         events.append(review_event(result, 1))
+        financial_repair = self._repair_financial_answer(state, result, events)
+        if financial_repair is not None:
+            return financial_repair
         updated: OrchestratorState = {}
         calls = self.gateway.snapshot(state["trace_id"])
         used_tokens = sum(int(call.get("total_tokens") or 0) for call in calls)
@@ -1970,6 +1980,69 @@ class AgentOrchestrator:
                                  "error_code": getattr(error, "code", "REPAIR_UNAVAILABLE")},
                     ))
         return {**updated, "compliance_result": result, "audit_events": events}
+
+    def _repair_financial_answer(self, state, review, events):
+        issues = review.data.get("blocking_issues", [])
+        targets = {issue["section_id"] for issue in issues}
+        financial = {"spending", "budget", "goal_strategy"}
+        if not targets or not targets <= financial | {"draft"}:
+            return None
+        calls = self.gateway.snapshot(state["trace_id"])
+        owners = [item for item in state["agent_results"] if item.agent.value in financial]
+        eligible = (self.prompts.version == "v9" and review.data.get("repairable") is True
+                    and review.data.get("request_allowed") is True
+                    and not any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
+                    and all(not item.blocked and not item.data.get("needs_input") for item in state["agent_results"])
+                    and all(isinstance(item._financial_grounding_snapshot, FinancialGroundingSnapshot) for item in owners)
+                    and len(calls) + 2 * len(targets & financial) + 4 <= self.config.max_model_calls_per_run
+                    and (self.config.model_provider == "local_fixture" or all(
+                        call.get("status") == "completed" and type(call.get("total_tokens")) is int for call in calls))
+                    and (remaining_seconds() is None or remaining_seconds() > 0))
+        required = {"agent_" + target for target in targets & financial} | {"risk_compliance", "synthesizer"}
+        latest = {}
+        for call in reversed(calls):
+            if call["component"] in required:
+                latest.setdefault(call["component"], call)
+        estimated = 2 * sum(int(call.get("input_tokens") or 0) + int(call.get("max_output_tokens") or 0)
+                            for call in latest.values())
+        eligible = eligible and sum(int(call.get("total_tokens") or 0) for call in calls) + estimated < self.config.max_model_tokens_per_run
+        events.append(self._event(state, "financial.review.repair_decision", "orchestrator",
+                                  details={"allowed": eligible, "repair_round": 1,
+                                           "reason_code": "REPAIR_ELIGIBLE" if eligible else "FINANCIAL_REPAIR_NOT_ELIGIBLE"}))
+        if not eligible:
+            return None
+        updated = {}
+        try:
+            tasks = {key: task.model_copy(deep=True) for key, task in state["tasks"].items()}
+            for original in owners:
+                task = self._find_task_by_agent(tasks, original.agent)
+                original._financial_grounding_snapshot.for_repair(task, original.data)
+                if original.agent.value in targets:
+                    task.status = AgentTaskStatus.READY
+                    task.attempt = 1
+                    task._financial_grounding_snapshot = original._financial_grounding_snapshot
+                    task.context_features["missing_points"] = [issue["requirement"] for issue in issues
+                                                               if issue["section_id"] == original.agent.value]
+            repair_state = {**state, "tasks": tasks, "audit_events": events}
+            if "draft" in targets:
+                repair_state["synthesis_feedback"] = [issue["requirement"] for issue in issues if issue["section_id"] == "draft"]
+            updated.update(self._run_ready_tasks(repair_state))
+            repair_state.update(updated)
+            updated.update(self._synthesize(repair_state))
+            events = updated["audit_events"]
+            events.append(self._event(state, "compliance.started", AgentName.RISK_COMPLIANCE.value,
+                                      details={"review_round": 2}))
+            corrected = self.compliance_agent.validate(state["request"], updated["agent_results"], updated["draft_answer"],
+                routing_rationale=state["routing_rationale"],
+                follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True))
+            events.append(self._event(state, "compliance.completed", AgentName.RISK_COMPLIANCE.value,
+                                      details={"review_round": 2, "blocked": corrected.blocked,
+                                               "review_block_categories": corrected.data.get("review_block_categories", [])}))
+            return {**updated, "compliance_result": corrected, "audit_events": events}
+        except (ModelGatewayError, RetrievalError, TimeoutError):
+            events.append(self._event(state, "financial.review.repair_unavailable", "orchestrator",
+                                      details={"reason_code": "REPAIR_UNAVAILABLE"}))
+            return {"compliance_result": review, "audit_events": events}
 
     @trace_method
     def _finalize(self, state: OrchestratorState) -> OrchestratorState:
