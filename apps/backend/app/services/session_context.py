@@ -389,7 +389,9 @@ def apply_observations(state, turn, message, position, answer=""):
     ), reverse=True)[:12]
     state["observations"] = sorted(ranked, key=lambda item: item["source_position"])
     unique_referents = {
-        (item["source_position"], item.get("option_index"), item["subject"]): item
+        (item["source_position"], item.get("option_index"),
+         (item.get("agent"), tuple(item.get("education_topics", [])))
+         if item.get("option_index") is not None else item["subject"]): item
         for item in state.get("referents", []) + referents
     }
     state["referents"] = list(unique_referents.values())[-12:]

@@ -310,6 +310,31 @@ def test_new_topics_actions_confirmations_and_fact_answers_keep_original_routing
     assert resolve_follow_up(request(message, previous="Explain bonds.")).status == "standalone"
 
 
+def test_explicit_supported_subject_survives_an_unsupported_clause():
+    result = resolve_follow_up(request(
+        "Explain diversification and compare it with the current tax treatment of ETFs for my situation. "
+        "Clearly identify which parts you can support."))
+    assert result.status == "standalone"
+
+
+def test_malformed_metadata_recovers_from_available_displayed_options_only():
+    referents = [{"subject": subject, "agent": "investment_education",
+                  "education_topics": [topic], "source_quote": "Explain funds and ETFs",
+                  "source_position": 1, "option_index": index}
+                 for subject, topic, index in [("mutual funds", "mutual funds", 1),
+                                              ("funds", "mutual funds", 1),
+                                              ("ETFs", "exchange-traded funds", 2)]]
+    history = [{"role": "user", "content": "Explain funds and ETFs"},
+               {"role": "assistant", "content": "1. Mutual funds\n2. ETFs", "answer_status": "available"}]
+    req = request("Explain the second option.", session_context={"referents": referents},
+                  conversation_context=history)
+    result = resolve_follow_up(req)
+    assert result.status == "resolved" and result.education_topics == ["exchange-traded funds"]
+    history[-1]["answer_status"] = "unavailable"
+    assert resolve_follow_up(req.model_copy(update={"conversation_context": [
+        type(req.conversation_context[0]).model_validate(item) for item in history]})).status == "ambiguous"
+
+
 def test_unrelated_or_unsupported_recent_topic_does_not_inherit_older_subject():
     for previous in ["Explain pottery.", "Explain cryptocurrency taxes."]:
         result = resolve_follow_up(

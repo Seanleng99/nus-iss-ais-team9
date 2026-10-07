@@ -20,3 +20,12 @@ allows the existing bounded structured-response correction. Original user wordin
 remains the synthesis input. Legacy prompt versions preserve their existing contract.
 Targeted checks cover independent scopes, adversarial over-requesting and invalid
 assignment provenance alongside the existing financial dependency regressions.
+
+## 2. Follow-up subjects and displayed option identity
+
+Unsupported clauses no longer erase explicit supported subjects before answerability.
+Reviewed rendered options replace the router's preliminary numbered referents.
+Persistence collapses aliases with the same position, option index, owner and canonical
+topics, while conflicting identities remain ambiguous. Malformed historical metadata
+can fall back to the available displayed option set using the existing dialogue
+boundaries. Unavailable answers and genuinely missing subjects still clarify.

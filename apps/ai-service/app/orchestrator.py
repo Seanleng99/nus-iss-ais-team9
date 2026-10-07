@@ -2087,8 +2087,11 @@ class AgentOrchestrator:
                 "turn_decision": (
                     {} if compliance.blocked else {
                         **state.get("turn_decision", {}),
-                        "referents": [*state.get("turn_decision", {}).get("referents", []),
-                                      *state.get("answer_referents", [])][-12:],
+                        "referents": [
+                            *[item for item in state.get("turn_decision", {}).get("referents", [])
+                              if item.get("option_index") is None or not state.get("answer_referents")],
+                            *state.get("answer_referents", []),
+                        ][-12:],
                         "missing_fields": list(dict.fromkeys([
                             *state.get("turn_decision", {}).get("missing_fields", []),
                             *(field for item in state["agent_results"]

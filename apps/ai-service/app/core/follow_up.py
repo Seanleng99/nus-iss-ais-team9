@@ -11,7 +11,6 @@ from coach_i18n import input_pattern, load_data, request_locale, translate
 from app.agents.education_access import (
     education_model_question,
     education_topics,
-    unsupported_education_topics,
 )
 from app.core.schemas import AgentName, CoachRequest, FollowUpResolution
 
@@ -165,8 +164,8 @@ def _is_reference(text, request):
 
 
 def _subject(text, request):
-    if unsupported_education_topics(text):
-        return None
+    # Unsupported scope does not erase explicitly named, supported subjects.
+    # Answerability belongs to the specialist after reference resolution.
     topics = education_topics(text)
     if len(topics) > 12:
         return None
@@ -205,6 +204,11 @@ def _ordinal(request, match):
         # Rendered options are typed subjects with reviewed user provenance;
         # ordinary prose and subsequent formatting changes cannot lose them.
         if len(set(indices)) != len(indices) or sorted(indices) != list(range(1, len(indices) + 1)):
+            if request.conversation_context:
+                # Recover only from an available, unambiguous displayed option set.
+                # The normal history boundary and unavailable-answer checks still apply.
+                clean = request.session_context.model_copy(update={"referents": []})
+                return _ordinal(request.model_copy(update={"session_context": clean}), match)
             return _ambiguous(message, "AMBIGUOUS_ATTRIBUTED_OPTIONS")
         number = 2 if value == "latter" and len(options) == 2 else ORDINAL_VALUES.get(value)
         selected = [item for item in options if item.option_index == number]

@@ -25,6 +25,22 @@ def response(message, observations=None, **turn):
                              "session_observations": observations or [], "missing_fields": [], **turn}})
 
 
+def test_numbered_aliases_collapse_without_merging_conflicting_topics():
+    message = "Compare mutual funds and ETFs."
+    def referent(subject, topic):
+        return {"subject": subject, "agent": "investment_education", "education_topics": [topic],
+                "source_quote": message, "source_position": 1, "option_index": 1}
+    state = empty_state()
+    state["referents"] = [referent("mutual funds", "mutual funds")]
+    current = complete_state(state, response("Funds and ETFs", referents=[
+        referent("funds", "mutual funds")]), message, 1)
+    assert len(current["referents"]) == 1
+    assert current["referents"][0]["subject"] == "funds"
+    conflicting = complete_state(current, response("ETFs", referents=[
+        referent("ETFs", "exchange-traded funds")]), message, 1)
+    assert len(conflicting["referents"]) == 2
+
+
 def test_unfamiliar_self_statement_retains_exact_value_and_attribution():
     message = "The amount landing in my account each month is SGD 4.8k."
     state = complete_state(empty_state(), response(message, [observation(message)]), message, 7)
