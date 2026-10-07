@@ -176,10 +176,13 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
                             "confidence": 0.76,
                         }
                     ),
-                    json.dumps({"answer": "A synthesized model-generated answer."}),
                     json.dumps(
                         {
                             "blocked": False,
+                            "request_allowed": True,
+                            "complete": True,
+                            "missing_points": [],
+                            "financial_language_safe": True,
                             "summary": "Allowed after model review.",
                             "rationale": ["The answer reviews spending."],
                             "policy_notes": [],
@@ -204,12 +207,11 @@ def test_router_decision_comes_from_model_not_keywords() -> None:
         config=Settings(MODEL_PROVIDER="local_fixture"), gateway=gateway
     ).handle(request)
     assert response.selected_agents == ["spending"]
-    assert response.answer == "A synthesized model-generated answer."
-    assert len(gateway.calls) == 4
+    assert response.answer == "A model-generated spending response."
+    assert len(gateway.calls) == 3
     assert [call["component"] for call in response.audit["model_calls"]] == [
         "router",
         "agent_spending",
-        "synthesizer",
         "risk_compliance",
     ]
     assert all(call["temperature"] > 0 for call in gateway.calls)
@@ -247,7 +249,7 @@ def test_explicit_specialist_selection_cannot_be_overridden_by_router() -> None:
     )
 
     assert response.selected_agents == ["goal_strategy"]
-    assert not any(
+    assert any(
         call["system_prompt"].startswith("PROMPT_ID: router")
         for call in gateway.calls
     )
@@ -256,7 +258,7 @@ def test_explicit_specialist_selection_cannot_be_overridden_by_router() -> None:
         for event in response.audit["events"]
         if event["event_type"] == "routing.completed"
     )
-    assert routing_event["details"]["routing_mode"] == "explicit"
+    assert routing_event["details"]["routing_mode"] == "model"
 
 
 def test_investment_education_returns_grounded_education_sources() -> None:

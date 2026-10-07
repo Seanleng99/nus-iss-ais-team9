@@ -1,0 +1,1748 @@
+{
+  "date": "2026-10-07",
+  "application_url": "https://ai-financial-wellness-coach.click/",
+  "profile_id": "agent-reasoning-demo-20261007",
+  "live_prompt_set": "v9",
+  "observed_model_provider": "openai",
+  "observed_model_id": "gpt-6-luna",
+  "approved_turns_attempted": 34,
+  "additional_retests": 2,
+  "first_attempt_outcomes": {
+    "substantive_answer": 18,
+    "expected_clarification": 1,
+    "unnecessary_clarification": 2,
+    "review_withheld": 7,
+    "http_503_timeout": 6
+  },
+  "acceptance": "not_accepted",
+  "method": "Signed-in Edge UI submissions and reference-ID trace inspection; no direct API or fixture execution.",
+  "limitations": [
+    "One sample per approved turn; two preserved retests. No statistical reliability estimate.",
+    "UI prompt set and model metadata do not prove a deployed Git commit SHA.",
+    "Budget was preselected in cases 8 and 20, so dynamic addition of Budget was not demonstrated.",
+    "No controlled failure injection or controlled Budget-only Education test was performed.",
+    "Session expired around collection of case 28; user signed back in and its saved answer was recovered without resubmission."
+  ],
+  "results": [
+    {
+      "id": "3",
+      "reference_id": "f4d6fa81-db9b-4b83-9677-ed6ae151ae10",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy"
+      ],
+      "final_agents": [
+        "goal_strategy"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Calculate the remaining amount, percentage progress and equal monthly contribution for each of my saved goals using its recorded balance and duration.",
+      "retry_of": null,
+      "expected": "G; no edges",
+      "verdict": "Pass",
+      "note": "All four remaining balances, progress percentages and monthly contributions correct; Budget absent.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "1",
+      "reference_id": "b1613cbb-14b4-42f3-9fe5-4794da3c9684",
+      "http_error": null,
+      "initial_agents": [
+        "spending"
+      ],
+      "final_agents": [
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": true,
+      "review_categories": [
+        "factual_qualification"
+      ],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my Food, Entertainment and Shopping patterns in September 2026 and October 2026. Identify the largest changes and explain what the date coverage allows you to conclude.",
+      "retry_of": null,
+      "expected": "S; no edges",
+      "verdict": "Withheld",
+      "note": "Expected specialist; review blocked the answer: factual_qualification.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "2",
+      "reference_id": "8a7e0cd5-84a2-41c2-a7be-7a112d53c4f1",
+      "http_error": null,
+      "initial_agents": [
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "scheduled",
+          "Requester": "64f8ae48-5e7f-4ce4-8e9e-871955b70110",
+          "Provider": "2aa767e9-43a1-42a6-827e-b923abe1690b",
+          "Reason": ""
+        },
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "64f8ae48-5e7f-4ce4-8e9e-871955b70110",
+          "Provider": "2aa767e9-43a1-42a6-827e-b923abe1690b",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "What monthly savings capacity does my October 2026 budget's confirmed plan provide? Explain the calculation and distinguish the savings allocation from unallocated income.",
+      "retry_of": null,
+      "expected": "B; no edges",
+      "verdict": "Answer correct; graph failed",
+      "note": "Correct 1,600 savings allocation and 950 unallocated income; unwanted B → S.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "4",
+      "reference_id": "5e989e3f-f836-44f8-9bed-e45533645a42",
+      "http_error": null,
+      "initial_agents": [
+        "investment_education"
+      ],
+      "final_agents": [
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain how shares, bonds, mutual funds and ETFs differ, especially diversification and liquidity. Give a neutral comparison with sources where available.",
+      "retry_of": null,
+      "expected": "I; no edges",
+      "verdict": "Pass",
+      "note": "Neutral comparison with retrieved citations and clearly labelled model knowledge.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "5",
+      "reference_id": "de90ba43-ef14-492d-8cf4-cf555775c1b1",
+      "http_error": null,
+      "initial_agents": [
+        "budget",
+        "spending"
+      ],
+      "final_agents": [
+        "budget",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "79fd9619-9028-479e-b59a-14e1c1d1213c",
+          "Provider": "55cd783f-2db0-4b8d-9431-58bf285418f5",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain my October 2026 monthly savings capacity using my budget and spending patterns. Which observed categories put pressure on the plan? Distinguish planned capacity from money already saved.",
+      "retry_of": null,
+      "expected": "B + S; B → S",
+      "verdict": "Pass",
+      "note": "Correct planned capacity and category pressures; existing Spending output reused.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "6",
+      "reference_id": "32d67cdf-dd44-4dc3-866b-0463d18c4867",
+      "http_error": null,
+      "initial_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "tool:education_retriever:dc471e9fae8f121f",
+          "capability": "education_context"
+        },
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        },
+        {
+          "requester": "goal_strategy",
+          "provider": "tool:education_retriever:dc471e9fae8f121f",
+          "capability": "education_context"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "education_context",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "57175c42-cc04-4bca-adc5-5692208b55ae",
+          "Provider": "tool:education_retriever:dc471e9fae8f121f",
+          "Reason": ""
+        },
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "1bfd098a-8c48-4638-910b-6987b27e5e0f",
+          "Provider": "57175c42-cc04-4bca-adc5-5692208b55ae",
+          "Reason": ""
+        },
+        {
+          "Capability": "education_context",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "1bfd098a-8c48-4638-910b-6987b27e5e0f",
+          "Provider": "tool:education_retriever:dc471e9fae8f121f",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": true,
+      "review_categories": [
+        "factual_qualification"
+      ],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Using my October 2026 budget's confirmed savings allocation, can I fund all my saved goals concurrently at their recorded monthly rates? Explain individual feasibility and feasibility against one shared pool.",
+      "retry_of": null,
+      "expected": "B + G; G → B",
+      "verdict": "Withheld; extra tool edges",
+      "note": "Required capacity reused, but both B and G also requested Education context; factual_qualification block.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "7",
+      "reference_id": "ecc5cc79-2cf4-44ec-b7b8-abb0c9a51034",
+      "http_error": "503",
+      "initial_agents": [],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        },
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "6ab49153-118e-42a8-a056-ddafae2ee509",
+          "Provider": "57c5e1c0-5ba8-4cb8-8292-f93c2083b38f",
+          "Reason": ""
+        },
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "99612ae6-7c44-487c-98e1-f7fa607c04f1",
+          "Provider": "6ab49153-118e-42a8-a056-ddafae2ee509",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Use my October 2026 spending patterns and saved budget capacity to assess all my saved goals together. Explain recorded expense pressures, required monthly contributions and the total shortfall.",
+      "retry_of": null,
+      "expected": "B + S + G; G → B → S",
+      "verdict": "Timed out",
+      "note": "Both required demonstration edges saved; no final answer. Initial route was not recovered from the captured grid.",
+      "failure_code": "AI_SERVICE_TIMEOUT",
+      "reference_source": "Timed-out run selected by matching title and submission time"
+    },
+    {
+      "id": "8",
+      "reference_id": "06e5ec50-7362-4728-b2be-c1553e9535c1",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "goal_strategy",
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        },
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "af602909-8d1a-435f-8994-a971b7fc0447",
+          "Provider": "5ef5d592-9d54-4ea6-9b7e-b7c7d0a33eea",
+          "Reason": ""
+        },
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "b4fd0dd1-3c56-41b4-967f-2f0781af74f6",
+          "Provider": "af602909-8d1a-435f-8994-a971b7fc0447",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "How do my October 2026 spending patterns affect whether I can fund my saved goals together?",
+      "retry_of": null,
+      "expected": "S + G intent; final B + S + G chain",
+      "verdict": "Final graph and answer pass",
+      "note": "Router already selected Budget. Correct 1,000 shortfall; this does not demonstrate dynamically adding Budget.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "9",
+      "reference_id": "dbe4b554-7574-4441-b425-11ee032bd311",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "6944c63d-bcfc-4bcd-ab8f-832117a531a2",
+          "Provider": "032b742f-0bab-402c-af5a-e7dab9ca182b",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [
+        {
+          "agent": "spending",
+          "task": "032b742f-0bab-402c-af5a-e7dab9ca182b",
+          "attempt": "1",
+          "start_s": 4.745,
+          "end_s": 11.249
+        },
+        {
+          "agent": "budget",
+          "task": "6944c63d-bcfc-4bcd-ab8f-832117a531a2",
+          "attempt": "1",
+          "start_s": 4.749,
+          "end_s": 10.901
+        },
+        {
+          "agent": "budget",
+          "task": "6944c63d-bcfc-4bcd-ab8f-832117a531a2",
+          "attempt": "2",
+          "start_s": 11.258,
+          "end_s": 23.024
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "spending",
+            "budget"
+          ],
+          "seconds": 6.152
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my spending by category. Independently explain zero-based budgeting as a general method.",
+      "retry_of": null,
+      "expected": "B + S; no edges",
+      "verdict": "Answer correct; independence failed",
+      "note": "B → S remained despite a general, independent budgeting question.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "10",
+      "reference_id": "f559a67e-531f-42ab-807c-4b392f229682",
+      "http_error": null,
+      "initial_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [
+        {
+          "agent": "budget",
+          "task": "3da016a4-252e-4207-a234-dcd5093ea3df",
+          "attempt": "1",
+          "start_s": 8.632,
+          "end_s": 19.967
+        },
+        {
+          "agent": "goal_strategy",
+          "task": "b17cddf7-e1e4-4ceb-8ba1-938727a45df7",
+          "attempt": "1",
+          "start_s": 8.639,
+          "end_s": 13.917
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "budget",
+            "goal_strategy"
+          ],
+          "seconds": 5.278
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Explain zero-based budgeting as a general method. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals.",
+      "retry_of": null,
+      "expected": "B + G; no edges",
+      "verdict": "Pass",
+      "note": "General budgeting and saved-goal arithmetic; overlapping execution verified.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "11",
+      "reference_id": "b5ffee7d-88b3-468d-b382-5215d8fe19cb",
+      "http_error": "503",
+      "initial_agents": [
+        "spending",
+        "budget",
+        "goal_strategy"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my spending by category. Separately explain zero-based budgeting as a general method. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals.",
+      "retry_of": null,
+      "expected": "B + S + G; no edges",
+      "verdict": "Timed out",
+      "note": "Expected specialists and no saved edges; no final answer or completed concurrency claim.",
+      "failure_code": "AI_SERVICE_TIMEOUT",
+      "reference_source": "Timed-out run selected by matching title and submission time"
+    },
+    {
+      "id": "12",
+      "reference_id": "424a1643-07f7-4e08-96c7-ebfec5f892df",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "goal_strategy"
+      ],
+      "final_agents": [
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": true,
+      "review_categories": [
+        "factual_qualification"
+      ],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my spending by category. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals.",
+      "retry_of": null,
+      "expected": "S + G; no edges",
+      "verdict": "Withheld",
+      "note": "Correct specialist set and no edges; factual_qualification block. Retest 12R answered.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "13",
+      "reference_id": "e6436483-c79e-4e1d-9564-aeb67f7a81e0",
+      "http_error": "503",
+      "initial_agents": [
+        "spending",
+        "investment_education"
+      ],
+      "final_agents": [
+        "investment_education",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my recorded purchases by category. Independently explain diversification and the difference between shares and bonds.",
+      "retry_of": null,
+      "expected": "S + I; no edges",
+      "verdict": "Timed out",
+      "note": "Expected specialists and no saved edges; no final answer.",
+      "failure_code": "AI_SERVICE_TIMEOUT",
+      "reference_source": "Timed-out run selected by matching title and submission time"
+    },
+    {
+      "id": "14",
+      "reference_id": "05fb31dd-148c-407a-8368-1525e2d7fe4d",
+      "http_error": null,
+      "initial_agents": [
+        "budget",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "scheduled",
+          "Requester": "08c0082e-7cc1-404e-ab75-0b400cc2edad",
+          "Provider": "ed7e84a8-f874-40f8-98a9-8fa928b2102e",
+          "Reason": ""
+        },
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "08c0082e-7cc1-404e-ab75-0b400cc2edad",
+          "Provider": "ed7e84a8-f874-40f8-98a9-8fa928b2102e",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain my October 2026 budget's confirmed monthly savings capacity. Independently explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "B + I; no edges",
+      "verdict": "Answer correct; independence failed",
+      "note": "Budget added Spending and B → S; reproduced by 14R.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "12R",
+      "reference_id": "2a91ebc0-bea7-4c57-af8f-97361f96b623",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "goal_strategy"
+      ],
+      "final_agents": [
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [
+        {
+          "agent": "spending",
+          "task": "b22911a5-0920-47d3-8c31-26bf6aa9870d",
+          "attempt": "1",
+          "start_s": 7.641,
+          "end_s": 14.309
+        },
+        {
+          "agent": "goal_strategy",
+          "task": "d9dcc7cc-0214-404c-9724-7c999b620cae",
+          "attempt": "1",
+          "start_s": 7.642,
+          "end_s": 13.061
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "spending",
+            "goal_strategy"
+          ],
+          "seconds": 5.419
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my spending by category. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals.",
+      "retry_of": "12",
+      "expected": "Retest 12: S + G; no edges",
+      "verdict": "Pass on retest",
+      "note": "Correct recorded totals and goal arithmetic; no Budget; 5.419 seconds of overlap.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "15",
+      "reference_id": "a51990e4-a064-4a9e-a833-8841b3d944b4",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy",
+        "investment_education"
+      ],
+      "final_agents": [
+        "goal_strategy",
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": true,
+      "review_categories": [
+        "unverifiable_claim"
+      ],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Calculate the remaining amount and equal monthly contribution for each saved goal. Independently explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "G + I; no edges",
+      "verdict": "Withheld",
+      "note": "Saved arithmetic remained independent; review category unverifiable_claim.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "16",
+      "reference_id": "1d703d0b-6849-4b81-bdc6-900b465a1f4e",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "budget",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "a2083bd9-bf00-4db9-8d3e-75ee28231440",
+          "Provider": "85607aa6-6ebf-4dfb-8c15-6fe5f5eccb23",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": true,
+      "review_categories": [
+        "factual_qualification"
+      ],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Use my October 2026 spending patterns to explain my budget's monthly savings capacity. Independently explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "B + S + I; B → S",
+      "verdict": "Withheld",
+      "note": "Expected specialist dependency; factual_qualification block.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "16P",
+      "reference_id": "f2166dbf-f97e-4942-b6dd-2f281b2ad072",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "budget",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [
+        {
+          "agent": "spending",
+          "task": "8c69f1b1-5da0-4713-8242-ae67b1f9f9bd",
+          "attempt": "1",
+          "start_s": 5.822,
+          "end_s": 13.193
+        },
+        {
+          "agent": "budget",
+          "task": "e296afd8-76a4-4655-a91c-261e304e63b6",
+          "attempt": "1",
+          "start_s": 5.824,
+          "end_s": 24.257
+        },
+        {
+          "agent": "investment_education",
+          "task": "d9dde081-4110-43b6-8553-f77137e8db10",
+          "attempt": "1",
+          "start_s": 5.827,
+          "end_s": 14.428
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "spending",
+            "budget"
+          ],
+          "seconds": 7.369
+        },
+        {
+          "agents": [
+            "spending",
+            "investment_education"
+          ],
+          "seconds": 7.366
+        },
+        {
+          "agents": [
+            "budget",
+            "investment_education"
+          ],
+          "seconds": 8.601
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my recorded purchases by category. Independently explain zero-based budgeting as a general method. Separately explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "B + S + I; no edges",
+      "verdict": "Pass",
+      "note": "Useful three-part answer, no edges, overlapping specialist execution verified.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "17",
+      "reference_id": "914eb584-7b88-4f8f-b69c-9f2e4ced68c8",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "goal_strategy",
+        "investment_education"
+      ],
+      "final_agents": [
+        "goal_strategy",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [
+        {
+          "agent": "spending",
+          "task": "3a197756-ed94-414c-9db4-b6478e20a119",
+          "attempt": "1",
+          "start_s": 7.306,
+          "end_s": 13.911
+        },
+        {
+          "agent": "goal_strategy",
+          "task": "e2ef5008-a63d-42fa-abe3-258d54e32896",
+          "attempt": "1",
+          "start_s": 7.308,
+          "end_s": 11.667
+        },
+        {
+          "agent": "investment_education",
+          "task": "4786ee9b-af51-47ae-ac4f-1c5498b115a7",
+          "attempt": "1",
+          "start_s": 7.31,
+          "end_s": 21.275
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "spending",
+            "goal_strategy"
+          ],
+          "seconds": 4.359
+        },
+        {
+          "agents": [
+            "spending",
+            "investment_education"
+          ],
+          "seconds": 6.601
+        },
+        {
+          "agents": [
+            "goal_strategy",
+            "investment_education"
+          ],
+          "seconds": 4.357
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my spending by category. Independently calculate the remaining amount and equal monthly contribution for each saved goal. Separately explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "S + G + I; no edges",
+      "verdict": "Pass",
+      "note": "Useful three-part answer, no Budget, overlapping specialist execution verified.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "18",
+      "reference_id": "89569a6e-8e77-4058-bb4f-5e7375ff7270",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy",
+        "budget",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "investment_education"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "107fd19b-8682-4705-87d1-a7a843a5830a",
+          "Provider": "0ca8827f-aa55-4570-b8d5-c972ca41b569",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Assess all my saved goals together against my October 2026 budget's confirmed savings allocation. Independently explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "B + G + I; G → B",
+      "verdict": "Pass",
+      "note": "Correct shared-pool shortfall; required capacity reused; Investment has no dependency edge.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "18P",
+      "reference_id": "59d057d8-6612-41fa-b601-d0ed9c6aff46",
+      "http_error": null,
+      "initial_agents": [
+        "budget",
+        "goal_strategy",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": true,
+      "review_categories": [
+        "factual_qualification"
+      ],
+      "task_intervals": [
+        {
+          "agent": "budget",
+          "task": "87c19a9d-8982-4b7c-860e-2777a5257168",
+          "attempt": "1",
+          "start_s": 9.332,
+          "end_s": 25.451
+        },
+        {
+          "agent": "goal_strategy",
+          "task": "de4b9182-ec9e-4151-9aaf-7a0c06234d39",
+          "attempt": "1",
+          "start_s": 9.333,
+          "end_s": 15.049
+        },
+        {
+          "agent": "investment_education",
+          "task": "44bf0ded-33d7-4d8a-8ee2-6eeef9fde4f0",
+          "attempt": "1",
+          "start_s": 9.336,
+          "end_s": 23.394
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "budget",
+            "goal_strategy"
+          ],
+          "seconds": 5.716
+        },
+        {
+          "agents": [
+            "budget",
+            "investment_education"
+          ],
+          "seconds": 14.058
+        },
+        {
+          "agents": [
+            "goal_strategy",
+            "investment_education"
+          ],
+          "seconds": 5.713
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Explain zero-based budgeting as a general method. Independently calculate the remaining amount and equal monthly contribution for each saved goal. Separately explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "B + G + I; no edges",
+      "verdict": "Withheld",
+      "note": "Independent execution verified; factual_qualification block prevents a usable answer.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "19",
+      "reference_id": "7863d6c9-4815-4da4-90f5-a0d5221ec6a4",
+      "http_error": null,
+      "initial_agents": [
+        "spending",
+        "budget",
+        "goal_strategy",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        },
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "668e0d23-7063-42fb-8e73-bd8ff84840d4",
+          "Provider": "33156079-f93e-4adc-86ca-700c21392d2b",
+          "Reason": ""
+        },
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "1e96432b-4a5a-47e4-be9d-f77e2bd0234c",
+          "Provider": "668e0d23-7063-42fb-8e73-bd8ff84840d4",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [
+        {
+          "agent": "spending",
+          "task": "33156079-f93e-4adc-86ca-700c21392d2b",
+          "attempt": "1",
+          "start_s": 8.49,
+          "end_s": 14.139
+        },
+        {
+          "agent": "budget",
+          "task": "668e0d23-7063-42fb-8e73-bd8ff84840d4",
+          "attempt": "1",
+          "start_s": 8.491,
+          "end_s": 12.417
+        },
+        {
+          "agent": "goal_strategy",
+          "task": "1e96432b-4a5a-47e4-be9d-f77e2bd0234c",
+          "attempt": "1",
+          "start_s": 8.494,
+          "end_s": 8.566
+        },
+        {
+          "agent": "investment_education",
+          "task": "f0ee7ba3-3bef-48b4-909a-6dfb8edaf273",
+          "attempt": "1",
+          "start_s": 8.496,
+          "end_s": 16.315
+        },
+        {
+          "agent": "budget",
+          "task": "668e0d23-7063-42fb-8e73-bd8ff84840d4",
+          "attempt": "2",
+          "start_s": 16.323,
+          "end_s": 20.959
+        },
+        {
+          "agent": "goal_strategy",
+          "task": "1e96432b-4a5a-47e4-be9d-f77e2bd0234c",
+          "attempt": "2",
+          "start_s": 20.966,
+          "end_s": 29.167
+        }
+      ],
+      "overlaps": [
+        {
+          "agents": [
+            "spending",
+            "budget"
+          ],
+          "seconds": 3.926
+        },
+        {
+          "agents": [
+            "spending",
+            "goal_strategy"
+          ],
+          "seconds": 0.072
+        },
+        {
+          "agents": [
+            "spending",
+            "investment_education"
+          ],
+          "seconds": 5.643
+        },
+        {
+          "agents": [
+            "budget",
+            "goal_strategy"
+          ],
+          "seconds": 0.072
+        },
+        {
+          "agents": [
+            "budget",
+            "investment_education"
+          ],
+          "seconds": 3.921
+        },
+        {
+          "agents": [
+            "goal_strategy",
+            "investment_education"
+          ],
+          "seconds": 0.07
+        }
+      ],
+      "reference_lookup_verified": true,
+      "prompt": "Use my October 2026 spending patterns and budget's confirmed savings allocation to assess all my saved goals concurrently. Independently explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "All four; G → B → S; I independent",
+      "verdict": "Pass",
+      "note": "Correct funding and qualified spending context; Investment independent of the chain.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "19P",
+      "reference_id": "990d1cd0-e8c4-4748-9c48-48d1b5e29815",
+      "http_error": "503",
+      "initial_agents": [
+        "spending",
+        "budget",
+        "goal_strategy",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my spending by category. Independently explain zero-based budgeting as a general method. Separately calculate the remaining amount and equal monthly contribution for each saved goal. Independently explain diversification as a general investment concept.",
+      "retry_of": null,
+      "expected": "All four; no edges",
+      "verdict": "Timed out",
+      "note": "All four specialists and no saved edges; final answer absent.",
+      "failure_code": "AI_SERVICE_TIMEOUT",
+      "reference_source": "Timed-out run selected by matching title and submission time"
+    },
+    {
+      "id": "14R",
+      "reference_id": "d19bd159-94a3-4ba3-862e-0d8d945277a3",
+      "http_error": null,
+      "initial_agents": [
+        "budget",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "scheduled",
+          "Requester": "37e29929-e3c9-42ae-96f6-9c05e22ee828",
+          "Provider": "0c7b8fc7-eb02-4e0b-a871-30bb2bad50c2",
+          "Reason": ""
+        },
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "37e29929-e3c9-42ae-96f6-9c05e22ee828",
+          "Provider": "0c7b8fc7-eb02-4e0b-a871-30bb2bad50c2",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain my October 2026 budget's confirmed monthly savings capacity. Independently explain diversification as a general investment concept.",
+      "retry_of": "14",
+      "expected": "Retest 14: B + I; no edges",
+      "verdict": "Answer correct; independence failed again",
+      "note": "Same unwanted dynamically added Spending and B → S; correct plan capacity and neutral education.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "20",
+      "reference_id": "ba7a0ea1-a1a0-423a-b3fc-36961dd08791",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy",
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        },
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "scheduled",
+          "Requester": "5e0308c3-cffc-4d39-9442-93486afea488",
+          "Provider": "e9f6fd20-798a-4be4-b9cd-78a69d3eddc7",
+          "Reason": ""
+        },
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "5e0308c3-cffc-4d39-9442-93486afea488",
+          "Provider": "e9f6fd20-798a-4be4-b9cd-78a69d3eddc7",
+          "Reason": ""
+        },
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "41dcbda7-b171-4098-a59e-b185b0b60f26",
+          "Provider": "5e0308c3-cffc-4d39-9442-93486afea488",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Are all my saved goals feasible together against my current monthly savings capacity? Explain the combined shortfall.",
+      "retry_of": null,
+      "expected": "G requires B; add or reuse provider",
+      "verdict": "Answer correct; extra dependency",
+      "note": "Budget was already routed and reused; B also added unnecessary Spending. Dynamic Budget addition unproven.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "21",
+      "reference_id": "5f0f8836-4b34-4449-b7a3-2b503fb2ba24",
+      "http_error": null,
+      "initial_agents": [
+        "spending"
+      ],
+      "final_agents": [
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Which explicitly scheduled recurring expenses are due in November 2026, and what is their projected total? Explain the difference between a forecast and recorded payments.",
+      "retry_of": null,
+      "expected": "S; recurring forecast",
+      "verdict": "Pass",
+      "note": "Only explicit rent recurrence: 1 November, projected 1,800; no invented paid transaction.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "22",
+      "reference_id": "91d50d55-15fb-4547-85f5-26498006cc57",
+      "http_error": null,
+      "initial_agents": [
+        "spending"
+      ],
+      "final_agents": [
+        "spending"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Analyze my November 2026 expense patterns and explain whether the records support a comparison with October 2026.",
+      "retry_of": null,
+      "expected": "S; November records",
+      "verdict": "Partial",
+      "note": "Acknowledged missing November records but shifted into October analysis; no explicit zero-record summary.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "23",
+      "reference_id": "33da1f99-2b8c-4cf0-9448-3cf5496eb0f4",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy",
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "e6baa044-1d38-4157-8f03-0f0b426f441c",
+          "Provider": "ca577f18-31d5-45f4-ac3e-1bed89e99e42",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Using the confirmed budget savings allocations for September 2026, October 2026 and November 2026, assess whether all my saved goals can be funded concurrently in each month. Compare the shortfalls.",
+      "retry_of": null,
+      "expected": "B + G; G → B; exact months",
+      "verdict": "Pass",
+      "note": "Correct September/October/November shortfalls: 1,200 / 1,000 / 1,600.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "24",
+      "reference_id": "7c9079f5-4fe7-4257-bc44-adf7e6e57e90",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy",
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "201e5217-d835-4772-8b3e-d68806369814",
+          "Provider": "94b6f60d-9d38-4efc-8c42-0d9565838fd3",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": true,
+      "review_categories": [
+        "factual_qualification"
+      ],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Assess whether all my saved goals can be funded together using my December 2026 saved budget's savings allocation.",
+      "retry_of": null,
+      "expected": "B + G; G → B; December missing",
+      "verdict": "Withheld",
+      "note": "Capacity dependency present, but no useful missing-budget explanation; factual_qualification block.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "25",
+      "reference_id": "e22a538a-e72c-4e40-a706-98d29b5f3d79",
+      "http_error": "503",
+      "initial_agents": [
+        "goal_strategy",
+        "spending"
+      ],
+      "final_agents": [
+        "goal_strategy",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "tool:education_retriever:a6b74a0b5df3de05",
+          "capability": "education_context"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "education_context",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "f34fdbb6-d5b4-45d5-bb38-3bf857da041c",
+          "Provider": "tool:education_retriever:a6b74a0b5df3de05",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain how an emergency fund is sized and what my recorded expenses can tell me about a suitable reserve benchmark. Explain any missing information.",
+      "retry_of": null,
+      "expected": "G; Education tool; emergency-fund path",
+      "verdict": "Timed out; additional specialist",
+      "note": "Router selected G + S, with G → Education retrieval and no Budget. No reserve answer was delivered.",
+      "failure_code": "AI_SERVICE_TIMEOUT",
+      "reference_source": "Timed-out run selected by matching title and submission time"
+    },
+    {
+      "id": "26a",
+      "reference_id": "7ced08ba-8a57-4eae-9983-49a479ef5ccc",
+      "http_error": null,
+      "initial_agents": [
+        "investment_education"
+      ],
+      "final_agents": [
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain mutual funds and ETFs as two numbered options, in that order, and compare how they work.",
+      "retry_of": null,
+      "expected": "I; numbered funds then ETFs",
+      "verdict": "Pass with evidence limitation",
+      "note": "Displayed numbered options 1 and 2; permitted model-knowledge answer clearly labelled, source support unavailable.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "26b",
+      "reference_id": "8335e04a-b69d-401b-919c-186708c9cf40",
+      "http_error": null,
+      "initial_agents": [
+        "investment_education"
+      ],
+      "final_agents": [
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain the second option with a simple analogy.",
+      "retry_of": null,
+      "expected": "I; resolve option 2 to ETFs",
+      "verdict": "Failed: unnecessary clarification",
+      "note": "FOLLOW_UP_READ_ONLY override: AMBIGUOUS_ATTRIBUTED_OPTIONS; I returned needs_input / AMBIGUOUS_FOLLOW_UP.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "27",
+      "reference_id": "c44152f0-d944-4d2e-a286-99b39034f3ac",
+      "http_error": null,
+      "initial_agents": [
+        "investment_education"
+      ],
+      "final_agents": [
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain the second option with a simple analogy.",
+      "retry_of": null,
+      "expected": "Fresh-chat clarification",
+      "verdict": "Pass",
+      "note": "Asked which goal, option or concept was meant; did not borrow ETFs from another chat.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "28",
+      "reference_id": "32908ca9-92f4-4ccb-96cd-deeca0df3abd",
+      "http_error": null,
+      "initial_agents": [
+        "goal_strategy",
+        "budget"
+      ],
+      "final_agents": [
+        "budget",
+        "goal_strategy"
+      ],
+      "edges": [
+        {
+          "requester": "goal_strategy",
+          "provider": "budget",
+          "capability": "monthly_savings_capacity"
+        },
+        {
+          "requester": "budget",
+          "provider": "tool:education_retriever:2bb1e0b3f261074c",
+          "capability": "education_context"
+        },
+        {
+          "requester": "goal_strategy",
+          "provider": "tool:education_retriever:2bb1e0b3f261074c",
+          "capability": "education_context"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "education_context",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "50acb8f7-faac-469c-92c0-064cac4f1045",
+          "Provider": "tool:education_retriever:2bb1e0b3f261074c",
+          "Reason": ""
+        },
+        {
+          "Capability": "monthly_savings_capacity",
+          "Required": "true",
+          "Resolution": "reused",
+          "Requester": "47bb7786-d6c0-4bf6-8503-b10bf7bd89bf",
+          "Provider": "50acb8f7-faac-469c-92c0-064cac4f1045",
+          "Reason": ""
+        },
+        {
+          "Capability": "education_context",
+          "Required": "false",
+          "Resolution": "reused",
+          "Requester": "47bb7786-d6c0-4bf6-8503-b10bf7bd89bf",
+          "Provider": "tool:education_retriever:2bb1e0b3f261074c",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Assess all my saved goals together against my October 2026 budget's confirmed savings allocation. Use plain English, a compact comparison table and a short explanation of the shared-pool shortfall.",
+      "retry_of": null,
+      "expected": "B + G; G → B; compact table",
+      "verdict": "Answer/preferences pass; extra tool edges",
+      "note": "Correct compact table and 1,000 shortfall. Both B and G requested Education, adding an irrelevant source-warning sentence.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "29",
+      "reference_id": "59ccbdf1-a774-4f49-ba46-3036eef4bdce",
+      "http_error": null,
+      "initial_agents": [
+        "investment_education"
+      ],
+      "final_agents": [
+        "investment_education"
+      ],
+      "edges": [],
+      "dependency_resolutions": [],
+      "no_edges_confirmed": true,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain diversification and compare it with the current tax treatment of ETFs for my situation. Clearly identify which parts you can support.",
+      "retry_of": null,
+      "expected": "I; supported education plus tax limit",
+      "verdict": "Failed: unnecessary clarification",
+      "note": "Router recognized diversification and ETFs; FOLLOW_UP_READ_ONLY / MISSING_SUBJECT cleared topics and forced needs_input.",
+      "failure_code": null,
+      "reference_source": "Coach answer Reference ID"
+    },
+    {
+      "id": "30",
+      "reference_id": "734dc6f5-8fea-4f74-a8e2-9ab0a1d80048",
+      "http_error": "503",
+      "initial_agents": [
+        "budget",
+        "investment_education"
+      ],
+      "final_agents": [
+        "budget",
+        "investment_education",
+        "spending"
+      ],
+      "edges": [
+        {
+          "requester": "budget",
+          "provider": "spending",
+          "capability": "transaction_category_totals"
+        }
+      ],
+      "dependency_resolutions": [
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "scheduled",
+          "Requester": "5097be5a-d8fe-4713-b7a7-1f7fcc822c09",
+          "Provider": "eb54db52-eb38-498b-b5d9-aa02e407b094",
+          "Reason": ""
+        },
+        {
+          "Capability": "transaction_category_totals",
+          "Required": "false",
+          "Resolution": "resolved",
+          "Requester": "5097be5a-d8fe-4713-b7a7-1f7fcc822c09",
+          "Provider": "eb54db52-eb38-498b-b5d9-aa02e407b094",
+          "Reason": ""
+        }
+      ],
+      "no_edges_confirmed": false,
+      "blocked": false,
+      "review_categories": [],
+      "task_intervals": [],
+      "overlaps": [],
+      "reference_lookup_verified": true,
+      "prompt": "Explain my October 2026 budget's confirmed savings capacity and why liquidity matters when considering that savings pool.",
+      "retry_of": null,
+      "expected": "B + I, or B with Education tool",
+      "verdict": "Timed out; extra dependency",
+      "note": "Router chose B + I; B added Spending and B → S. Controlled Budget-only Education edge remains untested.",
+      "failure_code": "AI_SERVICE_TIMEOUT",
+      "reference_source": "Timed-out run selected by matching title and submission time"
+    }
+  ]
+}

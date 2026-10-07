@@ -448,7 +448,8 @@ def test_response_exposes_only_sources_cited_by_investment_agent() -> None:
             )
 
         def generate(self, **kwargs) -> str:
-            del kwargs
+            if kwargs["system_prompt"].startswith("PROMPT_ID: router"):
+                return LocalFixtureModelGateway().generate(**kwargs)
             return next(self.responses)
 
     response = AgentOrchestrator(
@@ -467,6 +468,7 @@ def test_response_exposes_only_sources_cited_by_investment_agent() -> None:
     assert [source.source_id for source in response.sources] == ["cited-source"]
     assert response.blocked is False
     assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
         "agent_investment_education",
         "risk_compliance",
     ]
@@ -550,6 +552,7 @@ def test_personalized_allocation_from_model_is_blocked_before_release() -> None:
     assert "Alpha Growth Fund" not in response.answer
     assert "regulated_advice:personalized_allocation" in compliance.policy_notes
     assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
         "agent_investment_education",
     ]
 
@@ -760,7 +763,8 @@ def test_sensitive_data_in_compliance_model_output_is_quarantined() -> None:
             )
 
         def generate(self, **kwargs) -> str:
-            del kwargs
+            if kwargs["system_prompt"].startswith("PROMPT_ID: router"):
+                return LocalFixtureModelGateway().generate(**kwargs)
             return next(self.responses)
 
     response = AgentOrchestrator(
@@ -784,6 +788,7 @@ def test_sensitive_data_in_compliance_model_output_is_quarantined() -> None:
     assert "9123 4567" not in compliance.summary
     assert "phone" in compliance.policy_notes
     assert [call["component"] for call in response.audit["model_calls"]] == [
+        "router",
         "agent_investment_education",
         "risk_compliance",
     ]

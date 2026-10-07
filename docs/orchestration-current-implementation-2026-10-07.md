@@ -1,6 +1,6 @@
 # Current orchestration implementation
 
-This explanation is updated for the local **v9** implementation on 7 October 2026. It does not assume that every local change is deployed. The companion [reasoning prompt review](agent-reasoning-test-prompts-2026-10-07.md) contains the new synthetic profile, expected calculations and unexecuted test cases. See [conditional financial dependencies](conditional-financial-dependencies.md) for the change and rollout status.
+This explanation is updated for the **v9** source implementation after the 7 October 2026 fixes. The historical signed-in application's trace metadata confirmed v9 with OpenAI / gpt-6-luna, before these fixes; it did not establish a deployed commit. The companion [reasoning prompt catalogue](agent-reasoning-test-prompts-2026-10-07.md) contains the synthetic profile and expected calculations; the [live results](agent-reasoning-live-test-results-2026-10-07.md) record all 34 approved turns and two retests. Live acceptance has not passed. See [the seven fixes and validation limits](orchestration-live-fixes.md) and [conditional financial dependencies](conditional-financial-dependencies.md).
 
 ## What the application demonstrates
 
@@ -34,7 +34,7 @@ flowchart TD
     Outcome -->|No| Synth[Compose answer from specialist results]
     Synth --> Review[Independent Risk and Compliance review]
     Review --> Final[Finalize reviewed response]
-    Review -. Eligible Education correction .-> Repair[One bounded Education repair]
+    Review -. Eligible correction .-> Repair[One bounded correction using unchanged grounding]
     Repair -. Recompose and review again .-> Review
 ```
 
@@ -61,7 +61,9 @@ A specialist-to-specialist dependency and a specialist-to-tool dependency are di
 
 For a dependency, the orchestrator checks requester authorization, required inputs, expected output fields and compatible input fingerprints. It can reuse an already completed matching capability, wait for an existing provider task, schedule a provider or report an unavailable dependency. Its checks also bound dependency expansion and reject cycles or unauthorized capabilities. Reuse avoids a duplicate execution; it does not remove the logical dependency.
 
-The Spending context request from Budget is optional. Its existing planner evaluates whether Budget's own question needs those totals, so a spending keyword in a separate independent question no longer forces the edge. An unavailable optional capability can leave a qualified answer that retains valid calculations. Goal uses a typed capacity-requirement classifier: saved remaining balances, progress and equal contribution arithmetic require neither income nor Budget; any Goal funding feasibility part retains the required capacity dependency. The cached decision also tells an already selected Budget task whether capacity is needed. A required capacity dependency cannot simply be ignored while Goal asserts personal feasibility.
+The Spending context request from Budget is optional. The v9 model router now assigns a separate attributed question and requirements to every selected specialist. An explicit model decision that Budget's own work does not require Spending removes that capability from Budget's planner options; available purchases alone do not justify a dependency. Missing legacy requirements remain classified by the scoped specialist. Historical cases 2, 9, 14, 20 and 30 exposed the whole-question problem this fixes; deployed-model reliability still requires retesting. An unavailable optional capability can leave a qualified answer that retains valid calculations. Goal's model-selected capacity requirement separates saved remaining balances, progress and equal contribution arithmetic from funding feasibility. A capacity provider computes the requested calculation, while an independently assigned conceptual Budget task retains its own scope. A required capacity dependency cannot simply be ignored while Goal asserts personal feasibility.
+
+Each assigned question has exact source excerpts from the current user turn. Code checks the contract and provenance, while the model interprets meaning. Assigned questions and excerpts stay private to the workflow. Budget and Spending can have different requested months; Spending's primary month and comparison rows remain distinct. Expense capability fingerprints bind the produced records and calendar context. Conditional Education retrieval receives its requester's assigned question and topics, with a scope-specific fingerprint; another task's explanation is reusable only for matching meaning and evidence.
 
 There is **no Spending-to-Goal or Goal-to-Spending capability edge**. A question linking recorded expense patterns to ordinary saved-goal feasibility reaches Spending through Budget:
 
@@ -122,11 +124,11 @@ Retrying an execution is different from correcting its answer. It does not suppl
 
 ### Repairable
 
-Repairable means an allowed Education answer contains a bounded defect that the system can attempt to correct safely with its existing verified grounding.
+Repairable means an allowed answer contains a bounded defect that the system can attempt to correct safely with its existing verified grounding.
 
-The current semantic repair loop is **Education-specific**, not a general autonomous repair facility for all four specialists. In v8, the reviewer reports issues tied to server-provided answer sections; server logic determines repair eligibility. The model cannot simply declare that every blocked response should be retried until accepted.
+v9 retains Education correction and adds factual-qualification correction for Spending, Budget and Goal. The independent reviewer attributes defects to server-owned answer sections; code checks ownership, unchanged private grounding and execution budgets. This is one correction followed by another independent review. Prohibited advice and unverifiable claims remain ineligible. Mixed defects spanning owners are withheld unless an existing correction path can preserve the other completed sections; Education cannot repair another specialist's financial defect.
 
-The orchestrator checks request permissibility, missing points, the relevant specialist, grounding availability, financial-language constraints, input needs and remaining call/token/time budgets. If eligible, it permits one Education correction, preserves completed financial results, recomposes the combined answer and independently reviews it again. A prohibited request, an unresolved financial input or absent verified grounding is not cured by this loop. A narrowly resolved conversational clarification has its own checked exception.
+The orchestrator checks request permissibility, missing points, the relevant specialist, grounding availability, financial-language constraints, input needs and remaining call/token/time budgets. Correction reuses the original task inputs and grounding instead of requesting new financial authority. A prohibited request, unresolved financial input or changed grounding is not cured by this loop. A rejected second review remains withheld. A narrowly resolved conversational clarification has its own checked exception. Opt-in redacted rejected-draft diagnostics are operator-only files outside public traces.
 
 This addresses another rigidity problem: an allowed explanation that omitted a comparison or needed a source attribution correction need not become a blanket refusal. It also introduces significant cost and control complexity. A successful final response alone does not prove repair occurred; the trace must contain the repair decision and second review.
 
@@ -168,11 +170,11 @@ The current safeguards do not eliminate every routing limitation:
 
 1. **Capacity requirements depend on semantic interpretation.** v9 fixes the broad saved-goal trigger: recorded goal arithmetic can run alone, while feasibility requires Budget. A mixed Goal question containing a feasibility part still needs capacity. Ambiguous funding assessments use the conservative capacity path.
 2. **The illustrative path is syntax-sensitive.** It accepts one target and one duration, rejects additional numeric residue and feasibility wording, and assumes a zero starting amount. That exception remains available; the independent tests now use saved-goal arithmetic and do not depend on its special syntax.
-3. **Budget's planner still receives the compound question.** It now evaluates the relevance of recorded expenses to Budget's own work, replacing the v8 whole-message keyword trigger. “Analyze spending; independently explain budgeting” should therefore have no `B → S` edge. This remains a semantic decision requiring trace verification.
+3. **Task separation depends on the router's semantic interpretation.** Budget's planner now receives its attributed assignment. “Analyze spending; independently explain budgeting” should have no `B → S` edge when the model assigns independent work. Structural provenance checks cannot prove that a model's interpretation is correct, so production-model evaluation remains necessary.
 4. **Model decisions remain variable.** The semantic router or optional dependency planner can select a different valid route. Prompt wording is evidence to test, not an API contract fixing the graph.
 5. **Some read-only requests use record/planning paths.** A budget review can bypass the ordinary dependency preflight and use supplied backend context. Its result may be correct without exercising the capability edge a demonstration intended to show.
 
-These are implementation/design observations after the conditional-dependency update. No direct Goal–Spending edge was added. The profile records are unchanged and the review prompts remain unexecuted.
+These are implementation/design observations after the conditional-dependency update. No direct Goal–Spending edge was added. The profile records are unchanged. The [live results](agent-reasoning-live-test-results-2026-10-07.md) now separate expected behavior from actual graph, runtime and answer outcomes, including Budget's remaining scoping failures and unnecessary follow-up clarification.
 
 ## What is essential for the stated project requirement
 
@@ -186,7 +188,7 @@ The broader features serve different purposes:
 | Typed task/capability contracts | Make cooperation authorized, bounded and testable | Essential |
 | Deterministic financial tools and source grounding | Keep domain conclusions anchored to supplied evidence | Essential at a modest scope |
 | Detailed subquestion answerability | Handle partial education evidence without generic replies | Useful conversational quality layer |
-| Education repair | Recover eligible incomplete or correctable drafts | Optional sophistication for the demonstration |
+| Bounded answer correction | Recover eligible incomplete education or qualified financial drafts | Optional sophistication for the demonstration |
 | Retry/backoff | Survive transient service failures | Useful operational layer, separate from reasoning topology |
 | Calendar recurrence | Model obligations and forecast bills accurately | Optional financial-domain feature |
 | Follow-up and preferences | Make continued dialogue and presentation less rigid | Useful UX layers, not dependency mechanics |
@@ -196,7 +198,7 @@ The concepts were introduced to address different failure modes; they are not al
 
 ## Code locations inspected
 
-- `apps/ai-service/app/orchestrator.py`: graph construction, route rules, concurrent task execution, dependencies, retry, synthesis and Education repair.
+- `apps/ai-service/app/orchestrator.py`: attributed assignments, concurrent tasks, dependencies, deadlines, retry, synthesis and bounded answer correction.
 - `apps/ai-service/app/capabilities/registry.py`: authorized agent/tool capability edges.
 - `apps/ai-service/app/core/schemas.py`: typed outcomes, dependency contracts and scoped compliance review.
 - `apps/ai-service/app/agents/budget.py`: role-scoped Spending selection, optional requests and capacity grounding.
@@ -204,6 +206,8 @@ The concepts were introduced to address different failure modes; they are not al
 - `apps/ai-service/app/agents/investment_education.py`: education retrieval, coverage, evidence modes and grounding reuse.
 - `apps/ai-service/app/rag/answerability.py`: public subquestions, passage support and coverage contracts.
 - `apps/ai-service/app/core/education_grounding.py`: verified grounding snapshot.
+- `apps/ai-service/app/core/financial_grounding.py`: private unchanged financial grounding for correction.
+- `apps/ai-service/app/evals/orchestration_acceptance.py`: repeated model evaluation, graph/period/fact checks and mandatory content review.
 - `apps/ai-service/app/core/follow_up.py`: bounded read-only reference resolution.
 - `apps/ai-service/prompts/v9/prompts.json`: conditional financial requirements and domain routing/answer/review/composer instructions; v8's Education review contracts are retained.
 - `apps/shared/coach_math/recurrence.py`: calendar schedule calculations.

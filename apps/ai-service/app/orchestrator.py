@@ -751,8 +751,8 @@ class AgentOrchestrator:
             # specialists. Recognized topics can use their governed capability
             # without adding a second Education narrative. Capture paths return
             # drafts before dependency preflight, so they still need a specialist.
-            detected_topics = (set(topic for item in decision.task_assignments
-                                   for topic in item.education_topics)
+            detected_topics = ({topic for item in decision.task_assignments
+                                for topic in item.education_topics}
                                if self.prompts.version == "v9" else
                                set(education_topics(state["sanitized_message"])))
             has_conditional_consumer = (
@@ -858,7 +858,11 @@ class AgentOrchestrator:
                         if goal_capacity_required else "GOAL_CAPACITY_NOT_REQUIRED"}))
         for task in tasks.values():
             if task.agent == AgentName.BUDGET:
-                task.context_features["goal_capacity_required"] = goal_capacity_required
+                assignment = task.context_features.get("task_assignment") or {}
+                task.context_features["provides_goal_capacity"] = goal_capacity_required
+                task.context_features["goal_capacity_required"] = goal_capacity_required and (
+                    self.prompts.version != "v9" or assignment.get("requires_capacity") is not False
+                )
         return {
             "goal_capacity_required": goal_capacity_required,
             "tasks": tasks,
@@ -1252,7 +1256,10 @@ class AgentOrchestrator:
                 )
                 raise ModelGatewayError("A dependency request was not authorized.") from exc
 
-            fingerprint = self._capability_input_fingerprint(state, definition)
+            fingerprint = self._capability_input_fingerprint(
+                state, definition,
+                task=requester_task if request.capability == CapabilityName.EDUCATION_CONTEXT else None,
+            )
             request = request.model_copy(update={"input_fingerprint": fingerprint})
             capability_key = self._capability_key(request.capability, fingerprint)
             existing = (
@@ -1370,22 +1377,34 @@ class AgentOrchestrator:
                     education_task = self._create_task(
                         state, AgentName.INVESTMENT_EDUCATION,
                         requested_by=request.requester,
+                        provider_question=requester_task.sanitized_message,
                     )
+                    education_task.context_features["education_topics"] = list(
+                        requester_task.context_features.get("education_topics", [])
+                    )
+                    # The independent Education assignment's search hints belong
+                    # to its question. The provider creates its own semantic plan.
+                    education_task.context_features["education_search_terms"] = []
                     token = task_context.set({
                         "task_id": provider_task_id,
                         "agent": education_task.agent.value,
                         "attempt": requester_task.attempt,
                     })
                     try:
+                        direct_task = self._find_task_by_agent(state["tasks"], AgentName.INVESTMENT_EDUCATION)
                         direct_context = next((
                             result.data for result in state.get("agent_results", [])
                             if result.agent == AgentName.INVESTMENT_EDUCATION
                             and not result.blocked and "coverage_assessment" in result.data
+                            and direct_task is not None
+                            and direct_task.sanitized_message == requester_task.sanitized_message
+                            and direct_task.context_features.get("education_topics", [])
+                                == requester_task.context_features.get("education_topics", [])
                         ), None)
                         data = dict(direct_context) if direct_context is not None else InvestmentEducationAgent(
                             self.gateway, self.prompts, self.config.agent_temperature,
                             self.config.model_max_tokens, self.education_retriever,
-                        )._ground(education_task, state["sanitized_message"])
+                        )._ground(education_task, education_task.sanitized_message)
                     finally:
                         task_context.reset(token)
                     data["scope"] = (
@@ -1832,10 +1851,11 @@ class AgentOrchestrator:
 
     def _can_preserve_specialist_answers(self, state: OrchestratorState) -> bool:
         results = state["agent_results"]
+        allowed = {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
         return (
             self.prompts.version in {"v6", "v7", "v8", "v9"}
             and any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
-            and all(item.agent in {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
+            and all(item.agent in allowed
                     and not item.blocked and not item.data.get("needs_input")
                     and not any(key in item.data for key in ("budget_draft", "goal_draft"))
                     for item in results)
@@ -1926,6 +1946,11 @@ class AgentOrchestrator:
             and follow_up.agent == AgentName.INVESTMENT_EDUCATION
         )
         repair_conditions = [
+            ("REPAIR_SECTION_NOT_OWNED", self.prompts.version != "v9" or all(
+                issue["section_id"] == "investment_education" or (
+                    issue["section_id"] == "draft" and len(state["agent_results"]) == 1
+                ) for issue in result.data.get("blocking_issues", [])
+            )),
             ("REPAIR_REQUEST_NOT_ALLOWED", result.data.get("request_allowed") is not False),
             ("REPAIR_VERDICT_NOT_REPAIRABLE", result.data.get("repairable") is True
                 if self.prompts.version in {"v8", "v9"} else not result.blocked or result.data.get("repairable") is True),
@@ -1954,8 +1979,7 @@ class AgentOrchestrator:
                      "token_limit": self.config.max_model_tokens_per_run,
                      "remaining_tokens": max(0, self.config.max_model_tokens_per_run - used_tokens)}))
         if repair_allowed:
-            # Admit repair within the configured specialist window, rather than
-            # ending eligibility before a normal multi-call review can finish.
+            # Admit one correction inside the remaining workflow deadline.
             # One semantic repair, reusing task timeout/call-budget controls and
             # the same independent output review; never repair a prohibited request.
             task = education_task
@@ -2255,8 +2279,9 @@ class AgentOrchestrator:
         agent = AgentName(agent)
         assignment = next((item for item in state.get("task_assignments", [])
                            if item["agent"] == agent.value), None)
-        question = (assignment["question"] if assignment else
-                    provider_question or state["sanitized_message"])
+        if provider_question is not None:
+            assignment = None
+        question = provider_question or (assignment["question"] if assignment else state["sanitized_message"])
         snapshot = (state["spending_request"].snapshot
                     if agent == AgentName.SPENDING and requested_by is None and state.get("spending_request")
                     else state["request"].snapshot)
@@ -2290,8 +2315,8 @@ class AgentOrchestrator:
                 "goals": [item.model_dump(mode="json") for item in snapshot.goals]
             }
             if "emergency fund readiness" in (
-                (assignment.get("education_topics", []) if assignment else
-                 ([] if self.prompts.version == "v9" else education_topics(question)))
+                assignment.get("education_topics", []) if assignment else
+                ([] if self.prompts.version == "v9" else education_topics(question))
             ):
                 # Share aggregates, not raw transaction descriptions, with Goal Strategy.
                 input_data["emergency_fund"] = call_tool(agent, "emergency_fund_summary", snapshot)
@@ -2441,7 +2466,7 @@ class AgentOrchestrator:
         values = {}
         for field in definition.required_inputs:
             if field == "sanitized_message":
-                values[field] = state["sanitized_message"]
+                values[field] = task.sanitized_message if task is not None else state["sanitized_message"]
             elif field in snapshot:
                 values[field] = snapshot[field]
             else:
@@ -2450,6 +2475,8 @@ class AgentOrchestrator:
                 )
         if definition.capability == CapabilityName.MONTHLY_SAVINGS_CAPACITY:
             values["saved_budget_capacity"] = state["request"].saved_budget_capacity
+        if definition.capability == CapabilityName.EDUCATION_CONTEXT and task is not None:
+            values["education_topics"] = task.context_features.get("education_topics", [])
         encoded = json.dumps(values, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
         return sha256(encoded.encode("utf-8")).hexdigest()[:16]
 

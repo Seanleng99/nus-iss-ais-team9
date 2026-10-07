@@ -1,8 +1,8 @@
 # Agent reasoning demo: prompts for review
 
-Prepared 7 October 2026. **None of these Coach prompts has been submitted.** Profile setup was completed through the signed-in Edge application. All prompts below request analysis, calculations, explanations, comparisons or read-only forecasts. They do not request changes to budget, transaction or goal records.
+Prepared 7 October 2026 and subsequently executed through the signed-in Edge application at the user's request. **All 34 approved prompt turns were attempted, with two additional retests.** See the [live test results](agent-reasoning-live-test-results-2026-10-07.md) for actual graphs, answers and failures. Profile setup was completed through the application. All prompts below request analysis, calculations, explanations, comparisons or read-only forecasts. They do not request changes to budget, transaction or goal records.
 
-Updated after conditional dependencies were implemented locally on 7 October 2026. Predictions now target **v9**. Saved-goal arithmetic can run independently; funding feasibility still requires Budget. The deployed model's actual choices and deployed code version have not been verified by executing these prompts. Deployment and live acceptance are pending. An expected route is a test assertion, not a guarantee.
+Updated after conditional dependencies were implemented on 7 October 2026. Predictions target **v9**, which the live trace metadata confirmed with OpenAI / gpt-6-luna. Saved-goal arithmetic ran independently; funding feasibility retained Budget. Live acceptance has not passed: unwanted Budget dependencies, timeouts, withheld answers and follow-up failures remain. An expected route is a test assertion, not a guarantee; the expected prompts below are retained for comparison with the recorded results.
 
 ## Profile and records created
 
@@ -125,7 +125,7 @@ Expected initial intent: **S + G**. Expected final specialist set: **S + B + G**
 
 > Analyze my spending by category. Independently explain zero-based budgeting as a general method.
 
-Expected: **S + B**, with no specialist dependency edge. The first task uses records; the second is a conceptual explanation. A spending keyword in the independent question no longer forces Budget's dependency under v9. The semantic planner still needs trace verification.
+Expected: **S + B**, with no specialist dependency edge. The first task uses records; the second is a conceptual explanation. Under v9, a spending keyword in the independent part is intended to leave Budget independent. The live run nevertheless requested `B → S` and failed this assertion; see the results report.
 
 ### 10. Budget + Goal: independent parallel candidates
 
@@ -201,7 +201,7 @@ Expected: **B + G**, `G → B`, with December capacity unavailable. Goal arithme
 
 > Explain how an emergency fund is sized and what my recorded expenses can tell me about a suitable reserve benchmark. Explain any missing information.
 
-Expected: **G** as the domain specialist, with conditional `education_context` grounding. This special path uses recorded expense summaries and sourced reserve guidance; ordinary saved-goal Budget dependency is bypassed. The four saved goals do not include an emergency fund. Do not declare a personal reserve adequate from incomplete logs.
+Expected: **G**, or **S + G** when the model separates the explicitly requested recorded-expense analysis, with conditional `education_context` grounding. The ordinary saved-goal Budget dependency is bypassed. The four saved goals do not include an emergency fund. Do not declare a personal reserve adequate from incomplete logs. This expectation clarifies acceptable semantic variation; it does not change the historical timeout verdict.
 
 ### 26. Follow-up subject resolution
 
@@ -241,7 +241,9 @@ Candidate:
 
 The router may select **B + I** because an investment concept is explicit. In that case Budget suppresses duplicate optional Education retrieval and Investment owns the concept explanation. If the router selects only Budget, Budget can request `education_context` for the concept. Natural-language wording cannot guarantee which path the semantic router chooses. To prove this particular capability edge, a controlled test should select Budget only; that has not been run here.
 
-## Trace checks for later execution
+## Trace checks and recorded execution
+
+The [live results](agent-reasoning-live-test-results-2026-10-07.md) distinguish the assertions below from observed behavior. No financial record was changed during testing. Retryable-error injection, a controlled Budget-only Education test and successful semantic repair remain outside this UI run's demonstrated coverage.
 
 For each case, record the initially routed agents and the final agent set separately. Check task outcomes and `dependency.requested`, `dependency.scheduled`, `dependency.resolved` and `task.resumed` events, including the capability and requester/provider identity. A `reused` resolution is a real dependency satisfied from matching existing output; it does not mean the tasks were independent.
 

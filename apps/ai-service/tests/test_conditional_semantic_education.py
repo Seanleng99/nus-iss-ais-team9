@@ -20,6 +20,15 @@ from app.orchestrator import AgentOrchestrator
 class ConditionalGateway(ScriptedSemanticGateway):
     def generate(self, **kwargs):
         component = kwargs["system_prompt"].splitlines()[0]
+        if component == "PROMPT_ID: router":
+            response = json.loads(LocalFixtureModelGateway().generate(**kwargs))
+            if response["selected_agents"] == ["budget", "goal_strategy"]:
+                # This reuse scenario deliberately gives both consumers the
+                # same model-assigned educational question and exact excerpt.
+                message = json.loads(kwargs["user_prompt"])["message"]
+                for assignment in response["task_assignments"]:
+                    assignment.update(question=message, source_quotes=[message])
+            return json.dumps(response)
         if component in {"PROMPT_ID: agent_budget", "PROMPT_ID: agent_goal_strategy"}:
             self.calls.append(kwargs)
             grounding = json.loads(kwargs["user_prompt"])["grounding"]

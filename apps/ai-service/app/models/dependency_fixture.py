@@ -7,7 +7,7 @@ from app.agents.education_access import education_topics
 
 def _parts(message):
     return [part.strip() for part in re.split(
-        r"[.;!?]|\b(?:independently|separately)\b", message.casefold(),
+        r"(?<!\d)\.(?!\d)|[;!?]|\b(?:independently|separately)\b", message.casefold(),
     ) if part.strip()]
 
 
@@ -50,7 +50,7 @@ def fixture_budget_message(message):
 def fixture_task_assignments(agents, message):
     """Offline adapter only. Production obtains attributed scopes from the model."""
     parts = [part.strip() for part in re.split(
-        r"[.;!?]|\b(?:independently|separately)\b", message, flags=re.IGNORECASE,
+        r"(?<!\d)\.(?!\d)|[;!?]|\b(?:independently|separately)\b", message, flags=re.IGNORECASE,
     ) if part.strip()]
     terms = {
         "spending": r"spend|expense|transaction|purchase",

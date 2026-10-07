@@ -1,0 +1,1757 @@
+{
+  "schema_version": 1,
+  "suite_id": "orchestration-live-regression-v1",
+  "profile_provenance": "Reconstructed synthetic fixture from the published profile totals, goals and date coverage; no private ledger export.",
+  "prompt_provenance": "34 approved original turns from historical Edge evidence, excluding two retests. Expectations are frozen evaluation assertions only.",
+  "profile": {
+    "snapshot": {
+      "period_start": "2026-10-01",
+      "monthly_income": {
+        "amount": 6500
+      },
+      "recent_transactions": [
+        {
+          "description": "Synthetic housing",
+          "category": "housing",
+          "amount": {
+            "amount": 900.0
+          },
+          "occurred_on": "2026-10-01"
+        },
+        {
+          "description": "Synthetic housing",
+          "category": "housing",
+          "amount": {
+            "amount": 900.0
+          },
+          "occurred_on": "2026-10-02"
+        },
+        {
+          "description": "Synthetic food",
+          "category": "food",
+          "amount": {
+            "amount": 330.0
+          },
+          "occurred_on": "2026-10-03"
+        },
+        {
+          "description": "Synthetic food",
+          "category": "food",
+          "amount": {
+            "amount": 330.0
+          },
+          "occurred_on": "2026-10-04"
+        },
+        {
+          "description": "Synthetic transport",
+          "category": "transport",
+          "amount": {
+            "amount": 87.5
+          },
+          "occurred_on": "2026-10-05"
+        },
+        {
+          "description": "Synthetic transport",
+          "category": "transport",
+          "amount": {
+            "amount": 87.5
+          },
+          "occurred_on": "2026-10-06"
+        },
+        {
+          "description": "Synthetic utilities",
+          "category": "utilities",
+          "amount": {
+            "amount": 90.0
+          },
+          "occurred_on": "2026-10-06"
+        },
+        {
+          "description": "Synthetic utilities",
+          "category": "utilities",
+          "amount": {
+            "amount": 90.0
+          },
+          "occurred_on": "2026-10-06"
+        },
+        {
+          "description": "Synthetic healthcare",
+          "category": "healthcare",
+          "amount": {
+            "amount": 95.0
+          },
+          "occurred_on": "2026-10-06"
+        },
+        {
+          "description": "Synthetic education",
+          "category": "education",
+          "amount": {
+            "amount": 120.0
+          },
+          "occurred_on": "2026-10-06"
+        },
+        {
+          "description": "Synthetic entertainment",
+          "category": "entertainment",
+          "amount": {
+            "amount": 225.0
+          },
+          "occurred_on": "2026-10-06"
+        },
+        {
+          "description": "Synthetic shopping",
+          "category": "shopping",
+          "amount": {
+            "amount": 320.0
+          },
+          "occurred_on": "2026-10-06"
+        }
+      ],
+      "historical_transactions": [
+        {
+          "description": "Synthetic housing",
+          "category": "housing",
+          "amount": {
+            "amount": 900.0
+          },
+          "occurred_on": "2026-09-01"
+        },
+        {
+          "description": "Synthetic housing",
+          "category": "housing",
+          "amount": {
+            "amount": 900.0
+          },
+          "occurred_on": "2026-09-02"
+        },
+        {
+          "description": "Synthetic food",
+          "category": "food",
+          "amount": {
+            "amount": 340.0
+          },
+          "occurred_on": "2026-09-03"
+        },
+        {
+          "description": "Synthetic food",
+          "category": "food",
+          "amount": {
+            "amount": 340.0
+          },
+          "occurred_on": "2026-09-04"
+        },
+        {
+          "description": "Synthetic transport",
+          "category": "transport",
+          "amount": {
+            "amount": 100.0
+          },
+          "occurred_on": "2026-09-05"
+        },
+        {
+          "description": "Synthetic transport",
+          "category": "transport",
+          "amount": {
+            "amount": 100.0
+          },
+          "occurred_on": "2026-09-06"
+        },
+        {
+          "description": "Synthetic utilities",
+          "category": "utilities",
+          "amount": {
+            "amount": 80.0
+          },
+          "occurred_on": "2026-09-07"
+        },
+        {
+          "description": "Synthetic utilities",
+          "category": "utilities",
+          "amount": {
+            "amount": 80.0
+          },
+          "occurred_on": "2026-09-08"
+        },
+        {
+          "description": "Synthetic healthcare",
+          "category": "healthcare",
+          "amount": {
+            "amount": 60.0
+          },
+          "occurred_on": "2026-09-09"
+        },
+        {
+          "description": "Synthetic healthcare",
+          "category": "healthcare",
+          "amount": {
+            "amount": 60.0
+          },
+          "occurred_on": "2026-09-10"
+        },
+        {
+          "description": "Synthetic education",
+          "category": "education",
+          "amount": {
+            "amount": 160.0
+          },
+          "occurred_on": "2026-09-11"
+        },
+        {
+          "description": "Synthetic entertainment",
+          "category": "entertainment",
+          "amount": {
+            "amount": 240.0
+          },
+          "occurred_on": "2026-09-12"
+        },
+        {
+          "description": "Synthetic shopping",
+          "category": "shopping",
+          "amount": {
+            "amount": 210.0
+          },
+          "occurred_on": "2026-09-26"
+        }
+      ],
+      "recurring_expenses": [
+        {
+          "description": "Synthetic monthly rent",
+          "category": "housing",
+          "amount": {
+            "amount": 1800
+          },
+          "occurred_on": "2026-10-01",
+          "obligation_id": "synthetic-rent",
+          "recurrence": {
+            "frequency": "monthly",
+            "first_on": "2026-10-01",
+            "next_due_on": "2026-11-01"
+          }
+        }
+      ],
+      "goals": [
+        {
+          "name": "Demo Laptop Upgrade",
+          "target_amount": {
+            "amount": 3600
+          },
+          "current_amount": {
+            "amount": 600
+          },
+          "target_months": 6
+        },
+        {
+          "name": "Demo Travel Fund",
+          "target_amount": {
+            "amount": 6000
+          },
+          "current_amount": {
+            "amount": 1200
+          },
+          "target_months": 12
+        },
+        {
+          "name": "Demo Professional Course",
+          "target_amount": {
+            "amount": 4800
+          },
+          "current_amount": {
+            "amount": 800
+          },
+          "target_months": 8
+        },
+        {
+          "name": "Demo Home Deposit",
+          "target_amount": {
+            "amount": 24000
+          },
+          "current_amount": {
+            "amount": 2400
+          },
+          "target_months": 18
+        }
+      ],
+      "preferences": {
+        "language": "English",
+        "plain_language": true
+      }
+    },
+    "saved_budget_capacity": {
+      "source": "confirmed_plan",
+      "period_start": "2026-10-01",
+      "currency": "SGD",
+      "take_home_income": 6500,
+      "planned_expenses": 3950,
+      "estimated_savings_capacity": 1600,
+      "unallocated_income": 950,
+      "budget_method": "flexible",
+      "calculation_method": "Confirmed monthly plan allocation"
+    },
+    "budget_context": {
+      "selected_period": "2026-10-01",
+      "capacity_by_period": {
+        "2026-09-01": {
+          "source": "confirmed_plan",
+          "period_start": "2026-09-01",
+          "currency": "SGD",
+          "take_home_income": 6500,
+          "planned_expenses": 3900,
+          "estimated_savings_capacity": 1400,
+          "unallocated_income": 1200,
+          "budget_method": "flexible",
+          "calculation_method": "Confirmed monthly plan allocation"
+        },
+        "2026-10-01": {
+          "source": "confirmed_plan",
+          "period_start": "2026-10-01",
+          "currency": "SGD",
+          "take_home_income": 6500,
+          "planned_expenses": 3950,
+          "estimated_savings_capacity": 1600,
+          "unallocated_income": 950,
+          "budget_method": "flexible",
+          "calculation_method": "Confirmed monthly plan allocation"
+        },
+        "2026-11-01": {
+          "source": "confirmed_plan",
+          "period_start": "2026-11-01",
+          "currency": "SGD",
+          "take_home_income": 6500,
+          "planned_expenses": 4200,
+          "estimated_savings_capacity": 1000,
+          "unallocated_income": 1300,
+          "budget_method": "flexible",
+          "calculation_method": "Confirmed monthly plan allocation"
+        }
+      },
+      "spending_by_period": {
+        "2026-09-01": {
+          "period_start": "2026-09-01",
+          "category_totals": {
+            "housing": 1800,
+            "food": 680,
+            "transport": 200,
+            "utilities": 160,
+            "healthcare": 120,
+            "education": 160,
+            "entertainment": 240,
+            "shopping": 210
+          },
+          "transaction_count": 13,
+          "currency": "SGD",
+          "excluded_currencies": [],
+          "first_recorded_on": "2026-09-01",
+          "last_recorded_on": "2026-09-26"
+        },
+        "2026-10-01": {
+          "period_start": "2026-10-01",
+          "category_totals": {
+            "housing": 1800,
+            "food": 660,
+            "transport": 175,
+            "utilities": 180,
+            "healthcare": 95,
+            "education": 120,
+            "entertainment": 225,
+            "shopping": 320
+          },
+          "transaction_count": 12,
+          "currency": "SGD",
+          "excluded_currencies": [],
+          "first_recorded_on": "2026-10-01",
+          "last_recorded_on": "2026-10-06"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "1",
+      "input": {
+        "message": "Analyze my Food, Entertainment and Shopping patterns in September 2026 and October 2026. Identify the largest changes and explain what the date coverage allows you to conclude."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "spending"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Compare September and October Food, Entertainment and Shopping amounts; qualify 1–26 September and 1–6 October coverage."
+      ]
+    },
+    {
+      "id": "2",
+      "input": {
+        "message": "What monthly savings capacity does my October 2026 budget's confirmed plan provide? Explain the calculation and distinguish the savings allocation from unallocated income."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "budget",
+            "path": "savings",
+            "value": 1600
+          }
+        ]
+      },
+      "content_checks": [
+        "Distinguish SGD 1,600 allocated savings from SGD 950 unallocated income and SGD 3,950 planned expenses."
+      ]
+    },
+    {
+      "id": "3",
+      "input": {
+        "message": "Calculate the remaining amount, percentage progress and equal monthly contribution for each of my saved goals using its recorded balance and duration."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "All four equal contributions are SGD 500, 400, 500 and 1,200; no affordability claim."
+      ]
+    },
+    {
+      "id": "4",
+      "input": {
+        "message": "Explain how shares, bonds, mutual funds and ETFs differ, especially diversification and liquidity. Give a neutral comparison with sources where available."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Neutral comparison covers all four instruments, liquidity and diversification, with accurate source/evidence labels."
+      ]
+    },
+    {
+      "id": "5",
+      "input": {
+        "message": "Explain my October 2026 monthly savings capacity using my budget and spending patterns. Which observed categories put pressure on the plan? Distinguish planned capacity from money already saved."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending"
+          ]
+        ],
+        "required_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [],
+        "facts": []
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "6",
+      "input": {
+        "message": "Using my October 2026 budget's confirmed savings allocation, can I fund all my saved goals concurrently at their recorded monthly rates? Explain individual feasibility and feasibility against one shared pool."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "7",
+      "input": {
+        "message": "Use my October 2026 spending patterns and saved budget capacity to assess all my saved goals together. Explain recorded expense pressures, required monthly contributions and the total shortfall."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ],
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "8",
+      "input": {
+        "message": "How do my October 2026 spending patterns affect whether I can fund my saved goals together?"
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ],
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "9",
+      "input": {
+        "message": "Analyze my spending by category. Independently explain zero-based budgeting as a general method."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "spending"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "10",
+      "input": {
+        "message": "Explain zero-based budgeting as a general method. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "11",
+      "input": {
+        "message": "Analyze my spending by category. Separately explain zero-based budgeting as a general method. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "spending"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "12",
+      "input": {
+        "message": "Analyze my spending by category. Independently calculate the remaining amount and equal monthly contribution for each of my saved goals."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "13",
+      "input": {
+        "message": "Analyze my recorded purchases by category. Independently explain diversification and the difference between shares and bonds."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "spending",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "spending",
+            "investment_education"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "14",
+      "input": {
+        "message": "Explain my October 2026 budget's confirmed monthly savings capacity. Independently explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "investment_education"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "budget",
+            "path": "savings",
+            "value": 1600
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "15",
+      "input": {
+        "message": "Calculate the remaining amount and equal monthly contribution for each saved goal. Independently explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "16",
+      "input": {
+        "message": "Use my October 2026 spending patterns to explain my budget's monthly savings capacity. Independently explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [],
+        "facts": []
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "16P",
+      "input": {
+        "message": "Analyze my recorded purchases by category. Independently explain zero-based budgeting as a general method. Separately explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "spending"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "17",
+      "input": {
+        "message": "Analyze my spending by category. Independently calculate the remaining amount and equal monthly contribution for each saved goal. Separately explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "spending",
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "18",
+      "input": {
+        "message": "Assess all my saved goals together against my October 2026 budget's confirmed savings allocation. Independently explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "18P",
+      "input": {
+        "message": "Explain zero-based budgeting as a general method. Independently calculate the remaining amount and equal monthly contribution for each saved goal. Separately explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "19",
+      "input": {
+        "message": "Use my October 2026 spending patterns and budget's confirmed savings allocation to assess all my saved goals concurrently. Independently explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ],
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "19P",
+      "input": {
+        "message": "Analyze my spending by category. Independently explain zero-based budgeting as a general method. Separately calculate the remaining amount and equal monthly contribution for each saved goal. Independently explain diversification as a general investment concept."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "spending",
+            "goal_strategy",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "parallel_pairs": [
+          [
+            "budget",
+            "spending"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "projections.0.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.1.monthly_required",
+            "value": 400
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.2.monthly_required",
+            "value": 500
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "projections.3.monthly_required",
+            "value": 1200
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "20",
+      "input": {
+        "message": "Are all my saved goals feasible together against my current monthly savings capacity? Explain the combined shortfall."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Answer every assigned part without adding unrelated advice; keep recorded expenses, confirmed plans and goal arithmetic distinct."
+      ]
+    },
+    {
+      "id": "21",
+      "input": {
+        "message": "Which explicitly scheduled recurring expenses are due in November 2026, and what is their projected total? Explain the difference between a forecast and recorded payments."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "spending"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Only scheduled rent is forecast: SGD 1,800 on 1 November; no forecast described as already paid."
+      ]
+    },
+    {
+      "id": "22",
+      "input": {
+        "message": "Analyze my November 2026 expense patterns and explain whether the records support a comparison with October 2026."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "spending"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "spending",
+            "path": "analysis_period_start",
+            "value": "2026-11-01"
+          },
+          {
+            "agent": "spending",
+            "path": "transaction_count",
+            "value": 0
+          },
+          {
+            "agent": "spending",
+            "path": "category_totals",
+            "value": {}
+          }
+        ]
+      },
+      "content_checks": [
+        "November has no recorded expenses; October and rent forecast cannot establish November actuals."
+      ]
+    },
+    {
+      "id": "23",
+      "input": {
+        "message": "Using the confirmed budget savings allocations for September 2026, October 2026 and November 2026, assess whether all my saved goals can be funded concurrently in each month. Compare the shortfalls."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "period_feasibility.0.monthly_shortfall",
+            "value": 1200
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "period_feasibility.1.monthly_shortfall",
+            "value": 1000
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "period_feasibility.2.monthly_shortfall",
+            "value": 1600
+          }
+        ]
+      },
+      "content_checks": [
+        "Monthly shortfalls remain separate: September SGD 1,200; October SGD 1,000; November SGD 1,600."
+      ]
+    },
+    {
+      "id": "24",
+      "input": {
+        "message": "Assess whether all my saved goals can be funded together using my December 2026 saved budget's savings allocation."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "answer_statuses": [
+          "needs_input",
+          "answered"
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "monthly_savings_capacity.source",
+            "value": "unavailable"
+          }
+        ]
+      },
+      "content_checks": [
+        "December plan is unavailable; retain goal arithmetic without borrowing October capacity."
+      ]
+    },
+    {
+      "id": "25",
+      "input": {
+        "message": "Explain how an emergency fund is sized and what my recorded expenses can tell me about a suitable reserve benchmark. Explain any missing information."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "goal_strategy"
+          ],
+          [
+            "spending",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Qualify recorded expense benchmark and missing reserve information; no personal adequacy claim."
+      ]
+    },
+    {
+      "id": "26a",
+      "input": {
+        "message": "Explain mutual funds and ETFs as two numbered options, in that order, and compare how they work."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Display mutual funds as option 1 and ETFs as option 2; match attributed referents to displayed order."
+      ]
+    },
+    {
+      "id": "26b",
+      "input": {
+        "message": "Explain the second option with a simple analogy."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "follow_up_status": "resolved",
+        "facts": []
+      },
+      "content_checks": [
+        "Resolve the displayed second option to ETFs and provide a simple accurate analogy."
+      ],
+      "previous_case": "26a"
+    },
+    {
+      "id": "27",
+      "input": {
+        "message": "Explain the second option with a simple analogy."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "answer_statuses": [
+          "needs_input"
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Ask for the missing option list without inventing an ETF subject."
+      ]
+    },
+    {
+      "id": "28",
+      "input": {
+        "message": "Assess all my saved goals together against my October 2026 budget's confirmed savings allocation. Use plain English, a compact comparison table and a short explanation of the shared-pool shortfall."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget",
+            "goal_strategy"
+          ]
+        ],
+        "required_edges": [
+          [
+            "goal_strategy",
+            "budget",
+            "monthly_savings_capacity"
+          ]
+        ],
+        "no_specialist_edges": false,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_required",
+            "value": 2600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_capacity",
+            "value": 1600
+          },
+          {
+            "agent": "goal_strategy",
+            "path": "combined_feasibility.monthly_shortfall",
+            "value": 1000
+          }
+        ]
+      },
+      "content_checks": [
+        "Use compact table/plain English while preserving SGD 2,600 requirement, SGD 1,600 pool and SGD 1,000 shortfall."
+      ]
+    },
+    {
+      "id": "29",
+      "input": {
+        "message": "Explain diversification and compare it with the current tax treatment of ETFs for my situation. Clearly identify which parts you can support."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": []
+      },
+      "content_checks": [
+        "Answer supported diversification explicitly and disclose unsupported current personal tax/eligibility scope."
+      ]
+    },
+    {
+      "id": "30",
+      "input": {
+        "message": "Explain my October 2026 budget's confirmed savings capacity and why liquidity matters when considering that savings pool."
+      },
+      "expected": {
+        "agent_sets": [
+          [
+            "budget"
+          ],
+          [
+            "budget",
+            "investment_education"
+          ]
+        ],
+        "required_edges": [],
+        "no_specialist_edges": true,
+        "forbidden_edges": [
+          [
+            "budget",
+            "spending",
+            "transaction_category_totals"
+          ]
+        ],
+        "facts": [
+          {
+            "agent": "budget",
+            "path": "savings",
+            "value": 1600
+          }
+        ]
+      },
+      "content_checks": [
+        "Keep capacity arithmetic separate from liquidity education; no Spending dependency for confirmed allocation."
+      ]
+    }
+  ]
+}

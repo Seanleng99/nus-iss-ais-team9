@@ -5,8 +5,10 @@ import json
 import pytest
 from test_hybrid_investment_education import FixedRetriever, HybridGateway, request, source
 
+import app.core.deadline as deadline_module
 import app.orchestrator as orchestrator_module
 from app.core.config import Settings
+from app.models.gateway import ModelGatewayError
 from app.orchestrator import AgentOrchestrator
 
 
@@ -42,7 +44,7 @@ class ReviewGateway(HybridGateway):
 
 
 def coach(gateway, *, deadline=None):
-    options = {"AGENT_TIMEOUT_SECONDS": deadline} if deadline is not None else {}
+    options = {"WORKFLOW_TIMEOUT_SECONDS": deadline} if deadline is not None else {}
     return AgentOrchestrator(
         config=Settings(_env_file=None, MODEL_PROVIDER="local_fixture", **options),
         gateway=gateway, education_retriever=FixedRetriever([source()]),
@@ -56,7 +58,15 @@ def test_twenty_five_second_review_can_repair_once_with_default_window_and_fresh
     monkeypatch.delenv("AGENT_TIMEOUT_SECONDS", raising=False)
     clock = {"elapsed": 0}
     monkeypatch.setattr(orchestrator_module, "perf_counter", lambda: clock["elapsed"])
+    monkeypatch.setattr(deadline_module, "perf_counter", lambda: clock["elapsed"])
     gateway = ReviewGateway(clock, final_blocked=final_blocked)
+    if deadline is not None:
+        with pytest.raises(ModelGatewayError) as failure:
+            coach(gateway, deadline=deadline).handle(request("Explain ETFs."))
+        assert failure.value.code == "WORKFLOW_TIMEOUT"
+        assert gateway.reviews == 1
+        assert len(gateway.calls_for("agent_investment_education")) == 1
+        return
     response = coach(gateway, deadline=deadline).handle(request("Explain ETFs."))
     events = [event["event_type"] for event in response.audit["events"]]
     if deadline is None:
@@ -79,6 +89,7 @@ def test_unsafe_or_disallowed_review_never_repairs_even_inside_extended_window(m
     monkeypatch.delenv("AGENT_TIMEOUT_SECONDS", raising=False)
     clock = {"elapsed": 0}
     monkeypatch.setattr(orchestrator_module, "perf_counter", lambda: clock["elapsed"])
+    monkeypatch.setattr(deadline_module, "perf_counter", lambda: clock["elapsed"])
     gateway = ReviewGateway(clock, category=category)
     response = coach(gateway).handle(request("Explain ETFs."))
     assert response.blocked
@@ -91,6 +102,7 @@ def test_prohibited_user_request_never_reaches_repair_writer(monkeypatch):
     monkeypatch.delenv("AGENT_TIMEOUT_SECONDS", raising=False)
     clock = {"elapsed": 0}
     monkeypatch.setattr(orchestrator_module, "perf_counter", lambda: clock["elapsed"])
+    monkeypatch.setattr(deadline_module, "perf_counter", lambda: clock["elapsed"])
     gateway = ReviewGateway(clock)
     response = coach(gateway).handle(request("Choose which stock I should buy today."))
     assert response.blocked

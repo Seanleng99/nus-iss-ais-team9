@@ -79,8 +79,8 @@ def test_changed_authority_cannot_be_used_for_financial_correction():
 
 def test_private_diagnostic_redacts_identifiers_and_is_not_returned(tmp_path):
     from app.core.review_diagnostics import save_review_diagnostic
-    from app.core.schemas import ComplianceDecision
     from app.core.run_trace import workflow_id
+    from app.core.schemas import ComplianceDecision
     token = workflow_id.set("12345678-1234-1234-1234-123456789abc")
     try:
         save_review_diagnostic(str(tmp_path), "Contact +65 9123 4567. Recorded food is SGD 50.", [],

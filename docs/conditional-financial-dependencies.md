@@ -1,7 +1,9 @@
 # Conditional financial dependencies
 
-Implemented locally on 7 October 2026 in prompt set **v9**. The signed-in application's
-review prompts have not been executed. Deployment and live model routing acceptance remain pending.
+Implemented on 7 October 2026 in prompt set **v9**. The signed-in Edge application's
+trace metadata confirmed v9 with OpenAI / gpt-6-luna. All 34 approved prompt turns were
+attempted, with two retests. **Live acceptance has not passed**; see the
+[live results](agent-reasoning-live-test-results-2026-10-07.md) for the working graphs and remaining gaps.
 
 ## Behavior
 
@@ -76,17 +78,26 @@ Verification on 7 October 2026:
 | Infrastructure selection, model policy, smoke and release checks | 85 passed | [Verification summary](evaluation-evidence/conditional-financial-dependencies-v9.json) |
 | Existing offline dependency and routing datasets | 14/14 dependency cases and 6/6 routing cases passed | [Evaluation results](evaluation-evidence/conditional-financial-dependencies-v9.json) |
 | Ruff and Git whitespace checks | Passed | Local checks |
+| Signed-in Edge reasoning prompts | 34 approved turns attempted plus two retests; live acceptance failed | [Live results](agent-reasoning-live-test-results-2026-10-07.md) |
 
 These results verify offline contracts. They do not measure the deployed model's routing
 accuracy or conversational answer quality. The Windows test harness required execution outside
 the sandbox; test temporary files were kept in the project's artifacts directory.
 Full JUnit reports remain local under `artifacts/agent-reasoning-demo-20261007/`.
 
-The updated [review prompts](agent-reasoning-test-prompts-2026-10-07.md) now use saved-goal arithmetic
-for single Goal and independent multi-agent cases. The profile records and expected shared-pool
-shortfalls are unchanged. Live tests require deployment and the user's review of those prompts.
+The updated [review prompts](agent-reasoning-test-prompts-2026-10-07.md) use saved-goal arithmetic
+for single Goal and independent multi-agent cases. The live runs demonstrated this conditional
+Goal behavior, the required funding chain, provider reuse and several independent overlapping
+executions. Budget still requested Spending for some independent conceptual or confirmed-plan
+questions. Six first attempts timed out, seven were withheld, and two explicit education requests
+became unnecessary clarification. These are live-model gaps despite the passing offline contracts.
+The profile records and expected shared-pool shortfalls are unchanged. Direct Goal–Spending remains deferred.
 
 ## Code
+
+The subsequent [seven live-gap fixes](orchestration-live-fixes.md) add attributed model task assignments before planning, independent Spending calendar scope, workflow deadlines and one bounded financial qualification correction. Model requirement fields can avoid redundant classifiers; unknown legacy single-specialist requirements retain the scoped classifier. Confirmed-plan capacity arithmetic can use saved allocations without raw income. Independent Budget concepts retain their own requirement even when a separate Goal task assesses feasibility. Conditional Education providers receive requester-specific questions and fingerprints. The historical verification table above predates those changes; it is not a new live acceptance result.
+
+The frozen `orchestration_live_regression_v1.json` suite contains all 34 approved turns with graph and financial assertions plus human answer checks. `app.evals.orchestration_acceptance` runs it without `requested_agents` overrides and explicitly separates offline fixture contracts from repeated production-model evaluation. Fixture failures remain visible rather than being tailored to expected routes.
 
 - `app/agents/goal_strategy.py`: requirement classification, conditional input/dependency checks and arithmetic grounding.
 - `app/agents/budget.py`: scoped optional Spending selection and Budget input classification.

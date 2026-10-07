@@ -6,8 +6,8 @@ from coach_i18n import task_language, translate
 
 from app.agents.education_access import education_gap_message
 from app.core.citations import citation_contract, compact_evidence, validate_citations
-from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.financial_grounding import FinancialGroundingSnapshot
+from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.prompts import PromptCatalog
 from app.core.schemas import (
     AgentName,

@@ -4,7 +4,8 @@ import json
 import os
 import re
 from pathlib import Path
-from time import time_ns, time
+from time import time, time_ns
+from uuid import UUID, uuid4
 
 from app.core.guardrails import redact_sensitive_text
 from app.core.run_trace import workflow_id
@@ -26,7 +27,11 @@ def save_review_diagnostic(directory, draft, sections, verdict, facts):
         payload = {"trace_id": workflow_id.get(), "draft_answer": draft[:16000], "sections": sections,
                    "verdict": verdict.model_dump(mode="json"), "financial_facts": facts}
         text = redact_sensitive_text(json.dumps(payload, ensure_ascii=False))[0]
-        path = root / f"review-{workflow_id.get() or 'unknown'}-{time_ns()}.json"
+        try:
+            identity = str(UUID(str(workflow_id.get())))
+        except (ValueError, TypeError):
+            identity = str(uuid4())
+        path = root / f"review-{identity}-{time_ns()}.json"
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
             output.write(text)

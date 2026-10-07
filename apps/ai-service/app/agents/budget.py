@@ -321,7 +321,10 @@ class BudgetAgent(BaseAgent):
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
         del sanitized_message
-        grounding = self._capacity_grounding(task) if self._requires_income(task) else {
+        assignment = task.context_features.get("task_assignment") or {}
+        grounding = self._capacity_grounding(task) if (
+            assignment.get("requires_capacity") is True or self._requires_income(task)
+        ) else {
             "calculation_status": "no_financial_inputs", "scope": "general budgeting education",
         }
         grounding.update(self._saved_context(task))
@@ -389,7 +392,12 @@ class BudgetAgent(BaseAgent):
     ) -> list[CapabilityResult]:
         del result
         if "capacity" not in grounding:
-            return []
+            if not task.context_features.get("provides_goal_capacity"):
+                return []
+            # A model-classified Goal feasibility task may consume capacity even
+            # when Budget's separate narrative is conceptual. Produce the typed
+            # deterministic capability without changing that assigned narrative.
+            grounding = self._capacity_grounding(task)
         return [
             CapabilityResult(
                 capability=CapabilityName.MONTHLY_SAVINGS_CAPACITY,

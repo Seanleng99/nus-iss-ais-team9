@@ -133,7 +133,9 @@ def test_primary_stream_deadline_expires_despite_receiving_events(monkeypatch):
         transport=httpx.MockTransport(lambda request: httpx.Response(200,
             headers={"content-type": "application/x-ndjson"}, stream=Events())), **kwargs))
     client = AIServiceClient(Settings(AI_SERVICE_TIMEOUT_SECONDS=0.03))
-    token = active_run.set(SimpleNamespace(trace_id="test-trace", append=received.append))
+    token = active_run.set(SimpleNamespace(
+        trace_id="test-trace", append=received.append, record_event=lambda *_args, **_details: None,
+    ))
     try:
         with pytest.raises(AIServiceUnavailableError) as failure:
             asyncio.run(client.coach(REQUEST))

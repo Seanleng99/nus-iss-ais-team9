@@ -17,8 +17,8 @@ from app.core.guardrails import (
 )
 from app.core.income_memory import verified_income_memory_reply
 from app.core.prompts import PromptCatalog
-from app.core.review_sections import draft_review_sections
 from app.core.review_diagnostics import save_review_diagnostic
+from app.core.review_sections import draft_review_sections
 from app.core.schemas import (
     AgentName,
     AgentResult,
@@ -815,8 +815,8 @@ class RiskComplianceAgent:
                             code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
                         )
                 # This admits a correction, never the rejected draft. All
-                # blocking issues must belong to Education and remain within
-                # its allowed attribution/qualification correction boundary.
+                # blocking issues must identify an eligible owned section and
+                # remain within its attribution/qualification correction boundary.
                 review._repairable = bool(
                     (review.blocked or not review.complete)
                     and review.request_allowed and review.financial_language_safe
@@ -936,7 +936,7 @@ class RiskComplianceAgent:
                         "A veto or incomplete answer requires blocking_issues; an allowed complete verdict requires []. "
                         "For an incomplete answer, every missing_points string must also appear as an issue's "
                         "requirement with its affected section_id. Safe but incomplete answers keep blocked=false "
-                        "and block_categories=[]; ownership still determines whether Education can repair them. "
+                        "and block_categories=[]; ownership still determines correction eligibility. "
                         "Every issue must identify its affected section and the correction needed. "
                         "For a combined answer, a defect in Budget or Goal text must name that role's "
                         "section, even if it is mentioned beside Education. Never reassign a financial "
