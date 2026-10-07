@@ -4,11 +4,37 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from provider import ProjectProvider
+from provider import ProjectProvider, _live_support, _settings
 
 
 def context(**vars):
     return {"vars": vars}
+
+
+def test_offline_and_live_setup_use_current_packaged_prompts(monkeypatch):
+    from app.core.prompts import CURRENT_PROMPT_VERSION
+
+    monkeypatch.delenv("PROMPT_SET_VERSION", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-unused-test-key")
+    offline = _settings("offline")
+    live = _live_support().live_settings()
+    assert offline.prompt_set_version == live.prompt_set_version == CURRENT_PROMPT_VERSION
+    assert offline.model_provider == "local_fixture"
+    assert live.model_provider == "openai"
+
+
+def test_direct_compliance_provider_reviews_with_current_catalog(monkeypatch):
+    monkeypatch.setenv("PROMPTFOO_MODEL_MODE", "offline")
+    response = ProjectProvider("risk_compliance").call_api(
+        "{{question}}", context=context(
+            question="Explain diversification in general.",
+            candidate_answer="Diversification spreads investments across assets to reduce concentration risk.",
+        ),
+    )
+    assert response["metadata"]["error"] is None
+    assert response["metadata"]["blocked"] is False
+    assert response["metadata"]["compliance_reviewed"] is True
+    assert response["metadata"]["runtime_failures"] == []
 
 
 def test_offline_injection_uses_real_boundary_and_returns_safe_metadata(monkeypatch):

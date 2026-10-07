@@ -55,7 +55,7 @@ def _settings(mode: str):
         return Settings(
             _env_file=None, APP_ENV="test", MODEL_PROVIDER="local_fixture",
             RAG_PROVIDER="local_fixture", POLICY_RAG_PROVIDER="local_fixture",
-            AI_SERVICE_API_KEY="promptfoo-synthetic-test-key", PROMPT_SET_VERSION="v8",
+            AI_SERVICE_API_KEY="promptfoo-synthetic-test-key",
             MAX_MODEL_CALLS_PER_RUN=20,
         )
     if mode == "live":
@@ -157,7 +157,7 @@ class ProjectProvider:
                         candidate = AgentResult(agent=AgentName.INVESTMENT_EDUCATION, summary=draft)
                         policy_retriever = LocalPolicyRetriever() if mode == "offline" else create_policy_retriever(settings)
                         reviewer = RiskComplianceAgent(
-                            trace_gateway, PromptCatalog(settings.prompt_set_version),
+                            trace_gateway, PromptCatalog(),
                             settings.compliance_temperature, settings.model_max_tokens, policy_retriever,
                         )
                         result = reviewer.validate(request, [candidate], draft)

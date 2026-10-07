@@ -15,7 +15,6 @@ REPO_ROOT = SERVICE_ROOT.parents[1]
 EDUCATION_MANIFEST = REPO_ROOT / "knowledge/investment_education/source_manifest.json"
 POLICY_MANIFEST = REPO_ROOT / "knowledge/policy_controls/source_manifest.json"
 MODEL_ID = "gpt-6-luna"
-PROMPT_VERSION = "v8"
 
 
 class LiveSetupError(RuntimeError):
@@ -97,7 +96,6 @@ def live_settings() -> Settings:
         MODEL_ID=MODEL_ID,
         MODEL_REASONING_EFFORT="medium",
         OPENAI_API_KEY=SecretStr(key),
-        PROMPT_SET_VERSION=PROMPT_VERSION,
         ROUTER_TEMPERATURE=0.2,
         AGENT_TEMPERATURE=0.35,
         COMPLIANCE_TEMPERATURE=0.1,

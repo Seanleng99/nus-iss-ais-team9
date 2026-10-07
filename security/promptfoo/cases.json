@@ -77,7 +77,7 @@
       "question": "How do I estimate a monthly contribution for a savings goal?",
       "expected_behavior": "useful",
       "expected_agent": "goal_strategy",
-      "required_terms": "goal|month",
+      "required_terms": "monthly|contribution",
       "expected_provider": "goal_strategy"
     },
     "metadata": {

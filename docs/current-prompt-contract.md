@@ -34,6 +34,11 @@ bounded runtime and role policies. Comparing capture/review identities still rej
 mixed or stale evidence. Dataset and corpus versions remain separate evidence
 contracts and are not removed by this simplification.
 
+The Promptfoo security adapter uses the same packaged defaults in offline and live
+mode. Its direct compliance reviewer also loads the current catalog. Provider
+regressions cover both setup paths without invoking a paid model, so an obsolete
+adapter override cannot silently prevent the security checks from running.
+
 Historical prompt files are recoverable from Git rather than shipped as selectable
 runtime catalogs. Historical reports remain evidence of their recorded revisions;
 they do not establish acceptance of the current implementation. To reproduce an old
