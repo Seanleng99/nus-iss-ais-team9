@@ -60,7 +60,7 @@ def fixture_record_request(payload):
     previous = (payload.get("pending_draft") or {}).get("workspace") or {}
     lower = text.lower()
     records = bool(re.search(r"\bbudgets?\b", lower) and re.search(
-        r"\b(show|list|read|summari[sz]e|delete|remove|edit|update|change|compare)\b", lower))
+        r"\b(show|list|read(?!-only\b)|summari[sz]e|delete|remove|edit|update|change|compare)\b", lower))
     if not records and previous.get("operation") != "budgets":
         return None
     if "what if" in lower or "scenario" in lower or "review" in lower or "compare budget methods" in lower:

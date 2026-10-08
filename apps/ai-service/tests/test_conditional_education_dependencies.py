@@ -60,6 +60,21 @@ def orchestrator(retriever) -> AgentOrchestrator:
     )
 
 
+def test_read_only_calculation_with_budget_education_is_not_a_records_command() -> None:
+    retriever = CountingEducationRetriever()
+    response = orchestrator(retriever).handle(budget_request(
+        "Calculate my monthly disposable income and savings capacity from the supplied "
+        "income, and include public definitions of diversification and investment risk "
+        "in the same budget explanation using approved education sources. This is a read-only analysis."
+    ))
+    assert not response.blocked and response.selected_agents == ["budget"]
+    budget = next(result for result in response.agent_results if result.agent == "budget")
+    assert "budget_draft" not in budget.data
+    assert budget.data["income"] == 5000 and budget.data["disposable_income"] == 3500
+    assert budget.data["evidence_status"] == "grounded" and budget.data["contexts"]
+    assert response.audit["retrieval_consumers"] == ["budget"]
+
+
 class SemanticEducationGateway(LocalFixtureModelGateway):
     def __init__(self, **router_fields) -> None:
         self.router_fields = router_fields
