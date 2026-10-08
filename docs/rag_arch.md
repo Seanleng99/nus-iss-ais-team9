@@ -24,6 +24,14 @@ flowchart LR
 
 The orchestrator controls which agents may request retrieval. Investment Education receives a sanitized topic question and risk constraint and is the only agent with direct `education_retriever` permission. Budget and Goal Strategy may request `education_context` for allowlisted investment topics through the capability registry. The orchestrator checks Investment Education's tool permission and executes its grounding logic, then returns evidence to the requesting agent. Retrieval events identify Investment Education as the executor; dependency events retain the consumer. The retriever receives canonical topic labels, never raw transactions or identifiers. Spending and calculation-only paths remain retrieval-free. Compliance receives Education evidence in the draft but independently reads only the Policy corpus.
 
+The semantic query planner's provider schema now lists the accepted canonical
+topics and public search concepts assembled from the governed vocabulary and
+aliases. It selects search metadata from that list while `public_question`
+preserves the requested mechanism in natural language. A broader search concept
+does not establish support: passage-level answerability must still identify
+exact carried evidence or an honest limitation. Privacy checks, the single
+bounded correction and fail-closed provenance validation remain in place.
+
 ## Corpus preparation and approval
 
 Each corpus has a versioned `source_manifest.json` and local Markdown documents. The manifest records source identity, organization, canonical URL, version, SHA-256 checksum, review status, and review deadline. Reviewed source changes require a new corpus version and image release. The image includes both manifests and the exact files used by the retrievers.

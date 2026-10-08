@@ -148,9 +148,18 @@ class SpendingAgent(BaseAgent):
             if date.fromisoformat(txn["occurred_on"]) >= period_start:
                 continue
             month = txn["occurred_on"][:7] + "-01"
-            row = historical_months.setdefault(month, {"period_start": month, "currency": "SGD", "category_totals": {}, "transaction_count": 0})
+            start = date.fromisoformat(month)
+            row = historical_months.setdefault(month, {
+                "period_start": month,
+                "period_end": str(start.replace(day=calendar.monthrange(start.year, start.month)[1])),
+                "currency": "SGD", "category_totals": {}, "transaction_count": 0,
+                "first_recorded_on": txn["occurred_on"], "last_recorded_on": txn["occurred_on"],
+                "records_complete": False,
+            })
             row["category_totals"][txn["category"]] = round(row["category_totals"].get(txn["category"], 0) + txn["amount"]["amount"], 2)
             row["transaction_count"] += 1
+            row["first_recorded_on"] = min(row["first_recorded_on"], txn["occurred_on"])
+            row["last_recorded_on"] = max(row["last_recorded_on"], txn["occurred_on"])
         if scoped is not None:
             grounded = self._ground_scoped(scoped)
             # Preserve existing statistical analysis when its dated selected
@@ -207,6 +216,10 @@ class SpendingAgent(BaseAgent):
                 "Excluded currencies are never summed or converted; disclose exclusions when relevant. "
                 "When monthly_category_totals is supplied, totals cover exactly those requested months. "
                 "historical_months is separate prior context, even when the requested month has no records. "
+                "For EACH comparison month, use that row's first_recorded_on and last_recorded_on "
+                "to describe observed dates. period_start/period_end name the calendar window, "
+                "not evidence of a complete month. Even records at both boundaries do not prove "
+                "all purchases were recorded; records_complete=false means completeness is unknown. "
                 "monthly_aggregates_only supplies no transaction-level or weekday evidence; do not infer "
                 "missing dates from absent temporal patterns or invent habits and causes. "
                 "Offer at most one relevant next step when useful; ask a question only if "

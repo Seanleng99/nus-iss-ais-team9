@@ -50,7 +50,7 @@ from app.core.income_memory import income_memory_reply
 from app.core.narrative_corrections import validate_text_corrections
 from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
-from app.core.repair_budget import financial_repair_estimates
+from app.core.repair_budget import financial_repair_estimates, repair_time_estimate
 from app.core.review_evidence import review_evidence
 from app.core.run_trace import emit, task_context, workflow_id
 from app.core.schemas import (
@@ -2039,6 +2039,10 @@ class AgentOrchestrator:
         # Real-provider unknown usage cannot justify more spending. The gateway
         # enforces the unchanged hard budget after each call and discards overruns.
         estimated_repair_tokens = repair_inputs + len(repair_feedback.encode("utf-8")) // 3 + repair_outputs
+        estimated_repair_seconds = repair_time_estimate(calls, {"agent_investment_education", "risk_compliance"})
+        remaining = remaining_seconds()
+        if remaining is None:
+            remaining = self.config.workflow_timeout_seconds - (perf_counter() - state.get("workflow_started", 0))
         specialist_eligible = (
             education_task is not None and education_result is not None
             and (len(state["agent_results"]) == 1 or self._can_preserve_specialist_answers(state))
@@ -2070,8 +2074,7 @@ class AgentOrchestrator:
             ("REPAIR_USAGE_UNAVAILABLE", fixture or (usage_known and len(latest_repair_calls) == 2)),
             ("REPAIR_CALL_BUDGET_EXCEEDED", len(calls) + 4 <= self.config.max_model_calls_per_run),
             ("REPAIR_TOKEN_BUDGET_EXCEEDED", used_tokens + estimated_repair_tokens < self.config.max_model_tokens_per_run),
-            ("REPAIR_DEADLINE_EXCEEDED", remaining_seconds() > 0 if remaining_seconds() is not None else
-             perf_counter() - state.get("workflow_started", 0) < self.config.workflow_timeout_seconds),
+            ("REPAIR_DEADLINE_EXCEEDED", remaining > estimated_repair_seconds),
         ]
         repair_blockers = [code for code, passed in repair_conditions if not passed]
         repair_reason = repair_blockers[0] if repair_blockers else "REPAIR_ELIGIBLE"
@@ -2080,6 +2083,8 @@ class AgentOrchestrator:
             details={"allowed": repair_allowed, "repair_round": 1, "decision_source": "deterministic_rule",
                      "reason_code": repair_reason, "repair_blockers": repair_blockers,
                      "used_tokens": used_tokens, "estimated_repair_tokens": estimated_repair_tokens,
+                     "estimated_repair_duration_ms": round(estimated_repair_seconds * 1000, 2),
+                     "remaining_duration_ms": round(max(0, remaining) * 1000, 2),
                      "token_limit": self.config.max_model_tokens_per_run,
                      "remaining_tokens": max(0, self.config.max_model_tokens_per_run - used_tokens)}))
         if repair_allowed:
@@ -2178,6 +2183,10 @@ class AgentOrchestrator:
             planned_calls["synthesizer"] = self._synthesize(planned_state, plan_only=True)["planned_call"]
         estimates = financial_repair_estimates(calls, required, issues, planned_calls=planned_calls)
         estimated = sum(item["estimated_repair_tokens"] for item in estimates)
+        estimated_repair_seconds = repair_time_estimate(calls, required)
+        remaining = remaining_seconds()
+        if remaining is None:
+            remaining = self.config.workflow_timeout_seconds - (perf_counter() - state.get("workflow_started", 0))
         for item in estimates:
             events.append(self._event(state, "financial.review.repair_estimate", "orchestrator", details=item))
         used_tokens = sum(int(call.get("total_tokens") or 0) for call in calls)
@@ -2199,8 +2208,7 @@ class AgentOrchestrator:
                 and all(type(call.get(key)) is int and call[key] >= 0 for key in ("input_tokens", "output_tokens", "total_tokens"))
                 and call["total_tokens"] == call["input_tokens"] + call["output_tokens"] for call in calls)),
             ("REPAIR_TOKEN_BUDGET_EXCEEDED", used_tokens + estimated < self.config.max_model_tokens_per_run),
-            ("REPAIR_DEADLINE_EXCEEDED", remaining_seconds() > 0 if remaining_seconds() is not None else
-                perf_counter() - state.get("workflow_started", 0) < self.config.workflow_timeout_seconds),
+            ("REPAIR_DEADLINE_EXCEEDED", remaining > estimated_repair_seconds),
         ]
         blockers = [code for code, passed in conditions if not passed]
         eligible = not blockers
@@ -2209,6 +2217,8 @@ class AgentOrchestrator:
                                            "reason_code": blockers[0] if blockers else "REPAIR_ELIGIBLE",
                                            "repair_blockers": blockers, "used_tokens": used_tokens,
                                            "estimated_repair_tokens": estimated,
+                                           "estimated_repair_duration_ms": round(estimated_repair_seconds * 1000, 2),
+                                           "remaining_duration_ms": round(max(0, remaining) * 1000, 2),
                                            "token_limit": self.config.max_model_tokens_per_run,
                                            "remaining_tokens": max(0, self.config.max_model_tokens_per_run - used_tokens)}))
         if not eligible:

@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-10-08T22:49:24.505469+00:00",
+  "measurement": "offline_contract_regressions_and_authored_retrieval_benchmark",
+  "base_commit": "45ea010734e5b5e8df3d53ba56c5133456d0b0d9",
+  "follow_up_changes_committed": false,
+  "deployed": false,
+  "prompt_set_version": "v10",
+  "prompt_content_hash": "26a421a1d798b7e125a6ae330546a0ab2bf5180f49fd6602c16d3056f621b3bc",
+  "failed_live_case_ids": [
+    5,
+    9,
+    13,
+    21,
+    25,
+    29,
+    30
+  ],
+  "live_acceptance": "not_retested",
+  "tests": {
+    "ai_full": {
+      "tests": 1893,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 1892
+    },
+    "backend_related": {
+      "tests": 63,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 63
+    },
+    "shared_full": {
+      "tests": 64,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 64
+    }
+  },
+  "source_file_sha256": {
+    "apps/ai-service/app/agents/budget.py": "67d6efae5f5c5b3540533d2e690dfc7bd167da67b820195825160b6e050a56fd",
+    "apps/ai-service/app/agents/risk_compliance.py": "dbede8a048d8dc7a6b57e724127251722d01acdfb305a9f5ca37ee89ca848050",
+    "apps/ai-service/app/agents/spending.py": "95ff055b3df02e1a98c82904c43ea9b2bdca360c5d77dc31b25a3587b4fbbb34",
+    "apps/ai-service/app/core/repair_budget.py": "6fd30e7039706176d506e3d70c262b0dca85243786535ddc78fb10b26fcb9ee6",
+    "apps/ai-service/app/core/schemas.py": "d6117b6bc5a96261497fb9dd7f3b2a7aed75fd7529cf11903f6516bf32a4f54f",
+    "apps/ai-service/app/models/structured.py": "5791d2246e315d369d81f5d80e31f7be16d6f629007f9159272115f423ae0cc8",
+    "apps/ai-service/app/orchestrator.py": "ffdf4e5ecb050ee7cce1d7616158b3de6422a477c61e820145e82409b9d1de08",
+    "apps/ai-service/app/rag/answerability.py": "64923f2fae9b307e6e98d3988ad3b259ae754bc204db4d04e3bafb9d5c6c59da",
+    "apps/ai-service/tests/test_education_contract_recovery.py": "77063aeb78f92347992034ab589d48a9a4a3424e4f5580f538bdca8de89609c2",
+    "apps/ai-service/tests/test_education_repair_window.py": "c17072261927524aa6c844b43fe2b3d77e4be73ec1d32f2f3e7ddac2e6e7215d",
+    "apps/ai-service/tests/test_latest_live_failures.py": "d82e5d4f6a2e42d83f37643501e82e7916f0eab4246da7d5f80c79e09de9491f",
+    "apps/ai-service/tests/test_task_assignments.py": "d36e676558c917aab1adee73524467230eb8a7ccb69eb9fa2d99a84002d1d2e9",
+    "apps/backend/app/services/recurring_forecast.py": "f83cfca5f22a445d6685343a95eff2fb5056434b7be85d014cc058efd0995030",
+    "apps/backend/tests/test_explicit_recurrence.py": "28825e53bbae61567588d9f0c0d290a7bf799d76e162a5564335344cc0311ddd",
+    "apps/shared/coach_i18n/locales/en.json": "d8bfdb182ba5c1cb6de19d2c634cf5bfb9c0234c9d9966950aa5c9300819b669",
+    "apps/shared/coach_i18n/locales/zh-Hans.json": "74c7d3028d7ae1d3843b5da79754b7396645b79048931ea6a2c447d94baebd31",
+    "apps/shared/coach_trace/__init__.py": "a5f99502ba7a0dfef69f5a16a80008bfe5e518f4b899ad7d61e931c335473c19"
+  },
+  "checks": {
+    "ruff": "passed",
+    "chinese_code_scan": "passed",
+    "diff_whitespace": "passed"
+  },
+  "offline_evaluation": {
+    "passed": true,
+    "suites": 8,
+    "cases": 87
+  },
+  "rag_retrieval": {
+    "passed": true,
+    "cases": 100,
+    "passed_cases": 100,
+    "generated_answer_quality": "not_measured"
+  },
+  "limitations": [
+    "Historical safe traces do not identify every failed review predicate.",
+    "Scripted contracts do not prove real-model semantic or routing consistency.",
+    "Repair latency forecasts do not guarantee provider latency.",
+    "Live acceptance requires deployment and fresh repeated signed-in tests."
+  ]
+}

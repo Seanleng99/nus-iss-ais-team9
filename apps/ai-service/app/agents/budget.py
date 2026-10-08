@@ -159,8 +159,6 @@ class BudgetAgent(BaseAgent):
         options: list[DependencyRequestDraft] = []
         if (
             (self._has_spending_context(task) or self._reconciliation(task))
-            and (not task.context_features.get("task_assignment")
-                 or task.context_features["task_assignment"].get("requires_spending") is not False)
             and CapabilityName.TRANSACTION_CATEGORY_TOTALS
             not in task.resolved_dependencies
             and not task.dependency_warnings
@@ -171,10 +169,11 @@ class BudgetAgent(BaseAgent):
                     reason_code="BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS",
                     required_output_fields=["category_totals", "transaction_count"],
                     required=self._reconciliation(task),
-                    selection_guidance="Use recorded expense totals only for Budget's own calculation or assessment. "
-                        "Separate independent Spending analysis and Goal contribution arithmetic do not "
-                        "require this dependency. Historical totals may inform a month without records; "
-                        "keep requested-period totals distinct from history.",
+                    selection_guidance="Assess Budget's question and attributed source_quotes; requires_spending "
+                        "is a router hint, not a veto. Use totals when observed expenses inform Budget's "
+                        "own assessment, including pressure on a known savings plan. Separate independent "
+                        "Spending analysis and Goal arithmetic need no dependency. Keep requested-period "
+                        "totals distinct from history; history may inform a month without records.",
                 )
             )
         return options
@@ -345,7 +344,15 @@ class BudgetAgent(BaseAgent):
             "limits are planned amounts. Explain tradeoffs and potential adjustable categories "
             "without inventing new limits, overriding protected commitments or implying a save. "
             "When recurring terms are unknown, explain the missing frequency/obligation information "
-            "and do not report a numerical disposable income or savings estimate."
+            "and do not report a numerical disposable income or savings estimate. "
+            "For a combined budget and Education question, answer each part separately. "
+            "Capacity and saved limits come from the financial grounding, not Education passages. "
+            "Explain source-supported concepts from contexts and subquestion_coverage with their "
+            "supporting citations. A source's general principle does not establish that this "
+            "user's savings pool is cash already saved, available to withdraw, or suitable for "
+            "a particular investment. State missing account/access information when relevant. "
+            "When Education support is missing, preserve the budget calculation and state that "
+            "source limitation; do not invent the explanation or make a personal product decision."
         )}, ensure_ascii=False)
 
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:

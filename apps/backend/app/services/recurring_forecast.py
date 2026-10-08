@@ -155,6 +155,7 @@ def handle_recurring_forecast_query(
             answer += translate("coach_action.query_truncated", locale, shown=len(data["occurrences"]), count=data["occurrence_count"])
         if data["unknown_cadence_count"]:
             answer += " " + translate("coach_action.forecast_unknown", locale, count=data["unknown_cadence_count"])
+    answer += "\n\n" + translate("coach_action.forecast_meaning", locale)
     return CoachResponse(session_id=session_id, selected_agents=[], answer=answer, agent_results=[],
                          disclaimers=[], audit={"source": "recurring_forecast", "cadence_known": data["unknown_cadence_count"] == 0,
                                                 "forecast_available": bool(data["schedule_count"]), "recurring_forecast": data})

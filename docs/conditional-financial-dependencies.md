@@ -56,6 +56,15 @@ unnecessary `requires_spending` hint when a confirmed allocation supplies the as
 capacity calculation. Requested actual-versus-plan reconciliation still consumes Spending.
 See [the follow-on recovery changes](orchestration-post-retest-recovery.md).
 
+The 9 October follow-up also removes the router's negative flag as a capability
+veto. Whenever recorded expenses are available, Budget's semantic planner can
+consider the approved totals capability against its own question and attributed
+source quotes. A confirmed allocation supplies capacity arithmetic, but an
+assessment of observed pressure on that allocation still needs actual expenses.
+The planner can choose ready for independent questions; co-selection never
+forces an edge. Mandatory reconciliation retains its stricter contract.
+See [latest live-failure fixes](latest-live-failure-fixes-2026-10-09.md).
+
 After the third 8 October retest, a typed `operation=reconciliation` distinguishes
 actual-versus-limit reasoning from Budget planning and record commands. This operation
 offers the existing Spending totals capability as required, and a readiness decision

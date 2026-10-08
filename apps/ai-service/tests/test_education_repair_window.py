@@ -108,3 +108,20 @@ def test_prohibited_user_request_never_reaches_repair_writer(monkeypatch):
     assert response.blocked
     assert len(gateway.calls_for("agent_investment_education")) <= 1
     assert not any(event["event_type"] == "education.completeness.repair" for event in response.audit["events"])
+
+
+def test_positive_remaining_time_does_not_admit_a_repair_that_cannot_fit_observed_latency(monkeypatch):
+    import app.models.gateway as gateway_module
+    clock = {"elapsed": 0}
+    monkeypatch.setattr(orchestrator_module, "perf_counter", lambda: clock["elapsed"])
+    monkeypatch.setattr(deadline_module, "perf_counter", lambda: clock["elapsed"])
+    monkeypatch.setattr(gateway_module, "perf_counter", lambda: clock["elapsed"])
+    gateway = ReviewGateway(clock)
+    response = coach(gateway, deadline=55).handle(request("Explain ETFs."))
+    assert response.blocked and gateway.reviews == 1
+    assert len(gateway.calls_for("agent_investment_education")) == 1
+    event = next(event for event in response.audit["events"]
+                 if event["event_type"] == "education.completeness.repair_decision")
+    assert "REPAIR_DEADLINE_EXCEEDED" in event["details"]["repair_blockers"]
+    assert event["details"]["estimated_repair_duration_ms"] >= 50000
+    assert event["details"]["remaining_duration_ms"] == 30000

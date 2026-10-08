@@ -988,6 +988,7 @@
   "education.model_knowledge_label": "模型知识（未经检索来源核实）：",
   "coach_action.forecast_range_ask": "请提供预测的开始和结束日期，按时间先后排列，范围最长为10年。",
   "coach_action.forecast_result": "从 {start} 至 {end}，已确认的定期支出计划有 {count} 次未付款项，合计 SGD {total}。\n{items}\n此预测假设已确认的金额和付款计划继续执行，不包括其他支出或没有明确计划的账单。",
+  "coach_action.forecast_meaning": "预测推算已安排的金额，不会新增付款记录。已记录付款是账本中的实际记录。关联到计划义务的付款会减少其未付金额；未关联的记录不能证明该计划账单已付款。",
   "coach_action.forecast_unknown": "有 {count} 笔已记录的定期支出缺少付款频率，未计入此预测。",
   "coach_action.recurrence_item": "{description}：SGD {amount}；每 {interval} {frequency}重复；原始计划日期为 {first}；下一次未付到期日为 {next}；结束日期为 {last}。",
   "coach_action.recurrence_preview": "拟保存的支出和定期付款计划：\n{items}\n尚未保存任何内容。回复“{confirm}”保存这些支出和计划，或回复“{cancel}”放弃。",

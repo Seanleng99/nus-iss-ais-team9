@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -12,9 +13,10 @@ from pydantic import ValidationError
 from sqlalchemy import func, inspect, select
 
 from app.api.financial_schemas import TransactionCreate
+from app.clients.ai_service import AIServiceUnavailableError
 from app.core.config import settings
 from app.domain.recurrence import LedgerRecurrence
-from app.domain.schemas import CoachRequest, CoachResponse
+from app.domain.schemas import CoachRequest, CoachResponse, InternalCoachRequest
 from app.infrastructure.models import TransactionRecord
 from app.infrastructure.repositories import (
     SQLAlchemyChatRepository,
@@ -25,6 +27,7 @@ from app.main import app
 from app.services.cashflow import CashflowSettings, Schedule
 from app.services.financial_workspace import write_section
 from app.services.recurring_forecast import recurring_expense_forecast
+from app.services.response_composition import compose_backend_response
 from app.services.transaction_capture import handle_transaction_capture
 from app.services.transaction_staging import (
     handle_transaction_confirmation,
@@ -153,6 +156,38 @@ def stage(session, locale="en", cadence=None):
         disclaimers=[], audit={"response_locale": locale})
     stage_transaction_draft(session, "recurrence-u", chat, response, "I paid monthly rent SGD100 on 2026-01-31")
     return chat, response
+
+
+@pytest.mark.parametrize("locale", ["en", "zh-Hans"])
+@pytest.mark.parametrize("failure", ["unavailable", "rejected"])
+def test_forecast_explanation_survives_backend_staging_and_composition_failure(db_session_factory, locale, failure):
+    class FailedComposer:
+        async def compose(self, request, original, outcomes):
+            if failure == "unavailable":
+                raise AIServiceUnavailableError(timed_out=True)
+            return original.model_copy(update={"audit": {**original.audit,
+                "post_action_composed": False, "composition_fallback_code": "ACTION_COMPOSITION_UNGROUNDED"}})
+    with db_session_factory() as session:
+        expense(session, amount=1800, when="2026-10-01", recurrence={"frequency": "monthly",
+            "first_on": "2026-10-01", "next_due_on": "2026-11-01"})
+        chat = SQLAlchemyChatRepository(session).create("recurrence-u", "forecast-review", "Coach")
+        response = CoachResponse(session_id=chat.id, selected_agents=["spending"],
+            answer="Earlier AI ledger explanation.", disclaimers=[], audit={"response_locale": locale},
+            agent_results=[{"agent": "spending", "summary": "Read-only forecast.", "data": {
+                "spending_draft": {"action": "forecast", "query_start": "2026-11-01", "query_end": "2026-11-30"}}}])
+        message = "Which explicitly scheduled expenses are due in November 2026? Explain forecast versus recorded payments."
+        stage_transaction_draft(session, "recurrence-u", chat, response, message)
+        original = response.answer
+        composed = asyncio.run(compose_backend_response(FailedComposer(),
+            InternalCoachRequest(user_id="recurrence-u", session_id=chat.id, message=message), response))
+        assert composed.answer == original and "1800.00" in composed.answer and "2026-11-01" in composed.answer
+        assert composed.audit["recurring_forecast"]["total"] == 1800
+        assert composed.audit["action_status"] == "read_only_forecast"
+        assert composed.audit["post_action_composed"] is False
+        from coach_i18n import translate
+        assert translate("coach_action.forecast_meaning", locale) in composed.answer
+        assert chat.pending_transaction is None
+        assert session.scalar(select(func.count()).select_from(TransactionRecord)) == 1
 
 
 @pytest.mark.parametrize("locale", ["en", "zh-Hans"])

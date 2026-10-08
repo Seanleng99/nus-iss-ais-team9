@@ -615,11 +615,15 @@ class ScopedEducationComplianceDecision(ComplianceDecision):
             raise ValueError("Complete answers have no missing_points; safety corrections belong in blocking_issues")
         if not self.complete and (
             not self.missing_points or not self.blocking_issues
-            or not set(self.missing_points) <= {issue.requirement for issue in self.blocking_issues}
         ):
-            raise ValueError("Incomplete answers require missing_points with matching section-specific requirements")
+            raise ValueError("Incomplete answers require missing_points and section-specific requirements")
         if any(not point.strip() or len(point) > 200 for point in self.missing_points):
             raise ValueError("Missing points must be brief, nonempty requirements")
+        # Correction instructions come exclusively from owned issues. Repeating
+        # their wording in a second field adds no evidence or safety assurance.
+        # This resolves redundant prose, never permissions, categories or claims.
+        if not self.complete:
+            self.missing_points = list(dict.fromkeys(issue.requirement for issue in self.blocking_issues))
         return self
 
 

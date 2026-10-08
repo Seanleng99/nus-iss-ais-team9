@@ -55,6 +55,21 @@ Semantic answerability can select server-assigned passage references. The server
 
 Writer and independent Compliance inputs retain full source passages. Coverage quotes already present in those passages use `quote_ref` with a zero-based context index and character offsets; the referenced text is unchanged. Unmatched quotes and source metadata are never replaced by references. Original evidence and sealed repair snapshots retain full quotations for validation and audit. This avoids repeated text within a model input while preserving financial calculations, source qualifications and review authority.
 
+Compliance claim correction uses a unique exact `claim_quote` within a supplied
+owned draft section. The server resolves its offsets; supplied legacy offsets
+must still match. Owned issues supply correction requirements, so an incomplete
+verdict no longer fails solely because `missing_points` paraphrases the same
+requirement. Permissions, safety categories, evidence references and independent
+review after correction remain mandatory. Repair admission forecasts elapsed
+provider time as well as consumed calls and tokens, without extending deadlines.
+
+Spending carries observed first/last dates for each historical month separately
+from its calendar boundaries and never treats those dates as proof of complete
+coverage. The authenticated backend's forecast outcome includes the distinction
+between projected obligations and recorded payments, including linked settlement
+effects. This explanation survives rejected or unavailable response composition.
+See [latest live-failure fixes](latest-live-failure-fixes-2026-10-09.md).
+
 Saved-budget read/compare extraction carries a typed read-only operation and scoped owned-record evidence into independent review. Category-setting extraction delegates target-month existence to the authenticated backend; explicit edits/deletions cannot create missing plans. Optional education gaps preserve visible, qualified Budget/Goal calculations. Every model-assisted blocking verdict needs a bounded category and a specific policy explanation; exhausted invalid verdicts withhold the draft with `review_contract_unverified`.
 
 ## Implemented Physical AWS View

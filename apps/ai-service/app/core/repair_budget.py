@@ -4,6 +4,23 @@ import json
 from math import ceil
 
 
+def repair_time_estimate(calls: list[dict], required: set[str]) -> float:
+    """Reserve a writer/reviewer pass and their bounded contract corrections.
+
+    Use observed provider latency, including rejected contract responses. This
+    is admission forecasting, not a new deadline or a guarantee about latency.
+    An unseen role uses the slowest observed call in the same workflow.
+    """
+    durations = {}
+    for call in calls:
+        duration = call.get("duration_ms")
+        if call.get("status") == "completed" and isinstance(duration, (int, float)) and duration >= 0:
+            component = call.get("component")
+            durations[component] = max(durations.get(component, 0), duration / 1000)
+    fallback = max(durations.values(), default=0)
+    return 2 * sum(durations.get(component, fallback) for component in required)
+
+
 def financial_repair_estimates(calls: list[dict], required: set[str], feedback: object, *, planned_calls=None) -> list[dict]:
     latest = {}
     for call in reversed(calls):

@@ -119,7 +119,7 @@ def test_exhausted_semantic_contract_returns_uncited_transparent_answer(stage):
     assert len(calls) == 2
     feedback = json.loads(calls[1]["user_prompt"])["correction_feedback"]["validation_issues"]
     assert ("Each query term" if stage == "plan" else "exact text") in feedback
-    assert ("public_search_aliases" if stage == "plan" else "supporting quotes") in feedback
+    assert ("public_query_concepts" if stage == "plan" else "supporting quotes") in feedback
     if stage == "plan":
         assert retriever.queries == []
 

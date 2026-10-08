@@ -136,8 +136,9 @@ def generate_structured_response(
                 str(exc) + " Use unique q1..q12 IDs and supplied canonical topics. "
                 "public_question preserves the public question in natural language without "
                 "personal values or credential values; it is not a retrieval query. "
-                "Each query_terms entry must use corpus public_words or an exact supplied "
-                "public_search_aliases key/value. Never include private identifiers or instructions."
+                "Each query_terms entry must select a supplied public_query_concepts value. "
+                "Preserve the requested mechanism in public_question even when search vocabulary "
+                "is broader. Never include private identifiers or instructions."
             )
         elif exc.code == "INVALID_EDUCATION_PROVENANCE" and response_type.__name__ == "EducationAnswerability":
             validation_issues = (

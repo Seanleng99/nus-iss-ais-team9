@@ -7,14 +7,15 @@ use lexical ranking. Neither path sends personal dialogue to a retrieval tool.
 
 import json
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.education_access import (
     CANONICAL_EDUCATION_TOPICS,
+    EDUCATION_DETAIL_PHRASES,
+    EDUCATION_TOPIC_PHRASES,
     PUBLIC_EDUCATION_SEARCH_ALIASES,
-    _public_education_words,
     education_model_question,
     public_education_search_terms,
 )
@@ -27,14 +28,26 @@ from app.models.gateway import (
 )
 from app.models.structured import generate_structured_response
 
+# Constrain the provider's search selections to the same public vocabulary that
+# the retrieval boundary accepts. Natural-language meaning stays in
+# public_question; search concepts are transport metadata, not an answer.
+PUBLIC_QUERY_CONCEPTS = sorted({term for term in (
+    *CANONICAL_EDUCATION_TOPICS,
+    *PUBLIC_EDUCATION_SEARCH_ALIASES, *PUBLIC_EDUCATION_SEARCH_ALIASES.values(),
+    *(phrase for phrase, _ in EDUCATION_TOPIC_PHRASES),
+    *(phrase for _, phrases in EDUCATION_DETAIL_PHRASES for phrase in phrases),
+) if public_education_search_terms([term])})
+PublicQueryConcept = Annotated[str, Field(json_schema_extra={"enum": PUBLIC_QUERY_CONCEPTS})]
+
 
 class EducationSubquestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: str = Field(pattern=r"^q(?:[1-9]|1[0-2])$")
-    topic: str = Field(min_length=2, max_length=80)
+    topic: str = Field(min_length=2, max_length=80,
+                       json_schema_extra={"enum": list(CANONICAL_EDUCATION_TOPICS)})
     public_question: str = Field(min_length=5, max_length=240)
-    query_terms: list[str] = Field(min_length=1, max_length=6)
+    query_terms: list[PublicQueryConcept] = Field(min_length=1, max_length=6)
 
 
 class EducationQueryPlan(BaseModel):
@@ -153,8 +166,9 @@ def build_query_plan(
             "public_question text preserving the public meaning in natural language; it is "
             "internal question data, not a retrieval query, and need not use corpus words. "
             "never include personal names, amounts, identifiers, account details or dialogue. "
-            "query_terms are one to six public corpus concepts per subquestion, using only "
-            "public_words or exact public_search_aliases. Prefer the alias's corpus value. "
+            "query_terms are one to six selections from public_query_concepts per subquestion. "
+            "Select supplied concepts rather than inventing or combining search phrases. "
+            "Prefer the alias's corpus value. "
             "Never use arbitrary password/account values. Translate metaphors or informal wording into the concept's actual "
             "public terminology. Do not invent facts or answer the question. Return JSON "
             "{\"subquestions\":[{\"question_id\":\"q1\",\"topic\":canonical topic,"
@@ -168,7 +182,7 @@ def build_query_plan(
             ],
             "recognized_topics": topics, "excluded_topics": excluded_topics,
             "canonical_topics": list(CANONICAL_EDUCATION_TOPICS),
-            "public_words": sorted(_public_education_words()),
+            "public_query_concepts": PUBLIC_QUERY_CONCEPTS,
             "public_search_aliases": PUBLIC_EDUCATION_SEARCH_ALIASES,
         }, ensure_ascii=False),
         temperature=temperature, max_tokens=min(max_tokens, 1600),

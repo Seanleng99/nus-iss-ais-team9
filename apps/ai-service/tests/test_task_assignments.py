@@ -11,8 +11,9 @@ from app.orchestrator import AgentOrchestrator
 
 
 class AssignedGateway(LocalFixtureModelGateway):
-    def __init__(self, assignments):
+    def __init__(self, assignments, *, uses_spending=False):
         self.assignments = assignments
+        self.uses_spending = uses_spending
         self.calls = []
 
     def generate(self, **kwargs):
@@ -21,16 +22,18 @@ class AssignedGateway(LocalFixtureModelGateway):
             return json.dumps({"selected_agents": ["spending", "budget"],
                                "rationale": ["Two distinct requested tasks."],
                                "task_assignments": self.assignments})
-        # Deliberately request any offered capability: isolation must happen before planning.
+        # Script a separate semantic dependency decision. Router hints do not
+        # veto approved options; independence is preserved by the planner.
         if kwargs["system_prompt"].startswith("PROMPT_ID: dependency_planner"):
             payload = json.loads(kwargs["user_prompt"])
             requests = [{k: v for k, v in item.items() if k != "selection_guidance"}
-                        for item in payload["allowed_requests"]]
+                        for item in payload["allowed_requests"]
+                        if item["capability"] != "transaction_category_totals" or self.uses_spending]
             return json.dumps({"status": "needs_dependency" if requests else "ready", "requests": requests})
         return super().generate(**kwargs)
 
 
-def test_independent_model_tasks_do_not_offer_spending_to_budget():
+def test_independent_model_tasks_decline_spending_for_budgets_own_scope():
     message = "Inspect my purchases; teach me a budgeting method."
     gateway = AssignedGateway([
         {"agent": "spending", "question": "Inspect my purchases", "source_quotes": ["Inspect my purchases"]},
@@ -43,6 +46,10 @@ def test_independent_model_tasks_do_not_offer_spending_to_budget():
             "recent_transactions": [{"description": "Food", "category": "food", "amount": {"amount": 50},
                                      "occurred_on": "2026-10-02"}]}))
     assert not response.audit["dependency_edges"]
+    plans = [json.loads(call["user_prompt"]) for call in gateway.calls
+             if call["system_prompt"].startswith("PROMPT_ID: dependency_planner")]
+    assert plans and plans[0]["message"] == "Teach me a budgeting method"
+    assert plans[0]["allowed_requests"][0]["capability"] == "transaction_category_totals"
     budget_calls = [json.loads(call["user_prompt"]) for call in gateway.calls
                     if call["system_prompt"].startswith("PROMPT_ID: agent_budget")]
     assert budget_calls and "purchases" not in budget_calls[0]["message"].lower()
@@ -76,7 +83,8 @@ def test_model_assignment_preserves_explicit_dataflow_and_conditional_independen
                 return json.dumps({"selected_agents": ["spending", "budget", "goal_strategy"],
                     "rationale": ["Use the requested data flow."], "task_assignments": assignments})
             return super().generate(**kwargs)
-    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=DataflowGateway(assignments)).handle(
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"),
+                                 gateway=DataflowGateway(assignments, uses_spending=consume_spending)).handle(
         request(message, ["spending", "budget", "goal_strategy"], capacity=True))
     assert not response.blocked
     capabilities = {edge["capability"] for edge in response.audit["dependency_edges"]}

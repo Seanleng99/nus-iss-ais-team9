@@ -51,6 +51,8 @@ COUNTS = {
     "repair_round",
     "used_tokens",
     "estimated_repair_tokens",
+    "estimated_repair_duration_ms",
+    "remaining_duration_ms",
     "token_limit",
     "remaining_tokens",
     "source_quote_count",

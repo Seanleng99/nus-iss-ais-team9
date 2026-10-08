@@ -988,6 +988,7 @@
   "education.model_knowledge_label": "Model knowledge (not verified against retrieved sources):",
   "coach_action.forecast_range_ask": "Please provide both the start and end dates for an ordered forecast range of at most 10 years.",
   "coach_action.forecast_result": "From {start} through {end}, confirmed recurring expense schedules have {count} unpaid occurrences totaling SGD {total}.\n{items}\nThis assumes the confirmed amounts and payment schedules continue. Other spending and bills without a schedule are excluded.",
+  "coach_action.forecast_meaning": "A forecast projects scheduled amounts; it does not record a payment. Recorded payments are actual ledger entries. Payments linked to a scheduled obligation reduce its outstanding amount; unlinked entries do not establish that the scheduled bill was paid.",
   "coach_action.forecast_unknown": "{count} recorded recurring expenses have unknown cadence and are excluded from this forecast.",
   "coach_action.recurrence_item": "{description}: SGD {amount}; repeats every {interval} {frequency}; anchored to {first}; next unpaid due date {next}; end date {last}.",
   "coach_action.recurrence_preview": "Proposed expenses and recurring schedules:\n{items}\nNothing has been saved. Reply '{confirm}' to save these expenses and schedules, or '{cancel}' to discard them.",
