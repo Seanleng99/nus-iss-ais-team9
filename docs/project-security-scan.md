@@ -4,6 +4,12 @@
 
 The **Project OWASP Security Scan** workflow exposes `workflow_call` and `workflow_dispatch`. CI owns automatic execution and calls its offline scan when AI, security or release checks are selected. Container builds require its success, and AWS Release requires successful push CI for the current main SHA. Each Agent workflow separately executes its owned pytest tests. The scan's previous backend/frontend companion jobs have been removed because service CI already runs those test files.
 
+The scan package explicitly pins Playwright 1.63.0 alongside Promptfoo so npm
+retains its optional dependency and the matching `playwright-core` in the lockfile
+on every platform. Otherwise a Linux clean install can resolve an omitted entry
+against a newer registry release and reject the incomplete lockfile before any
+security cases run. This dependency pin does not change the attack cases or graders.
+
 ## What runs
 
 | Section | Actual target | Evidence |
