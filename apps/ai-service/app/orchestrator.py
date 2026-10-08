@@ -1986,7 +1986,10 @@ class AgentOrchestrator:
                     "review_issues": review.data.get("review_issues", []),
                     "policy_note_count": len(review.policy_notes),
                     "policy_source_count": len(review.data.get("policy_sources", [])),
-                    "policy_corpus_version": review.data.get("policy_corpus_version")})
+                    "policy_corpus_version": review.data.get("policy_corpus_version"),
+                    "error_code": review.data.get("review_contract_error"),
+                    "validation_reason": review.data.get("validation_reason"),
+                    "policy_clause_refs": review.data.get("policy_clause_refs", [])})
 
         events.append(review_event(result, 1))
         financial_repair = self._repair_financial_answer(state, result, events)
@@ -2301,9 +2304,11 @@ class AgentOrchestrator:
                     translate('safety.action_refusal', response_language)
                 )
             else:
-                answer = (
-                    translate('safety.unverified_answer', response_language)
-                )
+                from coach_trace.review import reason_keys
+
+                answer = (" ".join(translate(key, response_language)
+                                   for key in reason_keys(compliance.data))
+                          or translate('safety.unverified_answer', response_language))
         sources = self._collect_source_citations(state["agent_results"])
         retrieval_evidence = self._collect_retrieval_evidence(state["agent_results"])
         retrieval_consumers = sorted(

@@ -66,9 +66,17 @@ def test_auxiliary_explanations_cannot_add_unapproved_links(component, field):
                 return json.dumps(value)
             return raw
 
-    with pytest.raises(ModelGatewayError) as error:
-        workflow(gateway=LinkGateway()).handle(request())
-    assert error.value.code == "UNAPPROVED_CITATION"
+    if component == "risk_compliance":
+        response = workflow(gateway=LinkGateway()).handle(request())
+        assert response.blocked and response.sources == []
+        assert "review failure" in response.answer
+        assert "https://example.invalid/fabricated" not in response.model_dump_json()
+        assert any(event["details"].get("error_code") == "UNAPPROVED_CITATION"
+                   for event in response.audit["events"])
+    else:
+        with pytest.raises(ModelGatewayError) as error:
+            workflow(gateway=LinkGateway()).handle(request())
+        assert error.value.code == "UNAPPROVED_CITATION"
 
 
 @pytest.mark.parametrize("bad_text,bad_title", [

@@ -8,7 +8,9 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 from coach_i18n import translate
 from coach_trace import safe_details
+from coach_trace.review import reason_keys
 
+from ui.coach_language import current_selection
 from ui.components import backend_call, page_header
 from ui.i18n import display_frame, text_formatter, ui_text
 from ui.state import get_client, get_user_id
@@ -388,6 +390,13 @@ def render_trace(trace):
                     "Generated explanations are withheld for this run. You can inspect execution metadata in the other tabs."
                 )
             )
+            last_review = next((event.get("details", {}) for event in reversed(events_for(trace))
+                                if event.get("event_type") == "compliance.completed"), {})
+            for key in reason_keys(last_review):
+                st.write(translate(key, current_selection()))
+            clauses = safe_details(last_review).get("policy_clause_refs", [])
+            if clauses:
+                st.caption(ui_text("Relevant policy clauses: {v0}", v0=", ".join(clauses)))
         else:
             rationales = audit.get("routing_rationale", [])
             if rationales:
@@ -408,27 +417,22 @@ def render_trace(trace):
                         "No final explanation was saved. The timeline shows the decisions recorded before execution stopped."
                     )
                 )
-            for title, key in (
-                ("Education evidence", "retrieval_sources"),
-                ("Policy evidence", "policy_sources"),
-            ):
-                sources = audit.get(key, [])
-                if sources:
-                    st.markdown(f"**{ui_text(title)}**")
-                    st.dataframe(
-                        display_frame(
-                            [
-                                {
-                                    "Source": source.get("source_id"),
-                                    "Title": source.get("title"),
-                                    "Version": source.get("document_version")
-                                    or source.get("corpus_version"),
-                                }
-                                for source in sources
-                            ]
-                        ),
-                        hide_index=True,
-                    )
+        for title, key in (
+            ("Education evidence", "retrieval_sources"),
+            ("Policy evidence", "policy_sources"),
+        ):
+            sources = audit.get(key, [])
+            if sources:
+                st.markdown(f"**{ui_text(title)}**")
+                st.dataframe(
+                    display_frame([
+                        {"Source": source.get("source_id"), "Title": source.get("title"),
+                         "Version": source.get("document_version") or source.get("corpus_version"),
+                         "Checksum": source.get("checksum"), "Review due": source.get("review_due_at")}
+                        for source in sources
+                    ]),
+                    hide_index=True,
+                )
         st.caption(
             ui_text(
                 "These are recorded decisions and stated reasons. They do not expose hidden model reasoning."
@@ -575,6 +579,7 @@ def render_trace(trace):
                             "Call ID": c.get("call_id"),
                             "Span ID": c.get("span_id"),
                             "Error": c.get("error_code"),
+                            "Validation reason": c.get("validation_reason"),
                         }
                         for c in calls
                     ]

@@ -83,6 +83,32 @@ TRACE = {
 }
 
 
+def test_blocked_trace_shows_safe_reason_and_policy_provenance():
+    trace = deepcopy(TRACE)
+    trace.update(status="blocked", blocked=True)
+    trace["audit"]["policy_sources"] = [{"source_id": "coach-evidence-policy", "title": "Evidence policy",
+        "document_version": "2026-10-09", "checksum": "sha256:" + "a" * 64, "review_due_at": "2027-01-06"}]
+    trace["audit"]["durable_events"].append({"event_type": "compliance.completed", "details": {
+        "blocked": True, "block_reasons": ["model_review"], "review_block_categories": ["factual_qualification"],
+        "policy_clause_refs": ["EV-03"], "policy_notes": ["PRIVATE REJECTED PROSE"]}})
+    test = page(TraceClient(trace))
+    assert not test.exception
+    assert any("factual qualification" in str(item.value) for item in test.markdown)
+    assert any("EV-03" in item.value for item in test.caption)
+    assert any("coach-evidence-policy" in str(frame.value) for frame in test.dataframe)
+    assert not any("PRIVATE REJECTED PROSE" in str(item.value) for item in test.markdown)
+
+
+def test_failed_review_validation_reason_is_retained_in_model_view():
+    trace = deepcopy(TRACE)
+    trace["audit"]["durable_events"].append({"event_type": "model.decision.rejected", "details": {
+        "call_id": "call-1", "error_code": "INVALID_STRUCTURED_RESPONSE",
+        "validation_reason": "REVIEW_FOREIGN_EVIDENCE_REF", "exception_message": "PRIVATE"}})
+    call = model_calls_for(trace)[0]
+    assert call["validation_reason"] == "REVIEW_FOREIGN_EVIDENCE_REF"
+    assert "PRIVATE" not in str(call)
+
+
 class TraceClient:
     def __init__(self, trace=None):
         self.trace = deepcopy(trace or TRACE)

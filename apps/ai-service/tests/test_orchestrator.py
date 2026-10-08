@@ -405,7 +405,7 @@ def test_compliance_review_receives_investment_evidence() -> None:
     assert evidence["contexts"]
     assert {
         context["source_id"] for context in payload["policy_context"]
-    } == {"coach-evidence-policy"}
+    } == {"coach-evidence-policy", "coach-advice-boundary-policy", "coach-instruction-security-policy"}
 
 
 def test_investment_rag_reports_current_prompt_identity_and_model_telemetry() -> None:
@@ -440,7 +440,7 @@ def test_investment_rag_reports_current_prompt_identity_and_model_telemetry() ->
     ]
     assert {
         source["source_id"] for source in response.audit["policy_sources"]
-    } == {"coach-evidence-policy"}
+    } == {"coach-evidence-policy", "coach-advice-boundary-policy", "coach-instruction-security-policy"}
     assert {
         "title",
         "issuing_organization",

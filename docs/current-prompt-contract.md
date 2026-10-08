@@ -2,7 +2,7 @@
 
 The application and executable evaluations use one supported prompt contract. The
 catalog loads `apps/ai-service/prompts/current/prompts.json`; its adjacent
-`manifest.json` names the release (`v9` at this change). This designation is explicit
+`manifest.json` names the release (`v10` after the 9 October Risk & Compliance update). This designation is explicit
 and packaged with the application. It does not search for the highest numbered
 folder or fetch prompts during a request.
 
@@ -57,10 +57,24 @@ To update prompts, edit the current catalog, update the manifest's release label
 when instruction meaning changes, and run the current regressions and relevant
 model evaluations. Runtime code does not need a new version allowlist or branch.
 
-Offline validation on 2026-10-08 passed 1,805 AI-service tests (one skipped), 942
+The v10 change removes the obsolete minimal Compliance JSON example in favor of
+the actual supplied schema. It retains the single current catalog, routing and
+dependency behavior. The reviewed Policy corpus has its own version,
+`financial-coach-policy-sg@2026-10-09.1`; its meaning is also used by offline
+fixtures, with a separate synthetic lifecycle. Changes are local until released
+and evaluated with the deployed model.
+
+Historical offline validation of the preceding catalog on 2026-10-08 passed 1,805 AI-service tests (one skipped), 942
 backend tests, 46 shared tracing tests, and 331 infrastructure tests (five skipped,
 16 subtests passed). The final focused check passed 169 tests. Lint, the language
 source scan, and prompt packaging checks passed. These offline checks do not
 establish production-model acceptance. The release workflow separately verifies
 deployed model behavior, conditional source retrieval and persisted trace
 provenance; its deployment job records the current release outcome.
+
+The v10 [9 October verification](risk-compliance-review-update-2026-10-09.md)
+passed 1,883 AI-service tests (one platform skip), 64 shared tests, 22 backend
+trace/storage tests, 40 frontend tests, 99 release/evaluation configuration tests
+and all 87 offline evaluation cases. It also verified active configuration and
+current docs against the manifest. Frozen prior-release reports retain their
+observed prompt version; no deployed v10 model acceptance is claimed.

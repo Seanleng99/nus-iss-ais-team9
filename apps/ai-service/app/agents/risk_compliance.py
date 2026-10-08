@@ -5,6 +5,7 @@ from hashlib import sha256
 
 from coach_i18n import input_pattern, request_locale, translate
 from coach_i18n import response_language as request_language
+from coach_trace.review import reason_keys, review_metadata
 
 from app.core.citations import citation_contract, compact_evidence, validate_citations
 from app.core.education_grounding import EducationGroundingSnapshot
@@ -571,9 +572,8 @@ def withhold_agent_result(
 ) -> AgentResult:
     return AgentResult(
         agent=result.agent,
-        summary=(
-            translate('safety.withheld_generated_summary', response_language)
-        ),
+        summary=(" ".join(translate(key, response_language) for key in reason_keys(result.data))
+                 or translate('safety.withheld_generated_summary', response_language)),
         rationale=[
             translate('safety.final_review_rationale', response_language)
         ],
@@ -581,9 +581,10 @@ def withhold_agent_result(
         blocked=True,
         policy_notes=[note for note in result.policy_notes if note in SAFE_POLICY_NOTES],
         data={
-            key: result.data[key]
-            for key in ("evidence_status", "policy_evidence_status")
-            if result.data.get(key) in ("grounded", "partial", "insufficient")
+            **review_metadata(result.data),
+            **{key: result.data[key]
+               for key in ("evidence_status", "policy_evidence_status")
+               if result.data.get(key) in ("grounded", "partial", "insufficient")},
         },
     )
 
@@ -609,14 +610,14 @@ class RiskComplianceAgent:
         try:
             return generate_structured_response(self.gateway, **kwargs), None
         except ModelGatewayError as exc:
-            if exc.code != "INVALID_STRUCTURED_RESPONSE":
+            if exc.code not in {"INVALID_STRUCTURED_RESPONSE", "UNAPPROVED_CITATION", "MISSING_CITATION"}:
                 raise
             # The bounded correction was exhausted. Withhold the draft and
             # report the contract failure without logging model wording.
             return ComplianceDecision(blocked=True, summary="The safety review could not be verified.",
                                       rationale=["The model verdict did not satisfy the review contract."],
                                       policy_notes=["review_contract:unverified"], confidence=1.0,
-                                      block_categories=["unverifiable_claim"]), exc.code
+                                      block_categories=["unverifiable_claim"]), exc
 
     @trace_method
     def validate(
@@ -630,7 +631,11 @@ class RiskComplianceAgent:
         education_review = any(
             result.agent == AgentName.INVESTMENT_EDUCATION for result in results
         )
-        scoped_review = education_review or any(result._financial_grounding_snapshot is not None for result in results)
+        scoped_review = education_review or any(
+            result._financial_grounding_snapshot is not None
+            or isinstance(result._education_grounding_snapshot, EducationGroundingSnapshot)
+            for result in results
+        )
         completeness_review = education_review or scoped_review
         known_neutral_request = is_neutral_financial_question(
             " ".join(normalize_for_security_inspection(request.message).casefold().split()).replace("’", "'")
@@ -817,25 +822,29 @@ class RiskComplianceAgent:
                 for issue in review.blocking_issues:
                     if issue.category is not None and issue.category not in review.block_categories:
                         raise ModelGatewayError("Issue categories must identify a reported blocking category; completeness issues use null.",
-                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                                                validation_reason="REVIEW_CATEGORY_MISMATCH")
                     if issue.section_id not in sections_by_id:
                         raise ModelGatewayError(
                             "blocking_issues must identify supplied review_sections IDs: "
                             + ", ".join(sections_by_id),
                             code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                            validation_reason="REVIEW_UNKNOWN_SECTION",
                         )
                     section = sections_by_id[issue.section_id]
                     if issue.claim_quote is not None:
                         text = draft_answer[section["start"]:section["end"]] if section["field"] == "draft_answer" else ""
                         if not text or text.count(issue.claim_quote) != 1:
                             raise ModelGatewayError("claim_quote must be one unique exact substring of the affected draft section.",
-                                                    code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                                                    code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                                                    validation_reason="REVIEW_CLAIM_NOT_UNIQUE")
                         start = section["start"] + text.index(issue.claim_quote)
                         end = start + len(issue.claim_quote)
                         if (issue.claim_start is not None and issue.claim_start != start
                                 or issue.claim_end is not None and issue.claim_end != end):
                             raise ModelGatewayError("Claim offsets must match claim_quote exactly; omit offsets to let the server resolve them.",
-                                                    code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                                                    code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                                                    validation_reason="REVIEW_CLAIM_OFFSET_MISMATCH")
                         issue.claim_start, issue.claim_end = start, end
                     qualification_categories = {"citation_attribution", "factual_qualification"}
                     qualification_issue = issue.category in qualification_categories or (
@@ -845,18 +854,21 @@ class RiskComplianceAgent:
                         section["agent"] in financial_owners or issue.section_id == "draft" and grounded_draft
                     ) and (issue.claim_start is None or issue.claim_end is None)):
                         raise ModelGatewayError("Locate each financial claim correction with a unique exact claim_quote or valid claim_start/claim_end. Do not request a whole-answer rewrite.",
-                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                                                validation_reason="REVIEW_CLAIM_LOCATION_REQUIRED")
                     if any(ref not in evidence_refs or (
                         issue.section_id != "draft" and evidence_refs[ref] != section["agent"]
                     ) for ref in issue.evidence_refs):
                         raise ModelGatewayError("Use only supplied evidence_refs belonging to the affected section.",
-                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                                                validation_reason="REVIEW_FOREIGN_EVIDENCE_REF")
                     if ((issue.claim_start is not None or issue.claim_end is not None)
                             and (issue.claim_start is None or issue.claim_end is None
                                  or section["field"] != "draft_answer"
                                  or not section["start"] <= issue.claim_start < issue.claim_end <= section["end"])):
                         raise ModelGatewayError("Claim ranges must lie within the affected draft section.",
-                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                                                validation_reason="REVIEW_INVALID_CLAIM_RANGE")
                 categories = set(review.block_categories)
                 claim_issues = [issue for issue in review.blocking_issues
                                 if issue.category in {None, "unverifiable_claim"}]
@@ -1158,7 +1170,23 @@ class RiskComplianceAgent:
                    if issue.claim_start is not None else {}),
             } for index, issue in enumerate(review.blocking_issues, 1)]
         if review_error:
-            compliance_data["review_contract_error"] = review_error
+            compliance_data["review_contract_error"] = review_error.code
+            if review_error.validation_reason:
+                compliance_data["validation_reason"] = review_error.validation_reason
+        # These identify policy families relevant to the accepted category, not
+        # proof of a particular claim. Technical failures have no violation refs.
+        category_clauses = {
+            "prohibited_request": "AB-03", "personal_advice": "AB-03",
+            "return_guarantee": "AB-03", "privacy": "IS-04", "injection": "IS-01",
+            "citation_attribution": "EV-02", "factual_qualification": "EV-03",
+            "unverifiable_claim": "EV-01",
+        }
+        compliance_data["policy_clause_refs"] = [] if review_error else list(dict.fromkeys(
+            category_clauses[category] for category in review.block_categories
+            if category in category_clauses and any(
+                "## " + category_clauses[category] + " " in context["text"] for context in contexts
+            )
+        ))
         if isinstance(review, ScopedEducationComplianceDecision):
             if contextual_financial_findings and not review.financial_language_safe:
                 output_findings.append("response_withheld")

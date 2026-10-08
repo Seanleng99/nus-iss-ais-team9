@@ -4,7 +4,7 @@ import json
 from dataclasses import replace
 
 import pytest
-from coach_i18n import localize_reviewed
+from coach_i18n import localize_reviewed, translate
 from contract_fixtures import task_assignments
 from language_fixtures import language_case
 
@@ -286,14 +286,12 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
     ))
     assert response.blocked and response.sources == []
     assert response.selected_agents == [AgentName.INVESTMENT_EDUCATION, AgentName.SPENDING]
-    assert response.answer == (
-        language_case(
-            "chinese_safety_explanations.test_final_block_localizes_explanations_and_withholds_poison_and_sources"
-        )
-        if chinese
-        else "I couldn't verify this answer well enough to share it. "
-        "You can ask me to explain a financial concept or review your recorded spending and savings goals."
+    expected_reason = (
+        "review_contract_unverified" if component == "risk_compliance" and field == "blocked"
+        else "output_check" if component == "risk_compliance"
+        else "regulated_advice"
     )
+    assert response.answer == translate("safety.reason." + expected_reason, "zh-Hans" if chinese else "en")
     rationale = (
         language_case("chinese_safety_explanations.rationale") if chinese
         else "The final safety review blocked this response."
@@ -305,15 +303,22 @@ def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
     assert len(response.agent_results) == 3
     for result in response.agent_results:
         assert result.blocked
-        assert result.summary == (
-            language_case(
-                "chinese_safety_explanations.test_final_block_localizes_explanations_and_withholds_poison_and_sources_3"
+        if result.agent == AgentName.RISK_COMPLIANCE:
+            assert result.summary == response.answer
+            assert result.data["block_reasons"] == [expected_reason]
+            assert set(result.data) <= {"evidence_status", "policy_evidence_status", "block_reasons",
+                                        "review_block_categories", "request_allowed", "answer_complete",
+                                        "validation_reason", "policy_clause_refs"}
+        else:
+            assert result.summary == (
+                language_case(
+                    "chinese_safety_explanations.test_final_block_localizes_explanations_and_withholds_poison_and_sources_3"
+                )
+                if chinese
+                else "Generated content was withheld by the final safety review."
             )
-            if chinese
-            else "Generated content was withheld by the final safety review."
-        )
+            assert set(result.data) <= {"evidence_status", "policy_evidence_status"}
         assert result.rationale == [rationale]
-        assert set(result.data) <= {"evidence_status", "policy_evidence_status"}
 
 
 @pytest.mark.parametrize(

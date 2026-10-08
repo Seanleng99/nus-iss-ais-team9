@@ -8,7 +8,7 @@ identify the deployed build commit as well as the prompt version when retesting.
 
 ## 1. Scoped specialist work
 
-The v9 router produces one attributed `task_assignments` entry per selected specialist.
+The current router produces one attributed `task_assignments` entry per selected specialist.
 Each specialist receives its assigned question. Budget's model-selected
 `requires_spending` determines whether recorded-total dependencies are available to
 its planner; the presence of records alone is insufficient. An actual-versus-plan
@@ -17,7 +17,8 @@ dynamically inherit the requesting task's question instead of unrelated clauses.
 
 Structural validation rejects duplicate, incomplete or unattributed assignments and
 allows the existing bounded structured-response correction. Original user wording
-remains the synthesis input. Legacy prompt versions preserve their existing contract.
+remains the synthesis input. The application loads one current catalog; historical
+prompt contracts are recoverable from their Git revisions.
 An older single-specialist router response can retain the complete question, with
 unknown requirements classified by that specialist. Mixed responses must provide
 the attributed task split. Assignment questions and quotes stay private to the run;
@@ -36,7 +37,7 @@ boundaries. Unavailable answers and genuinely missing subjects still clarify.
 
 ## 3. Semantic Education grounding
 
-The v9 router assigns canonical educational topics to each task according to the
+The current router assigns canonical educational topics to each task according to the
 meaning of its question. Budget and Goal request grounding from that assignment,
 not whole-question vocabulary matches. The generic `pool`/`pooled` aliases are
 removed. Shared goal funding is arithmetic; explaining investment pooling remains
@@ -60,7 +61,7 @@ this change does not claim to have modified a deployed ECS service.
 
 ## 5. Financial review and bounded correction
 
-v9 financial writers retain a private, fingerprinted grounding snapshot. Review
+Current financial writers retain a private, fingerprinted grounding snapshot. Review
 identifies defects by server-owned section ID. An allowed factual-qualification
 defect can receive one correction using unchanged task inputs and tool results,
 then a second independent review. Prohibited advice, unclassified unverifiable claims, changed

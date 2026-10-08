@@ -1,6 +1,9 @@
 # Prompt set v9
 
-Active application target. v9 retains v8's Education grounding, hybrid evidence modes,
+Historical release notes. The application loads only `prompts/current`; its manifest
+now identifies v10. These notes describe the original v9 change, not a selectable catalog.
+
+v9 retained v8's Education grounding, hybrid evidence modes,
 section-specific Compliance review and bounded repair contracts.
 
 Goal's typed `goal_input_requirements` decision distinguishes saved-goal arithmetic
@@ -17,9 +20,10 @@ its own part of a compound request. A spending keyword in an independent Spendin
 question no longer forces `transaction_category_totals`. Optional capability status,
 output field validation, reuse and provider authorization remain server-owned.
 
-No Goal–Spending edge is added. Spending-informed funding assessments still use
-Goal → Budget → Spending. Archived catalogues retain their original broad Goal policy.
+No Goal–Spending edge was added. Spending-informed funding assessments still use
+Goal → Budget → Spending. Historical catalogs are recoverable from Git.
 
 Offline tests exercise typed classifier decisions, required feasibility, provider reuse,
 missing input and concurrent independent financial tasks. Live deployed routing acceptance
-remains pending; the review prompts have not been submitted to the signed-in application.
+did not pass in the subsequent signed-in application tests. See the current prompt
+contract and frozen live reports in `docs` for source status and recorded outcomes.

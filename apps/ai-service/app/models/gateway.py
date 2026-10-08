@@ -26,6 +26,7 @@ class ModelGatewayError(RuntimeError):
         *,
         code: str = "MODEL_GATEWAY_ERROR",
         component: str | None = None,
+        validation_reason: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = (
@@ -37,6 +38,11 @@ class ModelGatewayError(RuntimeError):
             component
             if component and re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", component)
             else None
+        )
+        from coach_trace.review import VALIDATION_REASONS
+
+        self.validation_reason = (
+            validation_reason if isinstance(validation_reason, str) and validation_reason in VALIDATION_REASONS else None
         )
 
 

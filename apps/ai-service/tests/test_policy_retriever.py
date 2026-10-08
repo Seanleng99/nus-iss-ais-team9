@@ -176,10 +176,10 @@ def test_deployed_config_creates_governed_local_policy_retriever() -> None:
         RAG_PROVIDER="local_documents",
         EDUCATION_CORPUS_VERSION="investment-education-sg@2026-08-28.1",
         POLICY_RAG_PROVIDER="local_documents",
-        POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-08-29.1",
+        POLICY_CORPUS_VERSION="financial-coach-policy-sg@2026-10-09.1",
     )
 
     retriever = create_policy_retriever(config)
 
-    assert retriever.expected_corpus_version == "financial-coach-policy-sg@2026-08-29.1"
+    assert retriever.expected_corpus_version == "financial-coach-policy-sg@2026-10-09.1"
     assert len(retriever.retrieve("advice boundary")) == 3

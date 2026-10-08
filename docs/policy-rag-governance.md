@@ -4,6 +4,39 @@
 
 The deployed `LocalDocumentPolicyRetriever` reads the three approved Policy documents and manifest from the AI image at `knowledge/policy_controls`. It verifies approval, provenance, review deadlines, UTF-8 content, and SHA-256 checksums; a stale or altered corpus fails closed. `POLICY_CORPUS_VERSION` pins the exact reviewed version. The weekly **RAG Source Governance** workflow (`rag-source-governance.yml`) checks both corpora and retains their evidence together. The duplicate Policy-only workflow has been removed. A Policy update requires review, a new corpus version, a rebuilt image, and live compliance evaluation. The AWS Knowledge Base record below is historical.
 
+## 9 October 2026 policy and review update
+
+The current source manifest pins `financial-coach-policy-sg@2026-10-09.1`. The
+three documents retain their source IDs and have document version `2026-10-09`,
+updated checksums and stable clauses `AB-01` through `AB-06`, `EV-01` through
+`EV-08`, and `IS-01` through `IS-05`. Approval records the user's authorization
+to implement this review. Manifest lifecycle dates use UTC: verification and
+approval occurred on 8 October UTC (9 October SGT); the next review is due
+6 January 2027 UTC. This source change is prepared locally, not evidence of a
+deployment or a passing production-model evaluation.
+
+The documents distinguish permitted personal budgeting/goal coaching from
+product advice, app record changes from financial-account actions, and authorized
+capability handoffs from instruction overrides. They define financial evidence,
+shared goal funding, calendar/currency scope, recurrence, partial records,
+conversation and preferences, mixed evidence modes, and independent release
+review. Missing Education support does not invalidate grounded arithmetic;
+missing approved Policy support still prevents model-assisted review.
+
+All three complete documents are supplied on every packaged Policy review. The
+retriever does not perform question-dependent passage ranking. Each document
+fits the existing 6,000-character context limit. Offline fixtures now carry the
+same full document text and all three policy families, while retaining their
+explicit fixture corpus label and synthetic expiry. The release workflow derives
+the deployment pin from the manifest; the bootstrap template default matches it.
+
+Blocked runs retain fixed reason categories, relevant policy-family clause IDs
+and validation failure codes. Clause references identify the family associated
+with an accepted category, not proof of the exact offending statement. A failed
+review contract has no violation-clause reference. The trace viewer exposes
+Policy provenance for blocked and completed runs; neither logs nor public traces
+expose rejected prose. See [Risk & Compliance review changes](risk-compliance-review-update-2026-10-09.md).
+
 ## Historical AWS ingestion and governance
 
 ## Purpose And Boundary

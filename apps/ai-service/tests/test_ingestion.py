@@ -83,12 +83,12 @@ def test_policy_manifest_is_current_and_approved() -> None:
     manifest = load_source_manifest(POLICY_MANIFEST_PATH)
 
     assert manifest.collection_id == "financial-coach-policy-sg"
-    assert manifest.corpus_version == "financial-coach-policy-sg@2026-08-29.1"
+    assert manifest.corpus_version == "financial-coach-policy-sg@2026-10-09.1"
     assert len(manifest.sources) == 3
     assert {
         source.rights_review_status for source in manifest.sources
     } == {"internal_policy_approved_for_demo"}
-    assert governance_issues(manifest, as_of=date(2026, 8, 29)) == []
+    assert governance_issues(manifest, as_of=date(2026, 10, 9)) == []
     assert len(manifest_digest(manifest)) == 71
 
 

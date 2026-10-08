@@ -12,7 +12,7 @@ The preceding run passed 29 of 34 turns. Cases 5, 17, 19 and 20 improved in the
 latest run, while six other turns regressed; case 25 remained incomplete. The saved
 financial records were unchanged between the two exports. Audit metadata reports
 different build commits and different prompt content hashes, although both use the
-single current v9 contract and OpenAI / gpt-6-luna:
+then-current v9 contract and OpenAI / gpt-6-luna:
 
 | Run | Trace-reported build | Prompt content hash |
 | --- | --- | --- |

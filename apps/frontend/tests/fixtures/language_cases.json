@@ -5,7 +5,7 @@
   "coach.title": "财务教练",
   "coach.input": "向财务教练发送消息",
   "coach.starter": "查看我的每月支出",
-  "coach.reference": "参考编号：trace-blocked · 提示词版本：v9",
+  "coach.reference": "参考编号：trace-blocked · 提示词版本：v10",
   "coach.explanation": "为什么给出此回复，以及有多大把握",
   "coach.budget_confidence": "预算规划 — 置信度：中等（自评得分 0.76）",
   "coach.source_summary": "项目根据所链接来源撰写的摘要",

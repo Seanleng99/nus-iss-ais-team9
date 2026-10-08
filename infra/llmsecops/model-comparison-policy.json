@@ -3,7 +3,7 @@
   "comparison_id": "nova-lite-vs-nova-micro-v4-2026-08-31",
   "cases": "infra/llmsecops/model-comparison-cases.jsonl",
   "repeats": 3,
-  "prompt_set_version": "v9",
+  "prompt_set_version": "v10",
   "selection": {
     "required_deployment_region": "ap-southeast-1",
     "required_geography": "APAC",

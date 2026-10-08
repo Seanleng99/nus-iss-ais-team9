@@ -17,6 +17,20 @@ class ScriptedGateway:
         return next(self.responses)
 
 
+@pytest.mark.parametrize(("raw", "reason"), [
+    ("not JSON", "STRUCTURED_JSON_INVALID"),
+    ('{"summary": "Private text"}', "STRUCTURED_SCHEMA_INVALID"),
+])
+def test_invalid_contract_logs_safe_failure_kind_without_response_text(raw, reason, caplog):
+    from app.models.structured import parse_structured_response
+
+    caplog.set_level("INFO", logger="service.calls")
+    with pytest.raises(ModelGatewayError) as error:
+        parse_structured_response(raw, AgentNarrative)
+    assert error.value.validation_reason == reason
+    assert reason in caplog.text and "Private text" not in caplog.text
+
+
 def test_generate_structured_response_corrects_once_at_low_temperature() -> None:
     gateway = ScriptedGateway(
         [

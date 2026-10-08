@@ -69,10 +69,12 @@ This is semantic intent classification, not a guaranteed graph encoded in natura
 Routing may select additional specialists. An exact parallel result requires no relevant dependency
 edges and overlapping ready-task execution, not simply a multi-agent result list.
 
-The v8 Education grounding, hybrid evidence modes, scoped review and bounded repair contracts are
-retained in v9. Historical behavior is recoverable from Git; executable evaluations use the [single current contract](current-prompt-contract.md).
+The Education grounding, hybrid evidence modes, scoped review and bounded repair contracts are
+retained in the current catalog. Historical behavior is recoverable from Git; executable evaluations use the [single current contract](current-prompt-contract.md).
 The active source default, local development configuration, deployment template and smoke assertions
-target v9. Changing the template does not deploy it or restart running services.
+use the current manifest, now v10. The [9 October Compliance update](risk-compliance-review-update-2026-10-09.md)
+changes review explanations and policy meaning while retaining financial dependency behavior.
+Changing source configuration does not deploy it or restart running services.
 
 ## Verification
 

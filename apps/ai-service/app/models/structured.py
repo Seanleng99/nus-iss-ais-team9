@@ -37,13 +37,15 @@ def parse_structured_response(raw: str, response_type: type[StructuredModel]) ->
                   response_type=response_type.__name__, validation_status="validated")
         return response
     except (json.JSONDecodeError, ValidationError) as exc:
+        reason = "STRUCTURED_JSON_INVALID" if isinstance(exc, json.JSONDecodeError) else "STRUCTURED_SCHEMA_INVALID"
         log_event("model.contract.rejected", call_id=last_model_call.get(),
                   response_type=response_type.__name__, validation_status="rejected",
-                  error_code="INVALID_STRUCTURED_RESPONSE")
+                  error_code="INVALID_STRUCTURED_RESPONSE", validation_reason=reason)
         raise ModelGatewayError(
             "The model returned an invalid structured response.",
             code="INVALID_STRUCTURED_RESPONSE",
             component=response_type.__name__,
+            validation_reason=reason,
         ) from exc
 
 
@@ -65,7 +67,8 @@ def generate_structured_response(
             result = validate_response(parsed) if validate_response else parsed
         except ModelGatewayError as exc:
             log_event("model.decision.rejected", call_id=last_model_call.get(),
-                      response_type=response_type.__name__, error_code=exc.code)
+                      response_type=response_type.__name__, error_code=exc.code,
+                      validation_reason=exc.validation_reason)
             raise
         log_event("model.decision.accepted", call_id=last_model_call.get(),
                   response_type=response_type.__name__, validation_status="accepted")
@@ -90,6 +93,7 @@ def generate_structured_response(
             correction_of_call_id=last_model_call.get(),
             response_type=response_type.__name__,
             error_code=exc.code,
+            validation_reason=exc.validation_reason,
             attempt=2,
         )
         cause = exc.__cause__

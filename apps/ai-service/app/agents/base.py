@@ -99,6 +99,10 @@ class BaseAgent(ABC):
         ):
             log_event("agent.evidence_gap", agent=self.name.value, reason_code="INSUFFICIENT_EVIDENCE")
             result = self._evidence_gap_result(grounding)
+            if self.name in {AgentName.SPENDING, AgentName.BUDGET, AgentName.GOAL_STRATEGY}:
+                result._financial_grounding_snapshot = FinancialGroundingSnapshot.capture(
+                    task, grounding, prompt_content_hash=self.prompts.content_hash
+                )
             return CompletedInvocation(
                 result=result,
                 capabilities=self._capabilities(task, grounding, result),

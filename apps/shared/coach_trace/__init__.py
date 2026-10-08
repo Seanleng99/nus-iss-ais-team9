@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from math import isfinite
 from uuid import UUID, uuid4
 
+from coach_trace.review import POLICY_CLAUSES, VALIDATION_REASONS, review_metadata
+
 SCHEMA_VERSION = 1
 CODE = re.compile(r"^[A-Za-z0-9_./:@{}<>-]{1,180}$")
 COUNTS = {
@@ -190,6 +192,20 @@ def safe_details(details, *, decision=False):
     result = {}
     for key, value in details.items():
         if decision and key not in DECISION_FIELDS:
+            continue
+        if key in {"block_reasons", "review_block_categories"}:
+            if isinstance(value, (list, tuple)):
+                result[key] = review_metadata({key: value})[key]
+            continue
+        if key == "validation_reason":
+            if isinstance(value, str) and value in VALIDATION_REASONS:
+                result[key] = value
+            continue
+        if key == "policy_clause_refs":
+            if isinstance(value, (list, tuple)):
+                result[key] = list(dict.fromkeys(
+                    item for item in value[:20] if isinstance(item, str) and item in POLICY_CLAUSES
+                ))
             continue
         if key == "task_assignments" and isinstance(value, (list, tuple)):
             result[key] = [

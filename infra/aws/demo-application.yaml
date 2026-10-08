@@ -102,7 +102,7 @@ Parameters:
     AllowedPattern: "^[a-z0-9][a-z0-9@._-]{2,127}$"
   PolicyCorpusVersion:
     Type: String
-    Default: financial-coach-policy-sg@2026-08-29.1
+    Default: financial-coach-policy-sg@2026-10-09.1
     AllowedPattern: "^[a-z0-9][a-z0-9@._-]{2,127}$"
   AiServiceName:
     Type: String

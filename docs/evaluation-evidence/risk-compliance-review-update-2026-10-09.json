@@ -1,0 +1,124 @@
+{
+  "verified_at_utc": "2026-10-08T16:44:48.856496+00:00",
+  "source_state": "uncommitted_working_tree",
+  "base_commit": "e99409d143444a28fe42b1a1431a90a607be4244",
+  "prompt_identity": {
+    "prompt_set_version": "v10",
+    "prompt_content_hash": "26a421a1d798b7e125a6ae330546a0ab2bf5180f49fd6602c16d3056f621b3bc",
+    "build_commit": "unknown"
+  },
+  "policy_corpus_version": "financial-coach-policy-sg@2026-10-09.1",
+  "policy_sources": [
+    {
+      "source_id": "coach-advice-boundary-policy",
+      "document_version": "2026-10-09",
+      "checksum": "sha256:33ab45d11b129c0ebfd01ab9041a57e19c71e4a4b98d55cc16cc0c4078d18c10",
+      "review_due_at": "2027-01-06"
+    },
+    {
+      "source_id": "coach-evidence-policy",
+      "document_version": "2026-10-09",
+      "checksum": "sha256:af5d63759e7ba83dd54f4b1c62947de62e55ed772e257a761fd0efbf11609074",
+      "review_due_at": "2027-01-06"
+    },
+    {
+      "source_id": "coach-instruction-security-policy",
+      "document_version": "2026-10-09",
+      "checksum": "sha256:0cb6a2b7994507aefa8cd5f61c0df2ac7f52b2412b27cba7b279d3ed3e38e776",
+      "review_due_at": "2027-01-06"
+    }
+  ],
+  "tests": {
+    "ai_service_full": {
+      "tests": 1884,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 1883
+    },
+    "shared_full": {
+      "tests": 64,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 64
+    },
+    "backend_trace": {
+      "tests": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 22
+    },
+    "frontend_viewer_and_app": {
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 40
+    },
+    "release_and_evaluation_configuration": {
+      "tests": 99,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 99
+    }
+  },
+  "offline_evaluation": {
+    "measurement": "offline_fixture_contract",
+    "passed": true,
+    "total": 87,
+    "suites": [
+      {
+        "name": "orchestrator",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "budget",
+        "passed": 4,
+        "total": 4
+      },
+      {
+        "name": "retrieval",
+        "passed": 21,
+        "total": 21
+      },
+      {
+        "name": "guardrails",
+        "passed": 26,
+        "total": 26
+      },
+      {
+        "name": "policy-retrieval",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "name": "dynamic-dependencies",
+        "passed": 14,
+        "total": 14
+      },
+      {
+        "name": "safety-behavior",
+        "passed": 10,
+        "total": 10
+      },
+      {
+        "name": "fairness-consistency",
+        "passed": 3,
+        "total": 3
+      }
+    ]
+  },
+  "checks": {
+    "ruff": "passed",
+    "packaged_corpus_governance": "passed",
+    "language_source_scan": "passed",
+    "git_whitespace": "passed",
+    "current_prompt_configuration": "passed"
+  },
+  "deployment_verified": false,
+  "live_model_evaluation_completed": false
+}

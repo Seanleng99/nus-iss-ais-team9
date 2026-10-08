@@ -593,7 +593,7 @@ def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
         "from ui.pages import _render_coach_explanation\n"
         "_render_coach_explanation({"
         "'trace_id': 'trace-blocked', "
-        "'prompt_set_version': 'v9', "
+        "'prompt_set_version': 'v10', "
         "'blocked': True, "
         f"'response_language': {language!r}, "
         "'routing_rationale': ['POISONED_MODEL_RATIONALE'], "
@@ -609,7 +609,7 @@ def test_blocked_coach_explanation_hides_poison_and_keeps_safety_reference(
     assert "POISONED_MODEL_RATIONALE" not in rendered_warnings
     assert warning in rendered_warnings
     if language != "Chinese":
-        assert "Reference ID: trace-blocked · Prompt set: v9" in rendered_captions
+        assert "Reference ID: trace-blocked · Prompt set: v10" in rendered_captions
     else:
         assert language_case("coach.reference") in rendered_captions
 

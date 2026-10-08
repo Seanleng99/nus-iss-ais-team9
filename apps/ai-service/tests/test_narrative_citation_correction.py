@@ -49,7 +49,15 @@ def test_specialist_and_compliance_citations_correct_before_publication(componen
 @pytest.mark.parametrize("component", ["agent_budget", "risk_compliance"])
 def test_twice_invalid_narrative_is_never_published(component):
     gateway = InvalidNarrativeGateway(component, repeat_invalid=True)
-    with pytest.raises(ModelGatewayError) as raised:
-        handle(gateway)
-    assert raised.value.code == "UNAPPROVED_CITATION"
+    if component == "risk_compliance":
+        response = handle(gateway)
+        assert response.blocked and "review failure" in response.answer
+        assert "invented-calculation" not in response.model_dump_json()
+        assert response.agent_results[-1].data["block_reasons"] == ["review_contract_unverified"]
+        assert any(event["details"].get("error_code") == "UNAPPROVED_CITATION"
+                   for event in response.audit["events"])
+    else:
+        with pytest.raises(ModelGatewayError) as raised:
+            handle(gateway)
+        assert raised.value.code == "UNAPPROVED_CITATION"
     assert len(gateway.target_calls) == 2

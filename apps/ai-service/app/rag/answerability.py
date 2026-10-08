@@ -81,12 +81,14 @@ def is_fixture_gateway(gateway: ModelGateway) -> bool:
 def _validate_plan(plan: EducationQueryPlan) -> EducationQueryPlan:
     ids = [question.question_id for question in plan.subquestions]
     if len(ids) != len(set(ids)):
-        raise ModelGatewayError("Subquestion IDs must be unique.", code="INVALID_EDUCATION_PROVENANCE")
+        raise ModelGatewayError("Subquestion IDs must be unique.", code="INVALID_EDUCATION_PROVENANCE",
+                                validation_reason="EDUCATION_PLAN_DUPLICATE_ID")
     for question in plan.subquestions:
         if question.topic not in CANONICAL_EDUCATION_TOPICS:
             raise ModelGatewayError(
                 "Every subquestion topic must be one of the supplied canonical topics.",
                 code="INVALID_EDUCATION_PROVENANCE", component="education_query_planner",
+                validation_reason="EDUCATION_PLAN_UNKNOWN_TOPIC",
             )
         # This question is internal quoted data for answerability, never a
         # retrieval query. Its grammar need not match the corpus vocabulary.
@@ -101,12 +103,14 @@ def _validate_plan(plan: EducationQueryPlan) -> EducationQueryPlan:
             raise ModelGatewayError(
                 "Internal public questions must omit personal values, identifiers, credential values and links.",
                 code="INVALID_EDUCATION_PROVENANCE", component="education_query_planner",
+                validation_reason="EDUCATION_PLAN_INVALID_PUBLIC_QUESTION",
             )
         if any(not public_education_search_terms([term]) for term in question.query_terms):
             raise ModelGatewayError(
                 "Each query term must use public corpus words or an exact supplied public alias, without personal or instruction terms.",
                 code="INVALID_EDUCATION_PROVENANCE",
                 component="education_query_planner",
+                validation_reason="EDUCATION_PLAN_INVALID_QUERY_TERMS",
             )
         question.query_terms = public_education_search_terms(question.query_terms)
     return plan

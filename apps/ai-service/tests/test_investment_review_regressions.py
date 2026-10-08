@@ -156,9 +156,13 @@ def test_compliance_cannot_expose_a_fabricated_link_in_its_explanation():
                 return json.dumps(payload)
             return raw
 
-    with pytest.raises(ModelGatewayError) as error:
-        ask("Explain diversification.", LinkingComplianceGateway())
-    assert error.value.code == "UNAPPROVED_CITATION"
+    response = ask("Explain diversification.", LinkingComplianceGateway())
+    assert response.blocked and response.sources == []
+    assert "review failure" in response.answer
+    assert "https://example.invalid/fake" not in response.model_dump_json()
+    assert response.agent_results[-1].data["block_reasons"] == ["review_contract_unverified"]
+    assert any(event["details"].get("error_code") == "UNAPPROVED_CITATION"
+               for event in response.audit["events"])
 
 
 def test_bond_subquestions_keep_distinct_topics_and_report_missing_evidence():

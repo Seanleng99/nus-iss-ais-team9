@@ -2,7 +2,7 @@
 
 Prepared 7 October 2026 and subsequently executed through the signed-in Edge application at the user's request. **All 34 approved prompt turns were attempted, with two additional retests.** See the [live test results](agent-reasoning-live-test-results-2026-10-07.md) for actual graphs, answers and failures. Profile setup was completed through the application. All prompts below request analysis, calculations, explanations, comparisons or read-only forecasts. They do not request changes to budget, transaction or goal records.
 
-Updated after conditional dependencies were implemented on 7 October 2026. Predictions target **v9**, which the live trace metadata confirmed with OpenAI / gpt-6-luna. Saved-goal arithmetic ran independently; funding feasibility retained Budget. Live acceptance has not passed: unwanted Budget dependencies, timeouts, withheld answers and follow-up failures remain. An expected route is a test assertion, not a guarantee; the expected prompts below are retained for comparison with the recorded results.
+Updated after conditional dependencies were implemented on 7 October 2026. These original prompts also target the **current catalog, now v10**, whose financial routing expectations are retained. Previous live trace metadata confirmed v9 with OpenAI / gpt-6-luna; those recorded results remain historical. Saved-goal arithmetic ran independently; funding feasibility retained Budget. Live acceptance has not passed: unwanted Budget dependencies, timeouts, withheld answers and follow-up failures remain. An expected route is a test assertion, not a guarantee; the expected prompts below are retained for comparison with recorded results and the next deployed-model evaluation.
 
 ## Profile and records created
 
@@ -259,7 +259,7 @@ Retryable errors and semantic repair are runtime conditions, not reliably trigge
 - Allowed edges: `apps/ai-service/app/capabilities/registry.py`
 - Budget spending dependency: `apps/ai-service/app/agents/budget.py`
 - Conditional saved-goal capacity, arithmetic and illustrative exception: `apps/ai-service/app/agents/goal_strategy.py`
-- Router and requirement instructions: `apps/ai-service/prompts/v9/prompts.json`
+- Router and requirement instructions: `apps/ai-service/prompts/current/prompts.json` (manifest release v10)
 - Policy changes and rollout status: [Conditional financial dependencies](conditional-financial-dependencies.md)
 - Calendar recurrence: `apps/shared/coach_math/recurrence.py`
 - Dependency scheduling/reuse examples: `apps/ai-service/tests/test_dynamic_dependencies.py`

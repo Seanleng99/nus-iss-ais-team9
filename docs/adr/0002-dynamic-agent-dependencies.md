@@ -64,6 +64,7 @@ verification and rollout limitations.
 - A dynamic dependency can require an additional model call and increase latency.
 - Cycles, duplicate work, unauthorized capabilities, missing fields, and failed required providers
   must fail closed.
-- Prompt set v2 remains available as the deterministic compatibility path. Prompt set v3 makes
-  dependency discovery model-generated while keeping registry authorization and scheduling under
-  deterministic orchestrator control; prompt set v4 governs tool-provided Education dependencies.
+- The application loads one current prompt catalog (manifest release v10). Historical
+  releases are recoverable from Git and are not runtime compatibility paths. Dependency
+  discovery remains model-generated while registry authorization and scheduling remain
+  under deterministic orchestrator control.

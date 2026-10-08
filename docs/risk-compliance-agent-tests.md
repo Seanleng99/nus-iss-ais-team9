@@ -2,6 +2,16 @@
 
 All model-assisted blocking decisions require `block_categories` and a brief policy explanation, including ordinary Budget/Goal reviews. One bounded correction is allowed for an invalid verdict; exhausted correction withholds the draft as `review_contract_unverified`. Tests distinguish this failure from a valid `model_review` block, preserve fixed categories in privacy-safe traces and verify that optional Education gaps do not invalidate qualified Budget/Goal arithmetic. Saved-budget read tests provide the actual scoped record evidence to Compliance and reject mutation fields in read commands.
 
+The 9 October update adds `test_risk_review_explanations.py` to this workflow's
+offline selection. It checks safe user-facing explanations, precise semantic
+validation codes, bounded contract correction, relevant policy-family references,
+and sealed financial grounding on optional Education-gap results. Shared tracing
+tests reject unknown reason/category values and private explanation text. Viewer
+tests expose approved source provenance on blocked runs and retain validation
+codes in the model-call view. JSON syntax failures, schema failures and semantic
+ownership/evidence failures remain distinct diagnostics. These checks use local
+models and do not establish live routing or reviewer accuracy.
+
 The **Risk & Compliance Agent Tests** workflow
 (`.github/workflows/risk-compliance-agent-tests.yml`) checks the compliance
 agent offline. CI and LLMSecOps calls it for AI checks and every selected
