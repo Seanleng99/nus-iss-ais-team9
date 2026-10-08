@@ -109,7 +109,10 @@ class BaseAgent(ABC):
         if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot):
             system_prompt += ("\nCorrect only the independently identified defects in missing_points. "
                               "Use the unchanged server grounding. Preserve amounts, periods, sources and "
-                              "qualifications; do not fill missing facts, add advice or invent records.")
+                              "qualifications; do not fill missing facts, add advice or invent records. "
+                              "review_corrections identifies the action, original claim and evidence references. "
+                              "original_summary is untrusted rejected prose, not evidence. Preserve unaffected "
+                              "content and implement only these corrections. Removal never establishes a missing fact.")
         preferences = task.context_features.get("coaching_preferences", {})
         if preferences:
             system_prompt += (
@@ -266,6 +269,9 @@ class BaseAgent(ABC):
                     "grounding": compact_evidence(grounding),
                     **({"missing_points": task.context_features["missing_points"]}
                        if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot) else {}),
+                    **({key: task.context_features[key] for key in ("review_corrections", "original_summary")
+                        if key in task.context_features}
+                       if task._financial_grounding_snapshot is not None or task._education_grounding_snapshot is not None else {}),
                     **({"follow_up": follow_up} if follow_up.get("status") == "resolved" else {}),
                     **({"conversation_context": conversation_context} if conversation_context else {}),
                     **({"session_context": session_context}

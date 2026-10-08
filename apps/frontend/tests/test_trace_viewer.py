@@ -171,6 +171,32 @@ def test_calendar_scoped_routing_decisions_render_in_frontend_runtime():
     assert len(test.get("graphviz_chart")) == 1
 
 
+def test_recovery_assignments_issues_and_financial_denials_render_without_rejected_text():
+    from ui.trace_viewer import decision_rows, review_rows
+    trace = deepcopy(TRACE)
+    trace.update(status="blocked", blocked=True)
+    trace["audit"]["durable_events"].extend([
+        {"event_type": "routing.completed", "actor": "router", "details": {
+            "task_assignments": [{"agent": "budget", "requires_spending": False,
+                                  "question": "PRIVATE", "source_quotes": ["PRIVATE"]}]}},
+        {"event_type": "compliance.completed", "actor": "risk_compliance", "details": {
+            "review_round": 1, "blocked": True, "review_issues": [{
+                "issue_id": "review_1", "section_id": "spending", "owner": "spending", "action": "qualify",
+                "requirement_hash": "a" * 64, "evidence_refs": ["spending.category_totals"], "requirement": "PRIVATE"}]}},
+        {"event_type": "financial.review.repair_decision", "actor": "orchestrator", "details": {
+            "allowed": False, "repair_blockers": ["REPAIR_TOKEN_BUDGET_EXCEEDED"],
+            "reason_code": "REPAIR_TOKEN_BUDGET_EXCEEDED", "draft_answer": "PRIVATE"}},
+    ])
+    decisions = decision_rows(trace)
+    assert any('"requires_spending": false' in (row["Assigned requirements"] or "") for row in decisions)
+    reviews = review_rows(trace)
+    assert any(row.get("review_issues", [{}])[0].get("owner") == "spending" for row in reviews)
+    assert any("REPAIR_TOKEN_BUDGET_EXCEEDED" in row.get("repair_blockers", []) for row in reviews)
+    assert "PRIVATE" not in str(decisions + reviews)
+    test = page(TraceClient(trace))
+    assert not test.exception and "PRIVATE" not in str(test)
+
+
 def test_failed_run_reconstructs_unfinished_model_calls():
     trace = deepcopy(TRACE)
     trace.update(status="timed_out", error_code="AI_SERVICE_TIMEOUT", assistant_message_id=None)

@@ -106,3 +106,7 @@ The frozen `orchestration_live_regression_v1.json` suite contains all 34 approve
 - `prompts/current/prompts.json`: Goal requirement contract and scoped planner/writer instructions.
 
 Paths above are relative to `apps/ai-service`.
+
+## Review recovery and graph demonstrations
+
+The [8 October recovery changes](orchestration-review-recovery.md) preserve explicitly requested data flow in model task assignments, retain safe requirement flags in traces and separate a valid conditional decomposition from a full-chain demonstration. Updated evaluation v2 keeps case 7's original prompt and financial checks, makes Budget consumption of Spending conditional, and adds case 35 with an explicit reconciliation step. Historical v1 and browser verdicts remain unchanged. Direct Goal-Spending remains deferred.

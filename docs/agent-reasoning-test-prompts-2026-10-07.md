@@ -265,3 +265,11 @@ Retryable errors and semantic repair are runtime conditions, not reliably trigge
 - Dependency scheduling/reuse examples: `apps/ai-service/tests/test_dynamic_dependencies.py`
 
 For the detailed explanation of the additional concepts and what is essential to the demonstration, see [Current orchestration implementation](orchestration-current-implementation-2026-10-07.md).
+
+## Additional full-chain demonstration after the 8 October diagnosis
+
+The historical case 7 wording permits Spending to report expense pressures separately while Goal consumes saved Budget capacity. For an explicit full-chain demonstration, use the additional evaluation case 35 below; this does not change the original live verdict.
+
+> First analyze my recorded October 2026 spending by category. Have Budget reconcile those category totals against my saved October limits and explain expense pressures alongside the confirmed savings allocation. Then use that Budget assessment to evaluate all my saved goals together, including required monthly contributions and the shared-pool shortfall. Keep recorded totals distinct from complete household expenses.
+
+Expected: **S + B + G**, with **B -> S** (`transaction_category_totals`) and **G -> B** (`monthly_savings_capacity`). The recorded totals are incomplete household coverage; saved capacity remains the confirmed allocation, and all goals share one monthly pool. The original case 7 remains a reasoning check with conditional Budget-to-Spending consumption in evaluation v2. See [review recovery](orchestration-review-recovery.md).

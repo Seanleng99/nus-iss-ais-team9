@@ -477,7 +477,7 @@ def test_untrusted_or_failed_retrieval_never_triggers_general_fallback(retriever
     assert gateway.calls_for("agent_investment_education") == []
 
 
-def test_multiagent_synthesis_receives_and_preserves_general_knowledge_provenance():
+def test_multiagent_synthesis_receives_and_preserves_general_knowledge_provenance(force_model_synthesis):
     gateway = HybridGateway(
         [{"topic": "shares", "text": "A share represents ownership in a company."}],
         synthesis=(

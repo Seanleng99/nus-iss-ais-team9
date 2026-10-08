@@ -27,6 +27,8 @@ def _task_fingerprint(task: AgentTask) -> str:
     # The sole permitted context addition is independently reviewed correction
     # feedback. Request, task, dependencies, language and subject remain fixed.
     data["context_features"].pop("missing_points", None)
+    data["context_features"].pop("review_corrections", None)
+    data["context_features"].pop("original_summary", None)
     return _fingerprint(data)
 
 

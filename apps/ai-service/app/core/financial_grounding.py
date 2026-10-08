@@ -15,6 +15,8 @@ def fingerprint(value):
 def task_fingerprint(task):
     data = task.model_dump(mode="json", exclude={"status", "attempt"})
     data["context_features"].pop("missing_points", None)
+    data["context_features"].pop("review_corrections", None)
+    data["context_features"].pop("original_summary", None)
     return fingerprint(data)
 
 

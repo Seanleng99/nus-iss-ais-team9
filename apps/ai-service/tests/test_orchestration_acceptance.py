@@ -70,3 +70,16 @@ def test_suite_rejects_explicit_agent_override(tmp_path):
     path.write_text(json.dumps(suite), encoding="utf-8")
     with pytest.raises(ValueError, match="overrides"):
         load_suite(path)
+
+
+def test_updated_suite_separates_valid_decomposition_from_explicit_chain_demo():
+    historical = load_suite(SUITE)
+    current = load_suite(SUITE.with_name("orchestration_live_regression_v2.json"))
+    assert len(current["cases"]) == 35
+    before = next(case for case in historical["cases"] if case["id"] == "7")
+    reasoning = next(case for case in current["cases"] if case["id"] == "7")
+    demo = next(case for case in current["cases"] if case["id"] == "35")
+    assert before["input"] == reasoning["input"]
+    assert len(reasoning["expected"]["required_edges"]) == 1
+    assert demo["expected"]["required_edges"] == before["expected"]["required_edges"]
+    assert "reconcile" in demo["input"]["message"].lower()

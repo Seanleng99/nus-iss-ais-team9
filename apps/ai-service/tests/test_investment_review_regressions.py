@@ -84,7 +84,7 @@ def test_guarantee_promises_and_requests_remain_blocked(message):
     "Diversification spreads exposure. See https://example.invalid/fake.",
     "Diversification spreads exposure. [source:invented-source]",
 ])
-def test_synthesis_cannot_invent_citations_even_if_compliance_would_allow(answer):
+def test_synthesis_cannot_invent_citations_even_if_compliance_would_allow(answer, force_model_synthesis):
     class CitingGateway(LocalFixtureModelGateway):
         def __init__(self):
             self.synthesis_calls = 0
@@ -106,7 +106,7 @@ def test_synthesis_cannot_invent_citations_even_if_compliance_would_allow(answer
     assert error.value.component == "citation_validation"
 
 
-def test_valid_citation_marker_is_rendered_from_approved_metadata():
+def test_valid_citation_marker_is_rendered_from_approved_metadata(force_model_synthesis):
     class CitingGateway(LocalFixtureModelGateway):
         def __init__(self):
             self.synthesis_calls = 0
@@ -190,7 +190,7 @@ def test_general_investment_basics_remains_supported():
     assert response.sources
 
 
-def test_mixed_question_preserves_gap_even_when_synthesizer_omits_it():
+def test_mixed_question_preserves_gap_even_when_synthesizer_omits_it(force_model_synthesis):
     class OmittingGateway(LocalFixtureModelGateway):
         def __init__(self):
             self.synthesis_calls = 0

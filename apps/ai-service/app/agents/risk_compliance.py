@@ -1,6 +1,7 @@
 import json
 import re
 from dataclasses import asdict
+from hashlib import sha256
 
 from coach_i18n import input_pattern, request_locale, translate
 from coach_i18n import response_language as request_language
@@ -18,6 +19,7 @@ from app.core.guardrails import (
 from app.core.income_memory import verified_income_memory_reply
 from app.core.prompts import PromptCatalog
 from app.core.review_diagnostics import save_review_diagnostic
+from app.core.review_evidence import financial_evidence_refs, review_evidence
 from app.core.review_sections import draft_review_sections
 from app.core.schemas import (
     AgentName,
@@ -800,18 +802,48 @@ class RiskComplianceAgent:
 
         review_sections = draft_review_sections(draft_answer, decision.sanitized_text, results)
         sections_by_id = {section["section_id"]: section for section in review_sections}
+        evidence_refs = financial_evidence_refs(results)
+        financial_owners = {result.agent.value for result in results
+                            if result._financial_grounding_snapshot is not None}
+        financial_draft = bool(results) and all(result.agent.value in financial_owners for result in results)
 
         def validate_review(review: ComplianceDecision) -> ComplianceDecision:
             for text in (review.summary, *review.rationale, *review.policy_notes):
                 validate_citations(text, review_sources)
             if isinstance(review, ScopedEducationComplianceDecision):
                 for issue in review.blocking_issues:
+                    if issue.category is not None and issue.category not in review.block_categories:
+                        raise ModelGatewayError("Issue categories must identify a reported blocking category; completeness issues use null.",
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
                     if issue.section_id not in sections_by_id:
                         raise ModelGatewayError(
                             "blocking_issues must identify supplied review_sections IDs: "
                             + ", ".join(sections_by_id),
                             code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
                         )
+                    section = sections_by_id[issue.section_id]
+                    if any(ref not in evidence_refs or (
+                        issue.section_id != "draft" and evidence_refs[ref] != section["agent"]
+                    ) for ref in issue.evidence_refs):
+                        raise ModelGatewayError("Use only supplied evidence_refs belonging to the affected section.",
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                    if ((issue.claim_start is not None or issue.claim_end is not None)
+                            and (issue.claim_start is None or issue.claim_end is None
+                                 or section["field"] != "draft_answer"
+                                 or not section["start"] <= issue.claim_start < issue.claim_end <= section["end"])):
+                        raise ModelGatewayError("Claim ranges must lie within the affected draft section.",
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                categories = set(review.block_categories)
+                claim_issues = [issue for issue in review.blocking_issues
+                                if issue.category in {None, "unverifiable_claim"}]
+                claim_correction = bool(claim_issues) and all(
+                    issue.action in {"ground_claim", "remove_claim"}
+                    and issue.claim_start is not None and issue.claim_end is not None
+                    and (sections_by_id[issue.section_id]["agent"] in financial_owners
+                         or issue.section_id == "draft" and financial_draft)
+                    and (issue.action == "remove_claim" or bool(issue.evidence_refs))
+                    for issue in claim_issues
+                )
                 # This admits a correction, never the rejected draft. All
                 # blocking issues must identify an eligible owned section and
                 # remain within its attribution/qualification correction boundary.
@@ -819,14 +851,11 @@ class RiskComplianceAgent:
                     (review.blocked or not review.complete)
                     and review.request_allowed and review.financial_language_safe
                     and review.blocking_issues
-                    and set(review.block_categories) <= {"citation_attribution", "factual_qualification"}
-                    and (all(sections_by_id[issue.section_id]["agent"] == "investment_education"
-                             for issue in review.blocking_issues)
-                         or all((any(r.agent.value == sections_by_id[issue.section_id]["agent"]
-                                     and r._financial_grounding_snapshot is not None for r in results)
-                                 or issue.section_id == "draft" and all(r.agent != AgentName.INVESTMENT_EDUCATION
-                                     and r._financial_grounding_snapshot is not None for r in results))
-                                for issue in review.blocking_issues))
+                    and categories <= {"citation_attribution", "factual_qualification", "unverifiable_claim"}
+                    and ("unverifiable_claim" not in categories or claim_correction)
+                    and all(sections_by_id[issue.section_id]["agent"] in financial_owners | {"investment_education"}
+                            or issue.section_id == "draft" and financial_draft
+                            for issue in review.blocking_issues)
                 )
             return review
 
@@ -877,6 +906,13 @@ class RiskComplianceAgent:
                         " user intent and draft for an unowned synthesized claim. Do not return repairable; the "
                         "server derives correction eligibility from validated section ownership, categories, "
                         "request permission and safety. "
+                        "Use action=qualify for a missing caveat, complete for an unanswered requirement, "
+                        "ground_claim for a claim corrected from supplied evidence_refs, or remove_claim for an "
+                        "unsupported embellishment. For mixed defects, set each issue's category to its reported "
+                        "blocking category; completeness issues use category=null. For unverifiable_claim, identify the exact claim_start and "
+                        "claim_end in draft_answer and a ground_claim or remove_claim action. ground_claim must "
+                        "reference supplied evidence_refs owned by that financial section. Removing a claim must "
+                        "preserve the requested grounded answer; an unknown required fact remains unavailable. "
                     )
                     + "Judge CURRENT request separately from draft safety. "
                     "Return block_categories from: prohibited_request, personal_advice, "
@@ -958,6 +994,7 @@ class RiskComplianceAgent:
                     "follow_up": follow_up or {},
                     "draft_answer": draft_answer,
                     "review_sections": review_sections,
+                    "evidence_refs": list(evidence_refs),
                     "routing_rationale": routing_rationale or [],
                     "contextual_financial_findings": contextual_financial_findings,
                     "policy_context": compact_evidence({"contexts": contexts})["contexts"],
@@ -970,11 +1007,7 @@ class RiskComplianceAgent:
                                 else result.summary
                             ),
                             "rationale": result.rationale,
-                            "data": compact_evidence({
-                                key: ([{"topic": section["topic"]}
-                                       for section in result.data[key]]
-                                      if key == "general_knowledge" else result.data[key])
-                                for key in (
+                            "data": review_evidence(result, (
                                     "evidence_status",
                                     "sources",
                                     "contexts",
@@ -1011,6 +1044,8 @@ class RiskComplianceAgent:
                                     "funding_gap",
                                     "period_start",
                                     "projections",
+                                    "goal_progress",
+                                    "calculation_assumptions",
                                     "emergency_fund",
                                     "monthly_savings_capacity",
                                     "period_feasibility",
@@ -1046,9 +1081,7 @@ class RiskComplianceAgent:
                                     "needs_input",
                                     "questions",
                                     "authoritative_outcomes",
-                                )
-                                if key in result.data
-                            }),
+                                )),
                         }
                         for result in results
                     ],
@@ -1083,8 +1116,17 @@ class RiskComplianceAgent:
             "review_block_categories": list(dict.fromkeys(review.block_categories)),
         }
         if isinstance(review, ScopedEducationComplianceDecision):
-            compliance_data["blocking_issues"] = [issue.model_dump() for issue in review.blocking_issues
+            compliance_data["blocking_issues"] = [{**issue.model_dump(), "owner": sections_by_id[issue.section_id]["agent"]}
+                for issue in review.blocking_issues
                 if not inspect_prompt(issue.requirement).findings and not financial_advice_findings(issue.requirement)]
+            compliance_data["review_issues"] = [{
+                "issue_id": f"review_{index}", "section_id": issue.section_id,
+                "owner": sections_by_id[issue.section_id]["agent"] or "composition",
+                "action": issue.action, "category": issue.category, "evidence_refs": issue.evidence_refs,
+                "requirement_hash": sha256(issue.requirement.encode("utf-8")).hexdigest(),
+                **({"claim_start": issue.claim_start, "claim_end": issue.claim_end}
+                   if issue.claim_start is not None else {}),
+            } for index, issue in enumerate(review.blocking_issues, 1)]
         if review_error:
             compliance_data["review_contract_error"] = review_error
         if isinstance(review, ScopedEducationComplianceDecision):
@@ -1109,6 +1151,7 @@ class RiskComplianceAgent:
             )
             compliance_data["repairable"] = (
                 review.repairable and review.request_allowed and output_allows_repair
+                and len(compliance_data["blocking_issues"]) == len(review.blocking_issues)
             )
             correction_points = review.missing_points
             if isinstance(review, ScopedEducationComplianceDecision) and review.repairable:

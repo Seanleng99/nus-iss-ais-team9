@@ -60,3 +60,24 @@ def test_versions_and_legacy_frames():
         safe_event({**legacy, "schema_version": 999}, trace_id)
     with pytest.raises(ValueError, match="Invalid trace"):
         safe_event(legacy, str(uuid4()))
+
+
+def test_assignment_and_review_metadata_survives_without_unreviewed_text():
+    details = {"task_assignments": [{"agent": "budget", "requires_spending": True,
+        "question": "PRIVATE", "source_quotes": ["PRIVATE"]}],
+        "review_issues": [{"issue_id": "review_1", "section_id": "spending", "owner": "spending",
+            "action": "ground_claim", "evidence_refs": ["spending.category_totals", "PRIVATE"],
+            "requirement_hash": "a" * 64, "claim_start": 0, "claim_end": 20,
+            "requirement": "PRIVATE", "original_claim": "PRIVATE"}]}
+    safe = safe_details(details)
+    assert safe_details(safe) == safe
+    assert safe["task_assignments"] == [{"agent": "budget", "requires_spending": True}]
+    assert safe["review_issues"][0]["evidence_refs"] == ["spending.category_totals"]
+    assert "PRIVATE" not in str(safe)
+
+
+@pytest.mark.parametrize("refs", [None, 42, "private"])
+def test_review_metadata_rejects_malformed_reference_lists(refs):
+    issue = {"issue_id": "review_1", "section_id": "budget", "owner": "budget", "action": "qualify",
+             "requirement_hash": "a" * 64, "evidence_refs": refs}
+    assert safe_details({"review_issues": [issue]})["review_issues"][0]["evidence_refs"] == []

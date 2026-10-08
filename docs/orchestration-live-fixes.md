@@ -63,9 +63,14 @@ this change does not claim to have modified a deployed ECS service.
 v9 financial writers retain a private, fingerprinted grounding snapshot. Review
 identifies defects by server-owned section ID. An allowed factual-qualification
 defect can receive one correction using unchanged task inputs and tool results,
-then a second independent review. Prohibited advice, unverifiable claims, changed
+then a second independent review. Prohibited advice, unclassified unverifiable claims, changed
 authority, missing usage, exhausted budgets and unavailable inputs do not authorize
 correction. A rejected or unavailable correction remains withheld.
+
+The [8 October recovery fixes](orchestration-review-recovery.md) align reviewer evidence
+with writer grounding, preserve Spending sections in eligible mixed answers, allow
+narrow identified financial claim correction, coordinate owned mixed defects, clear
+resolved capture state and retain safe issue/assignment and repair-denial metadata.
 
 `REVIEW_DIAGNOSTICS_DIR` enables redacted diagnostic files containing the rejected
 draft, verdict, section ownership and original financial grounding. They never enter
@@ -107,6 +112,8 @@ From `apps/ai-service`, first verify the harness without paid model calls:
 ```powershell
 ../../.venv/Scripts/python.exe -m app.evals.orchestration_acceptance --suite app/evals/datasets/orchestration_live_regression_v1.json --provider local_fixture --build-commit <tested-commit> --repeats 1 --output ../../artifacts/reasoning-fixture.json
 ```
+
+Use `orchestration_live_regression_v2.json` for the updated conditional graph expectation and the additional explicit full-chain demonstration. Historical v1 remains unchanged.
 
 To measure semantic behavior with authenticated model configuration, use
 `--provider openai --repeats 3` and a separate output. This invokes the real router,

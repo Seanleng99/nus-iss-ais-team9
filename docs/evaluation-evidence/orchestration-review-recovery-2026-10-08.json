@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-08",
+  "revision": "working_tree",
+  "base_commit": "d3867adb171b90f57f64f8b46e3a83a83df2e666",
+  "measurement": "offline_contract_verification",
+  "deployment_status": "not_deployed",
+  "live_acceptance": "pending",
+  "prompt_identity": {
+    "prompt_set_version": "v9",
+    "prompt_content_hash": "96cbcd7137ab2dc47193c4155d0a330e286cf10c67bbe75ff00312eeaa6b3604",
+    "build_commit": "working_tree"
+  },
+  "tests": {
+    "ai": {
+      "tests": 1826,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "passed": 1825,
+      "junit": "artifacts/review-recovery-ai-20261008.xml"
+    },
+    "shared": {
+      "tests": 50,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 50,
+      "junit": "artifacts/review-recovery-shared-20261008.xml"
+    },
+    "backend_traces": {
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 24,
+      "junit": "artifacts/review-recovery-backend-traces-20261008.xml"
+    },
+    "trace_viewer": {
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 15,
+      "junit": "artifacts/review-recovery-viewer-20261008.xml"
+    }
+  },
+  "checks": {
+    "ruff": "passed",
+    "chinese_code_scan": "passed",
+    "git_whitespace": "passed"
+  },
+  "offline_gate": {
+    "passed": true,
+    "datasets": [
+      {
+        "name": "orchestrator",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "budget",
+        "passed": 4,
+        "total": 4
+      },
+      {
+        "name": "retrieval",
+        "passed": 21,
+        "total": 21
+      },
+      {
+        "name": "guardrails",
+        "passed": 26,
+        "total": 26
+      },
+      {
+        "name": "policy-retrieval",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "name": "dynamic-dependencies",
+        "passed": 14,
+        "total": 14
+      },
+      {
+        "name": "safety-behavior",
+        "passed": 10,
+        "total": 10
+      },
+      {
+        "name": "fairness-consistency",
+        "passed": 3,
+        "total": 3
+      }
+    ]
+  },
+  "reasoning_evaluation_suite": "apps/ai-service/app/evals/datasets/orchestration_live_regression_v2.json",
+  "historical_suite_unchanged": true,
+  "direct_goal_spending_edge": "deferred"
+}

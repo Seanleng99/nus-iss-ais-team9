@@ -51,6 +51,7 @@ COUNTS = {
     "estimated_repair_tokens",
     "token_limit",
     "remaining_tokens",
+    "source_quote_count",
 }
 FLAGS = {
     "blocked",
@@ -68,6 +69,9 @@ FLAGS = {
     "answer_complete",
     "repairable",
     "composition_usage_complete",
+    "requires_spending",
+    "requires_income",
+    "requires_capacity",
 }
 CODES = {
     "source",
@@ -183,6 +187,36 @@ def safe_details(details, *, decision=False):
     result = {}
     for key, value in details.items():
         if decision and key not in DECISION_FIELDS:
+            continue
+        if key == "task_assignments" and isinstance(value, (list, tuple)):
+            result[key] = [
+                {"agent": item["agent"], **{
+                    flag: item[flag] for flag in ("requires_spending", "requires_income", "requires_capacity")
+                    if type(item.get(flag)) is bool
+                }} for item in value[:4] if isinstance(item, dict)
+                and item.get("agent") in {"spending", "budget", "goal_strategy", "investment_education"}
+            ]
+            continue
+        if key == "review_issues" and isinstance(value, (list, tuple)):
+            result[key] = []
+            for item in value[:6]:
+                if (not isinstance(item, dict) or not re.fullmatch(r"review_[1-6]", str(item.get("issue_id", "")))
+                        or item.get("owner") not in {"spending", "budget", "goal_strategy", "investment_education", "composition"}
+                        or not re.fullmatch(r"draft|request|spending|budget|goal_strategy|investment_education|education_[1-9][0-9]*", str(item.get("section_id", "")))
+                        or item.get("action") not in {"qualify", "ground_claim", "remove_claim", "complete"}
+                        or not re.fullmatch(r"[a-f0-9]{64}", str(item.get("requirement_hash", "")))):
+                    continue
+                issue = {field: item[field] for field in ("issue_id", "section_id", "owner", "action", "requirement_hash")}
+                if item.get("category") in {"prohibited_request", "personal_advice", "return_guarantee", "privacy",
+                                           "injection", "citation_attribution", "factual_qualification", "unverifiable_claim"}:
+                    issue["category"] = item["category"]
+                refs = item.get("evidence_refs", [])
+                issue["evidence_refs"] = [ref for ref in (refs[:6] if isinstance(refs, (list, tuple)) else [])
+                    if isinstance(ref, str) and re.fullmatch(r"(?:spending|budget|goal_strategy)\.[a-z_]{1,64}", ref)]
+                if (type(item.get("claim_start")) is int and type(item.get("claim_end")) is int
+                        and 0 <= item["claim_start"] < item["claim_end"] <= 6000):
+                    issue.update(claim_start=item["claim_start"], claim_end=item["claim_end"])
+                result[key].append(issue)
             continue
         if key in {"budget_scope", "spending_scope"} and isinstance(value, dict):
             from coach_math.budget_scope import BudgetScope

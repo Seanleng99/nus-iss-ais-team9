@@ -53,6 +53,10 @@ class SpendingAgent(BaseAgent):
                     ),
                     capabilities=[],
                 )
+            # The extractor resolved a candidate capture as ordinary analysis.
+            # Update the task before grounding so later repair uses the same
+            # task fingerprint and cannot re-enter extraction.
+            task.context_features["spending_capture"] = False
         return super().run_task(task)
 
     @trace_method

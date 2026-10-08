@@ -36,9 +36,8 @@ QUESTION_WORD_PREFIX = re.compile(
 
 
 def spending_capture_request(message: str) -> bool:
-    # Deterministic routing guard: a spending record statement or a dated
-    # spend lookup must reach the extraction step. Budget words belong to
-    # budget capture; analysis and advice questions stay on the specialist path.
+    # Conservative local-fixture/profile-fact recognizer. Production routing
+    # uses the semantic router, not this recognizer to override analysis intent.
     if SPENDING_EXCLUSION_PATTERN.search(message):
         return False
     for clause in re.split(
@@ -47,7 +46,7 @@ def spending_capture_request(message: str) -> bool:
         text = clause.strip()
         if not text:
             continue
-        if SPENDING_QUERY_PATTERN.search(text):
+        if SPENDING_QUERY_PATTERN.match(text):
             return True
         if QUESTION_WORD_PREFIX.match(text):
             continue

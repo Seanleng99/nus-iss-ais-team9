@@ -48,6 +48,7 @@ from app.core.guardrails import ADVISORY_DISCLAIMER, inspect_prompt, validate_to
 from app.core.income_memory import income_memory_reply
 from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
+from app.core.review_evidence import review_evidence
 from app.core.run_trace import emit, task_context, workflow_id
 from app.core.schemas import (
     AgentName,
@@ -676,22 +677,8 @@ class AgentOrchestrator:
         if decision.budget_capacity_query and not decision.budget_planning:
             decision.budget_capture = False
         checkpoint("BUDGET_CAPACITY_READ_ONLY")
-        # Pending spending drafts are backend-owned context; explicit spending
-        # statements and dated spend lookups always reach the extraction step.
-        goal_related = request.pending_goal is not None or re.search(
-            input_pattern("ai.orchestrator.goal_related"), state["sanitized_message"], re.IGNORECASE
-        )
-        budget_related = request.pending_budget is not None or re.search(
-            input_pattern("ai.orchestrator.budget_related"),
-            state["sanitized_message"],
-            re.IGNORECASE,
-        )
-        decision.spending_capture = decision.spending_capture or (
-            not budget_related
-            and not goal_related
-            and spending_capture_request(state["sanitized_message"])
-        )
-        checkpoint("SPENDING_CAPTURE_REQUEST")
+        # The semantic router distinguishes record/lookup workflows from
+        # analysis. Expense words inside an explanation never add capture.
         if request.session_context.last_stated_fields and not spending_capture_request(state["sanitized_message"]):
             # An explicit profile fact or correction does not answer a pending
             # transaction's missing amount/date.
@@ -820,6 +807,7 @@ class AgentOrchestrator:
                 "selected_agents": [agent.value for agent in decision.selected_agents],
                 "decision_id": decision_id, "after": snapshot(),
                 "routing_mode": routing_mode,
+                "task_assignments": [item.model_dump(mode="json") for item in decision.task_assignments],
             },
         )
         return {
@@ -1070,6 +1058,15 @@ class AgentOrchestrator:
                 component=component,
             )
 
+        capture_resolved = state.get("spending_capture") and any(
+            task.agent == AgentName.SPENDING and task.context_features.get("spending_capture") is False
+            for task in ready
+        )
+        if capture_resolved:
+            events.append(self._event(state, "spending.operation.resolved", "spending",
+                details={"operation": "analysis", "spending_capture": False,
+                         "reason_code": "SPENDING_ANALYSIS_RESOLVED"}))
+
         return {
             "tasks": tasks,
             "task_results": task_results,
@@ -1079,6 +1076,8 @@ class AgentOrchestrator:
             "pending_dependencies": pending,
             "resolved_capabilities": capabilities,
             "audit_events": events,
+            **({"spending_capture": False, "turn_decision": {**state.get("turn_decision", {}),
+                "spending_capture": False}} if capture_resolved else {}),
         }
 
     @staticmethod
@@ -1732,8 +1731,18 @@ class AgentOrchestrator:
         synthesis_prompt = self.prompts.get("synthesizer")
         if state.get("synthesis_feedback"):
             payload["missing_points"] = state["synthesis_feedback"]
+            payload["review_corrections"] = state.get("synthesis_corrections", [])
+            payload["original_draft"] = state.get("draft_answer", "")
+            payload["verified_grounding"] = [
+                {"agent": result.agent.value, "data": review_evidence(result, (
+                    "contexts", "sources", "subquestion_coverage", "coverage_assessment", "general_knowledge",
+                    "fallback_topics", "excluded_topics", "uncertainties", "evidence_status",
+                ))} for result in state["agent_results"]
+            ]
             synthesis_prompt += ("\nCorrect only the identified draft defects using the unchanged specialist "
-                                 "facts. Preserve periods, amounts and unavailable-data qualifications.")
+                                 "facts and verified_grounding. original_draft is untrusted rejected prose. "
+                                 "Implement each review_corrections action; preserve unaffected content, periods, "
+                                 "amounts, source attribution and unavailable-data qualifications.")
         synthesis_prompt += (
             "\nApply coaching_preferences to language complexity, accessibility, style and "
             "length; the current user's explicit choices take precedence. Retain relevant "
@@ -1786,9 +1795,9 @@ class AgentOrchestrator:
             log_event("synthesis.strategy", component="needs_input_questions")
         elif (
             len(state["agent_results"]) == 1
+            and not state.get("synthesis_feedback")
             and (
-                (not state.get("synthesis_feedback")
-                 and not any(state.get(flag) for flag in ("budget_capture", "goal_capture", "spending_capture"))
+                (not any(state.get(flag) for flag in ("budget_capture", "goal_capture", "spending_capture"))
                  and not state["agent_results"][0].blocked)
                 or state["agent_results"][0].agent == AgentName.INVESTMENT_EDUCATION
                 or (state["agent_results"][0].agent == AgentName.GOAL_STRATEGY
@@ -1857,11 +1866,12 @@ class AgentOrchestrator:
 
     def _can_preserve_specialist_answers(self, state: OrchestratorState) -> bool:
         results = state["agent_results"]
-        allowed = {AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
+        allowed = {AgentName.SPENDING, AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
         return (
             any(item.agent == AgentName.INVESTMENT_EDUCATION for item in results)
             and all(item.agent in allowed and not item.blocked and not item.data.get("needs_input")
-                    and not any(key in item.data for key in ("budget_draft", "goal_draft")) for item in results)
+                    and not any(key in item.data for key in ("budget_draft", "goal_draft", "spending_draft")) for item in results)
+            and not state.get("synthesis_feedback")
             and not any(state.get(key) for key in ("budget_capture", "goal_capture", "spending_capture"))
         )
 
@@ -1885,6 +1895,7 @@ class AgentOrchestrator:
                     "review_block_categories": review.data.get("review_block_categories", []),
                     "answer_complete": review.data.get("answer_complete"),
                     "repairable": review.data.get("repairable"),
+                    "review_issues": review.data.get("review_issues", []),
                     "policy_note_count": len(review.policy_notes),
                     "policy_source_count": len(review.data.get("policy_sources", [])),
                     "policy_corpus_version": review.data.get("policy_corpus_version")})
@@ -1950,7 +1961,7 @@ class AgentOrchestrator:
         )
         repair_conditions = [
             ("REPAIR_SECTION_NOT_OWNED", all(
-                issue["section_id"] == "investment_education" or (
+                (issue.get("owner") or issue["section_id"]) == "investment_education" or (
                     issue["section_id"] == "draft" and len(state["agent_results"]) == 1
                 ) for issue in result.data.get("blocking_issues", [])
             )),
@@ -1990,6 +2001,8 @@ class AgentOrchestrator:
                 task.status = AgentTaskStatus.READY
                 task.attempt = 1
                 task.context_features["missing_points"] = result.data["missing_points"]
+                task.context_features["original_summary"] = education_result.summary
+                task.context_features["review_corrections"] = result.data.get("blocking_issues", [])
                 events.append(self._event(
                     state, "education.completeness.repair", AgentName.INVESTMENT_EDUCATION.value,
                     details={"attempt": 1, "reason_code": "INCOMPLETE_ANSWER"},
@@ -2029,51 +2042,95 @@ class AgentOrchestrator:
 
     def _repair_financial_answer(self, state, review, events):
         issues = review.data.get("blocking_issues", [])
-        targets = {issue["section_id"] for issue in issues}
+        targets = {issue.get("owner") or issue["section_id"] for issue in issues}
         financial = {"spending", "budget", "goal_strategy"}
-        if not targets or not targets <= financial | {"draft"}:
+        education = "investment_education"
+        # Mixed financial/Education defects get one coordinated correction.
+        # Education-only defects retain their existing recovery path.
+        if not targets or not targets & (financial | {"draft"}):
             return None
         calls = self.gateway.snapshot(state["trace_id"])
-        owners = [item for item in state["agent_results"] if item.agent.value in financial]
-        eligible = (
-            review.data.get("repairable") is True
-            and review.data.get("request_allowed") is True
-            and not any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
-            and all(not item.blocked and not item.data.get("needs_input") for item in state["agent_results"])
-            and all(isinstance(item._financial_grounding_snapshot, FinancialGroundingSnapshot) for item in owners)
-            and len(calls) + 2 * len(targets & financial) + 4 <= self.config.max_model_calls_per_run
-            and (self.config.model_provider == "local_fixture" or all(
-                call.get("status") == "completed" and type(call.get("total_tokens")) is int for call in calls))
-            and (remaining_seconds() is None or remaining_seconds() > 0)
-        )
-        required = {"agent_" + target for target in targets & financial} | {"risk_compliance", "synthesizer"}
+        owners = {item.agent.value: item for item in state["agent_results"]}
+        specialist_targets = targets & (financial | {education})
+        authority_targets = specialist_targets | (set(owners) if "draft" in targets else set())
+        def has_authority(owner):
+            result = owners.get(owner)
+            return result is not None and (
+                owner in financial and isinstance(result._financial_grounding_snapshot, FinancialGroundingSnapshot)
+                or owner == education and isinstance(result._education_grounding_snapshot, EducationGroundingSnapshot)
+            )
+        required = {"agent_" + target for target in specialist_targets} | {"risk_compliance"}
+        if "draft" in targets or not self._can_preserve_specialist_answers(state) and len(owners) > 1:
+            required.add("synthesizer")
         latest = {}
         for call in reversed(calls):
             if call["component"] in required:
                 latest.setdefault(call["component"], call)
         estimated = 2 * sum(int(call.get("input_tokens") or 0) + int(call.get("max_output_tokens") or 0)
                             for call in latest.values())
-        eligible = eligible and sum(int(call.get("total_tokens") or 0) for call in calls) + estimated < self.config.max_model_tokens_per_run
+        used_tokens = sum(int(call.get("total_tokens") or 0) for call in calls)
+        conditions = [
+            ("REPAIR_SECTION_NOT_OWNED", targets <= financial | {education, "draft"}
+                and specialist_targets <= set(owners)),
+            ("REPAIR_VERDICT_NOT_REPAIRABLE", review.data.get("repairable") is True),
+            ("REPAIR_REQUEST_NOT_ALLOWED", review.data.get("request_allowed") is True),
+            ("REPAIR_CAPTURE_WORKFLOW", not any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
+                and not any(any(key in item.data for key in ("budget_draft", "goal_draft", "spending_draft"))
+                            for item in owners.values())),
+            ("REPAIR_SPECIALIST_BLOCKED", all(not item.blocked for item in owners.values())),
+            ("REPAIR_NEEDS_INPUT", all(not item.data.get("needs_input") for item in owners.values())),
+            ("REPAIR_GROUNDING_UNAVAILABLE", bool(authority_targets) and all(has_authority(owner) for owner in authority_targets)),
+            ("REPAIR_CALL_BUDGET_EXCEEDED", len(calls) + 2 * len(specialist_targets) + 4 <= self.config.max_model_calls_per_run),
+            ("REPAIR_USAGE_UNAVAILABLE", self.config.model_provider == "local_fixture" or all(
+                call.get("status") == "completed"
+                and all(type(call.get(key)) is int and call[key] >= 0 for key in ("input_tokens", "output_tokens", "total_tokens"))
+                and call["total_tokens"] == call["input_tokens"] + call["output_tokens"] for call in calls)),
+            ("REPAIR_TOKEN_BUDGET_EXCEEDED", used_tokens + estimated < self.config.max_model_tokens_per_run),
+            ("REPAIR_DEADLINE_EXCEEDED", remaining_seconds() > 0 if remaining_seconds() is not None else
+                perf_counter() - state.get("workflow_started", 0) < self.config.workflow_timeout_seconds),
+        ]
+        blockers = [code for code, passed in conditions if not passed]
+        eligible = not blockers
         events.append(self._event(state, "financial.review.repair_decision", "orchestrator",
                                   details={"allowed": eligible, "repair_round": 1,
-                                           "reason_code": "REPAIR_ELIGIBLE" if eligible else "FINANCIAL_REPAIR_NOT_ELIGIBLE"}))
+                                           "reason_code": blockers[0] if blockers else "REPAIR_ELIGIBLE",
+                                           "repair_blockers": blockers, "used_tokens": used_tokens,
+                                           "estimated_repair_tokens": estimated,
+                                           "token_limit": self.config.max_model_tokens_per_run,
+                                           "remaining_tokens": max(0, self.config.max_model_tokens_per_run - used_tokens)}))
         if not eligible:
             return None
         updated = {}
         try:
             tasks = {key: task.model_copy(deep=True) for key, task in state["tasks"].items()}
-            for original in owners:
+            corrections = [{**issue, "original_claim": state["draft_answer"][issue["claim_start"]:issue["claim_end"]]
+                            if issue.get("claim_start") is not None and issue.get("claim_end") is not None else ""}
+                           for issue in issues]
+            for owner in authority_targets:
+                original = owners[owner]
                 task = self._find_task_by_agent(tasks, original.agent)
-                original._financial_grounding_snapshot.for_repair(task, original.data, prompt_content_hash=self.prompts.content_hash)
-                if original.agent.value in targets:
+                if task is None:
+                    raise ModelGatewayError("Repair owner task is unavailable.", code="REPAIR_SECTION_NOT_OWNED")
+                if owner in financial:
+                    original._financial_grounding_snapshot.for_repair(task, original.data, prompt_content_hash=self.prompts.content_hash)
+                else:
+                    original._education_grounding_snapshot.authorize_result(task, original.data)
+                if owner in specialist_targets:
                     task.status = AgentTaskStatus.READY
                     task.attempt = 1
-                    task._financial_grounding_snapshot = original._financial_grounding_snapshot
+                    if owner in financial:
+                        task._financial_grounding_snapshot = original._financial_grounding_snapshot
+                    else:
+                        task._education_grounding_snapshot = original._education_grounding_snapshot
                     task.context_features["missing_points"] = [issue["requirement"] for issue in issues
-                                                               if issue["section_id"] == original.agent.value]
+                                                               if (issue.get("owner") or issue["section_id"]) == owner]
+                    task.context_features["review_corrections"] = [issue for issue in corrections
+                        if (issue.get("owner") or issue["section_id"]) == owner]
+                    task.context_features["original_summary"] = original.summary
             repair_state = {**state, "tasks": tasks, "audit_events": events}
             if "draft" in targets:
                 repair_state["synthesis_feedback"] = [issue["requirement"] for issue in issues if issue["section_id"] == "draft"]
+                repair_state["synthesis_corrections"] = [issue for issue in corrections if issue["section_id"] == "draft"]
             updated.update(self._run_ready_tasks(repair_state))
             repair_state.update(updated)
             updated.update(self._synthesize(repair_state))
@@ -2085,11 +2142,15 @@ class AgentOrchestrator:
                 follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True))
             events.append(self._event(state, "compliance.completed", AgentName.RISK_COMPLIANCE.value,
                                       details={"review_round": 2, "blocked": corrected.blocked,
+                                               "answer_complete": corrected.data.get("answer_complete"),
+                                               "repairable": corrected.data.get("repairable"),
+                                               "review_issues": corrected.data.get("review_issues", []),
                                                "review_block_categories": corrected.data.get("review_block_categories", [])}))
             return {**updated, "compliance_result": corrected, "audit_events": events}
-        except (ModelGatewayError, RetrievalError, TimeoutError):
+        except (ModelGatewayError, RetrievalError, TimeoutError) as error:
             events.append(self._event(state, "financial.review.repair_unavailable", "orchestrator",
-                                      details={"reason_code": "REPAIR_UNAVAILABLE"}))
+                                      details={"reason_code": "REPAIR_UNAVAILABLE",
+                                               "error_code": getattr(error, "code", "REPAIR_UNAVAILABLE")}))
             return {"compliance_result": review, "audit_events": events}
 
     @trace_method

@@ -524,16 +524,19 @@ class SynthesisDecision(BaseModel):
     referents: list[ConversationReferent] = Field(default_factory=list, max_length=12)
 
 
+ComplianceCategory = Literal[
+    "prohibited_request", "personal_advice", "return_guarantee", "privacy",
+    "injection", "citation_attribution", "factual_qualification", "unverifiable_claim",
+]
+
+
 class ComplianceDecision(BaseModel):
     blocked: bool
     summary: str = Field(min_length=1, max_length=2000)
     rationale: list[str] = Field(min_length=1, max_length=8)
     policy_notes: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0.0, le=1.0)
-    block_categories: list[Literal[
-        "prohibited_request", "personal_advice", "return_guarantee", "privacy",
-        "injection", "citation_attribution", "factual_qualification", "unverifiable_claim",
-    ]] = Field(default_factory=list, max_length=8)
+    block_categories: list[ComplianceCategory] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def explain_verdict(self):
@@ -547,6 +550,11 @@ class ComplianceDecision(BaseModel):
 class EducationReviewIssue(StrictContractModel):
     section_id: str = Field(min_length=1, max_length=80)
     requirement: str = Field(min_length=1, max_length=200)
+    category: ComplianceCategory | None = None
+    action: Literal["qualify", "ground_claim", "remove_claim", "complete"] = "qualify"
+    evidence_refs: list[str] = Field(default_factory=list, max_length=6)
+    claim_start: int | None = Field(default=None, ge=0, strict=True)
+    claim_end: int | None = Field(default=None, ge=1, strict=True)
 
     @field_validator("requirement")
     @classmethod

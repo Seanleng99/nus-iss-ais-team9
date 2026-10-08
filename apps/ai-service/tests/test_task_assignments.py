@@ -55,3 +55,34 @@ def test_unattributed_or_incomplete_task_contract_is_rejected(assignments):
     with pytest.raises(ModelGatewayError, match="task_assignments"):
         AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=AssignedGateway(assignments)).handle(
             CoachRequest(user_id="u", session_id="s", message="Inspect purchases and explain budgeting."))
+
+
+@pytest.mark.parametrize("consume_spending", [True, False])
+def test_model_assignment_preserves_explicit_dataflow_and_conditional_independence(consume_spending):
+    from test_conditional_financial_dependencies import request
+    message = ("Reconcile recorded category totals against saved budget limits, then assess all my saved goals together."
+               if consume_spending else "Describe recorded category totals separately; assess all my saved goals using saved budget capacity.")
+    assignments = [
+        {"agent": "spending", "question": "Describe recorded category totals.", "source_quotes": [message]},
+        {"agent": "budget", "question": "Reconcile recorded totals with saved budget limits." if consume_spending else "Use saved budget capacity.",
+         "source_quotes": [message], "requires_spending": consume_spending, "requires_capacity": True, "requires_income": False},
+        {"agent": "goal_strategy", "question": "Assess all saved goals together using the budget capacity.",
+         "source_quotes": [message], "requires_capacity": True},
+    ]
+    class DataflowGateway(AssignedGateway):
+        def generate(self, **kwargs):
+            if kwargs["system_prompt"].startswith("PROMPT_ID: router"):
+                self.calls.append(kwargs)
+                return json.dumps({"selected_agents": ["spending", "budget", "goal_strategy"],
+                    "rationale": ["Use the requested data flow."], "task_assignments": assignments})
+            return super().generate(**kwargs)
+    response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture"), gateway=DataflowGateway(assignments)).handle(
+        request(message, ["spending", "budget", "goal_strategy"], capacity=True))
+    assert not response.blocked
+    capabilities = {edge["capability"] for edge in response.audit["dependency_edges"]}
+    assert "monthly_savings_capacity" in capabilities
+    assert ("transaction_category_totals" in capabilities) is consume_spending
+    routing = next(event for event in response.audit["events"] if event["event_type"] == "routing.completed")
+    budget = next(item for item in routing["details"]["task_assignments"] if item["agent"] == "budget")
+    assert budget["requires_spending"] is consume_spending
+    assert "question" not in budget and "source_quotes" not in budget

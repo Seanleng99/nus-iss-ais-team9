@@ -255,7 +255,7 @@ def test_withholding_localizes_only_public_text_and_preserves_safe_metadata(lang
     ("risk_compliance", "blocked"),
 ])
 def test_final_block_localizes_explanations_and_withholds_poison_and_sources(
-    message, chinese, component, field,
+    message, chinese, component, field, force_model_synthesis,
 ):
     class PoisonedGateway(LocalFixtureModelGateway):
         def generate(self, **kwargs):

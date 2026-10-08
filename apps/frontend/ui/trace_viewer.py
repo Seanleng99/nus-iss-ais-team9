@@ -162,6 +162,7 @@ def decision_rows(trace):
                 "Reason": details.get("reason_code"),
                 "Before": json.dumps(details["before"]) if "before" in details else None,
                 "After": json.dumps(details["after"]) if "after" in details else None,
+                "Assigned requirements": json.dumps(details["task_assignments"]) if "task_assignments" in details else None,
                 "Outcome": details.get("action_status")
                 or details.get("handler")
                 or details.get("component")
@@ -231,6 +232,8 @@ def review_rows(trace):
             "education.completeness.repair_decision",
             "education.completeness.repair",
             "education.completeness.repair_unavailable",
+            "financial.review.repair_decision",
+            "financial.review.repair_unavailable",
         }
     ]
 
