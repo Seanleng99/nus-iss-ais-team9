@@ -822,6 +822,27 @@ class RiskComplianceAgent:
                             code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
                         )
                     section = sections_by_id[issue.section_id]
+                    if issue.claim_quote is not None:
+                        text = draft_answer[section["start"]:section["end"]] if section["field"] == "draft_answer" else ""
+                        if not text or text.count(issue.claim_quote) != 1:
+                            raise ModelGatewayError("claim_quote must be one unique exact substring of the affected draft section.",
+                                                    code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                        start = section["start"] + text.index(issue.claim_quote)
+                        end = start + len(issue.claim_quote)
+                        if (issue.claim_start is not None and issue.claim_start != start
+                                or issue.claim_end is not None and issue.claim_end != end):
+                            raise ModelGatewayError("Claim offsets must match claim_quote exactly; omit offsets to let the server resolve them.",
+                                                    code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
+                        issue.claim_start, issue.claim_end = start, end
+                    qualification_categories = {"citation_attribution", "factual_qualification"}
+                    qualification_issue = issue.category in qualification_categories or (
+                        issue.category is None and bool(set(review.block_categories) & qualification_categories)
+                    )
+                    if (review.blocked and qualification_issue and issue.action != "complete" and (
+                        section["agent"] in financial_owners or issue.section_id == "draft" and financial_draft
+                    ) and (issue.claim_start is None or issue.claim_end is None)):
+                        raise ModelGatewayError("Locate each financial claim correction with a unique exact claim_quote or valid claim_start/claim_end. Do not request a whole-answer rewrite.",
+                                                code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
                     if any(ref not in evidence_refs or (
                         issue.section_id != "draft" and evidence_refs[ref] != section["agent"]
                     ) for ref in issue.evidence_refs):

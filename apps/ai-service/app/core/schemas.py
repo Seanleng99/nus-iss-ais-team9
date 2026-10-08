@@ -438,6 +438,9 @@ class TaskAssignment(StrictContractModel):
 
 class RouterDecision(BaseModel):
     task_assignments: list[TaskAssignment] = Field(default_factory=list, max_length=4)
+    reference_scope: Literal["none", "current_message", "dialogue", "ambiguous"] | None = None
+    reference_quote: str | None = Field(default=None, min_length=1, max_length=500)
+    reference_subject_quote: str | None = Field(default=None, min_length=1, max_length=1000)
     spending_scope: BudgetScope | None = None
     spending_scope_unclear: bool = False
     spending_analysis_period: date | None = None
@@ -555,6 +558,7 @@ class EducationReviewIssue(StrictContractModel):
     evidence_refs: list[str] = Field(default_factory=list, max_length=6)
     claim_start: int | None = Field(default=None, ge=0, strict=True)
     claim_end: int | None = Field(default=None, ge=1, strict=True)
+    claim_quote: str | None = Field(default=None, min_length=1, max_length=3000)
 
     @field_validator("requirement")
     @classmethod

@@ -30,7 +30,10 @@ class FinancialReviewGateway(LocalFixtureModelGateway):
             if self.rounds == 1 or self.keep_blocking:
                 return json.dumps({"blocked": True, "request_allowed": True, "complete": True,
                     "missing_points": [], "financial_language_safe": True,
-                    "blocking_issues": [{"section_id": "spending", "requirement": "State that recorded coverage is incomplete."}],
+                    "blocking_issues": [{"section_id": "spending", "requirement": "State that recorded coverage is incomplete.",
+                        **({"claim_quote": payload["draft_answer"][next(s['start'] for s in payload['review_sections'] if s['section_id'] == 'spending'):
+                              next(s['end'] for s in payload['review_sections'] if s['section_id'] == 'spending')]}
+                           if self.category == "factual_qualification" else {})}],
                     "block_categories": [self.category], "policy_notes": ["Coverage needs qualification."],
                     "summary": "Correction required.", "rationale": ["Recorded totals are not complete household spending."], "confidence": 1})
         return super().generate(**kwargs)

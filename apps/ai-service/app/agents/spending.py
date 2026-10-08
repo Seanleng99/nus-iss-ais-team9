@@ -170,7 +170,6 @@ class SpendingAgent(BaseAgent):
         """Let the current question determine depth and presentation."""
         return json.dumps({
             "user_request": sanitized_message,
-            "analysis_results": grounding,
             "instruction": (
                 "Answer the user's current question directly. Match the requested depth and format; "
                 "a simple total needs a brief answer, while a comparison can explain the relevant "

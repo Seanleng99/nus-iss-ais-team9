@@ -49,6 +49,13 @@ and recorded expense context. Capability options retain their required fields an
 the model cannot grant itself a new provider, broaden fields or make the optional edge required.
 Role-scoped Budget income classification also excludes independent Goal arithmetic and Spending.
 
+After the second 8 October retest, the router also receives the saved capacity source and
+month, and Budget's planner receives a compact description of available capacity and limits.
+An offered Spending capability remains optional: the semantic planner may reject an
+unnecessary `requires_spending` hint when a confirmed allocation supplies the assigned
+capacity calculation. Requested actual-versus-plan reconciliation still consumes Spending.
+See [the follow-on recovery changes](orchestration-post-retest-recovery.md).
+
 This is semantic intent classification, not a guaranteed graph encoded in natural-language wording.
 Routing may select additional specialists. An exact parallel result requires no relevant dependency
 edges and overlapping ready-task execution, not simply a multi-agent result list.

@@ -1,5 +1,11 @@
 # Recovery fixes following the 8 October reasoning tests
 
+The subsequent [retest after 0287740](agent-reasoning-live-test-results-2026-10-08-post0287740.md)
+found five further contract/context gaps. See [the follow-on recovery changes](orchestration-post-retest-recovery.md)
+for current-message reference provenance, capacity availability, composition consistency,
+component repair forecasts and protected claim edits. The checks and live observations
+below describe the preceding change set.
+
 The [live run](agent-reasoning-live-test-results-2026-10-08.md) passed 28 of 34 turns.
 Five answers were withheld; case 7 produced correct figures but a different valid
 conditional graph. The [diagnosis](agent-reasoning-live-root-causes-2026-10-08.md)

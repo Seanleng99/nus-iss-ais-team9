@@ -40,7 +40,16 @@ def test_six_sparse_dated_records_reach_writer_with_history_and_selected_month_t
     assert evidence["months_analyzed"] == 6 and evidence["data_quality"] == "limited"
     assert evidence["temporal_patterns"] == []
     payload = json.loads(agent._model_message(task, task.sanitized_message, evidence))
-    assert payload["analysis_results"]["analysis_coverage"]["dated_record_count"] == 6
+    assert "analysis_results" not in payload  # Evidence is supplied once in the outer grounding contract.
+    class Gateway(LocalFixtureModelGateway):
+        grounding = None
+        def generate(self, **kwargs):
+            self.grounding = json.loads(kwargs["user_prompt"])["grounding"]
+            return super().generate(**kwargs)
+    agent.gateway = gateway = Gateway()
+    agent.run_task(task)
+    assert gateway.grounding["analysis_coverage"]["dated_record_count"] == 6
+    assert gateway.grounding["selected_month_coverage"] == evidence["selected_month_coverage"]
     assert "not that dates are missing" in payload["instruction"]
     assert "do not establish a recurring habit" in payload["instruction"]
 

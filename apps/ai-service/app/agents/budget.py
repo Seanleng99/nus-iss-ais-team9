@@ -175,6 +175,19 @@ class BudgetAgent(BaseAgent):
             )
         return options
 
+    def _dependency_input_context(self, task: AgentTask) -> dict:
+        saved = task.input_data.get("saved_budget_capacity", {})
+        planning = task.input_data.get("planning_context", {})
+        periods = saved.get("periods", []) if saved.get("source") == "period_plans" else [saved]
+        return {
+            "capacity_source": saved.get("source", "unavailable"),
+            "capacity_periods": [{key: row[key] for key in ("period_start", "source") if key in row}
+                                 for row in periods if row],
+            "confirmed_allocation_available": saved.get("source") == "confirmed_plan",
+            "saved_limits_available": bool(planning.get("selected_budget") or planning.get("scoped_budgets")),
+            "provides_goal_capacity": bool(task.context_features.get("goal_capacity_required")),
+        }
+
     def _missing_input_questions(self, task: AgentTask) -> list[str]:
         if task.input_data.get("planning_context", {}).get("scope_unclear"):
             return ["Specify the requested month and year or an unambiguous range."]

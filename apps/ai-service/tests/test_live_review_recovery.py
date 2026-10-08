@@ -250,7 +250,8 @@ def test_composition_correction_receives_original_draft_and_verified_financial_f
                     self.calls.append(kwargs)
                     return json.dumps({"blocked": True, "request_allowed": True, "complete": True,
                         "missing_points": [], "financial_language_safe": True,
-                        "blocking_issues": [{"section_id": "draft", "requirement": "Qualify recorded coverage without inferring household completeness."}],
+                        "blocking_issues": [{"section_id": "draft", "requirement": "Qualify recorded coverage without inferring household completeness.",
+                                             "claim_quote": payload["draft_answer"]}],
                         "block_categories": ["factual_qualification"], "policy_notes": ["The aggregate needs qualification."],
                         "summary": "Correction required.", "rationale": ["Incomplete record coverage."], "confidence": 1})
             return super().generate(**kwargs)
