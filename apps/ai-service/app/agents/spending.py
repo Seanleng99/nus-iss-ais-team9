@@ -17,6 +17,7 @@ from app.core.schemas import (
     UserFinancialSnapshot,
 )
 from app.core.telemetry import trace_method
+from app.tools.recurring_forecast import ledger_forecast
 from app.tools.spending_analyzer import analyze_spending_patterns
 
 
@@ -25,16 +26,15 @@ class SpendingAgent(BaseAgent):
     prompt_id = "agent_spending"
     dependency_planning_enabled = True
 
-    def _missing_input_questions(self, task):
-        if task.input_data.get("transaction_context", {}).get("scope_unclear"):
-            return ["Specify the requested month and year or an unambiguous range."]
-        return []
-
     def run_task(self, task):
         if task.context_features.get("spending_capture") and inspect_prompt(
             task.sanitized_message
         ).allowed:
             draft = extract_spending_draft(self, task)
+            if draft.is_spending_request and draft.action == "forecast":
+                task.context_features["read_only_forecast"] = draft.model_dump(mode="json")
+                task.context_features["spending_capture"] = False
+                return super().run_task(task)
             if draft.is_spending_request:
                 return CompletedInvocation(
                     result=AgentResult(
@@ -61,6 +61,16 @@ class SpendingAgent(BaseAgent):
 
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
+        if task.context_features.get("read_only_forecast"):
+            draft = task.context_features["read_only_forecast"]
+            snapshot = UserFinancialSnapshot.model_validate(task.input_data)
+            scoped = snapshot.transaction_context.get("budget_spending_scope")
+            return {"spending_draft": draft, "recurring_forecast": ledger_forecast(
+                snapshot.recurring_expenses, draft, task.context_features.get("forecast_periods", [])),
+                "recorded_payments": scoped["category_totals"] if scoped else self._compute_category_totals(snapshot.recent_transactions),
+                "recorded_payment_scope": scoped["scope"] if scoped else snapshot.period_start,
+                "records_complete": False,
+                "caveat": "Recorded rows and projected calendar occurrences are distinct; neither proves full expense coverage."}
         del sanitized_message
         snapshot = UserFinancialSnapshot.model_validate(task.input_data)
         scoped = snapshot.transaction_context.get("budget_spending_scope")
@@ -168,6 +178,14 @@ class SpendingAgent(BaseAgent):
     
     def _model_message(self, task: AgentTask, sanitized_message: str, grounding: dict) -> str:
         """Let the current question determine depth and presentation."""
+        if "recurring_forecast" in grounding:
+            return json.dumps({"user_request": sanitized_message,
+                "instruction": "Explain the supplied ledger forecast and its conditional calendar dates. "
+                    "Keep projected occurrences distinct from recorded_payments, which cover only recorded_payment_scope. "
+                    "Unknown cadence and excluded currencies are not zero bills. This evidence covers supplied ledger schedules; "
+                    "the backend separately verifies workspace schedules and settlements for its final forecast. "
+                    "Do not claim complete household costs, that a projected bill is paid, or any record change. "
+                    "Answer the requested forecast-versus-payment explanation as well as the supported amounts."})
         return json.dumps({
             "user_request": sanitized_message,
             "instruction": (
@@ -254,6 +272,15 @@ class SpendingAgent(BaseAgent):
         return result
 
     def _missing_input_questions(self, task):
+        forecast = task.context_features.get("read_only_forecast") or {}
+        if forecast.get("questions"):
+            return forecast["questions"][:4]
+        if bool(forecast.get("query_start")) != bool(forecast.get("query_end")):
+            return ["Specify both dates for the requested forecast range."]
+        if forecast.get("query_start") and forecast.get("query_end"):
+            start, end = date.fromisoformat(forecast["query_start"]), date.fromisoformat(forecast["query_end"])
+            if end < start or (end - start).days > 3660:
+                return ["Choose an ordered forecast range of at most 3660 days."]
         if task.input_data.get("transaction_context", {}).get("scope_unclear"):
             return ["Specify the requested month and year or an unambiguous range."]
         return []
@@ -276,6 +303,8 @@ class SpendingAgent(BaseAgent):
         grounding: dict,
         result: AgentResult,
     ) -> list[CapabilityResult]:
+        if "recurring_forecast" in grounding:
+            return []  # Future occurrences never provide recorded category totals.
         return [
             CapabilityResult(
                 capability=CapabilityName.TRANSACTION_CATEGORY_TOTALS,

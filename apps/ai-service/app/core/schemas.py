@@ -273,6 +273,7 @@ class AgentTask(StrictContractModel):
     _education_grounding_snapshot: Any = PrivateAttr(default=None)
     _budget_requires_income: bool | None = PrivateAttr(default=None)
     _goal_requires_capacity: bool | None = PrivateAttr(default=None)
+    _goal_mode: str | None = PrivateAttr(default=None)
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     agent: AgentName
     sanitized_message: str
@@ -287,7 +288,7 @@ class AgentTask(StrictContractModel):
     @model_validator(mode="after")
     def validate_role_scope(self):
         allowed_fields = {
-            AgentName.SPENDING: {"recent_transactions", "historical_transactions", "period_start", "transaction_context"},
+            AgentName.SPENDING: {"recent_transactions", "historical_transactions", "recurring_expenses", "period_start", "transaction_context"},
             AgentName.BUDGET: {"monthly_income", "recurring_expenses", "period_start", "planning_context", "saved_budget_capacity"},
             AgentName.GOAL_STRATEGY: {"goals", "emergency_fund"},
             AgentName.INVESTMENT_EDUCATION: {"risk_tolerance"},
@@ -434,6 +435,24 @@ class TaskAssignment(StrictContractModel):
     requires_income: bool | None = None
     requires_capacity: bool | None = None
     education_topics: list[str] = Field(default_factory=list, max_length=12)
+    operation: Literal["analysis", "reconciliation", "forecast", "record_read", "planning", "record_change"] | None = None
+    goal_mode: Literal["standard", "emergency_reserve"] | None = None
+
+    @model_validator(mode="after")
+    def validate_operation_scope(self):
+        operations = {
+            AgentName.SPENDING: {"analysis", "forecast", "record_read", "record_change"},
+            AgentName.BUDGET: {"analysis", "reconciliation", "record_read", "planning", "record_change"},
+            AgentName.GOAL_STRATEGY: {"analysis", "planning", "record_read", "record_change"},
+            AgentName.INVESTMENT_EDUCATION: {"analysis"},
+        }
+        if self.operation is not None and self.operation not in operations.get(self.agent, set()):
+            raise ValueError("Task operation is outside its specialist scope")
+        if self.operation == "reconciliation" and self.requires_spending is False:
+            raise ValueError("Reconciliation consumes recorded category totals")
+        if self.goal_mode is not None and self.agent != AgentName.GOAL_STRATEGY:
+            raise ValueError("goal_mode belongs to Goal Strategy")
+        return self
 
 
 class RouterDecision(BaseModel):
@@ -577,6 +596,7 @@ class ScopedEducationComplianceDecision(ComplianceDecision):
     financial_language_safe: bool = Field(default=False, strict=True)
     blocking_issues: list[EducationReviewIssue] = Field(default_factory=list, max_length=6)
     _repairable: bool = PrivateAttr(default=False)
+    _repair_blockers: list[str] = PrivateAttr(default_factory=list)
 
     @property
     def repairable(self) -> bool:

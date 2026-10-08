@@ -68,12 +68,15 @@ FLAGS = {
     "spending_capture",
     "answer_complete",
     "repairable",
+    "request_allowed",
+    "financial_language_safe",
     "composition_usage_complete",
     "requires_spending",
     "requires_income",
     "requires_capacity",
 }
 CODES = {
+    "estimate_basis",
     "source",
     "category",
     "agent",
@@ -193,7 +196,11 @@ def safe_details(details, *, decision=False):
                 {"agent": item["agent"], **{
                     flag: item[flag] for flag in ("requires_spending", "requires_income", "requires_capacity")
                     if type(item.get(flag)) is bool
-                }} for item in value[:4] if isinstance(item, dict)
+                }, **{field: item[field] for field, allowed in (
+                    ("operation", {"analysis", "reconciliation", "forecast", "record_read", "planning", "record_change"}),
+                    ("goal_mode", {"standard", "emergency_reserve"}))
+                    if isinstance(item.get(field), str) and item[field] in allowed}
+                } for item in value[:4] if isinstance(item, dict)
                 and item.get("agent") in {"spending", "budget", "goal_strategy", "investment_education"}
             ]
             continue

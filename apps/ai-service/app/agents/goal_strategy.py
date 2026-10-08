@@ -2,6 +2,7 @@ import json
 import math
 import re
 from collections.abc import Sequence
+from typing import Literal
 
 from coach_i18n import translate
 from pydantic import BaseModel, ConfigDict, StrictBool
@@ -29,6 +30,7 @@ from app.tools.registry import call_tool
 class GoalInputRequirements(BaseModel):
     model_config = ConfigDict(extra="forbid")
     requires_capacity: StrictBool
+    goal_mode: Literal["standard", "emergency_reserve"] = "standard"
 
 
 class GoalStrategyAgent(BaseAgent):
@@ -102,8 +104,31 @@ class GoalStrategyAgent(BaseAgent):
     def _emergency_fund_request(self, task: AgentTask) -> bool:
         return (
             "emergency_fund" in task.input_data
+            or task._goal_mode == "emergency_reserve"
+            or (task.context_features.get("task_assignment") or {}).get("goal_mode") == "emergency_reserve"
             or "emergency fund readiness" in (task.context_features.get("education_topics", []))
         )
+
+    def _resolve_requirements(self, task: AgentTask) -> None:
+        assignment = task.context_features.get("task_assignment") or {}
+        if task._goal_mode is not None:
+            return
+        if assignment.get("goal_mode") is not None or self._emergency_fund_request(task):
+            task._goal_mode = assignment.get("goal_mode") or "emergency_reserve"
+            return
+        if task.context_features.get("goal_capture") or self._illustrative_goal(task):
+            task._goal_mode = "standard"
+            return
+        # An omitted topic is not proof that reserve evidence is unnecessary.
+        # Classify the owned question once, without keyword routing overrides.
+        decision = generate_structured_response(self.gateway, response_type=GoalInputRequirements,
+            system_prompt=self.prompts.get("goal_input_requirements"),
+            user_prompt=json.dumps({"message": task.sanitized_message,
+                "follow_up": task.context_features.get("follow_up", {})}, ensure_ascii=False),
+            temperature=self.temperature, max_tokens=self.max_tokens)
+        task._goal_mode = decision.goal_mode
+        if task._goal_requires_capacity is None:
+            task._goal_requires_capacity = decision.requires_capacity
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         goals = task.input_data.get("goals", [])
@@ -176,6 +201,7 @@ class GoalStrategyAgent(BaseAgent):
         assignment = task.context_features.get("task_assignment") or {}
         if type(assignment.get("requires_capacity")) is bool:
             task._goal_requires_capacity = assignment["requires_capacity"]
+        self._resolve_requirements(task)
         if task.context_features.get("goal_capture") or self._illustrative_goal(task) or self._emergency_fund_request(task):
             return False
         # Archived catalogues retain their original broad saved-goal policy.

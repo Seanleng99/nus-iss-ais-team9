@@ -1,5 +1,11 @@
 # Recovery after the second 8 October live retest
 
+The subsequent [retest after dae539d](agent-reasoning-live-test-results-2026-10-08-postdae539d.md)
+exposed further read-only routing and recovery gaps. See [the third-retest recovery changes](orchestration-read-only-recovery.md)
+for semantic operations, reserve context, forecast evidence, Education composition
+authority and independent correction eligibility. The observations and verification
+counts below describe the preceding change set.
+
 The [live retest after 0287740](agent-reasoning-live-test-results-2026-10-08-post0287740.md)
 completed 34 original turns: 29 passed the current conditional acceptance criteria.
 Cases 5, 17, 19, 20 and 25 failed; additional full-chain case 35 also failed.

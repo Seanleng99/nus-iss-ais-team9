@@ -350,7 +350,9 @@ class LocalFixtureModelGateway:
             return json.dumps({"requires_income": personal_calculation or personal and not conceptual})
         if prompt_id == "PROMPT_ID: goal_input_requirements":
             from app.models.dependency_fixture import fixture_goal_requires_capacity
-            return json.dumps({"requires_capacity": fixture_goal_requires_capacity(payload)})
+            return json.dumps({"requires_capacity": fixture_goal_requires_capacity(payload),
+                "goal_mode": "emergency_reserve" if "emergency fund readiness" in education_topics(
+                    str(payload["message"])) else "standard"})
         if prompt_id == "PROMPT_ID: spending_capture":
             from app.models.recurring_fixture import apply_recurring_terms
             from app.models.spending_fixture import fixture_spending_draft
@@ -562,7 +564,8 @@ class LocalFixtureModelGateway:
                 and any(word in str(payload["message"]).lower()
                         for word in ("realistic", "category-level", "propose spending limits", "check my budget plan", "50/30/20", "80/20", "zero-based", "savings first", "custom percentages", "scenario", "what if", "compare", "review", "pace", "adjustment", "funded alternatives", "multi-month", "carry forward", "rollover", "periodic"))
             ),
-            "budget_capture": bool(record_request) or budget_reply or (
+            "budget_capture": bool(record_request) or budget_reply or ("budget" in selected and bool(re.search(
+                input_pattern("ai.orchestrator.decision_budget_capture"), message_text, re.IGNORECASE))) or (
                 "budget" in str(payload["message"]).lower()
                 and any(word in str(payload["message"]).lower().split()
                         for word in ("set", "save", "add", "update", "record", "change"))
@@ -719,7 +722,11 @@ class LocalFixtureModelGateway:
     def _specialist(prompt_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         grounding = payload.get("grounding", {})
         if prompt_id.endswith("spending"):
-            summary = LocalFixtureModelGateway._spending_summary(payload, grounding)
+            if grounding.get("recurring_forecast"):
+                forecast = grounding["recurring_forecast"]
+                summary = f"The supplied ledger schedules project SGD {forecast['total']:.2f} across {forecast['occurrence_count']} occurrences. " + forecast["caveat"]
+            else:
+                summary = LocalFixtureModelGateway._spending_summary(payload, grounding)
         elif prompt_id.endswith("budget"):
             if grounding.get("calculation_status") == "recurring_terms_unconfirmed":
                 return {"summary": grounding["questions"][0], "rationale": ["Recurring terms are unconfirmed."], "confidence": 1.0}

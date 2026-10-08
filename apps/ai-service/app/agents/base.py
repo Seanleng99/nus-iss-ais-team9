@@ -1,11 +1,13 @@
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from copy import deepcopy
 
 from coach_i18n import task_language, translate
 
 from app.agents.education_access import education_gap_message
 from app.core.citations import citation_contract, compact_evidence, validate_citations
+from app.core.education_grounding import EducationGroundingSnapshot
 from app.core.financial_grounding import FinancialGroundingSnapshot
 from app.core.guardrails import inspect_prompt, require_explanation
 from app.core.narrative_corrections import specialist_correction_ranges, validate_text_corrections
@@ -107,7 +109,10 @@ class BaseAgent(ABC):
             grounding,
         )
         system_prompt = self.prompts.get(self.prompt_id)
-        if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot):
+        if task.context_features.get("missing_points") and (
+            isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot)
+            or isinstance(task._education_grounding_snapshot, EducationGroundingSnapshot)
+        ):
             system_prompt += ("\nCorrect only the independently identified defects in missing_points. "
                               "Use the unchanged server grounding. Preserve amounts, periods, sources and "
                               "qualifications; do not fill missing facts, add advice or invent records. "
@@ -264,7 +269,16 @@ class BaseAgent(ABC):
                 validate_citations(text, narrative_sources)
             # Contract correction precedes output safety review. Do not attach
             # generated uncertainties or citation selections to public data yet.
-            return self._validate_narrative(narrative, dict(grounding))
+            validated = self._validate_narrative(narrative, deepcopy(grounding))
+            if isinstance(task._education_grounding_snapshot, EducationGroundingSnapshot):
+                original = task.context_features.get("original_summary", "")
+                ranges = specialist_correction_ranges(task.context_features.get("review_corrections", []), original)
+                # Review offsets refer to the rendered answer, including source
+                # labels and ordered options, rather than one narrative field.
+                if ranges:
+                    corrected = self._format_summary(validated.model_copy(deep=True), deepcopy(grounding))
+                    validate_text_corrections(original, corrected, ranges)
+            return validated
 
         response_language = task_language(task)
         if response_language in {"English", "Chinese"}:
@@ -419,6 +433,7 @@ class BaseAgent(ABC):
             ),
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            validate_response=lambda plan: self._validate_dependency_plan(task, plan),
         )
         if plan.status == "ready":
             return None
@@ -460,6 +475,9 @@ class BaseAgent(ABC):
     def _dependency_input_context(self, task: AgentTask) -> dict:
         """Expose owned input availability, not private records, to the planner."""
         return {}
+
+    def _validate_dependency_plan(self, task, plan):
+        return plan
 
     def _capabilities(
         self,

@@ -55,8 +55,8 @@ def test_typed_qualification_repair_preserves_initial_financial_veto(categories)
     assert result.blocked
     assert result.data["financial_language_safe"] is False
     assert "response_withheld" in result.policy_notes
-    assert result.data["repairable"] is False
-    assert result.data["missing_points"] == []
+    assert result.data["repairable"] is True
+    assert result.data["missing_points"] == gateway.verdict["missing_points"]
     assert result.data["blocking_issues"][0]["requirement"] == gateway.verdict["missing_points"][0]
     assert result.data["review_block_categories"] == categories
 

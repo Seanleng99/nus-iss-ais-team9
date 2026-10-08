@@ -1,5 +1,10 @@
 # Recovery fixes following the 8 October reasoning tests
 
+The latest [third-retest recovery changes](orchestration-read-only-recovery.md)
+separate original draft safety from correction eligibility, extend composition
+authority to sealed Education evidence, and add grounded read-only forecasts.
+The historical descriptions and verification counts below predate those updates.
+
 The subsequent [retest after 0287740](agent-reasoning-live-test-results-2026-10-08-post0287740.md)
 found five further contract/context gaps. See [the follow-on recovery changes](orchestration-post-retest-recovery.md)
 for current-message reference provenance, capacity availability, composition consistency,

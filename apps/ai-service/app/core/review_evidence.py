@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 from app.core.citations import compact_evidence
+from app.core.education_grounding import EducationGroundingSnapshot
 from app.core.financial_grounding import FinancialGroundingSnapshot, fingerprint
 from app.models.gateway import ModelGatewayError
 
@@ -18,6 +19,8 @@ def financial_review_evidence(result):
 
 
 def review_evidence(result, presentation_fields):
+    if isinstance(result._education_grounding_snapshot, EducationGroundingSnapshot):
+        result._education_grounding_snapshot.for_review(result.data)
     financial = financial_review_evidence(result)
     data = financial if financial is not None else {
         key: result.data[key] for key in presentation_fields if key in result.data
@@ -27,9 +30,16 @@ def review_evidence(result, presentation_fields):
     return compact_evidence(data)
 
 
-def financial_evidence_refs(results):
-    return {
+def grounding_evidence_refs(results):
+    refs = {
         f"{result.agent.value}.{key}": result.agent.value
         for result in results
         for key in (financial_review_evidence(result) or {})
     }
+    for result in results:
+        if isinstance(result._education_grounding_snapshot, EducationGroundingSnapshot):
+            grounding = result._education_grounding_snapshot.for_review(result.data)
+            refs.update({f"{result.agent.value}.{key}": result.agent.value
+                         for key in ("contexts", "sources", "subquestion_coverage", "coverage_assessment",
+                                     "fallback_topics", "excluded_topics") if key in grounding})
+    return refs

@@ -35,6 +35,10 @@ class BudgetAgent(BaseAgent):
     dependency_planning_enabled = True
 
     def run_task(self, task: AgentTask):
+        operation = (task.context_features.get("task_assignment") or {}).get("operation")
+        if operation in {"analysis", "reconciliation"}:
+            task.context_features["budget_capture"] = False
+            task.context_features["budget_planning"] = False
         if task.context_features.get("income_memory_reply") and inspect_prompt(task.sanitized_message).allowed:
             # Created by the orchestrator from owned context; compliance recomputes
             # the entire reply from the original request before permitting release.
@@ -154,7 +158,7 @@ class BudgetAgent(BaseAgent):
     def _dependency_options(self, task: AgentTask) -> list[DependencyRequestDraft]:
         options: list[DependencyRequestDraft] = []
         if (
-            self._has_spending_context(task)
+            (self._has_spending_context(task) or self._reconciliation(task))
             and (not task.context_features.get("task_assignment")
                  or task.context_features["task_assignment"].get("requires_spending") is not False)
             and CapabilityName.TRANSACTION_CATEGORY_TOTALS
@@ -166,7 +170,7 @@ class BudgetAgent(BaseAgent):
                     capability=CapabilityName.TRANSACTION_CATEGORY_TOTALS,
                     reason_code="BUDGET_CONTEXT_REQUIRES_SPENDING_TOTALS",
                     required_output_fields=["category_totals", "transaction_count"],
-                    required=False,
+                    required=self._reconciliation(task),
                     selection_guidance="Use recorded expense totals only for Budget's own calculation or assessment. "
                         "Separate independent Spending analysis and Goal contribution arithmetic do not "
                         "require this dependency. Historical totals may inform a month without records; "
@@ -174,6 +178,19 @@ class BudgetAgent(BaseAgent):
                 )
             )
         return options
+
+    @staticmethod
+    def _reconciliation(task):
+        return (task.context_features.get("task_assignment") or {}).get("operation") == "reconciliation"
+
+    def _validate_dependency_plan(self, task, plan):
+        if (self._reconciliation(task) and plan.status == "ready"
+                and CapabilityName.TRANSACTION_CATEGORY_TOTALS not in task.resolved_dependencies):
+            from app.models.gateway import ModelGatewayError
+            raise ModelGatewayError("The assigned reconciliation consumes recorded category totals. "
+                "Request transaction_category_totals before declaring this task ready.",
+                code="INVALID_STRUCTURED_RESPONSE", component="dependency_planner")
+        return plan
 
     def _dependency_input_context(self, task: AgentTask) -> dict:
         saved = task.input_data.get("saved_budget_capacity", {})

@@ -176,7 +176,7 @@ def test_conditional_release_request_preserves_baseline_with_backend_catalog() -
 
 @pytest.mark.parametrize("agent,message,fields,capture_field", [
     ("budget", "Set my budget food limit to SGD 600 and explain diversification.",
-     {"budget_capture": False}, "budget_capture"),
+     {"budget_capture": True}, "budget_capture"),
     ("budget", "Propose my monthly budget and explain diversification.",
      {"budget_planning": True}, "budget_capture"),
     ("goal_strategy", "Create my home savings goal and explain diversification.",

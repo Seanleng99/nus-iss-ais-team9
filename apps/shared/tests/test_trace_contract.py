@@ -81,3 +81,22 @@ def test_review_metadata_rejects_malformed_reference_lists(refs):
     issue = {"issue_id": "review_1", "section_id": "budget", "owner": "budget", "action": "qualify",
              "requirement_hash": "a" * 64, "evidence_refs": refs}
     assert safe_details({"review_issues": [issue]})["review_issues"][0]["evidence_refs"] == []
+
+
+def test_recovery_diagnostics_and_task_modes_survive_storage_without_prose():
+    metadata = {"request_allowed": True, "financial_language_safe": False,
+        "repair_blockers": ["REVIEW_CATEGORY_NOT_CORRECTABLE"], "estimate_basis": "planned_prompt_byte_bound",
+        "task_assignments": [{"agent": "budget", "operation": "reconciliation", "question": "PRIVATE"},
+                             {"agent": "goal_strategy", "goal_mode": "emergency_reserve", "source_quotes": ["PRIVATE"]}]}
+    trace_id = str(uuid4())
+    safe = safe_event(make_event("compliance.completed", trace_id, details=metadata), trace_id)["details"]
+    assert safe == safe_details(safe) and "PRIVATE" not in str(safe)
+    assert safe["request_allowed"] and not safe["financial_language_safe"]
+    assert safe["task_assignments"][0]["operation"] == "reconciliation"
+    assert safe["task_assignments"][1]["goal_mode"] == "emergency_reserve"
+
+
+@pytest.mark.parametrize("malformed", [["analysis"], {"private": "text"}, True, None])
+def test_task_modes_reject_malformed_values_without_exposing_or_crashing(malformed):
+    details = {"task_assignments": [{"agent": "budget", "operation": malformed, "goal_mode": malformed}]}
+    assert safe_details(details) == {"task_assignments": [{"agent": "budget"}]}

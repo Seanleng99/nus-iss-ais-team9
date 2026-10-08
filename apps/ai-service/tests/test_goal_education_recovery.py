@@ -232,7 +232,8 @@ def test_combined_repair_preserves_calculations_and_evidence_within_configured_b
     assert "budget capacity" not in writers[0]["message"]
     assert "Limit uncertainties to this education evidence" in writers[0]["message"]
     assert "Retain the source risk and return qualifications." in writers[1]["message"]
-    assert sum(call["total_tokens"] for call in response.audit["model_calls"]) == 47379
+    # The omitted Goal mode requires one metered input-classification call.
+    assert sum(call["total_tokens"] for call in response.audit["model_calls"]) == 47489
     decision = next(event["details"] for event in response.audit["events"]
                     if event["event_type"] == "education.completeness.repair_decision")
     assert decision["reason_code"] == "REPAIR_ELIGIBLE" and decision["repair_blockers"] == []

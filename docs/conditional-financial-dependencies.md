@@ -56,6 +56,15 @@ unnecessary `requires_spending` hint when a confirmed allocation supplies the as
 capacity calculation. Requested actual-versus-plan reconciliation still consumes Spending.
 See [the follow-on recovery changes](orchestration-post-retest-recovery.md).
 
+After the third 8 October retest, a typed `operation=reconciliation` distinguishes
+actual-versus-limit reasoning from Budget planning and record commands. This operation
+offers the existing Spending totals capability as required, and a readiness decision
+without consuming it fails bounded contract validation. `requires_spending=false`
+contradicts reconciliation and is rejected. Other operations retain optional Spending
+selection, including capacity arithmetic supported by a confirmed allocation.
+The model selects the semantic operation; the server verifies its consequences rather
+than recognizing test prompt phrases. See [read-only routing and recovery](orchestration-read-only-recovery.md).
+
 This is semantic intent classification, not a guaranteed graph encoded in natural-language wording.
 Routing may select additional specialists. An exact parallel result requires no relevant dependency
 edges and overlapping ready-task execution, not simply a multi-agent result list.

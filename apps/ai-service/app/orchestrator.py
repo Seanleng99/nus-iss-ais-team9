@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from coach_i18n import input_pattern, localize_reviewed, request_locale, translate
 from coach_i18n import response_language as request_language
+from coach_math.budget_scope import BudgetScope, resolve_budget_periods
 from coach_math.calendar import financial_today
 from coach_trace import SCHEMA_VERSION
 from coach_trace import safe_details as trace_details
@@ -498,6 +499,10 @@ class AgentOrchestrator:
                        for item in value.task_assignments for topic in item.education_topics):
                     raise ModelGatewayError("Task education_topics must use supplied canonical labels.",
                                             code="UNAPPROVED_EDUCATION_TOPIC", component="router")
+                for assignment in value.task_assignments:
+                    if assignment.goal_mode == "emergency_reserve" and "emergency fund readiness" not in assignment.education_topics:
+                        raise ModelGatewayError("An emergency_reserve task requires its emergency fund readiness "
+                            "education topic and recorded expense context.", code="INVALID_STRUCTURED_RESPONSE", component="router")
                 # Only exact governed aliases can turn a public account/scam
                 # concept into its corpus term. Unrecognized account wording
                 # retains the privacy screen; this never rewrites arbitrary
@@ -583,11 +588,16 @@ class AgentOrchestrator:
                     "or user replies supplying details for pending_budget. Capture all categories. "
                     "Set budget_planning=true for requests to build a realistic/category-level/monthly "
                     "plan, propose spending limits, select/change a budgeting method, compare budget methods "
-                    "or what-if scenarios, review recorded spending against a budget, assess month-end pace, "
+                    "or what-if scenarios, assess month-end pace, "
                     "plan multiple months, carry forward budget limits, configure periodic budget reviews, find funded alternatives respecting protected commitments and goal/debt funding, suggest budget adjustments from actual spending, or check a proposed plan against income and savings. "
                     "Planning requires budget_capture=true and budget. General explanations of rules "
                     "alone are not planning requests. A pending draft does "
                     "not make an unrelated new question a budget-setting request."
+                    "\nRead-only reconciliation of recorded category spending against existing limits "
+                    "is operation=reconciliation, with requires_spending=true and both budget_capture "
+                    "and budget_planning=false. It uses the normal Budget dependency planner, including "
+                    "when its assessment is consumed by Goal. Reading an existing plan for reasoning "
+                    "does not propose new limits or change the plan."
                     "\nSaved budget lookup/listing, comparison of saved months, yearly summaries, "
                     "category removal, budget deletion and multi-month edits require budget_capture=true "
                     "and budget, even without income. These use the budget specialist's records command. "
@@ -695,7 +705,7 @@ class AgentOrchestrator:
             decision.selected_agents.append(AgentName.GOAL_STRATEGY)
         checkpoint("GOAL_CAPTURE_REQUIRES_SPECIALIST")
         # Pending drafts are backend-owned context, never public client confirmation.
-        if requested_agents and AgentName.BUDGET in requested_agents and re.search(
+        if routing_mode != "model" and requested_agents and AgentName.BUDGET in requested_agents and re.search(
             r"\b(realistic|category-level|50/30/20|80/20|zero-based|savings first|custom percentages|what.if|compare.*budget|budget.*scenario|review.*budget|budget.*review|month.end pace|budget.*adjustment|funded alternatives|multi.month|carry.forward|rollover|periodic.*review)\b", state["sanitized_message"], re.IGNORECASE
         ):
             decision.budget_planning = True
@@ -709,7 +719,7 @@ class AgentOrchestrator:
         if decision.budget_status_query and AgentName.BUDGET not in decision.selected_agents:
             decision.selected_agents.append(AgentName.BUDGET)
         checkpoint("BUDGET_STATUS_REQUIRES_SPECIALIST")
-        if requested_agents and AgentName.BUDGET in requested_agents:
+        if routing_mode != "model" and requested_agents and AgentName.BUDGET in requested_agents:
             decision.budget_capture = decision.budget_capture or bool(re.search(
                 input_pattern("ai.orchestrator.decision_budget_capture"),
                 state["sanitized_message"], re.IGNORECASE,
@@ -718,6 +728,17 @@ class AgentOrchestrator:
         if decision.budget_capacity_query and not decision.budget_planning:
             decision.budget_capture = False
         checkpoint("BUDGET_CAPACITY_READ_ONLY")
+        budget_assignment = next((item for item in decision.task_assignments if item.agent == AgentName.BUDGET), None)
+        if budget_assignment and budget_assignment.operation in {"analysis", "reconciliation"}:
+            decision.budget_capture = False
+            decision.budget_planning = False
+        checkpoint("READ_ONLY_BUDGET_TASK")
+        spending_assignment = next((item for item in decision.task_assignments if item.agent == AgentName.SPENDING), None)
+        if spending_assignment and spending_assignment.operation == "forecast":
+            # Forecast intent is semantic; the capture flag only selects the
+            # existing read-only query extractor and never authorizes a write.
+            decision.spending_capture = True
+        checkpoint("SPENDING_FORECAST_EXTRACTION")
         # The semantic router distinguishes record/lookup workflows from
         # analysis. Expense words inside an explanation never add capture.
         if request.session_context.last_stated_fields and not spending_capture_request(state["sanitized_message"]):
@@ -899,6 +920,12 @@ class AgentOrchestrator:
             token = task_context.set({"task_id": goal_task.task_id, "attempt": goal_task.attempt})
             try:
                 goal_capacity_required = goal_agent._requires_capacity(goal_task)
+                if goal_agent._emergency_fund_request(goal_task):
+                    if "emergency_fund" not in goal_task.input_data:
+                        goal_task.input_data["emergency_fund"] = call_tool(
+                            AgentName.GOAL_STRATEGY, "emergency_fund_summary", state["request"].snapshot)
+                    goal_task.context_features["education_topics"] = list(dict.fromkeys([
+                        *goal_task.context_features.get("education_topics", []), "emergency fund readiness"]))
             finally:
                 task_context.reset(token)
             events.append(self._event(state, "task.capacity_requirement.evaluated", goal_task.agent.value,
@@ -1112,9 +1139,10 @@ class AgentOrchestrator:
             for task in ready
         )
         if capture_resolved:
+            operation = "forecast" if any(task.context_features.get("read_only_forecast") for task in ready) else "analysis"
             events.append(self._event(state, "spending.operation.resolved", "spending",
-                details={"operation": "analysis", "spending_capture": False,
-                         "reason_code": "SPENDING_ANALYSIS_RESOLVED"}))
+                details={"operation": operation, "spending_capture": False,
+                         "reason_code": "SPENDING_FORECAST_RESOLVED" if operation == "forecast" else "SPENDING_ANALYSIS_RESOLVED"}))
 
         return {
             "tasks": tasks,
@@ -1739,17 +1767,12 @@ class AgentOrchestrator:
         }
 
     @trace_method
-    def _synthesize(self, state: OrchestratorState) -> OrchestratorState:
+    def _synthesize(self, state: OrchestratorState, *, plan_only=False) -> OrchestratorState:
         sources = self._collect_source_citations(state["agent_results"])
-        events = [
-            *state.get("audit_events", []),
-            self._event(
-                state,
-                "synthesis.started",
-                "synthesizer",
-                details={"agent_result_count": len(state["agent_results"])},
-            ),
-        ]
+        events = list(state.get("audit_events", []))
+        if not plan_only:
+            events.append(self._event(state, "synthesis.started", "synthesizer",
+                details={"agent_result_count": len(state["agent_results"])}))
         payload = {
             "message": state["sanitized_message"],
             "message_position": state["request"].message_position or 1,
@@ -1811,6 +1834,13 @@ class AgentOrchestrator:
             "using specialist evidence; omit unrelated dependency analyses."
         )
         synthesis_prompt += citation_contract(sources)
+        if plan_only:
+            policy = self.config.model_policy("synthesizer", self.config.model_max_tokens)
+            # Conservatively bound first-call input by UTF-8 bytes, including
+            # message/contract overhead. This is a forecast, never fake usage.
+            return {"planned_call": {"input_tokens": len(synthesis_prompt.encode("utf-8"))
+                    + len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) + 1500,
+                    "max_output_tokens": policy.max_tokens}}
 
         def validate_synthesis(synthesis: SynthesisDecision) -> SynthesisDecision:
             validate_text_corrections(state.get("draft_answer", ""), synthesis.answer,
@@ -1950,6 +1980,9 @@ class AgentOrchestrator:
                     "review_block_categories": review.data.get("review_block_categories", []),
                     "answer_complete": review.data.get("answer_complete"),
                     "repairable": review.data.get("repairable"),
+                    "repair_blockers": review.data.get("repair_blockers", []),
+                    "request_allowed": review.data.get("request_allowed"),
+                    "financial_language_safe": review.data.get("financial_language_safe"),
                     "review_issues": review.data.get("review_issues", []),
                     "policy_note_count": len(review.policy_notes),
                     "policy_source_count": len(review.data.get("policy_sources", [])),
@@ -2057,7 +2090,18 @@ class AgentOrchestrator:
                 task.attempt = 1
                 task.context_features["missing_points"] = result.data["missing_points"]
                 task.context_features["original_summary"] = education_result.summary
-                task.context_features["review_corrections"] = result.data.get("blocking_issues", [])
+                corrections = []
+                for issue in result.data.get("blocking_issues", []):
+                    correction = dict(issue)
+                    if education_result.summary in state["draft_answer"] and issue.get("claim_start") is not None:
+                        offset = state["draft_answer"].index(education_result.summary)
+                        correction.update(
+                            original_claim=state["draft_answer"][issue["claim_start"]:issue["claim_end"]],
+                            summary_claim_start=issue["claim_start"] - offset,
+                            summary_claim_end=issue["claim_end"] - offset,
+                        )
+                    corrections.append(correction)
+                task.context_features["review_corrections"] = corrections
                 events.append(self._event(
                     state, "education.completeness.repair", AgentName.INVESTMENT_EDUCATION.value,
                     details={"attempt": 1, "reason_code": "INCOMPLETE_ANSWER"},
@@ -2117,7 +2161,19 @@ class AgentOrchestrator:
         required = {"agent_" + target for target in specialist_targets} | {"risk_compliance"}
         if "draft" in targets or not self._can_preserve_specialist_answers(state) and len(owners) > 1:
             required.add("synthesizer")
-        estimates = financial_repair_estimates(calls, required, issues)
+        planned_calls = {}
+        corrections = [{**issue, "original_claim": state["draft_answer"][issue["claim_start"]:issue["claim_end"]]
+                        if issue.get("claim_start") is not None and issue.get("claim_end") is not None else ""}
+                       for issue in issues]
+        draft_feedback = {"synthesis_feedback": [issue["requirement"] for issue in issues if issue["section_id"] == "draft"],
+                          "synthesis_corrections": [issue for issue in corrections if issue["section_id"] == "draft"]}
+        if issues and all(issue.get("claim_start") is not None and issue.get("claim_end") is not None for issue in issues):
+            draft_feedback["draft_correction_ranges"] = [(issue["claim_start"], issue["claim_end"]) for issue in issues]
+        if "synthesizer" in required and not any(call.get("component") == "synthesizer"
+                and call.get("status") == "completed" for call in calls):
+            planned_state = {**state, **draft_feedback}
+            planned_calls["synthesizer"] = self._synthesize(planned_state, plan_only=True)["planned_call"]
+        estimates = financial_repair_estimates(calls, required, issues, planned_calls=planned_calls)
         estimated = sum(item["estimated_repair_tokens"] for item in estimates)
         for item in estimates:
             events.append(self._event(state, "financial.review.repair_estimate", "orchestrator", details=item))
@@ -2128,7 +2184,8 @@ class AgentOrchestrator:
             ("REPAIR_VERDICT_NOT_REPAIRABLE", review.data.get("repairable") is True),
             ("REPAIR_REQUEST_NOT_ALLOWED", review.data.get("request_allowed") is True),
             ("REPAIR_CAPTURE_WORKFLOW", not any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
-                and not any(any(key in item.data for key in ("budget_draft", "goal_draft", "spending_draft"))
+                and not any("budget_draft" in item.data or "goal_draft" in item.data
+                    or "spending_draft" in item.data and item.data["spending_draft"].get("action") not in {"forecast", "query"}
                             for item in owners.values())),
             ("REPAIR_SPECIALIST_BLOCKED", all(not item.blocked for item in owners.values())),
             ("REPAIR_NEEDS_INPUT", all(not item.data.get("needs_input") for item in owners.values())),
@@ -2156,9 +2213,6 @@ class AgentOrchestrator:
         updated = {}
         try:
             tasks = {key: task.model_copy(deep=True) for key, task in state["tasks"].items()}
-            corrections = [{**issue, "original_claim": state["draft_answer"][issue["claim_start"]:issue["claim_end"]]
-                            if issue.get("claim_start") is not None and issue.get("claim_end") is not None else ""}
-                           for issue in issues]
             for issue in corrections:
                 original = owners.get(issue.get("owner") or issue["section_id"])
                 if original is not None and original.summary in state["draft_answer"] and issue.get("claim_start") is not None:
@@ -2188,10 +2242,7 @@ class AgentOrchestrator:
                     task.context_features["original_summary"] = original.summary
             repair_state = {**state, "tasks": tasks, "audit_events": events}
             if "draft" in targets:
-                repair_state["synthesis_feedback"] = [issue["requirement"] for issue in issues if issue["section_id"] == "draft"]
-                repair_state["synthesis_corrections"] = [issue for issue in corrections if issue["section_id"] == "draft"]
-                if all(issue.get("claim_start") is not None and issue.get("claim_end") is not None for issue in issues):
-                    repair_state["draft_correction_ranges"] = [(issue["claim_start"], issue["claim_end"]) for issue in issues]
+                repair_state.update(draft_feedback)
             updated.update(self._run_ready_tasks(repair_state))
             repair_state.update(updated)
             updated.update(self._synthesize(repair_state))
@@ -2205,6 +2256,7 @@ class AgentOrchestrator:
                                       details={"review_round": 2, "blocked": corrected.blocked,
                                                "answer_complete": corrected.data.get("answer_complete"),
                                                "repairable": corrected.data.get("repairable"),
+                                               "repair_blockers": corrected.data.get("repair_blockers", []),
                                                "review_issues": corrected.data.get("review_issues", []),
                                                "review_block_categories": corrected.data.get("review_block_categories", [])}))
             return {**updated, "compliance_result": corrected, "audit_events": events}
@@ -2422,6 +2474,8 @@ class AgentOrchestrator:
                 ],
                 "period_start": snapshot.period_start,
                 "transaction_context": snapshot.transaction_context,
+                **({"recurring_expenses": [item.model_dump(mode="json") for item in snapshot.recurring_expenses]}
+                   if state.get("spending_capture") or (assignment or {}).get("operation") == "forecast" else {}),
             }
         elif agent == AgentName.BUDGET:
             input_data = {
@@ -2468,6 +2522,9 @@ class AgentOrchestrator:
             context_features={
                 "conditional_dependencies": True,
                 "task_assignment": assignment,
+                "forecast_periods": [str(period) for period in resolve_budget_periods(
+                    BudgetScope.model_validate(state["turn_decision"]["spending_scope"]))]
+                    if agent == AgentName.SPENDING and (state.get("turn_decision", {}).get("spending_scope") or {}).get("kind") in {"periods", "range"} else [],
                 "response_locale": request_locale(state["request"]),
                 "coaching_preferences": coaching_preferences(snapshot.preferences),
                 "turn_observations": specialist_context(SessionContext(

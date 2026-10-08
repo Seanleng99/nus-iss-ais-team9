@@ -7,6 +7,7 @@ from coach_i18n import input_pattern, request_locale, translate
 from coach_i18n import response_language as request_language
 
 from app.core.citations import citation_contract, compact_evidence, validate_citations
+from app.core.education_grounding import EducationGroundingSnapshot
 from app.core.guardrails import (
     ADVISORY_DISCLAIMER,
     PII_PATTERNS,
@@ -19,7 +20,7 @@ from app.core.guardrails import (
 from app.core.income_memory import verified_income_memory_reply
 from app.core.prompts import PromptCatalog
 from app.core.review_diagnostics import save_review_diagnostic
-from app.core.review_evidence import financial_evidence_refs, review_evidence
+from app.core.review_evidence import grounding_evidence_refs, review_evidence
 from app.core.review_sections import draft_review_sections
 from app.core.schemas import (
     AgentName,
@@ -802,10 +803,12 @@ class RiskComplianceAgent:
 
         review_sections = draft_review_sections(draft_answer, decision.sanitized_text, results)
         sections_by_id = {section["section_id"]: section for section in review_sections}
-        evidence_refs = financial_evidence_refs(results)
+        evidence_refs = grounding_evidence_refs(results)
         financial_owners = {result.agent.value for result in results
                             if result._financial_grounding_snapshot is not None}
-        financial_draft = bool(results) and all(result.agent.value in financial_owners for result in results)
+        grounded_owners = financial_owners | {result.agent.value for result in results
+            if isinstance(result._education_grounding_snapshot, EducationGroundingSnapshot)}
+        grounded_draft = bool(results) and all(result.agent.value in grounded_owners for result in results)
 
         def validate_review(review: ComplianceDecision) -> ComplianceDecision:
             for text in (review.summary, *review.rationale, *review.policy_notes):
@@ -839,7 +842,7 @@ class RiskComplianceAgent:
                         issue.category is None and bool(set(review.block_categories) & qualification_categories)
                     )
                     if (review.blocked and qualification_issue and issue.action != "complete" and (
-                        section["agent"] in financial_owners or issue.section_id == "draft" and financial_draft
+                        section["agent"] in financial_owners or issue.section_id == "draft" and grounded_draft
                     ) and (issue.claim_start is None or issue.claim_end is None)):
                         raise ModelGatewayError("Locate each financial claim correction with a unique exact claim_quote or valid claim_start/claim_end. Do not request a whole-answer rewrite.",
                                                 code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance")
@@ -860,24 +863,30 @@ class RiskComplianceAgent:
                 claim_correction = bool(claim_issues) and all(
                     issue.action in {"ground_claim", "remove_claim"}
                     and issue.claim_start is not None and issue.claim_end is not None
-                    and (sections_by_id[issue.section_id]["agent"] in financial_owners
-                         or issue.section_id == "draft" and financial_draft)
+                    and (sections_by_id[issue.section_id]["agent"] in grounded_owners
+                         or issue.section_id == "draft" and grounded_draft)
                     and (issue.action == "remove_claim" or bool(issue.evidence_refs))
                     for issue in claim_issues
                 )
                 # This admits a correction, never the rejected draft. All
                 # blocking issues must identify an eligible owned section and
                 # remain within its attribution/qualification correction boundary.
-                review._repairable = bool(
-                    (review.blocked or not review.complete)
-                    and review.request_allowed and review.financial_language_safe
-                    and review.blocking_issues
-                    and categories <= {"citation_attribution", "factual_qualification", "unverifiable_claim"}
-                    and ("unverifiable_claim" not in categories or claim_correction)
-                    and all(sections_by_id[issue.section_id]["agent"] in financial_owners | {"investment_education"}
-                            or issue.section_id == "draft" and financial_draft
-                            for issue in review.blocking_issues)
-                )
+                # A defective draft need not already be safe to admit its correction.
+                # Request prohibitions and unsafe categories never qualify; release
+                # still requires a new independent review of the corrected draft.
+                conditions = [
+                    ("REVIEW_NO_CORRECTION_NEEDED", review.blocked or not review.complete),
+                    ("REVIEW_REQUEST_NOT_ALLOWED", review.request_allowed),
+                    ("REVIEW_NO_OWNED_ISSUES", bool(review.blocking_issues)),
+                    ("REVIEW_CATEGORY_NOT_CORRECTABLE", categories <= {
+                        "citation_attribution", "factual_qualification", "unverifiable_claim"}),
+                    ("REVIEW_CLAIM_NOT_LOCATED_OR_GROUNDED", "unverifiable_claim" not in categories or claim_correction),
+                    ("REVIEW_SECTION_NOT_OWNED", all(
+                        sections_by_id[issue.section_id]["agent"] in grounded_owners | {"investment_education"}
+                        or issue.section_id == "draft" and grounded_draft for issue in review.blocking_issues)),
+                ]
+                review._repair_blockers = [code for code, passed in conditions if not passed]
+                review._repairable = not review._repair_blockers
             return review
 
         review, review_error = self._review(
@@ -1174,6 +1183,12 @@ class RiskComplianceAgent:
                 review.repairable and review.request_allowed and output_allows_repair
                 and len(compliance_data["blocking_issues"]) == len(review.blocking_issues)
             )
+            compliance_data["repair_blockers"] = [
+                *review._repair_blockers,
+                *([] if output_allows_repair else ["REVIEW_OUTPUT_UNSAFE"]),
+                *([] if len(compliance_data["blocking_issues"]) == len(review.blocking_issues)
+                  else ["REVIEW_CORRECTION_INSTRUCTION_UNSAFE"]),
+            ]
             correction_points = review.missing_points
             if isinstance(review, ScopedEducationComplianceDecision) and review.repairable:
                 correction_points = list(dict.fromkeys([

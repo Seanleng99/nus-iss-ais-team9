@@ -80,6 +80,13 @@ class EducationGroundingSnapshot:
                 code="INVALID_EDUCATION_REPAIR_CONTEXT", component="investment_education",
             )
 
+    def for_review(self, original_data: dict) -> dict:
+        if (_fingerprint(self.grounding) != self.grounding_fingerprint
+                or _authority_fingerprint(original_data) != self.authority_fingerprint):
+            raise ModelGatewayError("Education review authority changed.",
+                                    code="INVALID_EDUCATION_REPAIR_CONTEXT", component="investment_education")
+        return deepcopy(self.grounding)
+
     def for_repair(self, task: AgentTask, *, sanitized_message: str, prompt_version: str, prompt_content_hash: str, expected_corpus_version: str | None) -> dict:
         self._validate(task)
         if (

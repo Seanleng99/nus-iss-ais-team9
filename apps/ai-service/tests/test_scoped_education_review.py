@@ -102,11 +102,16 @@ def test_complete_education_qualification_defect_derives_repair_without_a_model_
 @pytest.mark.parametrize("options", [
     {"section": "budget"}, {"section": "draft"},
     {"section": "request", "categories": ["prohibited_request"], "allowed": False},
-    {"categories": ["return_guarantee"]}, {"safe": False},
+    {"categories": ["return_guarantee"]},
 ])
 def test_financial_unowned_prohibited_or_unsafe_issues_never_admit_education_repair(options):
     result, _ = review([verdict(**options)])
     assert result.blocked and not result.data["repairable"]
+
+
+def test_qualification_can_enter_correction_while_the_original_draft_remains_unsafe():
+    result, _ = review([verdict(safe=False)])
+    assert result.blocked and result.data["repairable"]
 
 
 def test_mixed_financial_and_education_defects_cannot_be_reassigned_to_education():
