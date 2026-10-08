@@ -39,6 +39,12 @@ approved sources, grounded evidence and persisted retrieval provenance.
 
 The five Agent workflows execute their owned offline tests; CI runs the remaining AI tests and the conversational contracts separately. `Project OWASP Security Scan` is reusable from CI and adds committed Promptfoo security cases across all agents and the router. Its backend/frontend companion test runs have been removed because the service CI jobs already execute those tests. Both the required Agent gate and the OWASP scan must pass before CI builds release containers. See [agent test ownership](agent-test-workflows.md) and [security scan coverage](project-security-scan.md).
 
+The frontend test job installs only the frontend and shared packages. The shared
+package declares Pydantic as a runtime dependency because trace sanitization uses
+the shared calendar-scope models. A frontend regression renders routing decisions
+with budget and spending scopes, including nested before/after values, so a missing
+dependency fails CI instead of first failing in the deployed Decision traces page.
+
 `Budget Live Acceptance` remains an optional manual check of nine focused deployed-model cases and multi-turn confirmation behaviour. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory

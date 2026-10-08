@@ -142,6 +142,35 @@ def test_complete_trace_renders_decisions_timeline_and_dependencies():
     assert not test.exception
 
 
+def test_calendar_scoped_routing_decisions_render_in_frontend_runtime():
+    trace = deepcopy(TRACE)
+    trace["audit"]["durable_events"].append({
+        "event_type": "routing.override_applied",
+        "actor": "orchestrator",
+        "details": {
+            "before": {
+                "budget_scope": {"kind": "default"},
+                "spending_scope": {"kind": "default"},
+            },
+            "after": {
+                "budget_scope": {"kind": "periods", "periods": ["2026-10-01"]},
+                "spending_scope": {
+                    "kind": "range", "start": "2026-09-01", "end": "2026-10-01",
+                },
+                "rationale": "PRIVATE ROUTING PROSE",
+            },
+        },
+    })
+    test = page(TraceClient(trace))
+    assert not test.exception
+    decisions = test.dataframe[0].value
+    assert decisions.iloc[0]["Decision"] == "Routing · override applied"
+    assert '"periods": ["2026-10-01"]' in decisions.iloc[0]["After"]
+    assert '"start": "2026-09-01"' in decisions.iloc[0]["After"]
+    assert "PRIVATE ROUTING PROSE" not in str(test)
+    assert len(test.get("graphviz_chart")) == 1
+
+
 def test_failed_run_reconstructs_unfinished_model_calls():
     trace = deepcopy(TRACE)
     trace.update(status="timed_out", error_code="AI_SERVICE_TIMEOUT", assistant_message_id=None)

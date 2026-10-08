@@ -7,6 +7,9 @@ name = "coach-i18n"
 version = "0.1.0"
 description = "Shared language selection and reviewed translations for Coach services"
 requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7,<3",
+]
 
 [tool.setuptools.packages.find]
 include = ["coach_i18n*", "coach_math*", "coach_trace*"]
