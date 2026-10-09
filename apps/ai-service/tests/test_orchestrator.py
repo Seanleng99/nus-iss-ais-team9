@@ -296,7 +296,7 @@ def test_investment_education_reports_an_explicit_evidence_gap() -> None:
         education_retriever=EmptyEducationRetriever(),
     ).handle(request)
 
-    assert "approved knowledge base does not contain enough information" in response.answer
+    assert "retrieved approved material does not establish all requested parts" in response.answer
 
 
 def test_coach_response_exposes_investment_source_citations() -> None:

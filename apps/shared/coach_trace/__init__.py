@@ -58,6 +58,7 @@ COUNTS = {
     "source_quote_count",
 }
 FLAGS = {
+    "partial_answer",
     "blocked",
     "allowed",
     "cache_hit",
@@ -341,6 +342,8 @@ def make_event(event_type, trace_id, *, actor=None, details=None, **context):
 
 # Explicit semantic allowlist: routine method/HTTP logs do not flood the audit store.
 SEMANTIC_EVENTS = {
+    "claim.correction.decision", "claim.correction.unavailable",
+    "answer.partial.review_decision", "answer.partial.unavailable",
     "synthesis.strategy",
     "model.response.parsed",
     "model.contract.validated",

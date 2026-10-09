@@ -63,6 +63,13 @@ requirement. Permissions, safety categories, evidence references and independent
 review after correction remain mandatory. Repair admission forecasts elapsed
 provider time as well as consumed calls and tokens, without extending deadlines.
 
+Validated local defects use a replacement-only model call and server splicing,
+including app-generated headings, followed by independent review. If correction
+fails, a paragraph-reduced candidate can be released only after a separate full
+review within the remaining budget; it is marked incomplete and clears stored
+option referents. Whole-answer/completeness recovery retains its owning-writer
+paths. See [local claim recovery](orchestration-local-claim-recovery-2026-10-09.md).
+
 Spending carries observed first/last dates for each historical month separately
 from its calendar boundaries and never treats those dates as proof of complete
 coverage. The authenticated backend's forecast outcome includes the distinction

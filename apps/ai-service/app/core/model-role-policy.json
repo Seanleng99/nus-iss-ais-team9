@@ -50,5 +50,9 @@
   "action_grounding_review": {
     "reasoning_effort": "low",
     "max_tokens": 1600
+  },
+  "answer_correction": {
+    "reasoning_effort": "low",
+    "max_tokens": 1200
   }
 }

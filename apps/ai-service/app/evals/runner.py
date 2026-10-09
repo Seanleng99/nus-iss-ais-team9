@@ -6,7 +6,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Any
 
-from coach_i18n import load_data
+from coach_i18n import load_data, translate
 
 from app.core.citations import render_citations
 from app.core.config import Settings
@@ -101,7 +101,7 @@ def _matches_expected(response, expected: dict) -> bool:
         data = _agent_data(response, "investment_education")
         checks.append(
             data.get("evidence_status") == "insufficient"
-            and "approved knowledge base does not contain enough information" in response.answer
+            and translate("education.insufficient_evidence", response.audit.get("response_locale")) in response.answer
         )
     if "response_language" in expected:
         data = _agent_data(response, "investment_education")

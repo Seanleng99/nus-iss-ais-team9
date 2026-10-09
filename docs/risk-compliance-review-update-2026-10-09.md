@@ -1,5 +1,10 @@
 # Risk & Compliance review update — 9 October 2026
 
+The subsequent [local claim recovery](orchestration-local-claim-recovery-2026-10-09.md)
+addresses correction and partial-review failures found in the deployed v10 retest,
+and fixes backend sanitization of safe review metadata. The scope and verification
+counts below describe the original Risk & Compliance update.
+
 Permitted requests previously received the same generic verification message
 whether a generated claim needed qualification or the reviewer failed its own
 contract. Blocked results discarded useful reason metadata, and the viewer hid

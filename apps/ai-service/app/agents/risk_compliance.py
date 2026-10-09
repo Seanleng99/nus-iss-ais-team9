@@ -967,6 +967,9 @@ class RiskComplianceAgent:
                         "preserve the requested grounded answer; an unknown required fact remains unavailable. "
                     )
                     + "Judge CURRENT request separately from draft safety. "
+                    "Spending trend direction uses exact monetary movement: stable means equal rounded amounts, "
+                    "not a change below a significance threshold. Check each stated increase/decrease/unchanged "
+                    "claim against current_amount and previous_amount, including small changes. "
                     "Return block_categories from: prohibited_request, personal_advice, "
                     "return_guarantee, privacy, injection, citation_attribution, "
                     "factual_qualification, unverifiable_claim. A blocked verdict or "

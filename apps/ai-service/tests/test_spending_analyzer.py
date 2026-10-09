@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from app.tools.spending_analyzer import (
     analyze_spending_patterns,
     compute_category_trends,
@@ -31,15 +33,29 @@ class TestCategoryTrends:
         assert trends[0].direction == "increased"
         assert trends[0].significance == "high"
     
-    def test_category_trend_stable(self):
-        """Verify <5% change marked as stable."""
+    def test_small_category_change_retains_exact_direction(self):
+        """A low-significance change is not equality."""
         current = [{"category": "transport", "amount": {"amount": 102.0}}]
         previous = [{"category": "transport", "amount": {"amount": 100.0}}]
         
         trends = compute_category_trends(current, previous)
         
         assert trends[0].change_percent == 2.0
-        assert trends[0].direction == "stable"
+        assert trends[0].direction == "increased"
+        assert trends[0].significance == "low"
+
+    @pytest.mark.parametrize("current,previous,direction", [
+        (660, 680, "decreased"),
+        (680, 660, "increased"),
+        (660, 660, "stable"),
+        (660.001, 660.002, "stable"),
+    ])
+    def test_direction_matches_rounded_monetary_values(self, current, previous, direction):
+        trends = compute_category_trends(
+            [{"category": "food", "amount": {"amount": current}}],
+            [{"category": "food", "amount": {"amount": previous}}],
+        )
+        assert trends[0].direction == direction
         assert trends[0].significance == "low"
     
     def test_category_trend_zero_previous(self):

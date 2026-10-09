@@ -84,7 +84,7 @@ def route_state(message, agents=None, *, locale="en"):
         ),
         (
             "Explain diversification.",
-            "The approved knowledge base does not contain enough information to answer this question.",
+            "The retrieved approved material does not establish all requested parts. Supported portions can still be explained.",
             "No relevant approved source was retrieved.",
         ),
     ],
@@ -93,7 +93,7 @@ def test_evidence_gap_message_is_localized_without_generation(message, summary, 
     agent = InvestmentEducationAgent(
         NoGenerationGateway(), PromptCatalog(), 0.35, 800, EmptyEducationRetriever(),
     )
-    grounding = {"response_language": "English" if summary.startswith("The approved") else "Chinese",
+    grounding = {"response_language": "English" if message == "Explain diversification." else "Chinese",
                  "evidence_status": "insufficient", "sources": [], "contexts": [], "unanswered_topics": []}
     outcome = CompletedInvocation(result=agent._evidence_gap_result(grounding))
     assert isinstance(outcome, CompletedInvocation)

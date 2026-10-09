@@ -379,6 +379,13 @@ class LocalFixtureModelGateway:
             return json.dumps(decision)
         if prompt_id == "PROMPT_ID: dependency_planner":
             return json.dumps(self._dependency_plan(payload))
+        if prompt_id == "PROMPT_ID: answer_correction":
+            # Offline fixture only. Production replacements are model decisions
+            # constrained by the supplied schema and independently reviewed.
+            return json.dumps({"replacements": [
+                {"issue_id": issue["issue_id"], "replacement": "" if issue.get("action") == "remove_claim"
+                 else issue["original_claim"] + " " + issue["requirement"]}
+                for issue in payload["issues"]]})
         if prompt_id.startswith("PROMPT_ID: agent_"):
             return json.dumps(self._specialist(prompt_id, payload))
         if prompt_id == "PROMPT_ID: synthesizer":

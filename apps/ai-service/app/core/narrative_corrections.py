@@ -13,6 +13,7 @@ def validate_text_corrections(original: str, corrected: str, ranges: list[tuple[
             raise ModelGatewayError(
                 "Correct only the identified claim ranges; preserve all text outside them exactly.",
                 code="INVALID_STRUCTURED_RESPONSE", component="financial_narrative_repair",
+                validation_reason="CORRECTION_OUTSIDE_RANGE",
             )
 
 

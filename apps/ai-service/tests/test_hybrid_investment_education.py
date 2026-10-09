@@ -348,7 +348,7 @@ def test_blank_summary_and_no_general_sections_is_a_safe_abstention():
     response = workflow(gateway, FixedRetriever([source()])).handle(request("Explain ETFs."))
     result = response.agent_results[0]
     assert result.data["cited_source_ids"] == []
-    assert "approved knowledge base does not contain enough information" in response.answer
+    assert "retrieved approved material does not establish all requested parts" in response.answer
 
 
 @pytest.mark.parametrize("bad_text", [

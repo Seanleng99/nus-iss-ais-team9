@@ -4,12 +4,14 @@ import json
 from math import ceil
 
 
-def repair_time_estimate(calls: list[dict], required: set[str]) -> float:
-    """Reserve a writer/reviewer pass and their bounded contract corrections.
+def repair_time_estimate(calls: list[dict], required: set[str], *, attempts: int = 2) -> float:
+    """Forecast passes without changing the gateway's enforced resource limits.
 
     Use observed provider latency, including rejected contract responses. This
     is admission forecasting, not a new deadline or a guarantee about latency.
     An unseen role uses the slowest observed call in the same workflow.
+    Local replacements reserve one pass; optional writer retries must fit before
+    reserved review time. Legacy full regeneration retains two-pass forecasting.
     """
     durations = {}
     for call in calls:
@@ -18,7 +20,7 @@ def repair_time_estimate(calls: list[dict], required: set[str]) -> float:
             component = call.get("component")
             durations[component] = max(durations.get(component, 0), duration / 1000)
     fallback = max(durations.values(), default=0)
-    return 2 * sum(durations.get(component, fallback) for component in required)
+    return attempts * sum(durations.get(component, fallback) for component in required)
 
 
 def financial_repair_estimates(calls: list[dict], required: set[str], feedback: object, *, planned_calls=None) -> list[dict]:

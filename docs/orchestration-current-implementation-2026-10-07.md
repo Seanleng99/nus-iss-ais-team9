@@ -1,6 +1,6 @@
 # Current orchestration implementation
 
-This explanation follows the single packaged current source contract, now labelled **v10**, including the 8 October recovery changes and the [9 October Risk & Compliance update](risk-compliance-review-update-2026-10-09.md). The [latest recorded live retest](agent-reasoning-live-test-results-2026-10-08-poste99409d.md) used v9 and trace-reported build `e99409d143444a28fe42b1a1431a90a607be4244`: 27 of 34 original turns passed and additional case 35 passed. It predates the v10 Compliance changes. The [reasoning prompt catalogue](agent-reasoning-test-prompts-2026-10-07.md) retains the synthetic profile and original prompts. Live acceptance has not passed. See [read-only recovery](orchestration-read-only-recovery.md), [the preceding fixes](orchestration-review-recovery.md), and [conditional financial dependencies](conditional-financial-dependencies.md).
+This explanation follows the single packaged current source contract, labelled **v10**, including the [Risk & Compliance update](risk-compliance-review-update-2026-10-09.md) and [local claim recovery](orchestration-local-claim-recovery-2026-10-09.md). The [latest recorded live retest](agent-reasoning-live-test-results-2026-10-09.md) passed 28 of 34 original turns, failed additional case 35 and passed four of seven repeats. Its 42 turns matched financial specialist selection and dependency edges, but answer acceptance has not passed. That run predates local claim recovery. The [reasoning prompt catalogue](agent-reasoning-test-prompts-2026-10-07.md) retains the synthetic profile and original prompts. See [read-only recovery](orchestration-read-only-recovery.md), [the preceding fixes](orchestration-review-recovery.md), and [conditional financial dependencies](conditional-financial-dependencies.md).
 
 ## What the application demonstrates
 
@@ -35,7 +35,7 @@ flowchart TD
     Synth --> Review[Independent Risk and Compliance review]
     Review --> Final[Finalize reviewed response]
     Review -. Eligible correction .-> Repair[One bounded correction using unchanged grounding]
-    Repair -. Recompose and review again .-> Review
+    Repair -. Apply replacement or recompose; review again .-> Review
 ```
 
 The graph is implemented with LangGraph in `app/orchestrator.py`. Ready tasks run through a `ThreadPoolExecutor`. Parallel execution is therefore real task concurrency, subject to configured worker capacity; listing several agents in the response alone does not prove it happened.
@@ -126,9 +126,9 @@ Retrying an execution is different from correcting its answer. It does not suppl
 
 Repairable means an allowed answer contains a bounded defect that the system can attempt to correct safely with its existing verified grounding.
 
-The current contract retains Education correction and owned financial correction. The reviewer locates qualification and attribution defects with exact claim quotes or valid offsets; the server verifies ownership and protects unaffected text. Unverifiable financial embellishments require a located removal or grounding action using existing owned evidence; the category alone grants no repair. Prohibited advice remains ineligible. Mixed owned financial/Education defects can receive one coordinated correction, followed by full independent review. Education alone cannot repair another specialist's defect. Admission forecasts affected calls with growth allowances; actual token, call and deadline limits remain enforced.
+The reviewer locates qualification and attribution defects with exact claim quotes or valid offsets; the server verifies ownership and protects unaffected text. For local defects, a model correction role returns only replacements keyed to supplied issues; the server splices them into the original answer and updates presentation metadata. This includes app-generated headings without changing canonical topics or option numbers. Sealed financial/source authority remains fixed. The corrected full answer receives another independent review. Whole-answer/completeness issues retain the bounded owning-writer or composition paths. Unverifiable embellishments require a located removal or grounding action using existing owned evidence; the category alone grants no repair. Prohibited advice remains ineligible.
 
-The orchestrator checks request permissibility, missing points, the relevant specialist, grounding availability, financial-language constraints, input needs and remaining call/token/time budgets. Correction reuses the original task inputs and grounding instead of requesting new financial authority. A prohibited request, unresolved financial input or changed grounding is not cured by this loop. A rejected second review remains withheld. A narrowly resolved conversational clarification has its own checked exception. Opt-in redacted rejected-draft diagnostics are operator-only files outside public traces.
+The orchestrator checks request permissibility, the relevant specialist, grounding availability, safety categories, input needs and remaining call/token/time budgets. Local admission forecasts one correction/review pass, reserves reviewer time and allows an optional contract retry only inside the writer's remaining window. A rejected correction can produce one paragraph-reduced candidate with a visible partial-answer notice, but that candidate requires its own full independent review and budget. It records incomplete status and clears stored option referents. Otherwise the response remains withheld. A prohibited request, unresolved required input or changed grounding is not cured by recovery. A narrowly resolved conversational clarification has its own checked exception. Opt-in redacted rejected-draft diagnostics remain operator-only files outside public traces.
 
 This addresses another rigidity problem: an allowed explanation that omitted a comparison or needed a source attribution correction need not become a blanket refusal. It also introduces significant cost and control complexity. A successful final response alone does not prove repair occurred; the trace must contain the repair decision and second review.
 
@@ -207,6 +207,7 @@ The concepts were introduced to address different failure modes; they are not al
 - `apps/ai-service/app/rag/answerability.py`: public subquestions, passage support and coverage contracts.
 - `apps/ai-service/app/core/education_grounding.py`: verified grounding snapshot.
 - `apps/ai-service/app/core/financial_grounding.py`: private unchanged financial grounding for correction.
+- `apps/ai-service/app/core/claim_corrections.py`: replacement contracts, server splicing and presentation range updates.
 - `apps/ai-service/app/evals/orchestration_acceptance.py`: repeated model evaluation, graph/period/fact checks and mandatory content review.
 - `apps/ai-service/app/core/follow_up.py`: bounded read-only reference resolution.
 - `apps/ai-service/prompts/current/prompts.json`: conditional financial requirements and domain routing/answer/review/composer instructions; the adjacent manifest records v10 and the Education review contracts are retained.

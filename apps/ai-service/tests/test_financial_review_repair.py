@@ -20,6 +20,10 @@ class FinancialReviewGateway(LocalFixtureModelGateway):
     def generate(self, **kwargs):
         role = kwargs["system_prompt"].splitlines()[0]
         payload = json.loads(kwargs["user_prompt"])
+        if role == "PROMPT_ID: answer_correction":
+            return json.dumps({"replacements": [{"issue_id": i["issue_id"],
+                "replacement": "Recorded food spending is SGD 50; household coverage is incomplete."}
+                for i in payload["issues"]]})
         if role == "PROMPT_ID: agent_spending":
             self.writes.append(payload)
             return json.dumps({"summary": ("Your entire household spent SGD 50 on food."

@@ -121,7 +121,7 @@ def test_mixed_spending_education_repairs_only_affected_owners_and_preserves_sec
             message="Analyze recorded October spending; independently explain diversification.",
             snapshot={"period_start": "2026-10-01", "recent_transactions": [
                 {"description": "Food", "category": "food", "amount": {"amount": 50}, "occurred_on": "2026-10-02"}]}))
-    assert not response.blocked and gateway.rounds == 2 and len(gateway.writes) == 2
+    assert not response.blocked and gateway.rounds == 2 and len(gateway.writes) == (2 if both else 1)
     assert len(calls_for(gateway, "agent_investment_education")) == (2 if both else 1)
     assert not calls_for(gateway, "synthesizer")
     assert response.audit["dependency_edges"] == []

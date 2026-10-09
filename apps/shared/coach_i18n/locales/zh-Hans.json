@@ -75,9 +75,9 @@
   "safety.withheld_rationale": "安全审查已拦截此回复。",
   "safety.unverified_narrow_question": "我还不能充分核实这次回答，所以暂时无法提供。你可以把问题缩小到一个投资概念的定义或比较，我会再尝试说明。",
   "safety.educational_disclaimer": "这属于一般金融教育，不是受监管的金融建议。有关个人投资决策，请考虑咨询持牌财务顾问。",
-  "education.insufficient_evidence": "经批准的知识库没有足够资料回答这个问题。",
+  "education.insufficient_evidence": "检索到的获批资料未能支持所问的所有部分，但仍可解释有支持的部分。",
   "education.uncovered_topics": "未覆盖的主题：{topics}。",
-  "education.outside_scope": "经批准的知识库没有足够资料回答这个问题。{topics}目前不在这个版本支持的投资教育范围内，已保存的 RAG 资料也没有相关内容。这是范围限制，并不表示你的问题不安全。我可以解释一般投资风险或分散投资。",
+  "education.outside_scope": "检索到的获批资料未能支持所问的所有部分，但仍可解释有支持的部分。{topics}目前不在这个版本支持的投资教育范围内，已保存的 RAG 资料也没有相关内容。这是范围限制，并不表示你的问题不安全。我可以解释一般投资风险或分散投资。",
   "education.topic_separator": "、",
   "privacy.other_user_data": "我不能分享他人的财务信息，例如支出、预算或目标。我只能访问你自己的资料，请询问你自己的记录。",
   "coach.title": "财务教练",
@@ -1043,5 +1043,6 @@
   "ui.trace_detail.23": "格式验证",
   "ui.trace_detail.24": "已请求修正",
   "ui.trace_detail.25": "阶段",
-  "ui.trace_detail.26": "等待提交"
+  "ui.trace_detail.26": "等待提交",
+  "education.partial_answer": "由于无法验证更正后的解释，部分所问内容已被隐藏。其余内容已接受独立安全审查。"
 }

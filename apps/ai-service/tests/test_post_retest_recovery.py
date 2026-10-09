@@ -163,10 +163,18 @@ class PreciseGateway(FinancialReviewGateway):
     def __init__(self, *, change_unaffected=False, repeated=False):
         super().__init__()
         self.change_unaffected, self.repeated = change_unaffected, repeated
+        self.corrections = []
 
     def generate(self, **kwargs):
         role = kwargs["system_prompt"].splitlines()[0]
         payload = json.loads(kwargs["user_prompt"])
+        if role == "PROMPT_ID: answer_correction":
+            self.corrections.append(payload)
+            value = {"replacements": [{"issue_id": issue["issue_id"], "replacement": "Coverage is incomplete."}
+                                       for issue in payload["issues"]]}
+            if self.change_unaffected:
+                value["summary"] = "Recorded food is SGD 40. Coverage is incomplete."
+            return json.dumps(value)
         if role == "PROMPT_ID: agent_spending":
             self.writes.append(payload)
             amount = 40 if self.change_unaffected and len(self.writes) > 1 else 50
@@ -194,10 +202,11 @@ def test_claim_quote_resolves_a_targeted_edit_and_preserves_unchanged_amounts():
     response = ask(gateway)
     assert not response.blocked and gateway.rounds == 2
     assert response.answer == "Recorded food is SGD 50. Coverage is incomplete."
-    correction = gateway.writes[1]["review_corrections"][0]
+    correction = gateway.corrections[0]["issues"][0]
     assert correction["original_claim"] == "Coverage is complete."
-    assert correction["summary_claim_start"] == len("Recorded food is SGD 50. ")
-    assert gateway.writes[0]["grounding"] == gateway.writes[1]["grounding"]
+    assert correction["claim_start"] == len("Recorded food is SGD 50. ")
+    assert gateway.writes[0]["grounding"] == gateway.corrections[0]["verified_grounding"][0]["data"]
+    assert len(gateway.writes) == 1
     assert "claim_quote" not in response.model_dump_json()
     assert "original_claim" not in response.model_dump_json()
 
@@ -206,14 +215,15 @@ def test_repair_cannot_change_an_unaffected_amount_or_release_an_unreviewed_draf
     gateway = PreciseGateway(change_unaffected=True)
     response = ask(gateway)
     assert response.blocked and gateway.rounds == 1
-    assert len(gateway.writes) == 3  # Initial writer, one correction, one contract retry.
+    assert len(gateway.writes) == 1 and len(gateway.corrections) == 2
     assert "SGD 40" not in response.answer
 
 
 def test_second_review_can_still_withhold_a_targeted_correction_without_more_rounds():
     gateway = PreciseGateway(repeated=True)
     response = ask(gateway)
-    assert response.blocked and gateway.rounds == len(gateway.writes) == 2
+    assert response.blocked and gateway.rounds == 2
+    assert len(gateway.writes) == len(gateway.corrections) == 1
 
 
 @pytest.mark.parametrize("location", ["missing", "fabricated", "mismatched_offsets"])
@@ -270,7 +280,9 @@ class MeteredGateway(PreciseGateway):
         elif role == "PROMPT_ID: agent_spending":
             if self.unknown_usage:
                 return value
-            inputs, outputs = (6000, 500) if len(self.writes) == 1 else (32000 if self.overrun else 7000, 600)
+            inputs, outputs = 6000, 500
+        elif role == "PROMPT_ID: answer_correction":
+            inputs, outputs = 32000 if self.overrun else 7000, 600
         elif role == "PROMPT_ID: risk_compliance":
             inputs, outputs = (8000, 1500) if self.rounds == 1 else (8500, 800)
         else:
@@ -290,15 +302,16 @@ def test_metered_financial_repair_preserves_admission_and_actual_hard_limits(lim
     response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="openai", MAX_MODEL_TOKENS_PER_RUN=limit),
                                  gateway=gateway).handle(
         request("Analyze October 2026 spending patterns.", ["spending"]))
-    decision = next(e["details"] for e in response.audit["events"] if e["event_type"] == "financial.review.repair_decision")
+    decision = next(e["details"] for e in response.audit["events"] if e["event_type"] == "claim.correction.decision")
     assert decision["reason_code"] == reason
     if reason == "REPAIR_ELIGIBLE" and not overrun:
-        assert not response.blocked and gateway.rounds == 2 and len(gateway.writes) == 2
+        assert not response.blocked and gateway.rounds == 2
+        assert len(gateway.writes) == len(gateway.corrections) == 1
         assert decision["used_tokens"] == 53119
         assert decision["estimated_repair_tokens"] < 26881
     else:
         assert response.blocked and gateway.rounds == 1
         assert "Coverage is incomplete" not in response.answer
     if overrun:
-        failure = next(e for e in response.audit["events"] if e["event_type"] == "financial.review.repair_unavailable")
+        failure = next(e for e in response.audit["events"] if e["event_type"] == "claim.correction.unavailable")
         assert failure["details"]["error_code"] == "MODEL_TOKEN_BUDGET_EXCEEDED"

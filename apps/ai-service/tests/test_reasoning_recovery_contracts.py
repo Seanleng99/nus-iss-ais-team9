@@ -194,6 +194,14 @@ def test_education_qualification_edits_preserve_unaffected_rendered_content(chan
         def generate(self, **kwargs):
             role = kwargs['system_prompt'].splitlines()[0]
             payload = json.loads(kwargs['user_prompt'])
+            if role == 'PROMPT_ID: answer_correction':
+                self.calls.append(kwargs)
+                value = {'replacements': [{'issue_id': issue['issue_id'],
+                                          'replacement': 'Diversification leaves market risk.'}
+                                         for issue in payload['issues']]}
+                if change_unaffected:
+                    value['summary'] = 'Holdings have changed.'
+                return json.dumps(value)
             if role == 'PROMPT_ID: agent_investment_education':
                 self.calls.append(kwargs)
                 self.writes.append(payload)
@@ -224,10 +232,12 @@ def test_education_qualification_edits_preserve_unaffected_rendered_content(chan
         CoachRequest(user_id='u', session_id='s', message='Explain diversification.', requested_agents=['investment_education']))
     assert response.blocked is change_unaffected
     assert gateway.rounds == (1 if change_unaffected else 2)
-    assert gateway.writes[1]['grounding'] == gateway.writes[0]['grounding']
-    assert gateway.writes[1]['review_corrections'][0]['original_claim'] == 'Diversification eliminates all risk.'
+    patches = [json.loads(call['user_prompt']) for call in calls(gateway, 'answer_correction')]
+    assert len(gateway.writes) == 1 and len(patches) == (2 if change_unaffected else 1)
+    assert patches[0]['verified_grounding'][0]['data']['contexts'] == gateway.writes[0]['grounding']['contexts']
+    assert patches[0]['issues'][0]['original_claim'] == 'Diversification eliminates all risk.'
     if not change_unaffected:
-        assert gateway.writes[1]['original_summary'].startswith('Holdings can be spread across assets. [source:')
+        assert patches[0]['original_answer'].startswith('Holdings can be spread across assets. [source:')
         assert response.answer.startswith('Holdings can be spread across assets. [')
         assert response.answer.endswith('Diversification leaves market risk.')
 
@@ -278,6 +288,10 @@ class EducationCompositionGateway(RecordingGateway):
                     'rationale': ['Supported explanations can be preserved.'], 'confidence': 1})
             else:
                 raw = LocalFixtureModelGateway.generate(self, **kwargs)
+        elif role == 'PROMPT_ID: answer_correction':
+            self.calls.append(kwargs)
+            raw = json.dumps({'replacements': [{'issue_id': issue['issue_id'], 'replacement': ''}
+                                               for issue in payload['issues']]})
         elif role == 'PROMPT_ID: synthesizer':
             self.calls.append(kwargs)
             original = payload['original_draft']
@@ -290,21 +304,20 @@ class EducationCompositionGateway(RecordingGateway):
 
 
 @pytest.mark.parametrize('repeat,unknown_usage', [(False, False), (True, False), (False, True)])
-def test_education_only_composition_can_plan_its_first_synthesis_but_still_requires_review_and_usage(repeat, unknown_usage):
+def test_education_only_composition_correction_still_requires_review_and_known_usage(repeat, unknown_usage):
     gateway = EducationCompositionGateway(repeat=repeat, unknown_usage=unknown_usage)
     response = AgentOrchestrator(config=Settings(MODEL_PROVIDER='openai'), gateway=gateway).handle(
         CoachRequest(user_id='u', session_id='s', message='Explain diversification.', requested_agents=['investment_education']))
     assert response.blocked is (repeat or unknown_usage)
-    decision = next(e['details'] for e in response.audit['events'] if e['event_type'] == 'financial.review.repair_decision')
+    decision = next(e['details'] for e in response.audit['events'] if e['event_type'] == 'claim.correction.decision')
     if unknown_usage:
         assert 'REPAIR_USAGE_UNAVAILABLE' in decision['repair_blockers'] and gateway.rounds == 1
     else:
-        assert decision['allowed'] and gateway.rounds == 2
-        assert len(calls(gateway, 'synthesizer')) == 1
-        estimates = [e['details'] for e in response.audit['events'] if e['event_type'] == 'financial.review.repair_estimate']
-        assert any(e['component'] == 'synthesizer' and e['estimate_basis'] == 'planned_prompt_byte_bound' for e in estimates)
-        synthesis = json.loads(calls(gateway, 'synthesizer')[0]['user_prompt'])
-        assert synthesis['verified_grounding'][0]['data']['contexts']
+        assert decision['allowed'] and gateway.rounds >= 2
+        assert len(calls(gateway, 'answer_correction')) == 1
+        assert not calls(gateway, 'synthesizer')
+        correction = json.loads(calls(gateway, 'answer_correction')[0]['user_prompt'])
+        assert correction['verified_grounding'][0]['data']['contexts']
 
 
 @pytest.mark.parametrize('agent,operation,goal_mode', [('budget', 'forecast', None), ('spending', 'reconciliation', None),

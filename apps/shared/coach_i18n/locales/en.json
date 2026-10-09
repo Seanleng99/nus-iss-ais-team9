@@ -75,9 +75,9 @@
   "safety.withheld_rationale": "The safety review blocked this response.",
   "safety.unverified_narrow_question": "I couldn't verify this answer well enough to share it. Please try a narrower investment question, such as a definition or a comparison.",
   "safety.educational_disclaimer": "This is general financial education, not regulated financial advice. Consider consulting a licensed financial adviser for personal investment decisions.",
-  "education.insufficient_evidence": "The approved knowledge base does not contain enough information to answer this question.",
+  "education.insufficient_evidence": "The retrieved approved material does not establish all requested parts. Supported portions can still be explained.",
   "education.uncovered_topics": " Uncovered topics: {topics}.",
-  "education.outside_scope": "The approved knowledge base does not contain enough information to answer this question. These topics are outside this version's supported investment education scope: {topics}. The saved RAG documents do not cover them. This is a scope limit, not an unsafe question. I can explain general investment risk or diversification.",
+  "education.outside_scope": "The retrieved approved material does not establish all requested parts. Supported portions can still be explained. These topics are outside this version's supported investment education scope: {topics}. The saved RAG documents do not cover them. This is a scope limit, not an unsafe question. I can explain general investment risk or diversification.",
   "education.topic_separator": ", ",
   "privacy.other_user_data": "I can't share another person's financial information, such as their spending, budget or goals. I can only access your own data, so please ask about your own records instead.",
   "coach.title": "Coach",
@@ -1043,5 +1043,6 @@
   "ui.trace_detail.23": "Contract",
   "ui.trace_detail.24": "Correction requested",
   "ui.trace_detail.25": "Phase",
-  "ui.trace_detail.26": "Pending commit"
+  "ui.trace_detail.26": "Pending commit",
+  "education.partial_answer": "Some requested parts are withheld because I could not verify a corrected explanation. The remaining content has received a separate safety review."
 }

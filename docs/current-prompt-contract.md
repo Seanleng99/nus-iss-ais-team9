@@ -53,11 +53,18 @@ they do not establish acceptance of the current implementation. To reproduce an 
 run, check out its exact commit with its then-current prompts, dependencies and
 evaluation protocol. New releases require fresh evaluation evidence.
 
-To update prompts, edit the current catalog, update the manifest's release label
-when instruction meaning changes, and run the current regressions and relevant
-model evaluations. Runtime code does not need a new version allowlist or branch.
+To update prompts, edit the current catalog and run the current regressions and
+relevant model evaluations. The effective content hash identifies every instruction
+change; coordinate the manifest label when naming a new release. Runtime code does
+not need a new version allowlist or branch.
 
-The v10 change removes the obsolete minimal Compliance JSON example in favor of
+The latest v10 [local claim recovery](orchestration-local-claim-recovery-2026-10-09.md)
+adds a replacement-only correction role and clarifies exact spending movement and
+per-part coverage. It keeps the release label and computes the effective content
+hash from current instructions. App, tests and deployment role configuration use
+that same catalog and policy.
+
+The original v10 change removes the obsolete minimal Compliance JSON example in favor of
 the actual supplied schema. It retains the single current catalog, routing and
 dependency behavior. The reviewed Policy corpus has its own version,
 `financial-coach-policy-sg@2026-10-09.1`; its meaning is also used by offline

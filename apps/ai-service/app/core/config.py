@@ -168,6 +168,7 @@ class Settings(BaseSettings):
             "goal_capture", "goal_input_requirements", "budget_capture", "budget_input_requirements", "spending_capture",
             "education_query_planner", "education_answerability",
             "response_composer", "action_grounding_review",
+            "answer_correction",
         }
         if set(self.model_role_overrides) - roles:
             raise ValueError("MODEL_ROLE_OVERRIDES contains an unknown model role")

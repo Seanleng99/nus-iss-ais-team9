@@ -4,6 +4,7 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from coach_i18n import SupportedLocale, normalize_locale, translate
+from coach_trace.review import review_metadata
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.telemetry import trace_method
@@ -231,6 +232,9 @@ def sanitize_blocked_agent_results(
         sanitized.append(
             blocked_agent_result(agent, notes, response_language=response_language)
         )
+        if str(agent) == AgentName.RISK_COMPLIANCE.value:
+            data = getattr(item, "data", {}) if isinstance(item, BaseModel) else item.get("data", {})
+            sanitized[-1]["data"] = review_metadata(data)
     return sanitized
 
 

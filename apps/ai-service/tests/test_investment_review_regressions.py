@@ -173,7 +173,7 @@ def test_bond_subquestions_keep_distinct_topics_and_report_missing_evidence():
     for response in (duration, zero_coupon):
         assert response.agent_results[0].data["evidence_status"] == "insufficient"
         assert response.sources == []
-        assert "approved knowledge base does not contain enough information" in response.answer
+        assert "retrieved approved material does not establish all requested parts" in response.answer
 
 
 def test_adding_investment_keyword_does_not_hide_unsupported_tax_question():
@@ -219,7 +219,7 @@ def test_mixed_question_preserves_gap_even_when_synthesizer_omits_it(force_model
     assert response.sources
     assert response.answer.startswith("Bonds are an investment type.")
     assert "tax treatment" in response.answer
-    assert "approved knowledge base does not contain enough information" in response.answer
+    assert "retrieved approved material does not establish all requested parts" in response.answer
 
 
 @pytest.mark.parametrize("question", ["Explain dollar-cost averaging.", "Explain T-bills and SSBs."])

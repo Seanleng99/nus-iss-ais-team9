@@ -60,17 +60,19 @@ def compute_category_trends(
     all_categories = set(current_totals.keys()) | set(previous_totals.keys())
 
     for category in all_categories:
-        current_amount = current_totals.get(category, 0.0)
-        previous_amount = previous_totals.get(category, 0.0)
+        current_amount = round(current_totals.get(category, 0.0), 2)
+        previous_amount = round(previous_totals.get(category, 0.0), 2)
 
         if previous_amount == 0:
             change_percent = None if current_amount > 0 else 0.0
         else:
             change_percent = ((current_amount - previous_amount) / previous_amount) * 100
 
-        if change_percent is None or change_percent > 5:
+        # Direction describes exact monetary movement, not its significance.
+        # A small decrease is still a decrease; stable means equal cents.
+        if current_amount > previous_amount:
             direction = "increased"
-        elif change_percent < -5:
+        elif current_amount < previous_amount:
             direction = "decreased"
         else:
             direction = "stable"

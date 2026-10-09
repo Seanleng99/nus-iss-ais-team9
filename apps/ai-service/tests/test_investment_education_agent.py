@@ -137,7 +137,7 @@ def test_unsupported_education_topic_returns_evidence_gap_without_retrieval() ->
     assert retriever.queries == []
     assert investment.data["evidence_status"] == "insufficient"
     assert investment.data["query_topics"] == []
-    assert "approved knowledge base does not contain enough information" in response.answer
+    assert "retrieved approved material does not establish all requested parts" in response.answer
 
 
 def test_supported_corpus_topics_are_normalized_for_retrieval() -> None:
@@ -687,7 +687,7 @@ def test_beginner_question_routes_and_answers_from_local_education_evidence() ->
     assert response.sources
     assert response.answer
     assert response.answer != (
-        "The approved knowledge base does not contain enough information to answer this question."
+        "The retrieved approved material does not establish all requested parts. Supported portions can still be explained."
     )
     assert not response.blocked
     assert response.audit["dependency_rounds"] == 0

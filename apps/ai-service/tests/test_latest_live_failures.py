@@ -150,6 +150,10 @@ def test_budget_only_education_correction_preserves_capacity_and_source_authorit
                     passage + " The allocation is a plan, not observed cash; actual account access was not supplied.")
                 value = {"summary": summary + " [source:etf-source]", "source_ids": ["etf-source"],
                     "rationale": ["Saved allocation and carried general concept."], "confidence": 0.9}
+            elif component == "PROMPT_ID: answer_correction":
+                value = {"replacements": [{"issue_id": issue["issue_id"], "replacement":
+                    passage + " The allocation is a plan, not observed cash; actual account access was not supplied."}
+                    for issue in payload["issues"]]}
             elif component == "PROMPT_ID: risk_compliance":
                 self.reviews += 1
                 data = next(row["data"] for row in payload["agent_results"] if row["agent"] == "budget")
@@ -176,9 +180,11 @@ def test_budget_only_education_correction_preserves_capacity_and_source_authorit
     response = AgentOrchestrator(config=Settings(MODEL_PROVIDER="openai"), gateway=gateway,
                                  education_retriever=retriever).handle(req)
     assert not response.blocked and response.selected_agents == ["budget"]
-    assert gateway.reviews == gateway.writers == 2
+    assert gateway.reviews == 2 and gateway.writers == 1
     writers = [json.loads(call["user_prompt"])["grounding"] for call in calls_for(gateway, "agent_budget")]
-    assert writers[0] == writers[1]
+    corrections = [json.loads(call["user_prompt"]) for call in calls_for(gateway, "answer_correction")]
+    assert len(corrections) == 1
+    assert writers[0] == corrections[0]["verified_grounding"][0]["data"]
     assert len(retriever.queries) == 1  # The correction never retrieves different evidence.
     assert claim not in response.answer and "SGD 700" in response.answer
     assert "actual account access was not supplied" in response.answer

@@ -1,5 +1,10 @@
 # Recovery fixes following the 8 October reasoning tests
 
+The [9 October local claim recovery](orchestration-local-claim-recovery-2026-10-09.md)
+supersedes full regeneration for validated local defects, adds independently
+reviewed reduced candidates, and preserves safe Compliance metadata at the backend.
+The historical descriptions and counts below remain evidence of earlier changes.
+
 The latest [third-retest recovery changes](orchestration-read-only-recovery.md)
 separate original draft safety from correction eligibility, extend composition
 authority to sealed Education evidence, and add grounded read-only forecasts.

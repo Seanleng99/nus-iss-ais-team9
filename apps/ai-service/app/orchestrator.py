@@ -39,6 +39,13 @@ from app.agents.spending import SpendingAgent
 from app.agents.spending_capture import spending_capture_request
 from app.capabilities.registry import CapabilityRegistry, CapabilityRegistryError
 from app.core.citations import citation_contract, render_citations, validate_citations
+from app.core.claim_corrections import (
+    ClaimCorrections,
+    apply_edits,
+    corrected_results,
+    correction_edits,
+    located_issues,
+)
 from app.core.config import Settings
 from app.core.config import settings as runtime_settings
 from app.core.deadline import check_deadline, remaining_seconds, workflow_deadline
@@ -52,6 +59,7 @@ from app.core.observability import get_correlation_id
 from app.core.prompts import PromptCatalog
 from app.core.repair_budget import financial_repair_estimates, repair_time_estimate
 from app.core.review_evidence import review_evidence
+from app.core.review_sections import draft_review_sections
 from app.core.run_trace import emit, task_context, workflow_id
 from app.core.schemas import (
     AgentName,
@@ -138,6 +146,7 @@ def _write_workflow_log(
 
 
 class OrchestratorState(TypedDict, total=False):
+    partial_answer: bool
     spending_request: CoachRequest
     synthesis_feedback: list[str]
     task_assignments: list[dict]
@@ -1924,6 +1933,11 @@ class AgentOrchestrator:
                 validate_response=validate_synthesis,
             )
         for result in state["agent_results"]:
+            if state.get("synthesis_feedback"):
+                # The corrected candidate must receive independent review as
+                # written. Old presentation metadata cannot restore a claim
+                # that the review explicitly requested changing or removing.
+                break
             if result.data.get("uncertainties_visible"):
                 for limitation in result.data.get("uncertainties", []):
                     if limitation not in synthesis.answer:
@@ -1992,6 +2006,9 @@ class AgentOrchestrator:
                     "policy_clause_refs": review.data.get("policy_clause_refs", [])})
 
         events.append(review_event(result, 1))
+        located_repair = self._repair_located_claims(state, result, events, review_event)
+        if located_repair is not None:
+            return located_repair
         financial_repair = self._repair_financial_answer(state, result, events)
         if financial_repair is not None:
             return financial_repair
@@ -2146,6 +2163,189 @@ class AgentOrchestrator:
                                  "error_code": getattr(error, "code", "REPAIR_UNAVAILABLE")},
                     ))
         return {**updated, "compliance_result": result, "audit_events": events}
+
+    def _repair_located_claims(self, state, review, events, review_event):
+        """One replacement pass over reviewed claims, then a fresh full review."""
+        issues = located_issues(state["draft_answer"], review.data.get("blocking_issues", []))
+        if not issues or review.data.get("repairable") is not True:
+            return None
+        results = state["agent_results"]
+        owners = {item.agent.value: item for item in results}
+        eligible_owners = {"spending", "budget", "goal_strategy", "investment_education"}
+        if (review.data.get("request_allowed") is not True or set(owners) - eligible_owners
+                or any(item.blocked or item.data.get("needs_input") for item in results)
+                or any(state.get(k) for k in ("budget_capture", "goal_capture", "spending_capture"))
+                or any("budget_draft" in item.data or "goal_draft" in item.data or "spending_draft" in item.data
+                       for item in results)):
+            return None
+        # Validate private evidence before either correction or partial recovery.
+        if any(item._financial_grounding_snapshot is None and item._education_grounding_snapshot is None
+               for item in results):
+            return None
+        evidence = [{"agent": item.agent.value, "data": review_evidence(item, (
+            "contexts", "sources", "subquestion_coverage", "coverage_assessment", "fallback_topics",
+            "excluded_topics", "uncertainties", "general_knowledge", "evidence_status",
+        ))} for item in results]
+        sections = {s["section_id"]: s for s in draft_review_sections(state["draft_answer"], state["sanitized_message"], results)}
+        payload = {"message": state["sanitized_message"], "response_language": request_language(state["request"]),
+                   "original_answer": state["draft_answer"], "verified_grounding": evidence,
+                   "issues": [{**issue, "section": sections[issue["section_id"]]} for issue in issues]}
+        prompt = self.prompts.get("answer_correction")
+        sources = self._collect_source_citations(results)
+        prompt += citation_contract(sources)
+        inputs = len(prompt.encode()) + len(json.dumps(payload, ensure_ascii=False).encode()) + 1500
+        output_limit = self.config.model_policy("answer_correction", self.config.model_max_tokens).max_tokens
+        calls = self.gateway.snapshot(state["trace_id"])
+        required = {"answer_correction", "risk_compliance"}
+        estimates = financial_repair_estimates(calls, required, issues, planned_calls={
+            "answer_correction": {"input_tokens": inputs, "max_output_tokens": output_limit}})
+        tokens = sum(item["estimated_repair_tokens"] for item in estimates)
+        used = sum(int(call.get("total_tokens") or 0) for call in calls)
+        duration = repair_time_estimate(calls, required, attempts=1)
+        remaining = remaining_seconds()
+        if remaining is None:
+            remaining = self.config.workflow_timeout_seconds - (perf_counter() - state.get("workflow_started", 0))
+        usage_known = all(call.get("status") == "completed" and all(
+            type(call.get(k)) is int and call[k] >= 0 for k in ("input_tokens", "output_tokens", "total_tokens"))
+            and call["total_tokens"] == call["input_tokens"] + call["output_tokens"] for call in calls)
+        conditions = [
+            ("REPAIR_USAGE_UNAVAILABLE", self.config.model_provider == "local_fixture" or usage_known),
+            ("REPAIR_CALL_BUDGET_EXCEEDED", len(calls) + 4 <= self.config.max_model_calls_per_run),
+            ("REPAIR_TOKEN_BUDGET_EXCEEDED", used + tokens < self.config.max_model_tokens_per_run),
+            ("REPAIR_DEADLINE_EXCEEDED", remaining > duration),
+        ]
+        blockers = [code for code, passed in conditions if not passed]
+        events.append(self._event(state, "claim.correction.decision", "orchestrator", details={
+            "allowed": not blockers, "repair_round": 1, "reason_code": blockers[0] if blockers else "REPAIR_ELIGIBLE",
+            "repair_blockers": blockers, "used_tokens": used, "estimated_repair_tokens": tokens,
+            "estimated_repair_duration_ms": round(duration * 1000, 2),
+            "remaining_duration_ms": round(max(0, remaining) * 1000, 2),
+            "token_limit": self.config.max_model_tokens_per_run,
+            "remaining_tokens": max(0, self.config.max_model_tokens_per_run-used)}))
+        candidate = {**state}
+        current_review = review
+        if not blockers:
+            def validate_correction(decision):
+                edits = correction_edits(decision, issues)
+                replacements = {item.issue_id: item.replacement for item in decision.replacements}
+                for issue in issues:
+                    replacement = replacements[issue["issue_id"]]
+                    section = sections[issue["section_id"]]
+                    owner = owners.get(section["agent"])
+                    carried = sources if owner is None else self._collect_source_citations([owner])
+                    if section["provenance"] in {"model_knowledge", "topic_label"}:
+                        carried = []
+                    validate_citations(replacement, carried)
+                # Presentation labels remain tied to their original option.
+                # The model may clarify a title, not renumber or add paragraphs.
+                for section in sections.values():
+                    if section["provenance"] != "topic_label":
+                        continue
+                    start, end = section["start"], section["end"]
+                    affected = [(left-start, right-start, text) for left, right, text in edits
+                                if left < end and right > start]
+                    if affected:
+                        original = state["draft_answer"][start:end]
+                        title = apply_edits(original, affected)
+                        prefix = re.match(r"\d+\.\s+", original)
+                        if "\n" in title or prefix and not title.startswith(prefix.group()):
+                            raise ModelGatewayError("Keep the original option number and one title line.",
+                                code="INVALID_STRUCTURED_RESPONSE", component="claim_correction",
+                                validation_reason="CORRECTION_SCOPE_MISMATCH")
+                validate_citations(apply_edits(state["draft_answer"], edits), sources)
+                return decision
+            # Contract corrections are optional work inside the writer's time
+            # slice. Reserve observed reviewer time instead of reserving two
+            # complete writer/reviewer passes at admission.
+            deadline = workflow_deadline.get()
+            reserve = repair_time_estimate(calls, {"risk_compliance"}, attempts=1)
+            token = workflow_deadline.set(deadline-reserve) if deadline is not None else None
+            try:
+                decision = generate_structured_response(self.gateway, response_type=ClaimCorrections,
+                    system_prompt=prompt, user_prompt=json.dumps(payload, ensure_ascii=False),
+                    temperature=self.config.agent_temperature, max_tokens=output_limit,
+                    validate_response=validate_correction)
+                edits = correction_edits(decision, issues)
+                candidate.update(draft_answer=apply_edits(state["draft_answer"], edits),
+                                 agent_results=corrected_results(results, state["draft_answer"], edits))
+            except (ModelGatewayError, RetrievalError, TimeoutError) as error:
+                events.append(self._event(state, "claim.correction.unavailable", "orchestrator",
+                    details={"reason_code": "REPAIR_UNAVAILABLE", "error_code": getattr(error, "code", "REPAIR_UNAVAILABLE"),
+                             "validation_reason": getattr(error, "validation_reason", None)}))
+            finally:
+                if token is not None:
+                    workflow_deadline.reset(token)
+            if candidate["draft_answer"] != state["draft_answer"]:
+                current_review = self.compliance_agent.validate(state["request"], candidate["agent_results"], candidate["draft_answer"],
+                    routing_rationale=state["routing_rationale"],
+                    follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True))
+                events.append(review_event(current_review, 2))
+        if current_review.blocked:
+            partial = self._review_partial_answer(candidate, current_review, events, review_event)
+            if partial is not None:
+                return partial
+        return {"draft_answer": candidate["draft_answer"], "agent_results": candidate["agent_results"],
+                "compliance_result": current_review, "audit_events": events}
+
+    def _review_partial_answer(self, state, review, events, review_event):
+        """A reduced candidate is releasable only after its own independent review."""
+        issues = located_issues(state["draft_answer"], review.data.get("blocking_issues", []))
+        if not issues or review.data.get("request_allowed") is not True or review.data.get("repairable") is not True:
+            return None
+        draft = state["draft_answer"]
+        # Partial recovery must also remove rejected specialist presentation.
+        # If composition obscures its mapping, retain the existing withholding.
+        if any(item.summary and draft.count(item.summary) != 1 for item in state["agent_results"]):
+            return None
+        ranges = []
+        # Remove complete affected paragraphs, keeping independently reviewable
+        # prose rather than cutting a qualification from the middle of a claim.
+        for issue in sorted(issues, key=lambda item: item["claim_start"]):
+            left = draft.rfind("\n\n", 0, issue["claim_start"])
+            left = left + 2 if left >= 0 else 0
+            right = draft.find("\n\n", issue["claim_end"])
+            right = right if right >= 0 else len(draft)
+            if ranges and left <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], max(right, ranges[-1][1]), "")
+            else:
+                ranges.append((left, right, ""))
+        retained = apply_edits(draft, ranges, allow_empty=True).strip()
+        if not retained:
+            return None
+        calls = self.gateway.snapshot(state["trace_id"])
+        remaining = remaining_seconds()
+        if remaining is None:
+            remaining = self.config.workflow_timeout_seconds - (perf_counter() - state.get("workflow_started", 0))
+        estimates = financial_repair_estimates(calls, {"risk_compliance"}, [])
+        usage_known = all(call.get("status") == "completed" and all(type(call.get(k)) is int and call[k] >= 0
+            for k in ("input_tokens", "output_tokens", "total_tokens"))
+            and call["total_tokens"] == call["input_tokens"] + call["output_tokens"] for call in calls)
+        allowed = ((self.config.model_provider == "local_fixture" or usage_known)
+                   and any(e["component"] == "risk_compliance" for e in estimates)
+                   and len(calls) + 2 <= self.config.max_model_calls_per_run
+                   and sum(int(c.get("total_tokens") or 0) for c in calls) + sum(e["estimated_repair_tokens"] for e in estimates)
+                       < self.config.max_model_tokens_per_run
+                   and remaining > repair_time_estimate(calls, {"risk_compliance"}, attempts=1))
+        events.append(self._event(state, "answer.partial.review_decision", "orchestrator",
+            details={"allowed": allowed, "reason_code": "PARTIAL_REVIEW_ELIGIBLE" if allowed else "PARTIAL_REVIEW_UNAVAILABLE"}))
+        if not allowed:
+            return None
+        try:
+            partial = retained + "\n\n" + translate("education.partial_answer", request_language(state["request"]))
+            results = corrected_results(state["agent_results"], draft, ranges)
+            verdict = self.compliance_agent.validate(state["request"], results, partial,
+                routing_rationale=state["routing_rationale"],
+                follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True))
+            events.append(review_event(verdict, 3))
+            # Both a veto and an unverifiable review still withhold the answer.
+            if verdict.blocked:
+                return None
+            return {"draft_answer": partial, "agent_results": results, "compliance_result": verdict,
+                    "answer_referents": [], "partial_answer": True, "audit_events": events}
+        except (ModelGatewayError, RetrievalError, TimeoutError) as error:
+            events.append(self._event(state, "answer.partial.unavailable", "orchestrator",
+                details={"error_code": getattr(error, "code", "PARTIAL_REVIEW_UNAVAILABLE")}))
+            return None
 
     def _repair_financial_answer(self, state, review, events):
         issues = review.data.get("blocking_issues", [])
@@ -2412,8 +2612,9 @@ class AgentOrchestrator:
                 "answer_status": (
                     "refused" if compliance.blocked else
                     "needs_input" if any(item.data.get("needs_input") for item in state["agent_results"]) else
-                    "incomplete" if compliance.data.get("answer_complete") is False else "answered"
+                    "incomplete" if state.get("partial_answer") or compliance.data.get("answer_complete") is False else "answered"
                 ),
+                "partial_answer": bool(state.get("partial_answer")),
                 "routing_rationale": (
                     [
                         translate('safety.final_review_rationale', response_language)
@@ -2429,7 +2630,7 @@ class AgentOrchestrator:
                             *[item for item in state.get("turn_decision", {}).get("referents", [])
                               if item.get("option_index") is None or not state.get("answer_referents")],
                             *state.get("answer_referents", []),
-                        ][-12:],
+                        ][-12:] if not state.get("partial_answer") else [],
                         "missing_fields": list(dict.fromkeys([
                             *state.get("turn_decision", {}).get("missing_fields", []),
                             *(field for item in state["agent_results"]
