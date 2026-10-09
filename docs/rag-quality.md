@@ -3,8 +3,10 @@
 The target is at least 99% on a named benchmark, with 100% scope and safety checks.
 A retrieval score does not establish generated-answer quality or population accuracy.
 The approved corpus remains a synthetic-data demo snapshot. The current deployment
-packages reviewed Education and Policy documents in the AI image and retrieves them
-locally. Earlier managed-retrieval measurements below are historical evidence.
+uses separate Bedrock Knowledge Bases for retrieval and direct OpenAI generation.
+Reviewed local files remain packaged for governance and offline evaluation. Earlier
+managed-retrieval measurements below remain historical; the restored path requires
+fresh live evidence.
 
 ## Full local documents
 

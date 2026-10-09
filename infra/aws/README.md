@@ -2,7 +2,7 @@
 
 The synthetic-data demo runs the frontend, backend, and AI service on ECS Fargate in `ap-southeast-1`. `demo-foundation.yaml` provisions networking, RDS, Cognito, ECR, ECS, CloudFront/ALB, logging, and generated service credentials; it grants the ECS execution role access to an existing OpenAI API-key secret. `demo-application.yaml` deploys the services and operational alarms. `github-actions-oidc.yaml` limits GitHub image publishing and ECS deployment to short-lived OIDC roles.
 
-The AI task uses `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, and `MODEL_REASONING_EFFORT=medium`. Its `OPENAI_API_KEY` comes from the existing Secrets Manager secret via the ECS task execution role. Both retrieval providers use `local_documents`; the image packages reviewed Education and Policy corpora. The task role has no model-invocation or knowledge-base permissions. The retired `demo-knowledge-bases.yaml` template is retained solely as historical infrastructure source and is not part of bootstrap or release.
+The AI task uses `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, and `MODEL_REASONING_EFFORT=medium`. Its `OPENAI_API_KEY` comes from the existing Secrets Manager secret via the ECS task execution role. Both retrieval providers use `bedrock`. `demo-knowledge-bases.yaml` manages the separate Education and Policy KBs, embedding/service roles, S3 Vectors indexes, and scoped `bedrock:Retrieve` permission on the AI task role. The task has no Bedrock generation permission; answers are generated directly through OpenAI.
 
 ## API-key setup and bootstrap
 
@@ -13,13 +13,13 @@ Before bootstrap, create or update the existing Secrets Manager secret `ai-finan
 .\infra\scripts\configure_github.ps1
 ```
 
-The first script validates the AWS account, builds and publishes the images, creates the ECS services with exact corpus pins, and deploys OIDC roles. The second configures GitHub Actions variables, the `demo` environment, and the smoke-test secret. Neither script calls Bedrock. Add `-AlertEmail address@example.com` to bootstrap to request SNS notifications, then confirm the subscription. Re-run the scripts when stack templates or deployment variables change.
+The first script validates the AWS account, restores or creates both KBs, ingests and audits the approved corpora, builds and publishes images, creates ECS services with exact KB IDs/corpus pins, and deploys OIDC roles. An existing corpus bucket is reused; a missing bucket is created with encryption, versioning and public-access blocking. The second configures GitHub Actions variables, including both KB IDs and the read-only governance role, the `demo` environment, and smoke-test secret. Add `-AlertEmail address@example.com` to bootstrap to request SNS notifications, then confirm the subscription. Re-run scripts when stack templates or deployment variables change.
 
 For account migration, follow [the migration runbook](../../docs/aws-account-migration.md) before bootstrap. Use `-DatabaseSnapshotIdentifier` for a destination-owned snapshot. The foundation creates a new Cognito pool and RDS master secret. Keep the previous identity pool available until migrated users confirm sign-in and record access.
 
 ## Release and operational checks
 
-A successful push CI on the current `main` SHA starts `Release to AWS`. The release verifies the rendered AI task selects OpenAI and GPT-6 Luna, both local corpora are pinned, and the API-key secret is referenced. It then updates only changed services, runs backend migrations, performs authenticated smoke checks, and rolls back updated task definitions if checks fail. Every deployment uses immutable commit-SHA image tags.
+A successful push CI on the current `main` SHA starts `Release to AWS`. Release ingests and verifies both approved Bedrock corpora, then verifies the rendered AI task selects direct OpenAI/GPT-6 Luna, both KB IDs/corpus pins, and the API-key secret. It updates services, runs backend migrations, performs authenticated smoke checks, and rolls back updated task definitions if checks fail. Every deployment uses immutable commit-SHA image tags. Weekly governance audits both KBs and exact S3 objects using a separate read-only role.
 
 The AI request ceiling is `MAX_MODEL_TOKENS_PER_RUN=80000` and the application accepts only prompt set v8. Startup rejects a legacy prompt override. Before rendering, release loads the checked-in `apps/ai-service/app/core/model-role-policy.json` and publishes its canonical JSON as `MODEL_ROLE_OVERRIDES`. Rendering replaces any inherited role settings; verification rejects absent or changed overrides. Bootstrap and `.env.example` carry the same policy, checked by regression tests. Financial writers use medium/3,200, Education medium/4,000 and Compliance medium/3,000 reasoning/output policies. Routing/planning retain their smaller role limits; the global default is medium/3,200. Increasing the total ceiling does not relax review, tool permissions, call limits or deadlines.
 

@@ -1,14 +1,14 @@
 # RAG Source Governance
 
-## Current packaged-corpus governance
+## Current Bedrock corpus governance
 
 The **RAG Source Governance** workflow validates both Education and Policy corpora.
 The duplicate Policy-only workflow has been retired; the combined weekly/manual
 workflow retains governance evidence for 90 days.
 
-The deployed Education retriever reads the ten approved documents and `source_manifest.json` from the AI image at `knowledge/investment_education`. It verifies manifest approval and review deadlines, canonical URL allowlists, UTF-8 text, content inspection, and SHA-256 checksums before serving evidence. `EDUCATION_CORPUS_VERSION` pins the exact reviewed version. For each release SHA, the release derives Education and Policy pins from their manifests, injects and verifies them on the task definition, and passes the same values to the post-deploy smoke check. The weekly `rag-source-governance.yml` workflow validates both packaged corpora offline with `contents: read` and retains evidence; it does not assume an AWS OIDC role or audit S3. A source change requires a reviewed manifest, new corpus version, rebuilt image, and passing retrieval/evaluation gates. Bedrock ingestion and AWS audit commands below are historical optional provider tooling, not prerequisites for the local-packaged deployment.
+The Education retriever queries the approved Bedrock Knowledge Base using `Retrieve`; generation remains on the direct OpenAI API. The ten approved source files and manifest remain packaged for local governance validation. `EDUCATION_CORPUS_VERSION` pins the exact reviewed version. Before activating both corpus pins, release runs `sync_bedrock_corpora.py` to validate local bytes, upload documents and metadata sidecars, wait for ingestion, and audit remote objects/checksums/metadata. Weekly governance validates local files and audits both KB/S3 sources through a dedicated read-only OIDC role. Source changes require review, a new corpus version, successful ingestion, and passing retrieval/evaluation gates.
 
-## Historical AWS ingestion and governance
+## AWS ingestion and governance tooling
 
 ## Governed Corpus
 
@@ -43,7 +43,7 @@ The four summaries (`moneysense_compound_interest.md`, `moneysense_managing_mone
 | `publish-metadata` | Migrate verified existing documents to governed sidecars and synchronize | Verifies document bytes first and requires the exact corpus version |
 | `withdraw` | Delete one reviewed-withdrawn document and sidecar, then synchronize | Manifest must already mark it withdrawn and confirmation must equal its source ID |
 
-The Bedrock apply and metadata operations reject a document when its byte checksum differs, it is not UTF-8, its source review is expired, or ingestion guardrails identify embedded instructions. They do not silently sanitize authoritative source content. These provider operations are not required to build or deploy the locally packaged corpus; a new corpus requires a rebuilt image and passing governance validation.
+The Bedrock apply and metadata operations reject a document when its byte checksum differs, it is not UTF-8, its source review is expired, or ingestion guardrails identify embedded instructions. They do not silently sanitize authoritative source content. These checks run before restored Bedrock corpus pins are promoted.
 
 Example read-only audit:
 
@@ -85,6 +85,6 @@ The AWS identifiers are demo evidence, not reusable defaults for another account
 
 ## Scheduled Gate And Review Procedure
 
-`.github/workflows/rag-source-governance.yml` runs weekly and on demand as an offline packaged-corpus validator with `contents: read`; it retains its JSON evidence for 90 days. It does not use OIDC or access AWS or S3. The AWS ingestion and audit commands above remain available as historical optional provider tooling.
+`.github/workflows/rag-source-governance.yml` runs weekly and on demand, validates local corpus files, and audits both deployed KBs and exact S3 prefixes through read-only OIDC credentials. It retains JSON evidence for 90 days and cannot upload, delete, or start ingestion. Release has separately scoped upload and ingestion permissions.
 
-Before the review deadline, the owner must re-verify each canonical source, review content changes and usage rights, capture new bytes and checksums when needed, increment the corpus version, rerun offline and live retrieval evaluations, and approve the manifest change. A new corpus requires a rebuilt image and passing governance validation before release; Bedrock ingestion is not a deployment prerequisite. If a source is superseded, unsafe, or withdrawn, mark it withdrawn in a reviewed manifest before using the optional provider withdrawal command. A failed or stale validation blocks corpus promotion and requires investigation; it must not be bypassed by changing the runtime version alone.
+Before the review deadline, the owner must re-verify each canonical source, review content changes and usage rights, capture new bytes and checksums when needed, increment the corpus version, rerun offline and live retrieval evaluations, and approve the manifest change. A new corpus requires successful Bedrock ingestion and governance validation before release. If a source is superseded, unsafe, or withdrawn, mark it withdrawn in a reviewed manifest before using the provider withdrawal command. A failed or stale validation blocks promotion and must not be bypassed by changing the runtime version alone.

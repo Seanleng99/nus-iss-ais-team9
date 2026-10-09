@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from math import isfinite
 from pathlib import Path
@@ -10,7 +11,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.core.guardrails import sanitize_rag_document
 from app.core.telemetry import log_event, trace_method
-from app.rag.ingestion import ApprovedDocumentMetadata
+from app.rag.ingestion import ApprovedDocumentMetadata, GovernedSource
 from app.rag.local_documents import _KNOWLEDGE_ROOT
 from app.rag.retriever import RetrievalError, RetrievedChunk
 
@@ -101,12 +102,14 @@ class BedrockPolicyRetriever:
         expected_corpus_version: str,
         minimum_score: float = 0.0,
         client: Any | None = None,
+        required_sources: tuple[GovernedSource, ...] = (),
     ) -> None:
         self.knowledge_base_id = knowledge_base_id
         self.aws_region = aws_region
         self.expected_corpus_version = expected_corpus_version
         self.minimum_score = minimum_score
         self._client = client
+        self.required_sources = required_sources
 
     @property
     def client(self) -> Any:
@@ -135,7 +138,37 @@ class BedrockPolicyRetriever:
             ) from exc
 
     @trace_method
-    def _retrieve(self, query: str, top_k: int) -> list[RetrievedChunk]:
+    def _retrieve(
+        self, query: str, top_k: int, *, source_id: str | None = None,
+    ) -> list[RetrievedChunk]:
+        if self.required_sources and source_id is None:
+            # Every review needs every policy family. Public policy titles replace
+            # personal draft text; per-source queries prevent one policy's chunks
+            # from displacing the other controls in a relevance-ranked top three.
+            results = []
+            for source in self.required_sources:
+                chunks = self._retrieve(source.title, 20, source_id=source.source_id)
+                chunks = [chunk for chunk in chunks if (
+                    chunk.source_id == source.source_id
+                    and chunk.checksum == source.checksum
+                    and chunk.document_version == source.document_version
+                    and chunk.canonical_url == source.canonical_url
+                )]
+                if not chunks:
+                    raise RetrievalError(
+                        "Required approved policy evidence is unavailable.",
+                        component="policy_retriever",
+                    )
+                results.append(replace(
+                    chunks[0], text="\n\n".join(dict.fromkeys(chunk.text for chunk in chunks)),
+                ))
+            return results
+        filters = [
+            {"equals": {"key": "corpus_version", "value": self.expected_corpus_version}},
+            {"equals": {"key": "review_status", "value": "approved"}},
+        ]
+        if source_id:
+            filters.append({"equals": {"key": "source_id", "value": source_id}})
         log_event(
             "bedrock.retrieve.request", component="policy_retriever",
             knowledge_base_id=self.knowledge_base_id, corpus_version=self.expected_corpus_version,
@@ -147,10 +180,7 @@ class BedrockPolicyRetriever:
             retrievalConfiguration={
                 "vectorSearchConfiguration": {
                     "numberOfResults": top_k,
-                    "filter": {"andAll": [
-                        {"equals": {"key": "corpus_version", "value": self.expected_corpus_version}},
-                        {"equals": {"key": "review_status", "value": "approved"}},
-                    ]},
+                    "filter": {"andAll": filters},
                 }
             },
         )
@@ -219,8 +249,6 @@ def create_policy_retriever(settings: Settings) -> PolicyRetriever:
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalPolicyRetriever()
     if provider == "local_documents":
-        from pathlib import Path
-
         from app.rag.local_policy import DEFAULT_POLICY_ROOT, LocalDocumentPolicyRetriever
 
         retriever = LocalDocumentPolicyRetriever(
@@ -233,11 +261,22 @@ def create_policy_retriever(settings: Settings) -> PolicyRetriever:
             raise ValueError("POLICY_CORPUS_VERSION must match the approved local manifest")
         return retriever
     if provider == "bedrock" and settings.policy_knowledge_base_id:
+        from app.rag.local_policy import DEFAULT_POLICY_ROOT, LocalDocumentPolicyRetriever
+
+        approved = LocalDocumentPolicyRetriever(
+            Path(settings.policy_rag_manifest_path) if settings.policy_rag_manifest_path
+            else DEFAULT_POLICY_ROOT / "source_manifest.json",
+            Path(settings.policy_rag_documents_path) if settings.policy_rag_documents_path
+            else DEFAULT_POLICY_ROOT / "documents",
+        )
+        if approved.expected_corpus_version != settings.policy_corpus_version:
+            raise ValueError("POLICY_CORPUS_VERSION must match the approved manifest")
         return BedrockPolicyRetriever(
             knowledge_base_id=settings.policy_knowledge_base_id,
             aws_region=settings.aws_region,
             expected_corpus_version=settings.policy_corpus_version,
             minimum_score=settings.policy_rag_minimum_score,
+            required_sources=tuple(source for source, _ in approved.documents),
         )
     raise ValueError(
         f"Unsupported POLICY_RAG_PROVIDER for APP_ENV={settings.app_env}: {provider}"

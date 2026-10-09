@@ -1,8 +1,8 @@
 # Policy RAG Governance
 
-## Current packaged-corpus governance
+## Current Bedrock corpus governance
 
-The deployed `LocalDocumentPolicyRetriever` reads the three approved Policy documents and manifest from the AI image at `knowledge/policy_controls`. It verifies approval, provenance, review deadlines, UTF-8 content, and SHA-256 checksums; a stale or altered corpus fails closed. `POLICY_CORPUS_VERSION` pins the exact reviewed version. The weekly **RAG Source Governance** workflow (`rag-source-governance.yml`) checks both corpora and retains their evidence together. The duplicate Policy-only workflow has been removed. A Policy update requires review, a new corpus version, a rebuilt image, and live compliance evaluation. The AWS Knowledge Base record below is historical.
+The deployed `BedrockPolicyRetriever` retrieves each of the three required Policy sources independently, using public titles and exact source-ID/version/approval filters. It checks retrieved provenance against the checksum-verified manifest packaged at `knowledge/policy_controls`; missing or altered controls fail closed. It does not send personal draft text to Bedrock. `POLICY_CORPUS_VERSION` pins the reviewed version. Release ingests and audits the corpus before activating its pin; weekly **RAG Source Governance** audits both KBs and S3 prefixes through a read-only role. The duplicate Policy-only workflow remains removed. A Policy update requires review, a new version, successful ingestion, and live compliance evaluation. Earlier AWS records below remain historical evidence.
 
 ## 9 October 2026 policy and review update
 

@@ -13,7 +13,7 @@ checkout history, CI runs every service check. Pull requests retain their normal
 base-to-head comparison. The change-manifest artifact also records the deployment
 baseline used for classification.
 
-The AI task check requires `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, medium default reasoning with the reviewed role overrides, the [packaged current prompt identity](current-prompt-contract.md), both RAG providers set to `local_documents`, exact nonempty Education and Policy corpus versions, and an ECS `OPENAI_API_KEY` secret reference. The key is stored in AWS Secrets Manager and is never a GitHub variable or repository secret.
+The AI task check requires `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, medium default reasoning with the reviewed role overrides, the [packaged current prompt identity](current-prompt-contract.md), both RAG providers set to `bedrock`, exact KB IDs and corpus pins, and an ECS `OPENAI_API_KEY` secret reference. Release ingests and audits both approved corpora before rendering the AI task. The key is stored in AWS Secrets Manager and is never a GitHub variable or repository secret.
 
 Release rendering also replaces inherited timeout settings: model reads are bounded
 at 30 seconds, specialist execution at 45 seconds, the whole AI workflow at 85
@@ -35,7 +35,7 @@ approved sources, grounded evidence and persisted retrieval provenance.
 
 `AWS Operational Validation` runs weekly or on demand against the deployed synthetic demo. It repeats the live OpenAI/RAG cases, measures bounded load and estimated model cost, checks service state, lifecycle controls, dashboard and alarms, and can exercise backend task replacement. Its current model expectation is GPT-6 Luna. This is the required live acceptance evidence for the migration; historical Nova results cannot validate it.
 
-`RAG Source Governance` validates both packaged corpora weekly or on demand. It loads each manifest and exact local files through the production retrievers, checking approval status, provenance, review deadlines, content inspection, and document SHA-256 checksums. It publishes a privacy-safe artifact with both corpus versions and counts. The duplicate Policy workflow and retired Bedrock comparison notice have been removed; their historical reports remain in the governance and model-selection docs.
+`RAG Source Governance` validates both approved local corpora and audits the deployed KBs/S3 objects weekly or on demand. Its dedicated OIDC role has read-only corpus and KB permissions. It checks approval, provenance, review deadlines, content inspection, SHA-256 checksums, sidecars and completed ingestion, and retains privacy-safe evidence for 90 days. Historical Bedrock generation comparisons remain historical.
 
 The five Agent workflows execute their owned offline tests; CI runs the remaining AI tests and the conversational contracts separately. `Project OWASP Security Scan` is reusable from CI and adds committed Promptfoo security cases across all agents and the router. Its backend/frontend companion test runs have been removed because the service CI jobs already execute those tests. Both the required Agent gate and the OWASP scan must pass before CI builds release containers. See [agent test ownership](agent-test-workflows.md) and [security scan coverage](project-security-scan.md).
 

@@ -5,10 +5,6 @@ param(
     [string]$FoundationStack = "ai-financial-wellness-coach-foundation",
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
     [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
-    [string]$BedrockInferenceProfileId = "apac.amazon.nova-lite-v1:0",
-    [string]$BedrockFoundationModelId = "amazon.nova-lite-v1:0",
-    [string]$BedrockComparisonInferenceProfileId = "apac.amazon.nova-micro-v1:0",
-    [string]$BedrockComparisonFoundationModelId = "amazon.nova-micro-v1:0",
     [string]$EducationKnowledgeBaseId = "",
     [string]$EducationDataSourceId = "",
     [string]$EducationSourceBucketName = "",
@@ -175,10 +171,6 @@ $parameters = @(
     "EcsTaskExecutionRoleArn=$($foundation.TaskExecutionRoleArn)",
     "EcsAppTaskRoleArn=$($foundation.AppTaskRoleArn)",
     "EcsAiTaskRoleArn=$($foundation.AiTaskRoleArn)",
-    "BedrockBaselineInferenceProfileId=$BedrockInferenceProfileId",
-    "BedrockBaselineFoundationModelId=$BedrockFoundationModelId",
-    "BedrockCandidateInferenceProfileId=$BedrockComparisonInferenceProfileId",
-    "BedrockCandidateFoundationModelId=$BedrockComparisonFoundationModelId",
     "EducationKnowledgeBaseId=$EducationKnowledgeBaseId",
     "EducationSourceBucketName=$EducationSourceBucketName",
     "EducationSourcePrefix=$EducationSourcePrefix",
@@ -200,4 +192,4 @@ Invoke-Aws cloudformation deploy `
     --no-fail-on-empty-changeset `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
-Write-Host "Updated GitHub OIDC roles with approved model, RAG audit, and operational-alert inspection scopes."
+Write-Host "Updated GitHub OIDC roles with governed KB ingestion, read-only RAG audit, and operational-alert scopes."

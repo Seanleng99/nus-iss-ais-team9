@@ -271,6 +271,8 @@ jobs:
       BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
       COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
       SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+      EDUCATION_KNOWLEDGE_BASE_ID: ${{ vars.EDUCATION_KNOWLEDGE_BASE_ID }}
+      POLICY_KNOWLEDGE_BASE_ID: ${{ vars.POLICY_KNOWLEDGE_BASE_ID }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -320,6 +322,7 @@ jobs:
             DEPLOY_ROLE ECS_CLUSTER
             FRONTEND_URL FRONTEND_HEALTH_URL BACKEND_HEALTH_URL
             COACH_SMOKE_URL EDUCATION_CORPUS_VERSION POLICY_CORPUS_VERSION
+            EDUCATION_KNOWLEDGE_BASE_ID POLICY_KNOWLEDGE_BASE_ID
             SMOKE_BACKEND_API_KEY
           )
           if [[ "$AI_CHANGED" == "true" ]]; then
@@ -391,6 +394,22 @@ jobs:
             aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_FAMILY" \
               --query taskDefinition > frontend-task-definition.json
           fi
+      - name: Ingest and verify approved Bedrock corpora
+        if: needs.release-gate.outputs.ai == 'true'
+        run: |
+          python -m pip install -e "apps/shared" -e "apps/ai-service"
+          python infra/scripts/sync_bedrock_corpora.py \
+            --education-kb "$EDUCATION_KNOWLEDGE_BASE_ID" \
+            --policy-kb "$POLICY_KNOWLEDGE_BASE_ID" \
+            --region "$AWS_REGION"
+      - name: Retain Bedrock ingestion and governance evidence
+        if: always() && needs.release-gate.outputs.ai == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bedrock-corpus-governance-${{ github.run_id }}
+          path: artifacts/bedrock-governance/
+          if-no-files-found: warn
+          retention-days: 90
       - name: Render AI service task definition
         id: render-ai
         if: needs.release-gate.outputs.ai == 'true'
@@ -412,8 +431,12 @@ jobs:
             WORKFLOW_TIMEOUT_SECONDS=85
             PROMPT_SET_VERSION=${{ env.PROMPT_SET_VERSION }}
             BUILD_COMMIT=${{ github.sha }}
-            RAG_PROVIDER=local_documents
-            POLICY_RAG_PROVIDER=local_documents
+            RAG_PROVIDER=bedrock
+            POLICY_RAG_PROVIDER=bedrock
+            EDUCATION_KNOWLEDGE_BASE_ID=${{ env.EDUCATION_KNOWLEDGE_BASE_ID }}
+            POLICY_KNOWLEDGE_BASE_ID=${{ env.POLICY_KNOWLEDGE_BASE_ID }}
+            RAG_MINIMUM_SCORE=0.6
+            POLICY_RAG_MINIMUM_SCORE=0.0
             EDUCATION_CORPUS_VERSION=${{ env.EDUCATION_CORPUS_VERSION }}
             POLICY_CORPUS_VERSION=${{ env.POLICY_CORPUS_VERSION }}
       - name: Verify AI runtime configuration has not drifted
@@ -437,8 +460,14 @@ jobs:
           --expect WORKFLOW_TIMEOUT_SECONDS=85
           --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION"
           --expect "BUILD_COMMIT=${{ github.sha }}"
-          --expect RAG_PROVIDER=local_documents
-          --expect POLICY_RAG_PROVIDER=local_documents
+          --expect RAG_PROVIDER=bedrock
+          --expect POLICY_RAG_PROVIDER=bedrock
+          --expect "EDUCATION_KNOWLEDGE_BASE_ID=$EDUCATION_KNOWLEDGE_BASE_ID"
+          --expect "POLICY_KNOWLEDGE_BASE_ID=$POLICY_KNOWLEDGE_BASE_ID"
+          --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID
+          --require-nonempty POLICY_KNOWLEDGE_BASE_ID
+          --expect RAG_MINIMUM_SCORE=0.6
+          --expect POLICY_RAG_MINIMUM_SCORE=0.0
           --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION"
           --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
           --require-secret OPENAI_API_KEY

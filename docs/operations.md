@@ -123,7 +123,7 @@ Route deployment failures through EventBridge and operational alerts through SNS
 
 ## Drift Detection
 
-The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression. A weekly packaged-corpus governance job checks both reviewed manifests, exact local documents, checksums, approval, provenance, and review deadlines; any issue fails the job and blocks corpus promotion.
+The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression. The weekly RAG governance job checks both reviewed manifests and exact local documents, then audits both Bedrock Knowledge Bases and their S3 objects for checksums, approval, provenance, review deadlines, and completed ingestion. Release ingests and audits both approved corpora before activating their version pins; any issue blocks corpus promotion.
 
 After approved production telemetry exists, observe only privacy-preserving aggregates: intent distribution, selected-agent distribution, missing-input rate, message-length bands, guardrail category rate, retrieval source frequency, source age, latency, token use, and user feedback. Do not retain raw prompts merely to measure drift. A sustained distribution shift triggers dataset review first, followed by prompt, retrieval, or model changes; fine-tuning is considered only when simpler mitigations fail.
 

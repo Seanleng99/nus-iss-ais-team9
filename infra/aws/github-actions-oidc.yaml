@@ -38,6 +38,22 @@ Parameters:
     AllowedPattern: "^$|^arn:aws:iam::[0-9]{12}:role/.+$"
   EcsAiTaskRoleArn:
     Type: String
+  EducationKnowledgeBaseId:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9]{10}$"
+  PolicyKnowledgeBaseId:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9]{10}$"
+  EducationSourceBucketName:
+    Type: String
+  PolicySourceBucketName:
+    Type: String
+  EducationSourcePrefix:
+    Type: String
+    Default: investment-education/documents/
+  PolicySourcePrefix:
+    Type: String
+    Default: policy-controls/documents/
   OperationalAlertsTopicArn:
     Type: String
     AllowedPattern: "^arn:[a-z0-9-]+:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]{1,256}$"
@@ -103,6 +119,59 @@ Resources:
                 Action: inspector2:ListFindings
                 Resource: "*"
 
+  RagGovernanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ai-financial-wellness-coach-github-rag-governance
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateGitHubOidcProvider, !Ref GitHubOidcProvider, !Ref ExistingGitHubOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Ref PublishSubjectClaim
+
+  GovernedCorpusReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles: [!Ref DeployRole, !Ref RagGovernanceRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:GetKnowledgeBase
+              - bedrock:GetDataSource
+              - bedrock:ListDataSources
+              - bedrock:GetIngestionJob
+              - bedrock:ListIngestionJobs
+              - bedrock:Retrieve
+            Resource:
+              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${EducationSourceBucketName}/${EducationSourcePrefix}*
+              - !Sub arn:${AWS::Partition}:s3:::${PolicySourceBucketName}/${PolicySourcePrefix}*
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub arn:${AWS::Partition}:s3:::${EducationSourceBucketName}
+            Condition:
+              StringLike:
+                s3:prefix: [!Ref EducationSourcePrefix, !Sub "${EducationSourcePrefix}*"]
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub arn:${AWS::Partition}:s3:::${PolicySourceBucketName}
+            Condition:
+              StringLike:
+                s3:prefix: [!Ref PolicySourcePrefix, !Sub "${PolicySourcePrefix}*"]
+
   DeployRole:
     Type: AWS::IAM::Role
     Properties:
@@ -123,6 +192,20 @@ Resources:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
                 token.actions.githubusercontent.com:sub: !Ref DeploySubjectClaim
       Policies:
+        - PolicyName: PublishApprovedCorpora
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock:StartIngestionJob
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${EducationSourceBucketName}/${EducationSourcePrefix}*
+                  - !Sub arn:${AWS::Partition}:s3:::${PolicySourceBucketName}/${PolicySourcePrefix}*
         - PolicyName: DeployApplication
           PolicyDocument:
             Version: "2012-10-17"
@@ -173,6 +256,8 @@ Resources:
                     iam:PassedToService: ecs-tasks.amazonaws.com
 
 Outputs:
+  RagGovernanceRoleArn:
+    Value: !GetAtt RagGovernanceRole.Arn
   PublishRoleArn:
     Value: !GetAtt PublishRole.Arn
   DeployRoleArn:

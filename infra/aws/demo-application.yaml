@@ -96,6 +96,12 @@ Parameters:
   OpenAiModelId:
     Type: String
     Default: gpt-6-luna
+  EducationKnowledgeBaseId:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9]{10}$"
+  PolicyKnowledgeBaseId:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9]{10}$"
   EducationCorpusVersion:
     Type: String
     Default: investment-education-sg@2026-09-27.2
@@ -325,17 +331,21 @@ Resources:
             - Name: MODEL_REASONING_EFFORT
               Value: medium
             - Name: RAG_PROVIDER
-              Value: local_documents
+              Value: bedrock
+            - Name: EDUCATION_KNOWLEDGE_BASE_ID
+              Value: !Ref EducationKnowledgeBaseId
             - Name: EDUCATION_CORPUS_VERSION
               Value: !Ref EducationCorpusVersion
             - Name: RAG_MINIMUM_SCORE
               Value: "0.6"
             - Name: POLICY_RAG_PROVIDER
-              Value: local_documents
+              Value: bedrock
+            - Name: POLICY_KNOWLEDGE_BASE_ID
+              Value: !Ref PolicyKnowledgeBaseId
             - Name: POLICY_CORPUS_VERSION
               Value: !Ref PolicyCorpusVersion
             - Name: POLICY_RAG_MINIMUM_SCORE
-              Value: "0.6"
+              Value: "0.0"
             - Name: MODEL_MAX_TOKENS
               Value: "3200"
             - Name: MAX_MODEL_TOKENS_PER_RUN
@@ -938,6 +948,10 @@ Outputs:
     Value: !Ref EducationCorpusVersion
   PolicyCorpusVersion:
     Value: !Ref PolicyCorpusVersion
+  EducationKnowledgeBaseId:
+    Value: !Ref EducationKnowledgeBaseId
+  PolicyKnowledgeBaseId:
+    Value: !Ref PolicyKnowledgeBaseId
   FrontendUrl:
     Value: !Ref FrontendUrl
   OidcClientId:

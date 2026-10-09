@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Self
 
@@ -183,14 +184,22 @@ class Settings(BaseSettings):
         if self.app_env.lower() not in {"local", "test"} and self.model_provider.lower() != "openai":
             raise ValueError("Deployed environments require MODEL_PROVIDER=openai")
         if self.app_env.lower() not in {"local", "test"}:
-            if self.rag_provider.lower() != "local_documents":
-                raise ValueError("Deployed environments require RAG_PROVIDER=local_documents")
+            if self.rag_provider.lower() not in {"bedrock", "local_documents"}:
+                raise ValueError("Deployed environments require governed Education retrieval")
+            if self.rag_provider.lower() == "bedrock" and not re.fullmatch(
+                r"[A-Za-z0-9]{10}", self.education_knowledge_base_id or "",
+            ):
+                raise ValueError("EDUCATION_KNOWLEDGE_BASE_ID must identify the deployed Bedrock KB")
             if self.education_corpus_version.endswith("@local-fixture-v1"):
                 raise ValueError(
                     "EDUCATION_CORPUS_VERSION must identify the deployed governed corpus"
                 )
-            if self.policy_rag_provider.lower() != "local_documents":
-                raise ValueError("Deployed environments require POLICY_RAG_PROVIDER=local_documents")
+            if self.policy_rag_provider.lower() not in {"bedrock", "local_documents"}:
+                raise ValueError("Deployed environments require governed Policy retrieval")
+            if self.policy_rag_provider.lower() == "bedrock" and not re.fullmatch(
+                r"[A-Za-z0-9]{10}", self.policy_knowledge_base_id or "",
+            ):
+                raise ValueError("POLICY_KNOWLEDGE_BASE_ID must identify the deployed Bedrock KB")
             if self.policy_corpus_version.endswith("@local-fixture-v1"):
                 raise ValueError(
                     "POLICY_CORPUS_VERSION must identify the deployed governed corpus"

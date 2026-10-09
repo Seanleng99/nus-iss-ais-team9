@@ -4,9 +4,53 @@ Description: Separate governed S3 Vector knowledge bases for the financial coach
 Parameters:
   CorpusBucketName:
     Type: String
-    Default: nus-iss-ais-team9-rag-862124275471-ap-southeast-1
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+  CreateCorpusBucket:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Create a new corpus bucket only when no retained bucket exists.
+  AiTaskRoleName:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
+
+Conditions:
+  CreateManagedCorpusBucket: !Equals [!Ref CreateCorpusBucket, "true"]
 
 Resources:
+  CorpusBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateManagedCorpusBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref CorpusBucketName
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  AiTaskRetrievalPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: GovernedKnowledgeBaseRetrieval
+      Roles: [!Ref AiTaskRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: bedrock:Retrieve
+            Resource:
+              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBase}
+              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBase}
+
   EducationVectorBucket:
     Type: AWS::S3Vectors::VectorBucket
     DeletionPolicy: Retain
@@ -181,7 +225,7 @@ Resources:
       DataSourceConfiguration:
         Type: S3
         S3Configuration:
-          BucketArn: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}
+          BucketArn: !If [CreateManagedCorpusBucket, !GetAtt CorpusBucket.Arn, !Sub "arn:${AWS::Partition}:s3:::${CorpusBucketName}"]
           BucketOwnerAccountId: !Ref AWS::AccountId
           InclusionPrefixes:
             - investment-education/documents/
@@ -200,7 +244,7 @@ Resources:
       DataSourceConfiguration:
         Type: S3
         S3Configuration:
-          BucketArn: !Sub arn:${AWS::Partition}:s3:::${CorpusBucketName}
+          BucketArn: !If [CreateManagedCorpusBucket, !GetAtt CorpusBucket.Arn, !Sub "arn:${AWS::Partition}:s3:::${CorpusBucketName}"]
           BucketOwnerAccountId: !Ref AWS::AccountId
           InclusionPrefixes:
             - policy-controls/documents/
@@ -212,6 +256,8 @@ Resources:
             OverlapPercentage: 20
 
 Outputs:
+  CorpusBucketName:
+    Value: !Ref CorpusBucketName
   EducationKnowledgeBaseId:
     Value: !Ref EducationKnowledgeBase
   EducationDataSourceId:

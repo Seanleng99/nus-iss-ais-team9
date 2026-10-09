@@ -7,10 +7,11 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   audit:
-    name: Validate packaged Education and Policy corpora
+    name: Audit approved local files and both Bedrock Knowledge Bases
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,11 +27,26 @@ jobs:
         run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
       - name: Verify manifests, provenance, approval, freshness, and document checksums
         run: python infra/scripts/validate_packaged_corpora.py
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_RAG_GOVERNANCE_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Audit both deployed corpora without changing S3 or ingestion
+        env:
+          EDUCATION_KNOWLEDGE_BASE_ID: ${{ vars.EDUCATION_KNOWLEDGE_BASE_ID }}
+          POLICY_KNOWLEDGE_BASE_ID: ${{ vars.POLICY_KNOWLEDGE_BASE_ID }}
+        run: |
+          python infra/scripts/sync_bedrock_corpora.py --audit-only \
+            --education-kb "$EDUCATION_KNOWLEDGE_BASE_ID" \
+            --policy-kb "$POLICY_KNOWLEDGE_BASE_ID" \
+            --region "$AWS_REGION"
       - name: Upload governance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: packaged-rag-governance-${{ github.run_id }}
-          path: artifacts/packaged-corpus-governance.json
+          name: rag-governance-${{ github.run_id }}
+          path: |
+            artifacts/packaged-corpus-governance.json
+            artifacts/bedrock-governance/
           if-no-files-found: warn
           retention-days: 90

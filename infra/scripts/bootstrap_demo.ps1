@@ -5,6 +5,8 @@ param(
     [string]$FoundationStack = "ai-financial-wellness-coach-foundation",
     [string]$ApplicationStack = "ai-financial-wellness-coach-application",
     [string]$OidcStack = "ai-financial-wellness-coach-github-oidc",
+    [string]$KnowledgeBaseStack = "ai-financial-wellness-coach-knowledge-bases",
+    [string]$CorpusBucketName = "",
     [string]$AlertEmail = "",
     [switch]$EnableDatabaseCredentialRefresh,
     [string]$LegacyCognitoIssuerUrl = "",
@@ -180,6 +182,35 @@ Invoke-Aws cloudformation deploy `
     --tags Project=ai-financial-wellness-coach Environment=demo
 
 $foundation = Get-StackOutputs $FoundationStack
+if (-not $CorpusBucketName) {
+    $CorpusBucketName = "nus-iss-ais-team9-rag-$AccountId-$Region"
+}
+$createCorpusBucket = "false"
+$previousCreate = & $Aws cloudformation describe-stacks --stack-name $KnowledgeBaseStack `
+    --region $Region --query "Stacks[0].Parameters[?ParameterKey=='CreateCorpusBucket'].ParameterValue | [0]" --output text 2>$null
+if ($LASTEXITCODE -eq 0 -and $previousCreate -eq "true") {
+    $createCorpusBucket = "true"
+} else {
+    $bucketCheck = & $Aws s3api head-bucket --bucket $CorpusBucketName --region $Region 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        if ("$bucketCheck" -match "404|Not Found") { $createCorpusBucket = "true" }
+        else { throw "The corpus bucket could not be inspected; existing resources were preserved." }
+    }
+}
+Write-Host "Restoring governed Education and Policy Knowledge Bases..."
+Invoke-Aws cloudformation deploy `
+    --template-file (Join-Path $ProjectRoot "infra\aws\demo-knowledge-bases.yaml") `
+    --stack-name $KnowledgeBaseStack --region $Region --capabilities CAPABILITY_NAMED_IAM `
+    --parameter-overrides "CorpusBucketName=$CorpusBucketName" "CreateCorpusBucket=$createCorpusBucket" `
+        "AiTaskRoleName=$($foundation.AiTaskRoleArn.Split('/')[-1])" `
+    --no-fail-on-empty-changeset --tags Project=ai-financial-wellness-coach Environment=demo
+$knowledgeBases = Get-StackOutputs $KnowledgeBaseStack
+$corpusPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $corpusPython)) { $corpusPython = "python" }
+& $corpusPython (Join-Path $ProjectRoot "infra\scripts\sync_bedrock_corpora.py") `
+    --education-kb $knowledgeBases.EducationKnowledgeBaseId `
+    --policy-kb $knowledgeBases.PolicyKnowledgeBaseId --region $Region
+if ($LASTEXITCODE -ne 0) { throw "Both Bedrock corpora must pass ingestion and governance before deployment." }
 if ($DatabaseSnapshotIdentifier) {
     $databaseSecretArn = Invoke-Aws rds describe-db-instances `
         --db-instance-identifier $foundation.DatabaseInstanceId `
@@ -299,6 +330,8 @@ $applicationParameters = @(
     "FrontendLogGroupName=$($foundation.FrontendLogGroupName)",
     "EducationCorpusVersion=$EducationCorpusVersion",
     "PolicyCorpusVersion=$PolicyCorpusVersion",
+    "EducationKnowledgeBaseId=$($knowledgeBases.EducationKnowledgeBaseId)",
+    "PolicyKnowledgeBaseId=$($knowledgeBases.PolicyKnowledgeBaseId)",
     "OpenAiModelId=$OpenAiModelId",
     "AlertEmail=$AlertEmail",
     "AiImageUri=$($images.Ai)",
@@ -390,6 +423,10 @@ $oidcParameters = @(
     "EcsTaskExecutionRoleArn=$($foundation.TaskExecutionRoleArn)",
     "EcsAppTaskRoleArn=$($foundation.AppTaskRoleArn)",
     "EcsAiTaskRoleArn=$($foundation.AiTaskRoleArn)",
+    "EducationKnowledgeBaseId=$($knowledgeBases.EducationKnowledgeBaseId)",
+    "PolicyKnowledgeBaseId=$($knowledgeBases.PolicyKnowledgeBaseId)",
+    "EducationSourceBucketName=$CorpusBucketName",
+    "PolicySourceBucketName=$CorpusBucketName",
     "OperationalAlertsTopicArn=$($application.OperationalAlertsTopicArn)"
 )
 if ($foundation.BackendTaskRoleArn) {
