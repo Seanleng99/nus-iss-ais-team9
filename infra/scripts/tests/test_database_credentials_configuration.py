@@ -33,7 +33,8 @@ def test_database_secret_access_is_isolated_from_frontend_role():
 
 def test_pipeline_can_pass_only_the_explicit_optional_backend_role():
     roles = template("github-actions-oidc.yaml")
-    statements = roles["Resources"]["DeployRole"]["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+    policies = roles["Resources"]["DeployRole"]["Properties"]["Policies"]
+    statements = next(policy for policy in policies if policy["PolicyName"] == "DeployApplication")["PolicyDocument"]["Statement"]
     pass_role = next(item for item in statements if item["Action"] == "iam:PassRole")
     assert {"Fn::If": [
         "HasBackendTaskRole", {"Ref": "EcsBackendTaskRoleArn"}, {"Ref": "AWS::NoValue"},

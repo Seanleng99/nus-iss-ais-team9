@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.config import Settings
 from coach_i18n import translate
+from coach_trace.review import reason_keys, review_metadata
 from pydantic import SecretStr
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2] / "apps" / "ai-service"
@@ -39,7 +40,6 @@ def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
     results = response.get("agent_results") or []
     if not results:
         return False
-    withheld_summary = translated("safety.withheld_generated_summary")
     withheld_rationale = translated("safety.final_review_rationale")
     safe_data_keys = {"evidence_status", "policy_evidence_status"}
     safe_values = {"grounded", "partial", "insufficient"}
@@ -47,11 +47,22 @@ def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
         if result.get("blocked") is not True:
             return False
         data = result.get("data") or {}
+        if not isinstance(data, dict):
+            return False
+        safe_review = review_metadata(data)
+        safe_evidence = {key: value for key, value in data.items()
+                         if key in safe_data_keys and isinstance(value, str) and value in safe_values}
+        expected_summary = (" ".join(translated(key) for key in reason_keys(safe_review))
+                            or translated("safety.withheld_generated_summary"))
         if (
-            result.get("summary") == withheld_summary
+            result.get("summary") == expected_summary
             and result.get("rationale") == [withheld_rationale]
         ):
-            if set(data) - safe_data_keys or any(value not in safe_values for value in data.values()):
+            if data != {**safe_review, **safe_evidence}:
+                return False
+            from app.agents.risk_compliance import SAFE_POLICY_NOTES
+            notes = result.get("policy_notes", [])
+            if not isinstance(notes, list) or any(note not in SAFE_POLICY_NOTES for note in notes):
                 return False
         elif not (
             len(results) == 1
