@@ -110,7 +110,7 @@ The workflow audit keeps the following responsibilities:
 | Release to AWS | Deployment after successful push CI at the current main SHA |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
 | AWS Operational Validation | Weekly/manual deployed-model, lifecycle, load and operational evidence |
-| Model Drift Monitoring | Opt-in weekly/manual independent live quality capture and reviewed-baseline comparison; GitHub reports with optional SNS alerts and aggregate input checks |
+| Model Drift Monitoring | Opt-in weekly/manual rubric-scored live capture and human-calibrated baseline comparison; current policy uses GPT-6 Luna for generation and grading, with GitHub reports and optional SNS alerts/input checks |
 | Final Assessment | Manual academic evidence inventory and operational validation wrapper |
 | Dependabot Updates | GitHub-managed dependency maintenance |
 

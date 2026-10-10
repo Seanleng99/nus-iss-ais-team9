@@ -28,7 +28,15 @@ complete passing capture is reviewed and accepted.
 The project's existing credential lists only `gpt-6-luna`; a direct Structured
 Outputs invocation of the selected `gpt-6-sol` evaluator returned HTTP 403.
 The new GitHub secret also lacked permission for that grader call. Its Luna access
-will be checked by the next preflight. The configured Standard rates for Luna are
+was verified by the [first Luna capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38048528519).
+That run scored five answers and stopped when the sixth grader response could not
+be verified. All six app responses passed structural checks; their observed P95
+was 28,792.43 ms. The first sample failed automated helpfulness, which remains
+visible in its evidence. This incomplete run cannot become a baseline. The scoring
+schema now requires booleans only for applicable metrics and null for unused
+metrics, with a new schema identity and more specific sanitized failure codes.
+The tightened schema passed two small Luna-only connectivity checks, separate from
+baseline evidence. The configured Standard rates for Luna are
 USD 0.10 input / USD 0.50 output per million tokens, matching the
 [official model card](https://developers.openai.com/api/docs/models/gpt-6-luna).
 
@@ -52,7 +60,7 @@ The versioned policy and capture identity both record the latency limit, so chan
 it requires fresh baseline acceptance. Quality and safety thresholds and application
 release cost gates are unchanged.
 The [candidate activation evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json)
-records the policy correction, validation and both failed candidate attempts. The
+records the policy correction, validation and failed candidate attempts. The
 first attempt observed a structurally passing app response in 29,775.57 ms before
 the evaluator failed; this is one response, not a validated latency distribution.
 

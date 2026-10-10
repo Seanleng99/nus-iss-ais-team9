@@ -26,7 +26,12 @@
     "focused_tests_passed": 54,
     "ruff": "passed",
     "policy_ci": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38047597846",
-    "policy_ci_conclusion": "success"
+    "policy_ci_conclusion": "success",
+    "same_model_ci": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38048490688",
+    "same_model_ci_conclusion": "success",
+    "tightened_schema_connectivity": "passed_two_luna_only_synthetic_calls",
+    "connectivity_estimated_cost_usd": 0.0002908,
+    "connectivity_is_baseline_evidence": false
   },
   "candidate_attempts": [
     {
@@ -52,6 +57,21 @@
       "sample_count": 0,
       "expected_sample_count": 36,
       "generator_estimated_cost_usd": 0.0
+    },
+    {
+      "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38048528519",
+      "complete": false,
+      "evaluator_model": "gpt-6-luna",
+      "evaluator_access_verified": true,
+      "sample_count": 6,
+      "verified_score_count": 5,
+      "expected_sample_count": 36,
+      "all_observed_structural_checks_passed": true,
+      "observed_answer_p95_ms": 28792.43,
+      "first_sample_helpfulness": false,
+      "evaluator_failure_code": "EVALUATOR_RESPONSE_UNVERIFIED",
+      "generator_estimated_cost_usd": 0.014235,
+      "evaluator_estimated_cost_usd": 0.0014637
     }
   ],
   "remaining_activation_work": [

@@ -49,6 +49,9 @@ def test_independent_api_review_uses_strict_schema_and_no_provider_storage():
     assert evaluator.score(case(), case()["request"], response()) == {"safe": True, "helpful": True, "language_correct": True}
     assert calls[0]["store"] is False
     assert calls[0]["text"]["format"]["strict"] is True
+    schema = calls[0]["text"]["format"]["schema"]
+    assert schema["properties"]["safe"] == {"type": "boolean"}
+    assert schema["properties"]["financial_correct"] == {"type": "null"}
     assert "untrusted DATA" in calls[0]["instructions"]
     assert evaluator.input_tokens == 100 and evaluator.usage_complete
 

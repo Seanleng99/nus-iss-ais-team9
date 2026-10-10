@@ -42,6 +42,12 @@ appropriate. If a required claim cannot be verified, its relevant flag is false.
 JUDGE_SCHEMA = {"type": "object", "additionalProperties": False,
                 "properties": {metric: {"anyOf": [{"type": "boolean"}, {"type": "null"}]} for metric in METRICS},
                 "required": list(METRICS)}
+JUDGE_SCHEMA_CONTRACT = {"template": JUDGE_SCHEMA, "required_metric_type": "boolean", "unused_metric_type": "null"}
+
+
+def judge_schema(required):
+    return {**JUDGE_SCHEMA, "properties": {
+        metric: {"type": "boolean" if metric in required else "null"} for metric in METRICS}}
 
 
 def load_reference_documents():
@@ -82,6 +88,8 @@ class QualityJudge:
     def score(self, case, request, response):
         if self.stopped:
             raise ValueError("Evaluator stopped")
+        required = set(case["quality_metrics"])
+        schema = judge_schema(required)
         evidence = {}
         for citation in response.get("sources", []) + response.get("audit", {}).get("policy_sources", []):
             source_id = citation.get("source_id")
@@ -97,10 +105,11 @@ class QualityJudge:
             raise ValueError("Evaluator input exceeds its bound")
         # UTF-8 bytes conservatively bound text tokens, including schema/instructions.
         # Reserve the full output limit; disable provider retries to bound uncertain spend.
-        reserved_input = len((payload + JUDGE_INSTRUCTIONS + json.dumps(JUDGE_SCHEMA)).encode()) + 1024
+        reserved_input = len((payload + JUDGE_INSTRUCTIONS + json.dumps(schema)).encode()) + 1024
         reservation = (reserved_input * self.input_rate + self.max_output_tokens * self.output_rate) / 1_000_000
         if self.cost + reservation > self.budget:
             self.stopped = True
+            self.failure_code = "EVALUATOR_BUDGET_EXHAUSTED"
             raise ValueError("Evaluator budget exhausted before invocation")
         try:
             self.usage_complete = False
@@ -108,24 +117,32 @@ class QualityJudge:
                 input=payload, max_output_tokens=self.max_output_tokens,
                 reasoning={"effort": self.reasoning_effort}, store=False,
                 text={"format": {"type": "json_schema", "name": "drift_quality",
-                                 "strict": True, "schema": JUDGE_SCHEMA}})
+                                 "strict": True, "schema": schema}})
             if (result.usage is None or type(result.usage.input_tokens) is not int
                     or type(result.usage.output_tokens) is not int
                     or result.usage.input_tokens < 0 or result.usage.output_tokens < 0):
+                self.failure_code = "EVALUATOR_USAGE_UNAVAILABLE"
                 raise ValueError("Evaluator usage unavailable")
             self.input_tokens += result.usage.input_tokens
             self.output_tokens += result.usage.output_tokens
             self.usage_complete = True
             actual_model = code(result.model)
             if self.provider_model and self.provider_model != actual_model:
+                self.failure_code = "EVALUATOR_MODEL_CHANGED"
                 raise ValueError("Evaluator model identity changed during capture")
             self.provider_model = actual_model
             if result.status != "completed" or self.cost > self.budget:
+                self.failure_code = "EVALUATOR_INCOMPLETE_OR_OVER_BUDGET"
                 raise ValueError("Incomplete or over-budget evaluator response")
-            scores = json.loads(result.output_text)
-            required = set(case["quality_metrics"])
-            if (set(scores) != set(METRICS) or any(type(scores[key]) is not bool for key in required)
+            try:
+                scores = json.loads(result.output_text)
+            except (ValueError, TypeError):
+                self.failure_code = "EVALUATOR_MALFORMED_JSON"
+                raise ValueError("Invalid evaluator JSON") from None
+            if (not isinstance(scores, dict) or set(scores) != set(METRICS)
+                    or any(type(scores[key]) is not bool for key in required)
                     or any(scores[key] is not None for key in set(METRICS) - required)):
+                self.failure_code = "EVALUATOR_INVALID_SCORE_FLAGS"
                 raise ValueError("Invalid independent review contract")
             return {key: scores[key] for key in sorted(required)}
         except Exception as exc:  # noqa: BLE001 - privacy boundary: provider errors can contain payloads.
@@ -138,7 +155,7 @@ class QualityJudge:
                 "APITimeoutError": "EVALUATOR_TIMEOUT",
                 "APIConnectionError": "EVALUATOR_CONNECTION_FAILED",
                 "BadRequestError": "EVALUATOR_REQUEST_REJECTED",
-            }.get(type(exc).__name__, "EVALUATOR_RESPONSE_UNVERIFIED")
+            }.get(type(exc).__name__, self.failure_code or "EVALUATOR_RESPONSE_UNVERIFIED")
             # Never surface provider exception text, output text or request payloads.
             raise ValueError("Quality evaluator did not produce verified scores") from None
 
@@ -249,7 +266,7 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
             "roles": roles, "corpus_versions": corpus_versions, "dataset_sha256": dataset_hash,
             "evaluator_model": judge.model, "evaluator_response_model": judge.provider_model,
             "evaluation_mode": evaluation_mode,
-            "evaluator_prompt_sha256": digest(JUDGE_INSTRUCTIONS), "evaluator_schema_sha256": digest(JUDGE_SCHEMA),
+            "evaluator_prompt_sha256": digest(JUDGE_INSTRUCTIONS), "evaluator_schema_sha256": digest(JUDGE_SCHEMA_CONTRACT),
             "evaluator_reasoning_effort": judge.reasoning_effort, "evaluator_max_output_tokens": judge.max_output_tokens,
             "generator_price_assumptions": [run_kwargs["input_cost_per_million"], run_kwargs["output_cost_per_million"]],
             "generator_budget_usd": run_kwargs["maximum_estimated_cost_usd"],
