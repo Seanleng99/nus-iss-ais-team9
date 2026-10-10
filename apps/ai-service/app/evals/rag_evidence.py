@@ -104,12 +104,30 @@ def evaluate(cases: list[EvidenceCase], retriever) -> dict:
         ]
         status_ok = grounding["evidence_status"] == case.expected_status
         gaps_ok = set(grounding.get("unanswered_topics", [])) == set(case.unanswered_topics)
+        retrieved_contexts = [
+            {"source_id": context["source_id"], "text": context["text"]}
+            for context in grounding["contexts"]
+        ]
+        expected_output = {
+            "expected_status": case.expected_status,
+            "required_evidence": [evidence.model_dump() for evidence in case.required_evidence],
+            "unanswered_topics": case.unanswered_topics,
+        }
+        actual_output = {
+            "evidence_status": grounding["evidence_status"],
+            "unanswered_topics": grounding.get("unanswered_topics", []),
+            "retrieved_contexts": retrieved_contexts,
+        }
         results.append(
             {
                 "id": case.id,
                 "family": case.family,
                 "split": case.split,
                 "language": case.language,
+                "question": case.question,
+                "expected_output": expected_output,
+                "actual_answer": "N/A",
+                "actual_output": actual_output,
                 "expected_status": case.expected_status,
                 "actual_status": grounding["evidence_status"],
                 "passage_hits": sum(found),
@@ -117,6 +135,7 @@ def evaluate(cases: list[EvidenceCase], retriever) -> dict:
                 "scope_correct": status_ok and gaps_ok,
                 "passed": status_ok and gaps_ok and all(found),
                 "retrieved_source_ids": [context["source_id"] for context in grounding["contexts"]],
+                "retrieved_contexts": retrieved_contexts,
                 "context_words": sum(
                     len(context["text"].split()) for context in grounding["contexts"]
                 ),

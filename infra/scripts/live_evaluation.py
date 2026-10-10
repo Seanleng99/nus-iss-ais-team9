@@ -8,6 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -404,6 +405,28 @@ def evaluate_response(
     def add_check(name: str, passed: bool) -> None:
         checks.append({"check": name, "passed": bool(passed)})
 
+    if "required_model_components" in expected:
+        calls = response.get("audit", {}).get("model_calls", [])
+        for component in expected["required_model_components"]:
+            add_check("real_model." + component, any(
+                call.get("component") == component and call.get("model_id") == expected_model_id
+                and call.get("status") == "completed" and call.get("error_code") is None
+                and type(call.get("output_characters")) is int and call["output_characters"] > 0
+                and type(call.get("input_tokens")) is int and call["input_tokens"] > 0
+                and type(call.get("output_tokens")) is int and call["output_tokens"] > 0
+                for call in calls))
+    for agent, fields in expected.get("agent_data", {}).items():
+        data = _agent_data(response, agent)
+        for field, value in fields.items():
+            actual = data
+            for key in field.split("."):
+                if isinstance(actual, list) and key.isdigit():
+                    actual = actual[int(key)] if int(key) < len(actual) else None
+                else:
+                    actual = actual.get(key) if isinstance(actual, dict) else None
+            add_check("agent_data." + agent + "." + field, actual == value)
+    if "answer_status" in expected:
+        add_check("answer_status", response.get("audit", {}).get("answer_status") == expected["answer_status"])
     if "budget_draft" in expected:
         draft = _agent_data(response, "budget").get("budget_draft")
         add_check("budget_draft_present", isinstance(draft, dict))
@@ -728,7 +751,12 @@ def run_live_evaluation(
     output_cost_per_million: float,
     commit_sha: str,
     maximum_estimated_cost_usd: float | None = None,
+    maximum_total_tokens: int | None = None,
+    capture_synthetic_dialogue: bool = False,
+    response_checks: Callable[[dict, dict], list[dict]] | None = None,
 ) -> dict[str, Any]:
+    if maximum_total_tokens is not None and maximum_total_tokens < 1:
+        raise ValueError("maximum_total_tokens must be positive")
     if repeats < 1:
         raise ValueError("repeats must be positive")
     if not cases:
@@ -747,8 +775,10 @@ def run_live_evaluation(
     def cannot_start_turn():
         estimated = (total_input_tokens * input_cost_per_million
                      + total_output_tokens * output_cost_per_million) / 1_000_000
-        return usage_unknown or (maximum_estimated_cost_usd is not None
-                                 and estimated >= maximum_estimated_cost_usd)
+        return (usage_unknown
+                or (maximum_estimated_cost_usd is not None and estimated >= maximum_estimated_cost_usd)
+                or (maximum_total_tokens is not None
+                    and total_input_tokens + total_output_tokens >= maximum_total_tokens))
 
     for repeat in range(1, repeats + 1):
         for case, turns in zip(cases, case_turns, strict=True):
@@ -812,6 +842,15 @@ def run_live_evaluation(
                                     for call in audit.get("model_calls", [])
                                     for field in ("input_tokens", "output_tokens"))):
                         record["token_usage_complete"] = False
+                    if maximum_total_tokens is not None:
+                        calls = audit.get("model_calls", [])
+                        consistent = (type(audit.get("model_call_count")) is int
+                                      and audit["model_call_count"] == len(calls)
+                                      and all(type(call.get(key)) is int and call[key] >= 0
+                                              for call in calls for key in ("input_tokens", "output_tokens"))
+                                      and all(audit.get("model_" + key) == sum(call.get(key) or 0 for call in calls)
+                                              for key in ("input_tokens", "output_tokens")))
+                        record["token_usage_complete"] = record["token_usage_complete"] and consistent
                     input_tokens = int(audit.get("model_input_tokens") or 0)
                     output_tokens = int(audit.get("model_output_tokens") or 0)
                     total_input_tokens += input_tokens
@@ -828,7 +867,9 @@ def run_live_evaluation(
                     )
                     has_answer = isinstance(response.get("answer"), str) and bool(response["answer"].strip())
                     checks.append({"check": "nonempty_answer", "passed": has_answer})
-                    passed = bool(passed and has_answer)
+                    if response_checks is not None:
+                        checks.extend(response_checks(response, expected))
+                    passed = bool(passed and has_answer and all(item["passed"] for item in checks))
                     prefix = f"setup[{turn_index}]." if turn_index < len(turns) - 1 else ""
                     record["checks"].extend(
                         {"check": prefix + check["check"], "passed": check["passed"]}
@@ -846,6 +887,20 @@ def run_live_evaluation(
                         "model_call_count": call_count,
                         "token_usage_complete": record["token_usage_complete"],
                     })
+                    if capture_synthetic_dialogue:
+                        # Opt-in only for reviewed synthetic datasets; legacy callers retain metadata only.
+                        record["turns"][-1].update({
+                            "question": request["message"], "expected": expected,
+                            "answer": response.get("answer"), "checks": checks,
+                            "selected_agents": response.get("selected_agents", []),
+                            "sources": response.get("sources", []),
+                            "agent_results": response.get("agent_results", []),
+                            "model_calls": [{key: call.get(key) for key in (
+                                "component", "model_id", "status", "error_code", "output_characters",
+                                "input_tokens", "output_tokens", "duration_ms",
+                            )} for call in audit.get("model_calls", [])],
+                            "build_commit": audit.get("build_commit"),
+                        })
                     record.update({
                         "correlation_id": correlation_id,
                         "trace_id": audit.get("trace_id"),
@@ -853,7 +908,7 @@ def run_live_evaluation(
                         "policy_source_ids": [source["source_id"] for source in audit.get("policy_sources", []) if source.get("source_id")],
                     })
                     record["passed"] = bool(record["passed"] and passed)
-                    if maximum_estimated_cost_usd is not None and not record["token_usage_complete"]:
+                    if (maximum_estimated_cost_usd is not None or maximum_total_tokens is not None) and not record["token_usage_complete"]:
                         usage_unknown = True
                     if not passed and turn_index < len(turns) - 1:
                         # An invalid setup cannot establish the state under test.
@@ -880,7 +935,7 @@ def run_live_evaluation(
                     )
                 else:
                     record["token_usage_complete"] = False
-                if maximum_estimated_cost_usd is not None and not record["token_usage_complete"]:
+                if (maximum_estimated_cost_usd is not None or maximum_total_tokens is not None) and not record["token_usage_complete"]:
                     usage_unknown = True
                 record.update(
                     {

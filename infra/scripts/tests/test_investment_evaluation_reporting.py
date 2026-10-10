@@ -47,23 +47,29 @@ def test_every_owned_agent_suite_has_complete_versioned_evaluation_definition():
             assert item["expected_outputs"]
 
 
+@pytest.mark.parametrize("suite", [
+    "orchestrator", "spending", "budget", "goal", "investment", "risk-compliance", "rag",
+])
 @pytest.mark.parametrize("outcomes,accepted,rate", [
     (["passed", "passed"], True, 1),
     (["passed", "failed"], False, .5),
     (["passed", "error"], False, .5),
     (["passed", "skipped"], False, .5),
+    (["passed", "xpassed"], False, .5),
     ([], False, None),
 ])
-@pytest.mark.parametrize("suite", OWNED_SUITES)
 def test_evaluation_acceptance_requires_executed_passing_cases(suite, outcomes, accepted, rate):
     cases = [junit.CaseResult(f"case-{i}", outcome, "", "", "") for i, outcome in enumerate(outcomes)]
     markdown, report = junit.evaluation_summary(suite, cases)
     assert report["accepted"] is accepted
     assert report["results"]["assertion_pass_rate"] == rate
+    assert report["results"]["actual_test_count"] == len(outcomes)
+    assert report["results"]["outcomes"]["xpassed"] == int("xpassed" in outcomes)
     assert all(len(item["sha256"]) == 64 for item in report["datasets"])
     assert "Expected output" in markdown and "Acceptance criteria" in markdown
     assert "Limitations:" in markdown
     assert sum(report["results"]["outcome_counts"].values()) == len(cases)
+    assert "local_fixture" in markdown
 
 
 def test_expected_case_properties_are_published(tmp_path):
@@ -88,7 +94,7 @@ def test_unknown_agent_evaluation_definition_is_an_error(suite):
 
 def test_missing_owned_definition_fails_reporting_instead_of_omitting_acceptance(tmp_path, monkeypatch):
     catalog = json.loads(junit.EVALUATION_SPEC.read_text())
-    del catalog["suites"]["spending-offline"]
+    del catalog["suites"]["spending"]
     incomplete = tmp_path / "definitions.json"
     incomplete.write_text(json.dumps(catalog))
     monkeypatch.setattr(junit, "EVALUATION_SPEC", incomplete)
@@ -97,22 +103,20 @@ def test_missing_owned_definition_fails_reporting_instead_of_omitting_acceptance
     output = tmp_path / "evaluation.json"
     assert junit.main([
         str(report), "--output", str(tmp_path / "summary.md"), "--title", "Spending",
-        "--suite", "spending-offline", "--evaluation-output", str(output),
+        "--suite", "spending", "--evaluation-output", str(output),
     ]) == 1
     assert not output.exists()
 
 
-@pytest.mark.parametrize("group,prefix", [
-    ("blocks", "test_blocks_unsafe_request"),
-    ("withholds", "test_withholds_unsafe_answer"),
-    ("allows", "test_allows_safe_answer"),
-])
-def test_compliance_reports_record_only_their_selected_scenario_group(group, prefix):
+def test_compliance_reports_all_scenario_groups_with_only_examples_scoped():
     markdown, report = junit.evaluation_summary(
-        f"risk-compliance-functional-{group}", [junit.CaseResult("case", "passed", "", "", "")],
+        "risk-compliance", [junit.CaseResult("case", "passed", "", "", "")],
     )
-    assert report["test_selection"]["name_prefix"] == prefix
-    assert f"-k {prefix}" in markdown
+    selection = report["test_selection"]
+    assert "tests/test_risk_compliance_functional.py" in selection["test_paths"]
+    assert selection["name_prefix_test_path"] == "tests/test_agent_evaluation_examples.py"
+    assert "tests/test_agent_evaluation_examples.py::test_example_risk_compliance" in markdown
+    assert "-k test_blocks" not in markdown
 
 
 @pytest.mark.parametrize("suite", OWNED_SUITES)
@@ -130,6 +134,9 @@ def test_evaluation_json_retains_definition_measurement_and_commit(suite, tmp_pa
     assert evidence["accepted"] is True
     assert evidence["datasets"] and evidence["acceptance_criteria"] and evidence["metrics"]
     assert evidence["test_selection"]["test_paths"]
+    assert evidence["results"]["actual_test_count"] == 1
+    assert evidence["results"]["cases"][0]["question"] == "N/A"
+    assert evidence["results"]["cases"][0]["response"] == "N/A"
 
 
 def reports():
@@ -137,9 +144,15 @@ def reports():
         "name": "orchestrator", "dataset": "routing.jsonl", "dataset_sha256": "a" * 64,
         "metrics": {"total": 2, "passed": 2, "failed_case_ids": [],
                     "routing_confusion_totals": {"tp": 2, "fp": 0, "fn": 0},
+                    "case_diagnostics": [{"id": "route-1", "case_type": "conversation",
+                        "question": "Create a monthly budget", "expected_output": {"selected_agents": ["budget"]},
+                        "actual_answer": "An unsaved budget draft is ready for review.",
+                        "actual_output": {"selected_agents": ["budget"]}, "passed": True}],
                     "routing_case_diagnostics": [{"id": "route-1", "mode": "automatic",
                         "expected_agents": ["investment_education"], "actual_agents": ["investment_education"],
-                        "routing_match": True, "overall_pass": True}]},
+                        "routing_match": True, "overall_pass": True,
+                        "question": "Explain an ETF", "expected_output": {"selected_agents": ["investment_education"]},
+                        "actual_answer": "An ETF is a pooled fund.",}]},
         "checks": [{"check": "minimum", "metric": "routing_precision", "actual": 1,
                     "minimum": 1, "passed": True}],
     }]}
@@ -148,14 +161,19 @@ def reports():
                  "passage_recall_at_3": 1, "scope_accuracy": 1, "by_language": {"en": 1, "zh": 1},
                  "by_status": {"grounded": 1}, "retrieval_gate_passed": True,
                  "cases": 1, "passed_cases": 1,
-                 "results": [{"id": "rag-1", "passed": True, "context_words": 200}]}
+                 "results": [{"id": "rag-1", "question": "How does an ETF pool money?",
+                     "expected_output": {"required_evidence": [{"source_id": "etf-guide", "quote": "Investor money is pooled."}]},
+                     "retrieved_contexts": [{"source_id": "etf-guide", "text": "Investor money is pooled in this fund."}],
+                     "passed": True, "context_words": 200}]}
     return evaluation, retrieval
 
 
 def test_metrics_summary_shows_actual_thresholds_routing_and_limitations():
     markdown = metrics.render(*reports())
     for text in ("routing_precision", "TP / (TP + FP)", "route-1", "automatic",
-                 "passage_recall_at_3", "scope_accuracy", "not measured"):
+                 "passage_recall_at_3", "scope_accuracy", "not measured",
+                 "Create a monthly budget", "An unsaved budget draft", "Investor money is pooled",
+                 "all seven offline pytest suites", "optional live evaluation job is selected separately"):
         assert text in markdown
     assert "1,200" in markdown
 

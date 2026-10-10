@@ -1,7 +1,7 @@
 name: Release to AWS
 
 on:
-  # CI calls all five reusable agent workflows and enforces their aggregate gate.
+  # CI calls the unified agent evaluation workflow and enforces its offline gate.
   # Only a successful CI push for the tested current main SHA can release.
   workflow_run:
     workflows: [CI and LLMSecOps]

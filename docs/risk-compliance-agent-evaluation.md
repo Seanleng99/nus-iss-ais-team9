@@ -1,6 +1,13 @@
 # Risk & Compliance Agent evaluation and CI reports
 
-**Risk & Compliance Agent Tests** owns four offline evaluation suites. Their
+**Current entry point:** **Agent and RAG Evaluations** → `risk-compliance` offline / live jobs.
+The former four suite IDs below describe retained scenario groups, now executed
+inside one `risk-compliance` offline job. They are not separate workflow or CLI names.
+Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
+job graph, live Yes/No choice and reports.
+
+
+The `risk-compliance` offline job contains the following four scenario groups. Their
 definitions are in [agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json),
 and [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json) records the
 exact files and functional name filters. Inputs include positive safe controls,
@@ -55,38 +62,26 @@ Metric and acceptance criterion: policy source recall@3 and overall case accurac
 
 ## Execution and finding evidence
 
-Relevant pull requests/main pushes run the suites when AI CI or deployment is
-selected. Full scheduled CI runs Monday at 10:00 Singapore time; individual
-**Risk & Compliance Agent Tests** runs allow manual dispatch. Docs-only changes
-do not trigger CI. Application build/release depends on the required agent gate;
-see [workflow integration](agent-test-workflows.md).
+Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+its **risk-compliance — offline unit tests** job and download `agent-offline-risk-compliance`.
+It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
+full synthetic example responses and every case outcome, retained for 90 days.
+The combined `agent-evaluation-report` artifact includes HTML, JSON and Markdown.
 
-Open **CI and LLMSecOps -> Risk & Compliance agent tests**, or the named manual workflow:
-
-- Each job summary includes datasets/hashes, expected outputs, the name filter,
-  metrics/acceptance, measured rate and individual outcomes.
-- Download `risk-compliance-offline-report`, `risk-compliance-functional-blocks-report`,
-  `risk-compliance-functional-withholds-report` and `risk-compliance-functional-allows-report`.
-- Each includes `<suite>.xml`, `<suite>-summary.md` and `<suite>-evaluation.json`,
-  retained for 30 days. JSON records commit, selection, outcome counts,
-  failed/unexecuted IDs and acceptance. Missing/empty evidence or skips cannot pass.
-- Functional scenarios record synthetic questions/responses as JUnit properties.
-  These fixture responses are not real-model semantic safety evidence.
+To include live integration, manually dispatch the consolidated workflow on main
+and check **Run live integration tests?**. Live failures are advisory; missing or
+skipped evidence never counts as a pass. Existing release smoke remains required.
 
 ## Local reproduction
 
-From the repository root with shared and AI development dependencies installed:
-
 ```sh
-python infra/scripts/run_agent_tests.py --suite risk-compliance-offline --junitxml artifacts/risk-compliance-offline.xml
-python infra/scripts/run_agent_tests.py --suite risk-compliance-functional-blocks --junitxml artifacts/risk-compliance-functional-blocks.xml
-python infra/scripts/run_agent_tests.py --suite risk-compliance-functional-withholds --junitxml artifacts/risk-compliance-functional-withholds.xml
-python infra/scripts/run_agent_tests.py --suite risk-compliance-functional-allows --junitxml artifacts/risk-compliance-functional-allows.xml
-python infra/scripts/summarize_pytest_junit.py artifacts/risk-compliance-offline.xml --suite risk-compliance-offline --title "Compliance offline evaluation" --output artifacts/risk-compliance-offline-summary.md --evaluation-output artifacts/risk-compliance-offline-evaluation.json
+python infra/scripts/run_agent_tests.py --suite risk-compliance --junitxml artifacts/risk-compliance.xml
+python infra/scripts/summarize_pytest_junit.py artifacts/risk-compliance.xml --suite risk-compliance --title "Risk & Compliance offline" --output artifacts/risk-compliance-summary.md --evaluation-output artifacts/risk-compliance-evaluation.json
 ```
 
-The runner applies each manifest filter automatically. Use matching XML/output
-names to report the other groups. No provider credentials or paid calls are needed.
+These commands run all retained scenario groups offline. Non-conversational
+helper tests display N/A for question/response; synthetic example tests record
+actual application output with fixture providers.
 
 ## Live acceptance and limitations
 

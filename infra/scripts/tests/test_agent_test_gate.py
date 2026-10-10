@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-RESULTS = ("SPENDING_RESULT", "BUDGET_RESULT", "GOAL_RESULT", "INVESTMENT_RESULT", "COMPLIANCE_RESULT")
+RESULTS = ("EVALUATIONS_RESULT",)
 
 
 def run_gate(tmp_path, *, ai_ci="true", deploy="false", changes="success", **results):
@@ -58,7 +58,7 @@ def test_all_successful_suites_pass(tmp_path):
 
 
 def test_frontend_only_release_still_requires_agents(tmp_path):
-    outcome = run_gate(tmp_path, ai_ci="false", deploy="true", GOAL_RESULT="skipped")
+    outcome = run_gate(tmp_path, ai_ci="false", deploy="true", EVALUATIONS_RESULT="skipped")
     assert outcome.returncode != 0
 
 

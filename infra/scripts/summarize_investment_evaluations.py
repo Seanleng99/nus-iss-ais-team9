@@ -26,8 +26,13 @@ METRICS = {
 }
 
 
-def cell(value) -> str:
-    return " ".join(str(value).split()).replace("|", "\\|")
+def cell(value, limit: int = 180) -> str:
+    text = " ".join(str(value).split()).replace("|", "\\|")
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _json_cell(value) -> str:
+    return cell(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
 def render(evaluation: dict, retrieval: dict) -> str:
@@ -36,7 +41,7 @@ def render(evaluation: dict, retrieval: dict) -> str:
         ("**Offline evidence only.** Routing uses LocalFixtureModelGateway. Passage relevance uses actual "
         "governed Markdown and the local retriever. Neither measures deployed OpenAI routing/answer quality "
         "or live AWS availability. API/Bedrock-adapter integration has its own JUnit report with stubbed transport."),
-        "", ("Definitions for all Investment pytest suites are in `infra/llmsecops/agent-evaluation-specs.json`; "
+        "", ("Definitions for all seven offline pytest suites are in `infra/llmsecops/agent-evaluation-specs.json`; "
         "each suite publishes its dataset hashes, expected outputs, measured assertion rate and acceptance result."), "",
     ]
     for suite in evaluation["datasets"]:
@@ -59,6 +64,29 @@ def render(evaluation: dict, retrieval: dict) -> str:
                 f"| {check['metric']} | {cell(METRICS.get(check['metric'], 'See versioned policy'))} | "
                 f"{check['actual']} | {requirement} | {'PASS' if check['passed'] else 'FAIL'} |"
             )
+        case_diagnostics = suite["metrics"].get("case_diagnostics", [])
+        if case_diagnostics:
+            lines += [
+                "", "Case-level offline evidence (cells are shortened here; full values are in JSON):", "",
+                "| Case | Type | Question / paired inputs | Expected output | Actual answer or value | Pass |",
+                "| --- | --- | --- | --- | --- | --- |",
+            ]
+            for item in case_diagnostics:
+                if item.get("case_type") == "fairness_pair":
+                    question = "; ".join(
+                        f"{pair['side']}: {pair['question']}"
+                        for pair in item.get("paired_inputs", [])
+                    )
+                else:
+                    question = item.get("question", "N/A")
+                actual = item.get("actual_answer", "N/A")
+                if actual == "N/A":
+                    actual = _json_cell(item.get("actual_output", "N/A"))
+                lines.append(
+                    f"| {cell(item.get('id', 'N/A'))} | {cell(item.get('case_type', 'N/A'))} | "
+                    f"{cell(question)} | {_json_cell(item.get('expected_output', 'N/A'))} | "
+                    f"{cell(actual)} | {item.get('passed', False)} |"
+                )
         diagnostics = suite["metrics"].get("routing_case_diagnostics", [])
         if diagnostics:
             counts = suite["metrics"]["routing_confusion_totals"]
@@ -93,6 +121,17 @@ def render(evaluation: dict, retrieval: dict) -> str:
     for group in ("by_language", "by_status"):
         for label, value in retrieval[group].items():
             lines.append(f"| {group}.{label} | Complete-case pass rate in this slice | {value} | >= 0.99 when present |")
+    lines += [
+        "", "Case-level retrieved evidence (cells are shortened here; full passages are in JSON):", "",
+        "| Case | Question | Expected output | Retrieved actual contexts | Pass |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    lines.extend(
+        f"| {cell(item.get('id', 'N/A'))} | {cell(item.get('question', 'N/A'))} | "
+        f"{_json_cell(item.get('expected_output', 'N/A'))} | "
+        f"{_json_cell(item.get('retrieved_contexts', 'N/A'))} | {item['passed']} |"
+        for item in retrieval["results"]
+    )
     max_words = max((item["context_words"] for item in retrieval["results"]), default=0)
     failed = [item["id"] for item in retrieval["results"] if not item["passed"]]
     lines += [
@@ -100,7 +139,7 @@ def render(evaluation: dict, retrieval: dict) -> str:
         (f"Retrieval gate: **{'PASS' if retrieval['retrieval_gate_passed'] else 'FAIL'}**. "
         f"Cases: {retrieval['passed_cases']}/{retrieval['cases']}. Failed IDs: `{', '.join(failed) or 'none'}`."), "",
         ("Generated-answer correctness, explanation helpfulness and live-model routing accuracy: **not measured**. "
-        "The existing live AWS evaluation is separate and is not started by this workflow."), "",
+        "Numeric evaluation runs offline; the optional live evaluation job is selected separately."), "",
     ]
     return "\n".join(lines)
 

@@ -577,24 +577,17 @@ def test_datasets_have_bounded_scenario_turn_and_retrieval_counts():
     assert sum("diversification" in case["query"].casefold() for case in rag_cases) == 1
 
 
-def test_workflow_is_manual_one_run_disables_before_demo_environment_and_retains_90_days():
-    workflow = yaml.load((ROOT / ".github/workflows/investment-agent-live.yml").read_text(),
+def test_live_workflow_is_optional_advisory_with_demo_environment_and_retains_90_days():
+    workflow = yaml.load((ROOT / ".github/workflows/agent-evaluations.yml").read_text(),
                          Loader=yaml.BaseLoader)
-    assert set(workflow["on"]) == {"workflow_dispatch"}
-    assert "schedule" not in workflow["on"]
-    jobs = workflow["jobs"]
-    arm = jobs["arm-once"]
-    live_job = jobs["live"]
-    assert live_job["needs"] == "arm-once"
+    assert set(workflow["on"]) == {"workflow_dispatch", "workflow_call"}
+    assert workflow["on"]["workflow_dispatch"]["inputs"]["run_live"]["default"] == "false"
+    live_job = workflow["jobs"]["live"]
+    assert "inputs.run_live" in live_job["if"]
+    assert "workflow_dispatch" in live_job["if"]
+    assert "refs/heads/main" in live_job["if"]
+    assert live_job["continue-on-error"] == "true"
     assert live_job["environment"] == "demo"
-    guard = arm["steps"][0]["run"]
-    assert '"$GITHUB_RUN_ATTEMPT" == 1' in guard
-    assert "RUN_ONCE" in guard
-    assert "total_count" in guard
-    assert "disable\"" in guard
-    assert '"$state" == disabled_manually' in guard
     assert live_job["env"].get("OPENAI_API_KEY") is None
-    installs = next(step for step in live_job["steps"] if step.get("name", "").startswith("Install AWS"))
-    assert "pytest -q infra/scripts/tests/test_investment_live_acceptance.py" in installs["run"]
     artifact = next(step for step in live_job["steps"] if step.get("uses", "").startswith("actions/upload-artifact"))
     assert artifact["with"]["retention-days"] == "90"

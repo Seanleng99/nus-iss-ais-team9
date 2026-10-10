@@ -56,10 +56,10 @@ def test_outcomes_are_counted_per_status(tmp_path):
     assert "**4 tests:** 1 passed, 1 failed, 1 error, 1 skipped" in markdown
 
 
-def test_missing_properties_render_as_dash(tmp_path):
+def test_missing_properties_render_as_na(tmp_path):
     cases = summarize.parse_report(_write(tmp_path, REPORT))
     row = next(line for line in summarize.render("T", cases).splitlines() if "test_bad" in line)
-    assert row.startswith("| test_bad | — | ❌ failed | — | assert False |")
+    assert row.startswith("| test_bad | N/A | ❌ failed | N/A | assert False |")
 
 
 def test_cells_escape_pipes_and_collapse_newlines():
@@ -85,6 +85,29 @@ def test_non_ascii_text_is_preserved(tmp_path):
     output = tmp_path / "summary.md"
     assert summarize.main([str(_write(tmp_path, report)), "--output", str(output), "--title", "T"]) == 0
     assert question in output.read_text(encoding="utf-8")
+
+
+def test_xpass_is_visible_and_cannot_be_counted_as_pass(tmp_path):
+    report = _write(tmp_path, '<testsuite><testcase name="unexpected-pass"><properties>'
+                    '<property name="wasxfail" value="expected rejection"/>'
+                    '</properties></testcase></testsuite>')
+    cases = summarize.parse_report(report)
+    assert cases[0].outcome == "xpassed"
+    assert "xpassed" in summarize.render("T", cases)
+
+
+def test_evaluation_json_contains_every_case_and_marks_helper_fields_na():
+    case = summarize.CaseResult("test_helper", "passed", "", "", "")
+    markdown, report = summarize.evaluation_summary("orchestrator", [case])
+    assert report["results"]["actual_test_count"] == 1
+    assert report["results"]["cases"] == [{
+        "test_id": "test_helper", "outcome": "passed", "question": "N/A",
+        "expected": "N/A", "response": "N/A", "reason": "N/A",
+    }]
+    assert report["datasets"]
+    assert all(len(item["sha256"]) == 64 for item in report["datasets"])
+    assert "N/A" in report["metrics"][1]
+    assert "offline" in markdown.lower()
 
 
 def test_summary_is_appended_to_github_step_summary(tmp_path, monkeypatch):

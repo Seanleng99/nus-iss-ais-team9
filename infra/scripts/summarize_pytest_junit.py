@@ -17,6 +17,7 @@ OUTCOME_LABELS = {
     "failed": "❌ failed",
     "error": "❌ error",
     "skipped": "⏭️ skipped",
+    "xpassed": "❌ xpassed",
 }
 _FAILURE_TAGS = {"failure": "failed", "error": "error", "skipped": "skipped"}
 EVALUATION_SPEC = Path(__file__).resolve().parents[2] / "infra/llmsecops/agent-evaluation-specs.json"
@@ -45,6 +46,8 @@ def parse_report(path: Path) -> list[CaseResult]:
                 outcome = label
                 reason = node.get("message") or (node.text or "").strip()
                 break
+        if outcome == "passed" and properties.get("wasxfail"):
+            outcome, reason = "xpassed", properties["wasxfail"]
         cases.append(CaseResult(
             test_id=case.get("name", ""),
             outcome=outcome,
@@ -65,7 +68,9 @@ def _cell(text: str) -> str:
 
 def render(title: str, cases: list[CaseResult]) -> str:
     totals = ", ".join(
-        f"{sum(case.outcome == outcome for case in cases)} {outcome}" for outcome in OUTCOME_LABELS
+        f"{count} {outcome}"
+        for outcome in OUTCOME_LABELS
+        if (count := sum(case.outcome == outcome for case in cases)) or outcome != "xpassed"
     )
     include_expected = any(case.expected for case in cases)
     lines = [
@@ -79,10 +84,10 @@ def render(title: str, cases: list[CaseResult]) -> str:
          if include_expected else "| --- | --- | --- | --- | --- |"),
     ]
     lines.extend(
-        f"| {_cell(case.test_id)} | {_cell(case.question)} | "
-        + (f"{_cell(case.expected)} | " if include_expected else "")
+        f"| {_cell(case.test_id or 'N/A')} | {_cell(case.question or 'N/A')} | "
+        + (f"{_cell(case.expected or 'N/A')} | " if include_expected else "")
         + f"{OUTCOME_LABELS[case.outcome]} "
-        f"| {_cell(case.response)} | {_cell(case.reason)} |"
+        f"| {_cell(case.response or 'N/A')} | {_cell(case.reason or 'N/A')} |"
         for case in cases
     )
     return "\n".join(lines) + "\n"
@@ -101,19 +106,30 @@ def evaluation_summary(suite: str, cases: list[CaseResult]) -> tuple[str, dict |
     ]
     passed = sum(case.outcome == "passed" for case in cases)
     accepted = bool(cases) and passed == len(cases)
+    case_rows = [
+        {
+            "test_id": case.test_id or "N/A",
+            "outcome": case.outcome,
+            "question": case.question or "N/A",
+            "expected": case.expected or "N/A",
+            "response": case.response or "N/A",
+            "reason": case.reason or "N/A",
+        }
+        for case in cases
+    ]
+    outcomes = {outcome: sum(case.outcome == outcome for case in cases)
+                for outcome in OUTCOME_LABELS}
     report = {
         "suite": suite, "spec_version": catalog["version"],
         "commit_sha": os.getenv("GITHUB_SHA"),
         **definition, "datasets": datasets,
-        "results": {"total": len(cases), "passed": passed,
+        "results": {"actual_test_count": len(cases), "total": len(cases), "passed": passed,
+                    "outcomes": outcomes,
                     "assertion_pass_rate": passed / len(cases) if cases else None,
-                    "outcome_counts": {
-                        outcome: sum(case.outcome == outcome for case in cases)
-                        for outcome in OUTCOME_LABELS
-                    },
+                    "outcome_counts": outcomes,
                     "failed_or_unexecuted_ids": [
                         case.test_id for case in cases if case.outcome != "passed"
-                    ]},
+                    ], "cases": case_rows},
         "accepted": accepted,
     }
     lines = [
@@ -130,7 +146,10 @@ def evaluation_summary(suite: str, cases: list[CaseResult]) -> tuple[str, dict |
         lines += ["", "**Executed test selection:**", ""]
         lines.extend(f"- `{path}`" for path in selection["test_paths"])
         if prefix := selection.get("name_prefix"):
-            lines.append(f"- Pytest name filter: `-k {prefix}`")
+            if path := selection.get("name_prefix_test_path"):
+                lines.append(f"- Only this example function: `{path}::{prefix}`; other listed files run in full.")
+            else:
+                lines.append(f"- Pytest name filter: `-k {prefix}`")
     lines += ["", "**Metric definitions:**", ""]
     lines.extend(f"- {item}" for item in definition["metrics"])
     lines += ["", "**Acceptance criteria:**", ""]

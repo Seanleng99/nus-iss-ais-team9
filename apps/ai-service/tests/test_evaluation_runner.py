@@ -8,9 +8,16 @@ from language_fixtures import language_case
 from app.core.config import Settings
 from app.core.schemas import AgentName, CoachRequest
 from app.evals.gate import evaluate_policy
+from app.evals.rag_evidence import evaluate as evaluate_rag_evidence
+from app.evals.rag_evidence import load_cases as load_rag_cases
 from app.evals.runner import _matches_expected, run_dataset
 from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
+from app.rag.local_documents import (
+    DEFAULT_CORPUS_ROOT,
+    LocalDocumentEducationRetriever,
+    load_documents,
+)
 
 
 def _orchestrator() -> AgentOrchestrator:
@@ -32,6 +39,11 @@ def _stub_routing(monkeypatch, selected_by_session: dict[str, list[str]]) -> Non
                     for name in selected_by_session[request.session_id]
                 ],
                 blocked=False,
+                answer="stub response",
+                sources=[],
+                audit={},
+                agent_results=[],
+                disclaimers=[],
             )
 
     monkeypatch.setattr("app.evals.runner.AgentOrchestrator", StubOrchestrator)
@@ -124,6 +136,40 @@ def test_repository_evaluation_policy_passes(monkeypatch) -> None:
         for suite in report["datasets"]
         if suite["metrics"]["failed_case_ids"]
     }
+    for suite in report["datasets"]:
+        metrics = suite["metrics"]
+        assert len(metrics["case_diagnostics"]) == metrics["total"]
+        assert all({"id", "case_type", "question", "expected_output", "actual_answer",
+                    "actual_output", "passed"} <= item.keys()
+                   for item in metrics["case_diagnostics"])
+    guardrail = next(item for item in report["datasets"] if item["name"] == "guardrails")
+    helper_case = guardrail["metrics"]["case_diagnostics"][0]
+    assert helper_case["question"] == helper_case["test_input"]["text"]
+    assert helper_case["actual_answer"] == "N/A"
+    assert helper_case["actual_output"]["allowed"] is False
+    fairness = next(item for item in report["datasets"] if item["name"] == "fairness-consistency")
+    pair = fairness["metrics"]["case_diagnostics"][0]
+    assert [item["side"] for item in pair["actual_output"]] == ["A", "B"]
+    assert pair["actual_output"][0]["question"] != pair["actual_output"][1]["question"]
+    conversation = next(item for item in report["datasets"] if item["name"] == "orchestrator")
+    route = conversation["metrics"]["case_diagnostics"][0]
+    assert route["question"] != "N/A" and route["actual_answer"] != "N/A"
+
+
+def test_rag_evidence_rows_include_expected_and_retrieved_passages() -> None:
+    dataset = Path(__file__).resolve().parents[1] / "app/evals/datasets/rag_evidence_v1.jsonl"
+    _, documents = load_documents(
+        DEFAULT_CORPUS_ROOT / "source_manifest.json", DEFAULT_CORPUS_ROOT / "documents",
+    )
+    cases = load_rag_cases(dataset, {source.source_id: text for source, text in documents})
+    result = evaluate_rag_evidence(cases[:1], LocalDocumentEducationRetriever())["results"][0]
+
+    assert result["question"] == cases[0].question
+    assert result["expected_output"]["required_evidence"][0]["quote"] == cases[0].required_evidence[0].quote
+    assert result["actual_answer"] == "N/A"
+    assert result["retrieved_contexts"]
+    assert result["retrieved_contexts"][0]["text"]
+    assert result["passed"]
 
 
 def test_chinese_answer_check_rejects_an_english_answer_with_chinese_metadata() -> None:
@@ -194,9 +240,11 @@ def test_routing_metrics_count_missed_extra_and_order_only_differences(
     assert metrics["accuracy"] == 0
     assert metrics["routing_case_diagnostics"][2]["routing_match"] is True
     assert metrics["routing_case_diagnostics"][2]["overall_pass"] is False
-    assert set(metrics["routing_case_diagnostics"][0]) == {
+    assert {
         "id", "mode", "expected_agents", "actual_agents", "routing_match", "overall_pass",
-    }
+    } <= metrics["routing_case_diagnostics"][0].keys()
+    assert metrics["routing_case_diagnostics"][0]["question"] == "x"
+    assert metrics["routing_case_diagnostics"][0]["actual_answer"] == "stub response"
 
 
 def test_non_routing_safety_failure_does_not_change_route_accuracy(

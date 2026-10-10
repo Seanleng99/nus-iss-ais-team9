@@ -1,6 +1,13 @@
 # Budget Agent evaluation and CI reports
 
-**Budget Agent Tests** owns four offline evaluation suites. The executable
+**Current entry point:** **Agent and RAG Evaluations** → `budget` offline / live jobs.
+The former four suite IDs below describe retained scenario groups, now executed
+inside one `budget` offline job. They are not separate workflow or CLI names.
+Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
+job graph, live Yes/No choice and reports.
+
+
+The `budget` offline job contains the following four scenario groups. The executable
 definitions are in [agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json),
 with selection in [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json).
 Test inputs cover take-home/gross/missing income, commitments, user expense and
@@ -36,9 +43,7 @@ Examples of asserted outputs:
 
 The [Budget Calculation](#budget-calculation) JSONL seed gate
 separately uses SGD 1 tolerance and 100% case/calculation acceptance. Its numeric
-results are published in `investment-evaluation-metrics` because Investment's
-workflow owns the shared LLMSecOps policy job. That placement does not transfer
-ownership of these four Budget pytest suites.
+results are published in `investment-evaluation-metrics` from the consolidated workflow's required metrics job. Budget retains ownership of its pytest scenarios.
 
 The planned 95% expanded allocation-validity criterion is not a current measured
 metric. A correct seed calculation does not establish that arbitrary real-model
@@ -73,43 +78,33 @@ Acceptance criteria:
 
 ## Execution and finding evidence
 
-The four suites run for relevant pull requests/main pushes when AI CI or application
-deployment is selected, in full Monday 10:00 Singapore-time CI, and through manual
-**Budget Agent Tests** dispatch. Docs-only changes do not trigger CI. Application
-build/release requires the agent test gate; see [workflow integration](agent-test-workflows.md).
+Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+its **budget — offline unit tests** job and download `agent-offline-budget`.
+It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
+full synthetic example responses and every case outcome, retained for 90 days.
+The combined `agent-evaluation-report` artifact includes HTML, JSON and Markdown.
 
-Open **CI and LLMSecOps -> Budget agent tests**, or **Budget Agent Tests**:
-
-- Job summaries include definitions, dataset hashes, thresholds, measured rate and
-  individual outcomes.
-- Download `budget-offline-report`, `budget-functional-capture-report`,
-  `budget-functional-reasoning-report` and `budget-functional-boundaries-report`.
-- Each contains `<suite>.xml`, `<suite>-summary.md` and `<suite>-evaluation.json`,
-  retained for 30 days. JSON retains commit/selection, outcome counts, failed IDs
-  and acceptance. Missing/empty results or skipped cases fail acceptance.
-- Questions/responses appear only when the test records them; offline output is
-  not a reviewed live answer.
+To include live integration, manually dispatch the consolidated workflow on main
+and check **Run live integration tests?**. Live failures are advisory; missing or
+skipped evidence never counts as a pass. Existing release smoke remains required.
 
 ## Local reproduction
 
-From the repository root with shared and AI development dependencies installed:
-
 ```sh
-python infra/scripts/run_agent_tests.py --suite budget-offline --junitxml artifacts/budget-offline.xml
-python infra/scripts/run_agent_tests.py --suite budget-functional-capture --junitxml artifacts/budget-functional-capture.xml
-python infra/scripts/run_agent_tests.py --suite budget-functional-reasoning --junitxml artifacts/budget-functional-reasoning.xml
-python infra/scripts/run_agent_tests.py --suite budget-functional-boundaries --junitxml artifacts/budget-functional-boundaries.xml
-python infra/scripts/summarize_pytest_junit.py artifacts/budget-offline.xml --suite budget-offline --title "Budget offline evaluation" --output artifacts/budget-offline-summary.md --evaluation-output artifacts/budget-offline-evaluation.json
+python infra/scripts/run_agent_tests.py --suite budget --junitxml artifacts/budget.xml
+python infra/scripts/summarize_pytest_junit.py artifacts/budget.xml --suite budget --title "Budget offline" --output artifacts/budget-summary.md --evaluation-output artifacts/budget-evaluation.json
 ```
 
-Use matching suite/XML/output names for the other reports. These commands are offline.
+These commands run all retained scenario groups offline. Non-conversational
+helper tests display N/A for question/response; synthetic example tests record
+actual application output with fixture providers.
 
 ## Live acceptance and limitations
 
-**Budget Live Acceptance** is a separate manual workflow using
-`infra/llmsecops/budget-live-evaluation-cases.jsonl` and the multi-turn confirmation
-harness. It checks deployed contracts and retains `budget-live-acceptance-<run_id>`
-evidence for 90 days. Release smoke checks also verify Budget arithmetic, model
-execution and persisted traces. Those live checks do not by themselves approve
-explanation usefulness, allocation quality or representative-user understanding.
-Their actual pass/fail results must remain separate from these offline rates.
+The unified Budget live job checks a real model-backed disposable-income
+calculation and missing-income clarification. Its two-case synthetic sample does
+not measure the whole feature set. The older nine-case Budget dataset and
+multi-turn confirmation script remain available for extended validation, but
+there is no separate Budget Live Acceptance workflow. Release smoke still
+verifies Budget arithmetic, model execution and persisted traces. Semantic
+usefulness and representative-user understanding require separate review.

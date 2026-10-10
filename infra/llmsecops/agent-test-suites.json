@@ -3,129 +3,90 @@
     "tests/test_conversational_pipeline.py"
   ],
   "suites": {
-    "spending-offline": {
-      "test_paths": ["tests/test_spending_analyzer.py"]
-    },
-    "spending-functional-capture": {
-      "test_paths": ["tests/test_spending_capture.py"]
-    },
-    "spending-functional-coverage": {
-      "test_paths": ["tests/test_spending_coverage.py"]
-    },
-    "spending-functional-integration": {
-      "test_paths": ["tests/test_spending_integration.py", "tests/test_risk_spending_coverage.py"]
-    },
-    "budget-offline": {
-      "test_paths": [
-        "tests/test_budget_agent.py",
-        "tests/test_budget_planner.py",
-        "tests/test_budget_methods.py"
-      ]
-    },
-    "budget-functional-capture": {
-      "test_paths": [
-        "tests/test_budget_capture.py",
-        "tests/test_budget_records.py"
-      ]
-    },
-    "budget-functional-reasoning": {
-      "test_paths": [
-        "tests/test_budget_reasoning.py",
-        "tests/test_budget_review.py"
-      ]
-    },
-    "budget-functional-boundaries": {
-      "test_paths": [
-        "tests/test_edge_budget_regressions.py"
-      ]
-    },
-    "goal-offline": {
-      "test_paths": [
-        "tests/test_goal_capture.py",
-        "tests/test_saved_budget_capacity.py"
-      ]
-    },
-    "goal-functional-feasibility": {
-      "test_paths": [
-        "tests/test_emergency_fund.py"
-      ]
-    },
-    "goal-functional-dependencies": {
-      "test_paths": [
-        "tests/test_dynamic_dependencies.py",
-        "tests/test_conditional_financial_dependencies.py"
-      ]
-    },
-    "goal-functional-recovery": {
-      "test_paths": [
-        "tests/test_goal_education_recovery.py"
-      ]
-    },
-    "investment-offline": {
-      "test_paths": [
-        "tests/test_investment_education_safety.py",
-        "tests/test_investment_review_regressions.py"
-      ]
-    },
-    "investment-functional-beginner": {
-      "test_paths": [
-        "tests/test_beginner_investment_questions.py"
-      ]
-    },
-    "investment-functional-education": {
-      "test_paths": [
-        "tests/test_investment_education_agent.py"
-      ]
-    },
-    "investment-functional-hybrid": {
-      "test_paths": [
-        "tests/test_hybrid_investment_education.py"
-      ]
-    },
-    "risk-compliance-offline": {
-      "test_paths": [
-        "tests/test_risk_compliance.py",
-        "tests/test_risk_review_explanations.py",
-        "tests/test_guardrails.py"
-      ]
-    },
-    "risk-compliance-functional-blocks": {
-      "test_paths": [
-        "tests/test_risk_compliance_functional.py"
-      ],
-      "name_prefix": "test_blocks_unsafe_request"
-    },
-    "risk-compliance-functional-withholds": {
-      "test_paths": [
-        "tests/test_risk_compliance_functional.py"
-      ],
-      "name_prefix": "test_withholds_unsafe_answer"
-    },
-    "risk-compliance-functional-allows": {
-      "test_paths": [
-        "tests/test_risk_compliance_functional.py"
-      ],
-      "name_prefix": "test_allows_safe_answer"
-    },
-    "investment-orchestrator": {
+    "orchestrator": {
       "test_paths": [
         "tests/test_orchestrator.py",
         "tests/test_education_routing_coverage.py",
-        "tests/test_evaluation_runner.py"
-      ]
+        "tests/test_evaluation_runner.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_orchestrator",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
     },
-    "investment-rag-unit": {
+    "spending": {
+      "test_paths": [
+        "tests/test_spending_analyzer.py",
+        "tests/test_spending_capture.py",
+        "tests/test_spending_coverage.py",
+        "tests/test_spending_integration.py",
+        "tests/test_risk_spending_coverage.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_spending",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+    },
+    "budget": {
+      "test_paths": [
+        "tests/test_budget_agent.py",
+        "tests/test_budget_planner.py",
+        "tests/test_budget_methods.py",
+        "tests/test_budget_capture.py",
+        "tests/test_budget_records.py",
+        "tests/test_budget_reasoning.py",
+        "tests/test_budget_review.py",
+        "tests/test_edge_budget_regressions.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_budget",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+    },
+    "goal": {
+      "test_paths": [
+        "tests/test_goal_capture.py",
+        "tests/test_saved_budget_capacity.py",
+        "tests/test_emergency_fund.py",
+        "tests/test_dynamic_dependencies.py",
+        "tests/test_conditional_financial_dependencies.py",
+        "tests/test_goal_education_recovery.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_goal",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+    },
+    "investment": {
+      "test_paths": [
+        "tests/test_investment_education_safety.py",
+        "tests/test_investment_review_regressions.py",
+        "tests/test_beginner_investment_questions.py",
+        "tests/test_investment_education_agent.py",
+        "tests/test_hybrid_investment_education.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_investment",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+    },
+    "risk-compliance": {
+      "test_paths": [
+        "tests/test_risk_compliance.py",
+        "tests/test_risk_review_explanations.py",
+        "tests/test_guardrails.py",
+        "tests/test_risk_compliance_functional.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_risk_compliance",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+    },
+    "rag": {
       "test_paths": [
         "tests/test_retriever.py",
         "tests/test_local_documents.py",
         "tests/test_retrieval_boundaries.py",
-        "tests/test_request_retrieval_cache.py"
-      ]
-    },
-    "investment-rag-integration": {
-      "test_paths": [
-        "tests/test_rag_integration.py"
-      ]
+        "tests/test_request_retrieval_cache.py",
+        "tests/test_rag_integration.py",
+        "tests/test_agent_evaluation_examples.py"
+      ],
+      "name_prefix": "test_example_rag",
+      "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
     }
   }
 }

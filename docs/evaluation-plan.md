@@ -149,30 +149,28 @@ the separate review in [RAG quality acceptance](rag-quality.md).
 
 ## Specialist Execution And Evidence
 
-All five agent workflows use `agent-test-suite.yml`, which selects tests using
-`agent-test-suites.json` and publishes the versioned evaluation contract through
-`summarize_pytest_junit.py`. Adding a definition changes future reports; it does
-not retroactively turn historical JUnit-only reports into evaluated acceptance.
+**Agent and RAG Evaluations** replaces the five wrapper workflows, shared suite
+workflow and two separate live-evaluation entry points. It owns seven offline
+jobs (including Orchestrator and RAG), required numeric gates and seven optional
+live jobs. The earlier group IDs in the scenario tables remain descriptions of
+the tests now combined into those jobs; use the seven current suite IDs in
+`agent-test-suites.json` for execution.
 
-- Relevant pull requests and pushes to main run all five workflows when change
-  classification selects AI CI or application deployment; frontend/backend changes
-  selected for deployment also require them. Docs-only changes do not trigger CI;
-  infrastructure-only changes can omit the agent jobs.
-- Full CI is scheduled for Monday 02:00 UTC / 10:00 Singapore time. Manual CI selects
-  all suites; individual agent workflows also allow focused manual runs.
-- The required agent gate rejects a failed, cancelled or unexpectedly skipped
-  workflow. Application builds and release depend on the successful gate.
-- Each suite's Actions job summary and `<suite>-report` artifact contain the
-  Markdown summary, JUnit XML and `<suite>-evaluation.json`, retained for 30 days.
-  JSON includes definitions, dataset hashes, measured counts/rates, selection and
-  failed IDs. Question/response fields exist only when the test records those
-  properties; a blank field is not a generated-answer review.
-- The Investment metrics job separately retains `investment-evaluation-metrics`
-  containing the JSONL policy results, passage benchmark, definitions and thresholds.
-- Release smoke checks exercise all five live model roles and persisted traces.
-  AWS Operational Validation is scheduled for Sunday 02:00 UTC / 10:00 Singapore
-  time and allows manual runs. Budget live acceptance and the one-time Investment
-  live evaluation are manual. Live evaluation artifacts retain evidence for 90 days.
+- Relevant push/PR/scheduled CI selects the required offline jobs. The required
+  gate rejects failed, cancelled or unexpectedly skipped offline tests.
+- Manual **Run workflow** exposes the default-off **Run live integration tests?**
+  checkbox. Yes enables bounded real model/AWS datasets after demo approval;
+  No skips them without failing the pipeline. Live failure is advisory and remains
+  explicitly FAIL/NOT RUN in the report.
+- Per-job and combined reports show dataset/hashes, expected outputs, metrics,
+  acceptance, case results and actual synthetic answers. Offline fixture outputs
+  are distinguished from real model answers. Helper cases have N/A dialogue.
+- Artifacts are `agent-offline-<suite>`, `agent-live-<suite>` and
+  `agent-evaluation-report`, retained for 90 days. Required numeric evidence stays
+  in `investment-evaluation-metrics` for 30 days, now with full per-case diagnostics.
+- Existing deployment smoke, OWASP live scanning, AWS Operational Validation and
+  corpus governance retain their separate purpose and controls. The checkbox
+  governs the new evaluation jobs, not those workflows.
 
 See [agent test workflows](agent-test-workflows.md) for ownership and release wiring.
 The tabled definitions establish offline acceptance for every specialist; they do

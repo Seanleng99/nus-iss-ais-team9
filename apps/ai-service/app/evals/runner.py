@@ -170,22 +170,34 @@ def _fairness_projection(response, field: str):
 
 
 def _matches_fairness_case(orchestrator: AgentOrchestrator, case: dict) -> bool:
+    passed, _ = _fairness_case_outputs(orchestrator, case)
+    return passed
+
+
+def _fairness_case_outputs(orchestrator: AgentOrchestrator, case: dict) -> tuple[bool, list[dict]]:
     inputs = case.get("inputs", [])
     compare = case.get("compare", [])
     if len(inputs) != 2 or not compare:
         raise ValueError("Fairness cases require exactly two inputs and comparison fields")
     responses = [orchestrator.handle(CoachRequest(**item)) for item in inputs]
-    return all(
-        _fairness_projection(responses[0], field)
-        == _fairness_projection(responses[1], field)
-        for field in compare
-    )
+    outputs = [
+        {
+            "side": "A" if index == 0 else "B",
+            "question": item["message"],
+            "actual_answer": response.answer,
+            "actual_output": {
+                field: _fairness_projection(response, field)
+                for field in compare
+            },
+        }
+        for index, (item, response) in enumerate(zip(inputs, responses))
+    ]
+    return outputs[0]["actual_output"] == outputs[1]["actual_output"], outputs
 
 
-def _matches_security_case(case: dict) -> bool:
+def _security_case_actual(case: dict) -> dict[str, Any]:
     kind = case["kind"]
     case_input = case["input"]
-    expected = case["expected"]
 
     if kind == "user_prompt":
         decision = inspect_prompt(case_input["text"])
@@ -211,6 +223,12 @@ def _matches_security_case(case: dict) -> bool:
     else:
         raise ValueError(f"Unsupported security evaluation kind: {kind}")
 
+    return actual
+
+
+def _matches_security_case(case: dict) -> bool:
+    actual = _security_case_actual(case)
+    expected = case["expected"]
     if any(actual.get(key) != value for key, value in expected.items() if key in actual):
         return False
     if (
@@ -222,6 +240,31 @@ def _matches_security_case(case: dict) -> bool:
         finding.startswith(expected["finding_prefix"])
         for finding in actual.get("findings", [])
     )
+
+
+def _actual_conversation_output(response, expected: dict) -> dict[str, Any]:
+    output: dict[str, Any] = {
+        "answer": response.answer,
+        "selected_agents": [agent.value for agent in response.selected_agents],
+        "blocked": response.blocked,
+        "source_ids": sorted(source.source_id for source in response.sources),
+        "policy_source_ids": sorted(_policy_source_ids(response)),
+        "policy_findings": _policy_findings(response),
+        "dependency_capabilities": sorted(_dependency_capabilities(response)),
+        "needs_input_agents": sorted(_needs_input_agents(response)),
+        "disclaimers": response.disclaimers,
+    }
+    if BUDGET_KEYS.intersection(expected):
+        budget = _agent_data(response, "budget")
+        output["budget_values"] = {key: budget.get(key) for key in sorted(BUDGET_KEYS)}
+    if any(key in expected for key in ("evidence_status", "evidence_gap", "response_language", "unanswered_topics")):
+        education = _agent_data(response, "investment_education")
+        output["education"] = {
+            key: education.get(key)
+            for key in ("evidence_status", "response_language", "unanswered_topics")
+            if key in education
+        }
+    return output
 
 
 def _category(expected: dict) -> str:
@@ -254,6 +297,7 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
     retrieval_recalls: list[float] = []
     policy_retrieval_recalls: list[float] = []
     routing_case_diagnostics: list[dict[str, Any]] = []
+    case_diagnostics: list[dict[str, Any]] = []
     routing_counts = {"tp": 0, "fp": 0, "fn": 0}
     routing_matches: dict[str, list[int]] = {
         "automatic": [0, 0],
@@ -266,16 +310,62 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
             total += 1
             case = json.loads(line)
             if case.get("kind") == "fairness_pair":
-                case_passed = _matches_fairness_case(orchestrator, case)
+                case_passed, paired_outputs = _fairness_case_outputs(orchestrator, case)
                 category = "fairness_consistency"
+                case_diagnostics.append({
+                    "id": str(case.get("id", "unknown")),
+                    "case_type": "fairness_pair",
+                    "question": "N/A",
+                    "paired_inputs": [
+                        {"side": item["side"], "question": item["question"]}
+                        for item in paired_outputs
+                    ],
+                    "expected_output": {
+                        "comparison_fields": case["compare"],
+                        "requirement": "The compared actual outputs must be equal for pair A and pair B.",
+                    },
+                    "actual_answer": "N/A",
+                    "actual_output": paired_outputs,
+                    "passed": case_passed,
+                })
             elif "kind" in case:
+                actual_output = _security_case_actual(case)
                 case_passed = _matches_security_case(case)
                 category = "security_control"
+                case_diagnostics.append({
+                    "id": str(case.get("id", "unknown")),
+                    "case_type": "security_control",
+                    "question": case["input"].get("text", "N/A"),
+                    "test_input": case["input"],
+                    "expected_output": case["expected"],
+                    "actual_answer": "N/A",
+                    "actual_output": actual_output,
+                    "passed": case_passed,
+                })
             else:
                 request = CoachRequest(**case["input"])
                 response = orchestrator.handle(request)
                 case_passed = _matches_expected(response, case["expected"])
                 category = _category(case["expected"])
+                expected_output = case.get("expected", {})
+                if "answer_rubric" in case or "forbidden_behaviors" in case:
+                    expected_output = {
+                        "automated_expectations": expected_output,
+                        "human_review_criteria": {
+                            key: case[key]
+                            for key in ("answer_rubric", "forbidden_behaviors")
+                            if key in case
+                        },
+                    }
+                case_diagnostics.append({
+                    "id": str(case.get("id", "unknown")),
+                    "case_type": "conversation",
+                    "question": request.message,
+                    "expected_output": expected_output,
+                    "actual_answer": response.answer,
+                    "actual_output": _actual_conversation_output(response, case["expected"]),
+                    "passed": case_passed,
+                })
                 if "selected_agents" in case["expected"]:
                     expected_agents = set(case["expected"]["selected_agents"])
                     actual_agents = {agent.value for agent in response.selected_agents}
@@ -294,6 +384,9 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
                         "actual_agents": sorted(actual_agents),
                         "routing_match": routing_match,
                         "overall_pass": case_passed,
+                        "question": request.message,
+                        "expected_output": case["expected"],
+                        "actual_answer": response.answer,
                     })
                 if category == "retrieval":
                     actual_sources = {
@@ -322,6 +415,7 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
         "passed": passed,
         "accuracy": round(accuracy, 4),
         "failed_case_ids": failed_case_ids,
+        "case_diagnostics": case_diagnostics,
     }
     metric_names = {
         "critical_block": "critical_block_rate",

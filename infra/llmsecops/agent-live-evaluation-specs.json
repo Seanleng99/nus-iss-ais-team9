@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "version": "agent-live-contracts-v1",
+  "suites": {
+    "orchestrator": {
+      "measurement": "live_deployed_api_contract",
+      "datasets": [
+        "infra/llmsecops/agent-live-evaluation-cases.jsonl"
+      ],
+      "dataset_filter": {
+        "suite": "orchestrator"
+      },
+      "planned_cases": 5,
+      "planned_turns": 5,
+      "expected_outputs": "Exact automatic route for education, recorded spending, disposable income and illustrative savings; completed router and specialist model calls. A mixed spending plus ETF question selects both specialists.",
+      "metrics": [
+        "Executed/planned cases",
+        "Contract pass rate",
+        "Observed deployed SHA and test SHA",
+        "Token usage and latency (descriptive)",
+        "Exact routing accuracy = matching agent sets / all five planned cases (missing response counts as incorrect).",
+        "Micro routing precision = TP/(TP+FP), recall = TP/(TP+FN), F1 = harmonic mean; absent expected routes count as FN."
+      ],
+      "acceptance_criteria": [
+        "Every planned case executes and all declared checks pass (100%).",
+        "Real-provider and stable deployment evidence required; absent evidence cannot pass.",
+        "All generated synthetic records cleaned up.",
+        "Exact routing accuracy, micro precision, recall and F1 all equal 1.0 on this five-case sample."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 75000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    },
+    "spending": {
+      "measurement": "live_deployed_api_contract",
+      "datasets": [
+        "infra/llmsecops/agent-live-evaluation-cases.jsonl"
+      ],
+      "dataset_filter": {
+        "suite": "spending"
+      },
+      "planned_cases": 2,
+      "planned_turns": 2,
+      "expected_outputs": "Recorded SGD category totals 120 food + 30 transport; two records; no fabricated records for empty input.",
+      "metrics": [
+        "Executed/planned cases",
+        "Contract pass rate",
+        "Observed deployed SHA and test SHA",
+        "Token usage and latency (descriptive)"
+      ],
+      "acceptance_criteria": [
+        "Every planned case executes and all declared checks pass (100%).",
+        "Real-provider and stable deployment evidence required; absent evidence cannot pass.",
+        "All generated synthetic records cleaned up."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 75000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    },
+    "budget": {
+      "measurement": "live_deployed_api_contract",
+      "datasets": [
+        "infra/llmsecops/agent-live-evaluation-cases.jsonl"
+      ],
+      "dataset_filter": {
+        "suite": "budget"
+      },
+      "planned_cases": 2,
+      "planned_turns": 2,
+      "expected_outputs": "4000 income minus 1500 recurring expense = 2500 disposable income; missing income requests clarification.",
+      "metrics": [
+        "Executed/planned cases",
+        "Contract pass rate",
+        "Observed deployed SHA and test SHA",
+        "Token usage and latency (descriptive)"
+      ],
+      "acceptance_criteria": [
+        "Every planned case executes and all declared checks pass (100%).",
+        "Real-provider and stable deployment evidence required; absent evidence cannot pass.",
+        "All generated synthetic records cleaned up."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 75000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    },
+    "goal": {
+      "measurement": "live_deployed_api_contract",
+      "datasets": [
+        "infra/llmsecops/agent-live-evaluation-cases.jsonl"
+      ],
+      "dataset_filter": {
+        "suite": "goal"
+      },
+      "planned_cases": 2,
+      "planned_turns": 2,
+      "expected_outputs": "6000 / 12 = 500 monthly required; missing goal details requests clarification.",
+      "metrics": [
+        "Executed/planned cases",
+        "Contract pass rate",
+        "Observed deployed SHA and test SHA",
+        "Token usage and latency (descriptive)"
+      ],
+      "acceptance_criteria": [
+        "Every planned case executes and all declared checks pass (100%).",
+        "Real-provider and stable deployment evidence required; absent evidence cannot pass.",
+        "All generated synthetic records cleaned up."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 75000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    },
+    "investment": {
+      "measurement": "live_deployed_api_contract",
+      "datasets": [
+        "infra/llmsecops/investment-live-evaluation-cases.jsonl"
+      ],
+      "dataset_filter": null,
+      "planned_cases": 6,
+      "planned_turns": 7,
+      "expected_outputs": "Four-asset explanations, simpler follow-up, diversification, Chinese education, friendly execution refusal and injection block; visible valid citations, hybrid labels and persisted history.",
+      "metrics": [
+        "Executed/planned cases",
+        "Contract pass rate",
+        "Observed deployed SHA and test SHA",
+        "Token usage and latency (descriptive)"
+      ],
+      "acceptance_criteria": [
+        "Every planned case executes and all declared checks pass (100%).",
+        "Real-provider and stable deployment evidence required; absent evidence cannot pass.",
+        "All generated synthetic records cleaned up."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 200000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    },
+    "risk-compliance": {
+      "measurement": "live_deployed_api_contract",
+      "datasets": [
+        "infra/llmsecops/agent-live-evaluation-cases.jsonl"
+      ],
+      "dataset_filter": {
+        "suite": "risk-compliance"
+      },
+      "planned_cases": 2,
+      "planned_turns": 2,
+      "expected_outputs": "Independent real risk_compliance model call allows safe education; regulated advice refused with audited deterministic policy evidence (no model required for that block).",
+      "metrics": [
+        "Executed/planned cases",
+        "Contract pass rate",
+        "Observed deployed SHA and test SHA",
+        "Token usage and latency (descriptive)"
+      ],
+      "acceptance_criteria": [
+        "Every planned case executes and all declared checks pass (100%).",
+        "Real-provider and stable deployment evidence required; absent evidence cannot pass.",
+        "All generated synthetic records cleaned up."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 75000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    },
+    "rag": {
+      "measurement": "live_bedrock_retrieval",
+      "datasets": [
+        "infra/llmsecops/investment-live-rag-cases.jsonl"
+      ],
+      "dataset_filter": null,
+      "planned_cases": 3,
+      "planned_turns": 0,
+      "expected_outputs": "Real Bedrock Retrieve top five contain a declared relevant source for each ETF, compound-interest and diversification query; all hits have current approved manifest metadata and nonempty passages.",
+      "metrics": [
+        "Query coverage",
+        "Expected-source hit@5",
+        "Approved-current-manifest passage rate",
+        "AWS request IDs"
+      ],
+      "acceptance_criteria": [
+        "3/3 expected-source hits at rank <=5.",
+        "Every returned passage is nonempty and matches approved current source metadata.",
+        "Stable AWS deployment and AWS request ID for every query."
+      ],
+      "limits": {
+        "repeats": 1,
+        "generation_retries": 0,
+        "maximum_total_tokens_before_next_turn": 75000,
+        "request_timeout_seconds": 90
+      },
+      "limitations": [
+        "Small synthetic dataset, not a production accuracy estimate.",
+        "Human semantic assessment remains pending.",
+        "No browser login/UI end-to-end coverage.",
+        "The deployed application SHA is reported separately; this does not attest undeployed test-branch code."
+      ]
+    }
+  }
+}

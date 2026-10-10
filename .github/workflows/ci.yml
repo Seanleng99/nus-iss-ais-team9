@@ -97,35 +97,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  spending-agent-tests:
-    name: Spending agent tests
+  agent-evaluations:
+    name: Agent and RAG evaluations
     needs: changes
     if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
-    uses: ./.github/workflows/spending-agent-tests.yml
-
-  budget-agent-tests:
-    name: Budget agent tests
-    needs: changes
-    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
-    uses: ./.github/workflows/budget-agent-tests.yml
-
-  goal-agent-tests:
-    name: Goal agent tests
-    needs: changes
-    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
-    uses: ./.github/workflows/goal-agent-tests.yml
-
-  investment-agent-tests:
-    name: Investment agent tests
-    needs: changes
-    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
-    uses: ./.github/workflows/investment-agent-tests.yml
-
-  risk-compliance-agent-tests:
-    name: Risk & Compliance agent tests
-    needs: changes
-    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
-    uses: ./.github/workflows/risk-compliance-agent-tests.yml
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/agent-evaluations.yml
+    with:
+      run_live: false
 
   project-security-scan:
     name: Project OWASP security scan
@@ -143,7 +124,7 @@ jobs:
 
   agent-test-gate:
     name: Required agent test gate
-    needs: [changes, spending-agent-tests, budget-agent-tests, goal-agent-tests, investment-agent-tests, risk-compliance-agent-tests]
+    needs: [changes, agent-evaluations]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -151,20 +132,14 @@ jobs:
       CHANGES_RESULT: ${{ needs.changes.result }}
       AI_CI: ${{ needs.changes.outputs.ai_ci }}
       DEPLOY: ${{ needs.changes.outputs.deploy }}
-      SPENDING_RESULT: ${{ needs.spending-agent-tests.result }}
-      BUDGET_RESULT: ${{ needs.budget-agent-tests.result }}
-      GOAL_RESULT: ${{ needs.goal-agent-tests.result }}
-      INVESTMENT_RESULT: ${{ needs.investment-agent-tests.result }}
-      COMPLIANCE_RESULT: ${{ needs.risk-compliance-agent-tests.result }}
+      EVALUATIONS_RESULT: ${{ needs.agent-evaluations.result }}
     steps:
       - name: Require every selected agent suite to pass
         run: |
           [[ "$CHANGES_RESULT" == "success" ]] || exit 1
           if [[ "$AI_CI" == "true" || "$DEPLOY" == "true" ]]; then
-            for result in "$SPENDING_RESULT" "$BUDGET_RESULT" "$GOAL_RESULT" "$INVESTMENT_RESULT" "$COMPLIANCE_RESULT"; do
-              [[ "$result" == "success" ]] || { echo "An agent suite did not pass: $result" >&2; exit 1; }
-            done
-            echo "All five agent suites passed." >> "$GITHUB_STEP_SUMMARY"
+            [[ "$EVALUATIONS_RESULT" == "success" ]] || { echo "An agent suite did not pass: $EVALUATIONS_RESULT" >&2; exit 1; }
+            echo "All seven offline suites and required metrics passed. Optional live evaluations are advisory." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Agent suites are not required for this change." >> "$GITHUB_STEP_SUMMARY"
           fi

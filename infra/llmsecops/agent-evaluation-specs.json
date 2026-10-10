@@ -1,505 +1,8 @@
 {
-  "version": 2,
+  "version": 3,
   "suites": {
-    "spending-offline": {
-      "measurement": "offline Spending arithmetic, statistics and empty-data contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_spending_analyzer.py",
-          "expected_outputs": "Synthetic current/prior category amounts and dated histories must produce asserted totals, rounded trend direction, percentage change, temporal patterns, anomaly severity and data-quality status. A zero prior amount yields no percentage; empty inputs yield insufficient evidence and empty findings."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_spending_analyzer.py"
-        ]
-      }
-    },
-    "spending-functional-capture": {
-      "measurement": "offline Spending capture, intent and clarification contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_spending_capture.py",
-          "expected_outputs": "Record/query statements and pending drafts preserve amount, description, date scope and save/preview intent. Missing amount/date stays missing and asks for details; analysis, budget requests and unrelated profile corrections do not create or resume transaction drafts."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_spending_capture.py"
-        ]
-      }
-    },
-    "spending-functional-coverage": {
-      "measurement": "offline Spending date, currency and record-coverage contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_spending_coverage.py",
-          "expected_outputs": "Selected-month totals/counts and prior-history coverage remain separate. Actual dated records reach the writer; identical legitimate expenses survive, overlapping legacy history and future records do not inflate totals, unsupported currencies are excluded, and sparse history does not establish recurring habits."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_spending_coverage.py"
-        ]
-      }
-    },
-    "spending-functional-integration": {
-      "measurement": "offline Spending analysis and independent-review integration",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_spending_integration.py",
-          "expected_outputs": "Scripted requests traversing Spending analysis expose the asserted trends, anomalies, temporal patterns and months/data-quality fields, including insufficient empty data."
-        },
-        {
-          "path": "apps/ai-service/tests/test_risk_spending_coverage.py",
-          "expected_outputs": "Independent Risk review receives the same bounded dated coverage, category totals and currency exclusions without personal descriptions or identifiers; either review outcome is respected, including a veto."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_spending_integration.py",
-          "tests/test_risk_spending_coverage.py"
-        ]
-      }
-    },
-    "budget-offline": {
-      "measurement": "offline Budget arithmetic, shortfall and planning-method contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_budget_agent.py",
-          "expected_outputs": "SGD 5,000 income minus confirmed recurring rent of 1,500 and phone of 80 yields disposable income 3,420 and allocations 1,710 / 1,026 / 684."
-        },
-        {
-          "path": "apps/ai-service/tests/test_budget_planner.py",
-          "expected_outputs": "Proposals preserve user category limits and savings targets, use the asserted historical month, report funding gaps, do not infer missing income or savings, and retain pending corrections. Expenses of 3,500 plus savings of 800 against income of 4,000 yield a 300 funding gap."
-        },
-        {
-          "path": "apps/ai-service/tests/test_budget_methods.py",
-          "expected_outputs": "What-if scenarios remain separate from the base income/savings, unclassified categories require clarification, and a comparison request selects the asserted method and planning action."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_budget_agent.py",
-          "tests/test_budget_planner.py",
-          "tests/test_budget_methods.py"
-        ]
-      }
-    },
-    "budget-functional-capture": {
-      "measurement": "offline Budget draft, owned records and calendar-scope contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_budget_capture.py",
-          "expected_outputs": "Category/amount corrections, pending drafts, owned workspace context, currency and explicit month are preserved; unspecified values are not invented and a different month cannot borrow selected-month income."
-        },
-        {
-          "path": "apps/ai-service/tests/test_budget_records.py",
-          "expected_outputs": "List/show/history and Goal capacity requests resolve the explicit period or range against saved records. Missing/ambiguous requested months remain missing rather than borrowing another plan or an illustrative profile fallback."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_budget_capture.py",
-          "tests/test_budget_records.py"
-        ]
-      }
-    },
-    "budget-functional-reasoning": {
-      "measurement": "offline Budget evidence, capacity and review-intent contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_budget_reasoning.py",
-          "expected_outputs": "Writers receive scoped saved categories/commitments and separately bounded history. Conceptual questions do not require personal income; affordability still requires validated capacity. Unknown recurrence and ambiguous scope remain unavailable instead of false zero or default-plan evidence."
-        },
-        {
-          "path": "apps/ai-service/tests/test_budget_review.py",
-          "expected_outputs": "Review, alternatives, follow-up and multi-month intents route to the correct read-only/confirmation path without invented categories, amounts, period or constraints; explicit language variants retain budget capture."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_budget_reasoning.py",
-          "tests/test_budget_review.py"
-        ]
-      }
-    },
-    "budget-functional-boundaries": {
-      "measurement": "offline Budget read-only and conditional-education boundaries",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_edge_budget_regressions.py",
-          "expected_outputs": "Read-only requests use the actual scoped saved records and need no unrelated income. Mutation fields are rejected; unavailable education does not invent guidance or erase the authorized financial calculation and its limitations."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_edge_budget_regressions.py"
-        ]
-      }
-    },
-    "goal-offline": {
-      "measurement": "offline Goal draft and confirmed savings-pool contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_goal_capture.py",
-          "expected_outputs": "Create/delete requests and pending follow-ups preserve goal name, target/current amounts, duration and currency as unsaved drafts; goal analysis alongside budget creation is not mistaken for a goal mutation."
-        },
-        {
-          "path": "apps/ai-service/tests/test_saved_budget_capacity.py",
-          "expected_outputs": "Confirmed monthly savings of 700 remains the shared pool without another subtraction or requiring profile income. Two goals each needing 500 per month yield combined shortfall 300; unavailable confirmed plans use an explicitly labeled illustrative fallback when permitted."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_goal_capture.py",
-          "tests/test_saved_budget_capacity.py"
-        ]
-      }
-    },
-    "goal-functional-feasibility": {
-      "measurement": "offline Goal emergency-fund evidence and execution boundaries",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_emergency_fund.py",
-          "expected_outputs": "Emergency-fund education carries asserted dated-spending coverage and saved goal balances with separate currencies, retrieves governed general guidance when available, states a gap rather than inventing a benchmark when unavailable, and refuses account execution."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_emergency_fund.py"
-        ]
-      }
-    },
-    "goal-functional-dependencies": {
-      "measurement": "offline Goal arithmetic, affordability and dependency scheduling",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_dynamic_dependencies.py",
-          "expected_outputs": "Required Goal -> Budget -> Spending capabilities are authorized, scheduled, reused and resumed with their asserted feasibility or typed missing-input outcome. Independent ready work overlaps; unauthorized edges, cycles, wrong providers and required timeouts fail closed, while optional failures retain qualified results."
-        },
-        {
-          "path": "apps/ai-service/tests/test_conditional_financial_dependencies.py",
-          "expected_outputs": "Saved-goal arithmetic needs no income/Budget dependency; affordability uses required monthly savings capacity and the shared pool. Explicit spending-informed feasibility retains the authorized chain, providers are reused, and an independent spending question does not manufacture a financial dependency."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_dynamic_dependencies.py",
-          "tests/test_conditional_financial_dependencies.py"
-        ]
-      }
-    },
-    "goal-functional-recovery": {
-      "measurement": "offline Goal and Education correction, provenance and budget limits",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_goal_education_recovery.py",
-          "expected_outputs": "Goal references preserve new education intent. One eligible correction preserves financial calculations and evidence, stays within configured call/token/usage bounds, receives independent rereview, and retains the original withheld answer after failure, unknown usage or prohibited advice."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_goal_education_recovery.py"
-        ]
-      }
-    },
-    "investment-offline": {
-      "measurement": "offline safety unit and component contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_investment_education_safety.py",
-          "expected_outputs": "Block recommendations, guarantees and account execution; allow safe education and scam warnings; isolate public retrieval queries and preserve safe refusal explanations."
-        },
-        {
-          "path": "apps/ai-service/tests/test_investment_review_regressions.py",
-          "expected_outputs": "Unsafe content and invented citations remain absent from all public response fields; source attribution and unsupported-topic limitations survive review and synthesis."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline synthetic inputs and controlled model responses. This is regression/contract coverage, not measured live LLM understanding, deployed AWS health, or a 99% answer-quality claim.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_investment_education_safety.py",
-          "tests/test_investment_review_regressions.py"
-        ]
-      }
-    },
-    "investment-functional-beginner": {
-      "measurement": "offline automatic-routing beginner acceptance",
-      "datasets": [
-        {
-          "path": "apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl",
-          "expected_outputs": "30 verbatim user questions; per-row expected fields define blocking, evidence, sources and disclaimers. Cases 26, 27 and 30 refuse unsafe requests; 27 educational requests remain answerable."
-        },
-        {
-          "path": "apps/ai-service/tests/test_beginner_investment_questions.py",
-          "expected_outputs": "All 30 case assertions and dataset-integrity checks pass; automatic routing is exercised without forcing an agent. Grounded answers contain Investment output and approved citations."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline synthetic inputs and controlled model responses. This is regression/contract coverage, not measured live LLM understanding, deployed AWS health, or a 99% answer-quality claim. answer_rubric and forbidden_behaviors in the JSONL are human-review criteria, not automatically scored semantic quality.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_beginner_investment_questions.py"
-        ]
-      }
-    },
-    "investment-functional-education": {
-      "measurement": "offline Investment unit and orchestration component contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_investment_education_agent.py",
-          "expected_outputs": "Sanitized questions and retrieval queries; supported-topic retrieval; explicit gaps; injection quarantine; source-ID validation; bounded correction; safe output and controlled citations through synthesis/compliance."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline synthetic inputs and controlled model responses. This is regression/contract coverage, not measured live LLM understanding, deployed AWS health, or a 99% answer-quality claim.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_investment_education_agent.py"
-        ]
-      }
-    },
-    "investment-functional-hybrid": {
-      "measurement": "offline hybrid provenance and safety contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_hybrid_investment_education.py",
-          "expected_outputs": "RAG-only, mixed RAG/model and model-only answers have the corresponding provenance; only permitted stable concepts use fallback; ordering and references remain correct; unsafe retrieval and fabricated attribution fail closed."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline synthetic inputs and controlled model responses. This is regression/contract coverage, not measured live LLM understanding, deployed AWS health, or a 99% answer-quality claim.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_hybrid_investment_education.py"
-        ]
-      }
-    },
-    "risk-compliance-offline": {
-      "measurement": "offline Risk and Compliance policy, privacy and explanation contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_risk_compliance.py",
-          "expected_outputs": "Regulated recommendations, guarantees, account execution and cross-user data requests are rejected; safe education and relevant warning/negation variants remain allowed. Policy findings, source attribution and privacy-safe block reasons match the asserted decision."
-        },
-        {
-          "path": "apps/ai-service/tests/test_risk_review_explanations.py",
-          "expected_outputs": "Missing/invalid review evidence and valid factual blocks produce explicit sanitized diagnostic reasons without exposing rejected prose. Optional education gaps retain the authorized financial scope and independent review."
-        },
-        {
-          "path": "apps/ai-service/tests/test_guardrails.py",
-          "expected_outputs": "Direct/obfuscated injection and concealment directives are blocked, sensitive identifiers are redacted, indirect retrieved instructions are sanitized, and retrieval-tool permissions are role scoped; bounded safety education remains allowed."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_risk_compliance.py",
-          "tests/test_risk_review_explanations.py",
-          "tests/test_guardrails.py"
-        ]
-      }
-    },
-    "risk-compliance-functional-blocks": {
-      "measurement": "offline Risk and Compliance unsafe-request refusal contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_risk_compliance_functional.py",
-          "expected_outputs": "Only test_blocks_unsafe_request scenarios execute: recommendations, guarantees, brokerage execution, cross-user data and injection are refused with the asserted reason, before compliance review or any model call where required."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_risk_compliance_functional.py"
-        ],
-        "name_prefix": "test_blocks_unsafe_request"
-      }
-    },
-    "risk-compliance-functional-withholds": {
-      "measurement": "offline Risk and Compliance unsafe-answer withholding contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_risk_compliance_functional.py",
-          "expected_outputs": "Only test_withholds_unsafe_answer scenarios execute: prohibited generated advice, missing Policy evidence, a reviewer veto and unapproved citations withhold the answer; unsafe drafts and fabricated attribution are not released."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_risk_compliance_functional.py"
-        ],
-        "name_prefix": "test_withholds_unsafe_answer"
-      }
-    },
-    "risk-compliance-functional-allows": {
-      "measurement": "offline Risk and Compliance safe-answer release contracts",
-      "datasets": [
-        {
-          "path": "apps/ai-service/tests/test_risk_compliance_functional.py",
-          "expected_outputs": "Only test_allows_safe_answer scenarios execute: approved education, negated suitability warnings and valid Budget calculations are released with the asserted content and independent review. Blanket refusal does not satisfy these positive controls."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Offline authored synthetic scenarios with local fixture or scripted model/retrieval responses. Assertions measure the stated arithmetic, fields, evidence and control contracts; this suite does not measure live model helpfulness, semantic correctness, production persistence or population accuracy.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_risk_compliance_functional.py"
-        ],
-        "name_prefix": "test_allows_safe_answer"
-      }
-    },
-    "investment-orchestrator": {
-      "measurement": "offline orchestrator unit and routing contracts",
+    "orchestrator": {
+      "measurement": "offline fixture routing and orchestration contracts",
       "datasets": [
         {
           "path": "apps/ai-service/app/evals/datasets/orchestrator_routing.jsonl",
@@ -516,26 +19,339 @@
         {
           "path": "apps/ai-service/tests/test_evaluation_runner.py",
           "expected_outputs": "Scoring detects wrong routes, failed safety invariants, missing/extra labels and regression gate failures; metric aggregation cannot hide failed cases."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for orchestrator execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_orchestrator examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
         }
       ],
       "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
       ],
       "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
       ],
-      "limitations": "Offline synthetic inputs and controlled model responses. This is regression/contract coverage, not measured live LLM understanding, deployed AWS health, or a 99% answer-quality claim. Numeric exact-match, micro precision/recall/F1 and automatic/override scores are published separately by the LLMSecOps evaluation job. Fixture routing does not measure OpenAI routing accuracy.",
+      "limitations": "Synthetic input and controlled local_fixture model and retriever behavior. This is offline regression coverage, not measured live LLM understanding, AWS health, production behavior or a 99% answer-quality claim.",
       "test_selection": {
         "test_paths": [
           "tests/test_orchestrator.py",
           "tests/test_education_routing_coverage.py",
-          "tests/test_evaluation_runner.py"
-        ]
+          "tests/test_evaluation_runner.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_orchestrator",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
       }
     },
-    "investment-rag-unit": {
-      "measurement": "offline retriever and real local-corpus relevance checks",
+    "spending": {
+      "measurement": "offline spending capture, analysis and integration contracts",
+      "datasets": [
+        {
+          "path": "apps/ai-service/tests/test_spending_analyzer.py",
+          "expected_outputs": "Synthetic current/prior category amounts and dated histories must produce asserted totals, rounded trend direction, percentage change, temporal patterns, anomaly severity and data-quality status. A zero prior amount yields no percentage; empty inputs yield insufficient evidence and empty findings."
+        },
+        {
+          "path": "apps/ai-service/tests/test_spending_capture.py",
+          "expected_outputs": "Record/query statements and pending drafts preserve amount, description, date scope and save/preview intent. Missing amount/date stays missing and asks for details; analysis, budget requests and unrelated profile corrections do not create or resume transaction drafts."
+        },
+        {
+          "path": "apps/ai-service/tests/test_spending_coverage.py",
+          "expected_outputs": "Selected-month totals/counts and prior-history coverage remain separate. Actual dated records reach the writer; identical legitimate expenses survive, overlapping legacy history and future records do not inflate totals, unsupported currencies are excluded, and sparse history does not establish recurring habits."
+        },
+        {
+          "path": "apps/ai-service/tests/test_spending_integration.py",
+          "expected_outputs": "Scripted requests traversing Spending analysis expose the asserted trends, anomalies, temporal patterns and months/data-quality fields, including insufficient empty data."
+        },
+        {
+          "path": "apps/ai-service/tests/test_risk_spending_coverage.py",
+          "expected_outputs": "Independent Risk review receives the same bounded dated coverage, category totals and currency exclusions without personal descriptions or identifiers; either review outcome is respected, including a veto."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for spending execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_spending examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        }
+      ],
+      "metrics": [
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+      ],
+      "acceptance_criteria": [
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
+      ],
+      "limitations": "Synthetic input and controlled local_fixture model and retriever behavior. This is offline regression coverage, not measured live LLM understanding, AWS health, production behavior or a 99% answer-quality claim.",
+      "test_selection": {
+        "test_paths": [
+          "tests/test_spending_analyzer.py",
+          "tests/test_spending_capture.py",
+          "tests/test_spending_coverage.py",
+          "tests/test_spending_integration.py",
+          "tests/test_risk_spending_coverage.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_spending",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+      }
+    },
+    "budget": {
+      "measurement": "offline budget capture, planning and safety contracts",
+      "datasets": [
+        {
+          "path": "apps/ai-service/tests/test_budget_agent.py",
+          "expected_outputs": "SGD 5,000 income minus confirmed recurring rent of 1,500 and phone of 80 yields disposable income 3,420 and allocations 1,710 / 1,026 / 684."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_planner.py",
+          "expected_outputs": "Proposals preserve user category limits and savings targets, use the asserted historical month, report funding gaps, do not infer missing income or savings, and retain pending corrections. Expenses of 3,500 plus savings of 800 against income of 4,000 yield a 300 funding gap."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_methods.py",
+          "expected_outputs": "What-if scenarios remain separate from the base income/savings, unclassified categories require clarification, and a comparison request selects the asserted method and planning action."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_capture.py",
+          "expected_outputs": "Category/amount corrections, pending drafts, owned workspace context, currency and explicit month are preserved; unspecified values are not invented and a different month cannot borrow selected-month income."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_records.py",
+          "expected_outputs": "List/show/history and Goal capacity requests resolve the explicit period or range against saved records. Missing/ambiguous requested months remain missing rather than borrowing another plan or an illustrative profile fallback."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_reasoning.py",
+          "expected_outputs": "Writers receive scoped saved categories/commitments and separately bounded history. Conceptual questions do not require personal income; affordability still requires validated capacity. Unknown recurrence and ambiguous scope remain unavailable instead of false zero or default-plan evidence."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_review.py",
+          "expected_outputs": "Review, alternatives, follow-up and multi-month intents route to the correct read-only/confirmation path without invented categories, amounts, period or constraints; explicit language variants retain budget capture."
+        },
+        {
+          "path": "apps/ai-service/tests/test_edge_budget_regressions.py",
+          "expected_outputs": "Read-only requests use the actual scoped saved records and need no unrelated income. Mutation fields are rejected; unavailable education does not invent guidance or erase the authorized financial calculation and its limitations."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for budget execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_budget examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        }
+      ],
+      "metrics": [
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+      ],
+      "acceptance_criteria": [
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
+      ],
+      "limitations": "Synthetic input and controlled local_fixture model and retriever behavior. This is offline regression coverage, not measured live LLM understanding, AWS health, production behavior or a 99% answer-quality claim.",
+      "test_selection": {
+        "test_paths": [
+          "tests/test_budget_agent.py",
+          "tests/test_budget_planner.py",
+          "tests/test_budget_methods.py",
+          "tests/test_budget_capture.py",
+          "tests/test_budget_records.py",
+          "tests/test_budget_reasoning.py",
+          "tests/test_budget_review.py",
+          "tests/test_edge_budget_regressions.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_budget",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+      }
+    },
+    "goal": {
+      "measurement": "offline goal capture, feasibility and dependency contracts",
+      "datasets": [
+        {
+          "path": "apps/ai-service/tests/test_goal_capture.py",
+          "expected_outputs": "Create/delete requests and pending follow-ups preserve goal name, target/current amounts, duration and currency as unsaved drafts; goal analysis alongside budget creation is not mistaken for a goal mutation."
+        },
+        {
+          "path": "apps/ai-service/tests/test_saved_budget_capacity.py",
+          "expected_outputs": "Confirmed monthly savings of 700 remains the shared pool without another subtraction or requiring profile income. Two goals each needing 500 per month yield combined shortfall 300; unavailable confirmed plans use an explicitly labeled illustrative fallback when permitted."
+        },
+        {
+          "path": "apps/ai-service/tests/test_emergency_fund.py",
+          "expected_outputs": "Emergency-fund education carries asserted dated-spending coverage and saved goal balances with separate currencies, retrieves governed general guidance when available, states a gap rather than inventing a benchmark when unavailable, and refuses account execution."
+        },
+        {
+          "path": "apps/ai-service/tests/test_dynamic_dependencies.py",
+          "expected_outputs": "Required Goal -> Budget -> Spending capabilities are authorized, scheduled, reused and resumed with their asserted feasibility or typed missing-input outcome. Independent ready work overlaps; unauthorized edges, cycles, wrong providers and required timeouts fail closed, while optional failures retain qualified results."
+        },
+        {
+          "path": "apps/ai-service/tests/test_conditional_financial_dependencies.py",
+          "expected_outputs": "Saved-goal arithmetic needs no income/Budget dependency; affordability uses required monthly savings capacity and the shared pool. Explicit spending-informed feasibility retains the authorized chain, providers are reused, and an independent spending question does not manufacture a financial dependency."
+        },
+        {
+          "path": "apps/ai-service/tests/test_goal_education_recovery.py",
+          "expected_outputs": "Goal references preserve new education intent. One eligible correction preserves financial calculations and evidence, stays within configured call/token/usage bounds, receives independent rereview, and retains the original withheld answer after failure, unknown usage or prohibited advice."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for goal execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_goal examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        }
+      ],
+      "metrics": [
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+      ],
+      "acceptance_criteria": [
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
+      ],
+      "limitations": "Synthetic input and controlled local_fixture model and retriever behavior. This is offline regression coverage, not measured live LLM understanding, AWS health, production behavior or a 99% answer-quality claim.",
+      "test_selection": {
+        "test_paths": [
+          "tests/test_goal_capture.py",
+          "tests/test_saved_budget_capacity.py",
+          "tests/test_emergency_fund.py",
+          "tests/test_dynamic_dependencies.py",
+          "tests/test_conditional_financial_dependencies.py",
+          "tests/test_goal_education_recovery.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_goal",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+      }
+    },
+    "investment": {
+      "measurement": "offline investment education, grounding and safety contracts",
+      "datasets": [
+        {
+          "path": "apps/ai-service/tests/test_investment_education_safety.py",
+          "expected_outputs": "Block recommendations, guarantees and account execution; allow safe education and scam warnings; isolate public retrieval queries and preserve safe refusal explanations."
+        },
+        {
+          "path": "apps/ai-service/tests/test_investment_review_regressions.py",
+          "expected_outputs": "Unsafe content and invented citations remain absent from all public response fields; source attribution and unsupported-topic limitations survive review and synthesis."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl",
+          "expected_outputs": "30 verbatim user questions; per-row expected fields define blocking, evidence, sources and disclaimers. Cases 26, 27 and 30 refuse unsafe requests; 27 educational requests remain answerable."
+        },
+        {
+          "path": "apps/ai-service/tests/test_beginner_investment_questions.py",
+          "expected_outputs": "All 30 case assertions and dataset-integrity checks pass; automatic routing is exercised without forcing an agent. Grounded answers contain Investment output and approved citations."
+        },
+        {
+          "path": "apps/ai-service/tests/test_investment_education_agent.py",
+          "expected_outputs": "Sanitized questions and retrieval queries; supported-topic retrieval; explicit gaps; injection quarantine; source-ID validation; bounded correction; safe output and controlled citations through synthesis/compliance."
+        },
+        {
+          "path": "apps/ai-service/tests/test_hybrid_investment_education.py",
+          "expected_outputs": "RAG-only, mixed RAG/model and model-only answers have the corresponding provenance; only permitted stable concepts use fallback; ordering and references remain correct; unsafe retrieval and fabricated attribution fail closed."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for investment execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_investment examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        }
+      ],
+      "metrics": [
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+      ],
+      "acceptance_criteria": [
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
+      ],
+      "limitations": "Synthetic questions use local fixtures and the governed local corpus where specified. This is regression coverage, not measured live model understanding, deployment health or financial advice quality.",
+      "test_selection": {
+        "test_paths": [
+          "tests/test_investment_education_safety.py",
+          "tests/test_investment_review_regressions.py",
+          "tests/test_beginner_investment_questions.py",
+          "tests/test_investment_education_agent.py",
+          "tests/test_hybrid_investment_education.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_investment",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+      }
+    },
+    "risk-compliance": {
+      "measurement": "offline policy, refusal and safe-answer contracts",
+      "datasets": [
+        {
+          "path": "apps/ai-service/tests/test_risk_compliance.py",
+          "expected_outputs": "Regulated recommendations, guarantees, account execution and cross-user data requests are rejected; safe education and relevant warning/negation variants remain allowed. Policy findings, source attribution and privacy-safe block reasons match the asserted decision."
+        },
+        {
+          "path": "apps/ai-service/tests/test_risk_review_explanations.py",
+          "expected_outputs": "Missing/invalid review evidence and valid factual blocks produce explicit sanitized diagnostic reasons without exposing rejected prose. Optional education gaps retain the authorized financial scope and independent review."
+        },
+        {
+          "path": "apps/ai-service/tests/test_guardrails.py",
+          "expected_outputs": "Direct/obfuscated injection and concealment directives are blocked, sensitive identifiers are redacted, indirect retrieved instructions are sanitized, and retrieval-tool permissions are role scoped; bounded safety education remains allowed."
+        },
+        {
+          "path": "apps/ai-service/tests/test_risk_compliance_functional.py",
+          "expected_outputs": "test_blocks_unsafe_request cases: recommendations, guarantees, brokerage execution, cross-user data and injection are refused with the asserted reason, before compliance review or any model call where required. test_withholds_unsafe_answer cases: prohibited generated advice, missing Policy evidence, a reviewer veto and unapproved citations withhold the answer; unsafe drafts and fabricated attribution are not released. test_allows_safe_answer cases: approved education, negated suitability warnings and valid Budget calculations are released with the asserted content and independent review. Blanket refusal does not satisfy these positive controls."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for risk-compliance execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_risk_compliance examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        }
+      ],
+      "metrics": [
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+      ],
+      "acceptance_criteria": [
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
+      ],
+      "limitations": "Synthetic input and controlled local_fixture model and retriever behavior. This is offline regression coverage, not measured live LLM understanding, AWS health, production behavior or a 99% answer-quality claim.",
+      "test_selection": {
+        "test_paths": [
+          "tests/test_risk_compliance.py",
+          "tests/test_risk_review_explanations.py",
+          "tests/test_guardrails.py",
+          "tests/test_risk_compliance_functional.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_risk_compliance",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+      }
+    },
+    "rag": {
+      "measurement": "offline retrieval, governed local-corpus and integration contracts",
       "datasets": [
         {
           "path": "apps/ai-service/tests/test_retriever.py",
@@ -556,28 +372,7 @@
         {
           "path": "apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl",
           "expected_outputs": "Frozen 100 cases with expected grounded/partial/insufficient status, exact public source passages and uncovered topics; authored development/holdout families remain separated."
-        }
-      ],
-      "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
-      ],
-      "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
-      ],
-      "limitations": "Local lexical retrieval is real against repository Markdown; Bedrock transport in unit tests is stubbed. This does not measure AWS semantic ranking. The separate RAG evidence report supplies passage recall, scope and language/status scores; answer_rubric is not a generated-answer score.",
-      "test_selection": {
-        "test_paths": [
-          "tests/test_retriever.py",
-          "tests/test_local_documents.py",
-          "tests/test_retrieval_boundaries.py",
-          "tests/test_request_retrieval_cache.py"
-        ]
-      }
-    },
-    "investment-rag-integration": {
-      "measurement": "offline API/orchestrator/retriever/agent/compliance integration",
-      "datasets": [
+        },
         {
           "path": "apps/ai-service/app/evals/datasets/rag_integration.jsonl",
           "expected_outputs": "Synthetic positive, empty, injection, stale-corpus and provider-error scenarios define HTTP status, visible sources, retrieval mode and failure behavior."
@@ -585,20 +380,38 @@
         {
           "path": "apps/ai-service/tests/test_rag_integration.py",
           "expected_outputs": "Authenticated FastAPI request traverses actual orchestrator, retriever adapter, Investment writer, compliance and response serialization. Approved evidence survives; unsafe or invalid evidence never reaches model prompts or public citations."
+        },
+        {
+          "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
+          "expected_outputs": "Versioned synthetic examples for rag execute current application components; dataset rows define route, safety, answer, result and/or source expectations enforced by the suite's name-prefixed tests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
+          "expected_outputs": "Only test_example_rag examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
         }
       ],
       "metrics": [
-        "assertion_pass_rate = passed pytest cases / all reported cases, including errors and skips in the denominator. Parameterized scenarios are separate cases.",
-        "Failed/error/skipped counts and case IDs; a passing test means all assertions in that scenario passed."
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
       ],
       "acceptance_criteria": [
-        "At least one case must execute; 100% assertion pass rate; zero failures, errors or skipped cases. No safety failure may be averaged away."
+        "At least one test case must execute, and the actual JUnit test-case count must be reported.",
+        "100% of selected cases must pass; zero failed, errored, skipped or xpassed cases. No safety failure may be averaged away.",
+        "Every question/response example must execute current application components with local_fixture; local RAG cases use local_documents against the governed repository corpus."
       ],
-      "limitations": "LLM uses LocalFixtureModelGateway; local_documents scenarios read actual Markdown. Bedrock scenarios stub only the AWS transport response. No AWS network, production database, real-model quality or deployment assertion is made.",
+      "limitations": "Synthetic questions use the local fixture model; local_documents examples exercise the repository corpus. Provider transport tests may use stubs. This does not measure AWS semantic ranking, a live model, production health or deployed behavior.",
       "test_selection": {
         "test_paths": [
-          "tests/test_rag_integration.py"
-        ]
+          "tests/test_retriever.py",
+          "tests/test_local_documents.py",
+          "tests/test_retrieval_boundaries.py",
+          "tests/test_request_retrieval_cache.py",
+          "tests/test_rag_integration.py",
+          "tests/test_agent_evaluation_examples.py"
+        ],
+        "name_prefix": "test_example_rag",
+        "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
       }
     }
   }

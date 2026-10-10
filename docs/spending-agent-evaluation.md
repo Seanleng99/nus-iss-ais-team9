@@ -1,6 +1,13 @@
 # Spending Agent evaluation and CI reports
 
-**Spending Agent Tests** owns four offline evaluation suites. The versioned
+**Current entry point:** **Agent and RAG Evaluations** → `spending` offline / live jobs.
+The former four suite IDs below describe retained scenario groups, now executed
+inside one `spending` offline job. They are not separate workflow or CLI names.
+Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
+job graph, live Yes/No choice and reports.
+
+
+The `spending` offline job contains the following four scenario groups. The versioned
 definitions are in [agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json);
 the exact selection is in [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json).
 Each listed test file contains authored synthetic inputs and expected-output
@@ -34,39 +41,26 @@ or proof that a pattern generalizes to a user's future behavior.
 
 ## Execution and finding evidence
 
-CI calls all four suites on relevant pull requests/main pushes when AI CI or
-application deployment is selected. Full scheduled CI runs Monday at 10:00 Singapore
-time; individual **Spending Agent Tests** runs can be dispatched manually. Docs-only
-changes do not trigger CI. See [workflow integration](agent-test-workflows.md) for
-change selection and the release gate.
+Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+its **spending — offline unit tests** job and download `agent-offline-spending`.
+It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
+full synthetic example responses and every case outcome, retained for 90 days.
+The combined `agent-evaluation-report` artifact includes HTML, JSON and Markdown.
 
-Open **CI and LLMSecOps -> Spending agent tests**, or **Spending Agent Tests**:
-
-- Each job summary shows its dataset hashes, expected outputs, metric definition,
-  acceptance requirements, measured rate and case outcomes.
-- Download `spending-offline-report`, `spending-functional-capture-report`,
-  `spending-functional-coverage-report` and `spending-functional-integration-report`.
-- Each artifact contains `<suite>.xml`, `<suite>-summary.md` and
-  `<suite>-evaluation.json`, retained for 30 days. JSON records the commit, exact
-  selection, outcome counts, failed/unexecuted IDs and acceptance decision.
-- Question/response cells are populated only when a test records those properties;
-  blank cells are not real-model answers. Missing definitions, unreadable/empty
-  results and skipped cases cannot produce accepted evaluation evidence.
+To include live integration, manually dispatch the consolidated workflow on main
+and check **Run live integration tests?**. Live failures are advisory; missing or
+skipped evidence never counts as a pass. Existing release smoke remains required.
 
 ## Local reproduction
 
-From the repository root with `apps/shared` and `apps/ai-service[dev]` installed:
-
 ```sh
-python infra/scripts/run_agent_tests.py --suite spending-offline --junitxml artifacts/spending-offline.xml
-python infra/scripts/run_agent_tests.py --suite spending-functional-capture --junitxml artifacts/spending-functional-capture.xml
-python infra/scripts/run_agent_tests.py --suite spending-functional-coverage --junitxml artifacts/spending-functional-coverage.xml
-python infra/scripts/run_agent_tests.py --suite spending-functional-integration --junitxml artifacts/spending-functional-integration.xml
-python infra/scripts/summarize_pytest_junit.py artifacts/spending-offline.xml --suite spending-offline --title "Spending offline evaluation" --output artifacts/spending-offline-summary.md --evaluation-output artifacts/spending-offline-evaluation.json
+python infra/scripts/run_agent_tests.py --suite spending --junitxml artifacts/spending.xml
+python infra/scripts/summarize_pytest_junit.py artifacts/spending.xml --suite spending --title "Spending offline" --output artifacts/spending-summary.md --evaluation-output artifacts/spending-evaluation.json
 ```
 
-Repeat the reporting command with each other suite ID and its matching XML file.
-All commands are offline and need no provider credentials.
+These commands run all retained scenario groups offline. Non-conversational
+helper tests display N/A for question/response; synthetic example tests record
+actual application output with fixture providers.
 
 ## Live acceptance and limitations
 
@@ -74,4 +68,4 @@ Model output and retrieval are controlled in these suites. Live release smoke ch
 also exercise Spending and persisted model traces; their results remain separate
 from offline regression rates. Representative generated-answer review must assess
 directness, coverage limitations, supported comparisons and absence of unsupported
-habit claims. These four rates do not complete that semantic or human acceptance.
+habit claims. These offline results do not complete that semantic or human acceptance.

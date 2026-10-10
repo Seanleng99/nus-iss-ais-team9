@@ -1,6 +1,13 @@
 # Investment Agent evaluation and CI reports
 
-The **Investment Agent Tests** reusable workflow now owns the existing Investment
+**Current workflow:** [Agent and RAG Evaluations](agent-test-workflows.md).
+Investment, Orchestrator and RAG now have their own offline and optional live jobs.
+Former `investment-*` IDs below name the retained scenario groups; use `investment`,
+`orchestrator` and `rag` as current CLI suite IDs. Live Yes/No is chosen before
+manual dispatch; live failure is advisory.
+
+
+The consolidated evaluation workflow retains the existing Investment
 suites, orchestrator/routing checks, RAG unit and integration tests, and the numeric
 LLMSecOps and frozen passage-retrieval gates. CI calls it for AI/deployment changes;
 it can also be dispatched manually. The required agent gate fails if this workflow
@@ -79,7 +86,7 @@ the test does not force an agent or require an exact agent ordering.
 These are desired acceptance criteria, not a snapshot of whatever the application
 currently returns. A missing topic, wrong route, or missed safety boundary is a
 real failure, with no skip/xfail or reduced pass threshold. The pytest module is
-owned by `investment-functional-beginner` in **Investment Agent Tests**; failing
+owned by the `investment` offline job in **Agent and RAG Evaluations**; failing
 cases fail CI.
 The evaluation runner prints its aggregate score and failed IDs. Its standalone CLI
 does not enforce a threshold; the Investment workflow runs the policy gate, which now
@@ -193,22 +200,21 @@ Integration tests run the real application components with deterministic model o
 Local-document scenarios load the real Markdown corpus. Bedrock scenarios use the real
 adapter but stub the AWS transport response; they test wiring, filters and provenance,
 not AWS availability or semantic ranking. No credentials or paid calls are needed.
-Live deployment/Bedrock testing also has a separate, manual, one-time
-[`Investment live evaluation`](investment-agent-live-evaluation.md). It uses real
-OpenAI calls and AWS services and disables its own workflow before the single run.
-Its live results are separate from these offline CI reports.
+Optional real OpenAI and Bedrock testing uses the same workflow's Investment and
+RAG live jobs. Each manual opt-in runs the bounded dataset once and retains full
+synthetic questions/answers. See [live evaluation](investment-agent-live-evaluation.md).
 
 ## Finding the report in GitHub Actions
 
-Open **CI and LLMSecOps -> Investment agent tests**, or a manually dispatched
-**Investment Agent Tests** run:
+Open **CI and LLMSecOps -> Agent and RAG evaluations**, or a manually dispatched
+**Agent and RAG Evaluations** run:
 
 - Each suite's job summary includes datasets/hashes, expected outputs, metric definitions,
   acceptance criteria, measured assertion pass rate and individual case outcomes.
-- `investment-*-report` artifacts contain JUnit XML, Markdown and `*-evaluation.json`.
+- `agent-offline-investment`, `agent-offline-orchestrator` and `agent-offline-rag` artifacts contain JUnit XML, Markdown and `*-evaluation.json`.
   Beginner and integration cases record the question, expected structural output and
   observed result. These are synthetic test inputs, not production conversations.
-- **Routing accuracy and RAG relevance metrics** shows the numeric thresholds and
+- **Required evaluation metrics** shows the numeric thresholds and
   actual scores, routing TP/FP/FN, automatic/override diagnostics, RAG slices and failed IDs.
 - Download `investment-evaluation-metrics` for the Markdown summary, machine-readable
   results, policies and datasets. Evidence is retained for 30 days.
@@ -225,13 +231,12 @@ OpenAI routing accuracy, production database persistence or 99% overall quality.
 From the repository root, install `apps/shared` and `apps/ai-service[dev]`, then:
 
 ```sh
-python infra/scripts/run_agent_tests.py --suite investment-orchestrator --junitxml artifacts/routing.xml
-python infra/scripts/run_agent_tests.py --suite investment-rag-unit --junitxml artifacts/rag-unit.xml
-python infra/scripts/run_agent_tests.py --suite investment-rag-integration --junitxml artifacts/rag-integration.xml
+python infra/scripts/run_agent_tests.py --suite orchestrator --junitxml artifacts/orchestrator.xml
+python infra/scripts/run_agent_tests.py --suite rag --junitxml artifacts/rag.xml
 python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --output artifacts/llm-evaluation-results.json
 python -m app.evals.rag_evidence --dataset apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl --output artifacts/rag-evidence-results.json
 python infra/scripts/summarize_investment_evaluations.py --evaluation artifacts/llm-evaluation-results.json --retrieval artifacts/rag-evidence-results.json --output artifacts/investment-evaluation-summary.md
 ```
 
-Use the other four Investment suite IDs from `agent-test-suites.json` to reproduce
-their pytest checks. All these commands are offline.
+Run `python infra/scripts/run_agent_tests.py --suite investment --junitxml artifacts/investment.xml`
+for all Investment scenario groups. All these commands are offline.

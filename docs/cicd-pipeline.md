@@ -69,7 +69,7 @@ quota tests separately verify rejection and `Retry-After` above the limit.
 
 `RAG Source Governance` validates both approved local corpora and audits the deployed KBs/S3 objects weekly or on demand. Its dedicated OIDC role has read-only corpus and KB permissions. It checks approval, provenance, review deadlines, content inspection, SHA-256 checksums, sidecars and completed ingestion, and retains privacy-safe evidence for 90 days. Historical Bedrock generation comparisons remain historical.
 
-The five Agent workflows execute their owned offline tests; CI runs the remaining AI tests and the conversational contracts separately. `Project OWASP Security Scan` is reusable from CI and adds committed Promptfoo security cases across all agents and the router. Its backend/frontend companion test runs have been removed because the service CI jobs already execute those tests. Both the required Agent gate and the OWASP scan must pass before CI builds release containers. See [agent test ownership](agent-test-workflows.md) and [security scan coverage](project-security-scan.md).
+The unified **Agent and RAG Evaluations** workflow executes seven owned offline suites and required numeric gates; CI runs the remaining AI tests and the conversational contracts separately. `Project OWASP Security Scan` is reusable from CI and adds committed Promptfoo security cases across all agents and the router. Its backend/frontend companion test runs have been removed because the service CI jobs already execute those tests. Both the required Agent gate and the OWASP scan must pass before CI builds release containers. See [agent test ownership](agent-test-workflows.md) and [security scan coverage](project-security-scan.md).
 
 The frontend test job installs only the frontend and shared packages. The shared
 package declares Pydantic as a runtime dependency because trace sanitization uses
@@ -96,7 +96,7 @@ and `security/promptfoo`. Each update arrives as a pull request that must pass C
 before merging, so pinned tool upgrades are reviewed instead of arriving with
 a new upstream release.
 
-`Budget Live Acceptance` remains an optional manual check of nine focused deployed-model cases and multi-turn confirmation behaviour. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
+`Agent and RAG Evaluations` offers a default-off Yes/No checkbox for seven advisory deployed-model/AWS evaluations. It replaces the separate Budget and one-time Investment live workflow definitions. These optional failures cannot block CI or release; existing mandatory release smoke checks remain required. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
 
@@ -105,13 +105,11 @@ The workflow audit keeps the following responsibilities:
 | Workflow | Purpose and trigger |
 | --- | --- |
 | CI and LLMSecOps | Automatic PR/main validation, weekly checks and manual CI |
-| Spending, Budget, Goal, Investment, Risk & Compliance Agent Tests | Reusable test owners called by CI; focused manual runs |
-| Agent Test Suite | Internal reusable runner; installs dependencies and publishes each selected pytest report |
+| Agent and RAG Evaluations | Seven offline suites + required metrics; seven optional advisory live jobs selected before manual dispatch; combined question/expected/actual/result reports |
 | Project OWASP Security Scan | Reusable offline security scenarios; optional paid live scan only by manual main dispatch |
 | Release to AWS | Deployment after successful push CI at the current main SHA |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
 | AWS Operational Validation | Weekly/manual deployed-model, lifecycle, load and operational evidence |
-| Budget Live Acceptance | Manual focused deployed-model and confirmation-flow acceptance |
 | Final Assessment | Manual academic evidence inventory and operational validation wrapper |
 | Dependabot Updates | GitHub-managed dependency maintenance |
 

@@ -1,6 +1,13 @@
 # Goal Strategy Agent evaluation and CI reports
 
-**Goal Agent Tests** owns four offline suites. Definitions are in
+**Current entry point:** **Agent and RAG Evaluations** → `goal` offline / live jobs.
+The former four suite IDs below describe retained scenario groups, now executed
+inside one `goal` offline job. They are not separate workflow or CLI names.
+Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
+job graph, live Yes/No choice and reports.
+
+
+The `goal` offline job contains four scenario groups. Definitions are in
 [agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json), with
 the exact test selection in [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json).
 Authored test inputs cover goal drafts, targets/balances/durations, confirmed savings
@@ -43,37 +50,26 @@ including authorized dependencies, evidence gaps and source provenance.
 
 ## Execution and finding evidence
 
-Relevant pull requests/main pushes run all groups when AI CI or deployment is
-selected. Full CI runs Monday at 10:00 Singapore time; **Goal Agent Tests** supports
-manual dispatch. Docs-only changes do not trigger CI. The required agent gate
-controls application build/release; see [workflow integration](agent-test-workflows.md).
+Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+its **goal — offline unit tests** job and download `agent-offline-goal`.
+It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
+full synthetic example responses and every case outcome, retained for 90 days.
+The combined `agent-evaluation-report` artifact includes HTML, JSON and Markdown.
 
-Open **CI and LLMSecOps -> Goal agent tests**, or **Goal Agent Tests**:
-
-- Each job summary records datasets/hashes, expected outputs, metric definitions,
-  acceptance, actual rates and case outcomes.
-- Download `goal-offline-report`, `goal-functional-feasibility-report`,
-  `goal-functional-dependencies-report` and `goal-functional-recovery-report`.
-- Each includes `<suite>.xml`, `<suite>-summary.md` and `<suite>-evaluation.json`,
-  retained for 30 days. JSON preserves commit/selection, counts, failed/unexecuted
-  IDs and acceptance. Missing definitions, empty evidence or skips fail acceptance.
-- Question/response fields are available only if recorded by the scenario; an
-  assertion pass is not a generated-answer quality rating.
+To include live integration, manually dispatch the consolidated workflow on main
+and check **Run live integration tests?**. Live failures are advisory; missing or
+skipped evidence never counts as a pass. Existing release smoke remains required.
 
 ## Local reproduction
 
-From the repository root with shared and AI development dependencies installed:
-
 ```sh
-python infra/scripts/run_agent_tests.py --suite goal-offline --junitxml artifacts/goal-offline.xml
-python infra/scripts/run_agent_tests.py --suite goal-functional-feasibility --junitxml artifacts/goal-functional-feasibility.xml
-python infra/scripts/run_agent_tests.py --suite goal-functional-dependencies --junitxml artifacts/goal-functional-dependencies.xml
-python infra/scripts/run_agent_tests.py --suite goal-functional-recovery --junitxml artifacts/goal-functional-recovery.xml
-python infra/scripts/summarize_pytest_junit.py artifacts/goal-offline.xml --suite goal-offline --title "Goal offline evaluation" --output artifacts/goal-offline-summary.md --evaluation-output artifacts/goal-offline-evaluation.json
+python infra/scripts/run_agent_tests.py --suite goal --junitxml artifacts/goal.xml
+python infra/scripts/summarize_pytest_junit.py artifacts/goal.xml --suite goal --title "Goal Strategy offline" --output artifacts/goal-summary.md --evaluation-output artifacts/goal-evaluation.json
 ```
 
-Use each other suite's matching XML/output names to produce its report. No paid
-model or AWS calls are made by these commands.
+These commands run all retained scenario groups offline. Non-conversational
+helper tests display N/A for question/response; synthetic example tests record
+actual application output with fixture providers.
 
 ## Live acceptance and limitations
 

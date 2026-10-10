@@ -1,38 +1,36 @@
-# Investment agent live evaluation
+# Investment Education live integration
 
-This is a bounded, manually dispatched evaluation of the deployed Investment Education path. Its synthetic conversation cases are in [`investment-live-evaluation-cases.jsonl`](../infra/llmsecops/investment-live-evaluation-cases.jsonl); the separate [`investment-live-rag-cases.jsonl`](../infra/llmsecops/investment-live-rag-cases.jsonl) supplies three direct, read-only Bedrock Retrieve probes for ETF, compound interest, and diversification. The conversation suite covers six scenarios across seven turns: general asset definitions, an ETF explanation with a same-session simpler follow-up, diversification and risk, a Chinese beginner explanation, brokerage execution refusal, and prompt-injection refusal.
+Use **Agent and RAG Evaluations** → **Run workflow** → **main** → check
+**Run live integration tests?**. The workflow runs its offline suites first,
+then the optional live jobs behind the existing demo environment approval.
 
-## Run contract
+The Investment live job runs six synthetic conversations / seven turns against
+the deployed backend: four asset definitions, ETF followed by simpler explanation,
+diversification, Chinese education, friendly brokerage refusal and prompt injection.
+It verifies real Investment model calls for normal answers, current manifest
+citations, labelled hybrid content, persisted chat answers/citations and cleanup.
+The separate RAG live job makes three real Bedrock Retrieve requests and checks
+expected-source hit@5 and approved/current passage provenance. Stable ECS evidence
+and deployed SHA are recorded before and after each job.
 
-The workflow is [`investment-agent-live.yml`](../.github/workflows/investment-agent-live.yml). It must be manual-only: CI and releases do not dispatch live provider calls. The workflow must accept one explicit invocation, reject reruns, and record the expected deployment SHA and expected provider/model before making requests. The target is the AWS ECS deployment using Bedrock and PostgreSQL-backed conversation history; the live answer-generation identity must be the real OpenAI `gpt-6-luna` model. Record the observed provider and model from response/audit evidence, and fail the run if they differ from the expected identity. Do not substitute a mock model or describe a preflight as a live evaluation.
+Definitions and datasets:
 
-Run AWS ECS health/stability checks immediately before and after evaluation. Confirm that the deployed AI build matches the build identity in response audit evidence, and verify that conversation history persists across the two-turn ETF session. Execute the three Bedrock Retrieve probes directly against the current corpus, each with its approved metadata filters and five returned results. The retrieval metric is expected-source-hit@5: the number of the three queries returning at least one expected approved source, divided by three. Require 1.0 (3/3). For every result, verify nonempty text and that returned metadata, URL, checksum, and corpus identity match the approved source manifest. This probe set measures only those three expected-source checks; it is not a 100-case corpus recall benchmark and does not establish semantic grounding of generated answers.
+- `infra/llmsecops/agent-live-evaluation-specs.json`
+- `infra/llmsecops/investment-live-evaluation-cases.jsonl`
+- `infra/llmsecops/investment-live-rag-cases.jsonl`
 
-The operator dispatches exactly one run. Its first job disables the workflow through the GitHub API before the live job starts. It requires RUN_ONCE, main, run attempt 1, and exactly one recorded workflow run; later dispatches or reruns are rejected. The runner also refuses to overwrite existing evidence. No push, schedule, release or reusable-workflow trigger is present. If the GitHub environment requires review approval, the operator may need to click approve after the workflow is fully prepared. A failed or interrupted invocation is retained as the one run's failure evidence and is not automatically retried; any later dispatch requires a deliberate operator decision after reviewing that evidence. Deployment preflight must confirm that the service is healthy and that the deployment SHA and provider/model identity match the values captured for this run.
+All planned contracts must pass for a live PASS. Failed or missing evidence remains
+FAIL/NOT RUN, while the optional job cannot block deployment. No generations are
+retried by the harness; rerunning an old workflow attempt is rejected. A fresh
+manual Yes selection permits a new bounded run. Automatic CI always selects No.
 
-The runner executes the turns sequentially within each case. It checks every turn's `blocked`, exact `selected_agents`, `rag`, and `model_required` values against the dataset. Expected answers describe concepts and behavior, not exact generated wording. For non-empty `answer_terms`, each listed concept may be checked using a documented case-insensitive or language-aware matcher; the terms are deliberately sparse. For the ETF follow-up, `simpler_than_previous: true` requires a shorter educational explanation; it supplies a word-count comparison of the follow-up's educational explanation against the prior educational explanation in that same session, excluding citation and source boilerplate. Answer terms and the shorter-explanation check are automated contract gates. The requested maximum of three short sentences, simplicity and factual meaning are assessed by human rubric review; they are not inferred from a shorter word count. Human review must assess the actual answer for accuracy, simplicity, language, safety, and source support; exact wording is not required.
+Download `agent-live-investment`, `agent-live-rag` or the combined
+`agent-evaluation-report` for full synthetic Q&A, metrics and acceptance evidence
+(retained 90 days). These are real-provider integration contracts, not a 99%
+answer-quality claim, semantic review or authenticated browser UI test.
 
-The suite passes only when all seven of seven turn contracts pass, the three-probe retrieval check is 3/3, AWS preflight and post-run stability checks pass, deployed build/provider identity matches response audit evidence, PostgreSQL conversation-history persistence is confirmed, and synthetic-session cleanup is confirmed. This pass status refers to automated contracts only; human rubric review is recorded separately and must pass before presenting the answers as educationally satisfactory. Overall acceptance is 100% across these required checks. Capture observed per-turn latency and token usage from the run. The harness sends at most seven sequential coaching POSTs with no HTTP generation retries and three direct Retrieve calls. Model planning/review within each deployed turn can perform multiple internal model/RAG calls. A 200,000-token accumulated stop threshold prevents starting another turn, but a single in-flight turn can cross it; this is not a dollar-spend cap. Unknown request outcomes or incomplete usage stop further generation. Do not invent cost estimates, answer-quality scores, or other unobserved metrics. Record actual RAG evidence for the four educational scenarios, including the retrieved source identifiers and corpus/version evidence exposed by the service. A `rag: true` flag or a successful direct-retrieval probe by itself does not establish grounding of a generated answer.
+The old self-disabling `investment-agent-live.yml` entry point has been removed.
+Its tested Investment/AWS helper functions are reused by the consolidated runner.
+Existing post-deployment smoke remains a separate required release check.
 
-## Data handling and limits
-
-Use only the generated synthetic profile and sessions created for this run. Clean up those synthetic sessions/profile after the evaluation, including after a failed turn, and record the cleanup outcome. Do not mutate the production knowledge base, perform brokerage/account trades, or use real user records. Persist only privacy-safe evaluation evidence: case and turn identifiers, pass/fail checks, expected and observed provider/deployment metadata, correlation/trace identifiers where available, actual retrieval evidence, observed latency/token usage, and cleanup status. Do not retain credentials, account data, or full real-user records.
-
-The live run's synthetic QA JSON and HTML report are retained as a GitHub Actions artifact for 90 days. The separate offline evaluation report remains separate evidence: it does not count as a live run, does not satisfy deployment preflight, and must not be merged into the live pass rate.
-
-Automated checks cover routing, block state, retrieval/model execution, deployment identity, and cleanup. Sparse answer-term and word-count checks do not replace human review of meaning, language or the requested three-sentence limit; generated wording need not match a golden answer. These checks cannot prove semantic correctness or educational quality. Human review must assess each case rubric against the actual generated answer, and must inspect actual RAG evidence for the education cases. Report those findings as observations rather than inferred or invented quality metrics.
-
-## Live run results
-
-**Status: pending.** No live run has been performed for this evaluation. Fill this section from the single manual workflow run; do not report planned checks as completed results.
-
-- Workflow run and timestamp: pending
-- Expected and observed deployment SHA: pending
-- Expected and observed provider/model: pending
-- Turn results: pending (0/7 until the run is performed)
-- Bedrock Retrieve expected-source-hit@5: pending (0/3 until the probes run)
-- AWS preflight and cleanup: pending
-- ECS post-run stability, deployed-build/audit match, and history persistence: pending
-- Observed latency and token usage: pending
-- RAG evidence and human rubric review: pending
-- Synthetic QA JSON/HTML artifact and 90-day retention: pending
+See [all jobs, workflow dependencies and execution instructions](agent-test-workflows.md).
