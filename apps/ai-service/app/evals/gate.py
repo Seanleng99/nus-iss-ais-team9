@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from hashlib import sha256
 from pathlib import Path
 
 from app.evals.runner import run_dataset
@@ -52,6 +53,7 @@ def evaluate_policy(policy_path: Path) -> tuple[dict, bool]:
             {
                 "name": suite["name"],
                 "dataset": suite["dataset"],
+                "dataset_sha256": sha256(Path(suite["dataset"]).read_bytes()).hexdigest(),
                 "metrics": metrics,
                 "checks": checks,
             }

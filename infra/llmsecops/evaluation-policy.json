@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "suites": [
     {
       "name": "orchestrator",
@@ -7,17 +7,32 @@
       "minimums": {
         "accuracy": 1.0,
         "routing_accuracy": 0.9,
-        "critical_block_rate": 1.0
+        "critical_block_rate": 1.0,
+        "routing_precision": 1.0,
+        "routing_recall": 1.0,
+        "routing_f1": 1.0,
+        "automatic_routing_accuracy": 1.0,
+        "override_accuracy": 1.0
       },
       "baselines": {
         "accuracy": 1.0,
         "routing_accuracy": 1.0,
-        "critical_block_rate": 1.0
+        "critical_block_rate": 1.0,
+        "routing_precision": 1.0,
+        "routing_recall": 1.0,
+        "routing_f1": 1.0,
+        "automatic_routing_accuracy": 1.0,
+        "override_accuracy": 1.0
       },
       "max_regression": {
         "accuracy": 0.0,
         "routing_accuracy": 0.1,
-        "critical_block_rate": 0.0
+        "critical_block_rate": 0.0,
+        "routing_precision": 0.0,
+        "routing_recall": 0.0,
+        "routing_f1": 0.0,
+        "automatic_routing_accuracy": 0.0,
+        "override_accuracy": 0.0
       }
     },
     {
@@ -133,6 +148,19 @@
       "max_regression": {
         "accuracy": 0.0,
         "fairness_consistency_rate": 0.0
+      }
+    },
+    {
+      "name": "beginner-investment",
+      "dataset": "apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl",
+      "minimums": {
+        "accuracy": 1.0
+      },
+      "baselines": {
+        "accuracy": 1.0
+      },
+      "max_regression": {
+        "accuracy": 0.0
       }
     }
   ]

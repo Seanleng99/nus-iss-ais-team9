@@ -48,7 +48,8 @@ jobs:
           TITLE: ${{ inputs.label }}
         run: |
           python infra/scripts/summarize_pytest_junit.py "artifacts/$SUITE.xml" \
-            --output "artifacts/$SUITE-summary.md" --title "$TITLE"
+            --output "artifacts/$SUITE-summary.md" --title "$TITLE" --suite "$SUITE" \
+            --evaluation-output "artifacts/$SUITE-evaluation.json"
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v7
@@ -57,5 +58,6 @@ jobs:
           path: |
             artifacts/${{ inputs.suite }}.xml
             artifacts/${{ inputs.suite }}-summary.md
+            artifacts/${{ inputs.suite }}-evaluation.json
           if-no-files-found: error
           retention-days: 30

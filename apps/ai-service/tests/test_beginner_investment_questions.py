@@ -45,7 +45,9 @@ def test_beginner_question_dataset_preserves_all_30_scenarios() -> None:
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
-def test_beginner_question_acceptance(case: dict) -> None:
+def test_beginner_question_acceptance(case: dict, record_property) -> None:
+    record_property("question", case["input"]["message"])
+    record_property("expected", json.dumps(case["expected"], sort_keys=True))
     orchestrator = AgentOrchestrator(
         config=Settings(
             APP_ENV="local",
@@ -68,6 +70,7 @@ def test_beginner_question_acceptance(case: dict) -> None:
         "evidence_status": education.data.get("evidence_status") if education else None,
         "source_count": len(response.sources),
     }
+    record_property("response", json.dumps(actual, sort_keys=True))
     assert response.answer.strip(), f"{case['id']}: empty response"
     assert _matches_expected(response, case["expected"]), (
         f"{case['id']}: {case['input']['message']}\n"

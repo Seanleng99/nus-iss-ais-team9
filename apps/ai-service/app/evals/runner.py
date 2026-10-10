@@ -253,6 +253,12 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
     grouped: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     retrieval_recalls: list[float] = []
     policy_retrieval_recalls: list[float] = []
+    routing_case_diagnostics: list[dict[str, Any]] = []
+    routing_counts = {"tp": 0, "fp": 0, "fn": 0}
+    routing_matches: dict[str, list[int]] = {
+        "automatic": [0, 0],
+        "explicit_override": [0, 0],
+    }
     with dataset.open("r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
@@ -270,6 +276,25 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
                 response = orchestrator.handle(request)
                 case_passed = _matches_expected(response, case["expected"])
                 category = _category(case["expected"])
+                if "selected_agents" in case["expected"]:
+                    expected_agents = set(case["expected"]["selected_agents"])
+                    actual_agents = {agent.value for agent in response.selected_agents}
+                    routing_match = actual_agents == expected_agents
+                    mode = "explicit_override" if request.requested_agents else "automatic"
+                    route_counts = routing_matches[mode]
+                    route_counts[0] += int(routing_match)
+                    route_counts[1] += 1
+                    routing_counts["tp"] += len(expected_agents & actual_agents)
+                    routing_counts["fp"] += len(actual_agents - expected_agents)
+                    routing_counts["fn"] += len(expected_agents - actual_agents)
+                    routing_case_diagnostics.append({
+                        "id": str(case.get("id", "unknown")),
+                        "mode": mode,
+                        "expected_agents": sorted(expected_agents),
+                        "actual_agents": sorted(actual_agents),
+                        "routing_match": routing_match,
+                        "overall_pass": case_passed,
+                    })
                 if category == "retrieval":
                     actual_sources = {
                         source.source_id for source in response.sources[:3]
@@ -299,7 +324,6 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
         "failed_case_ids": failed_case_ids,
     }
     metric_names = {
-        "routing": "routing_accuracy",
         "critical_block": "critical_block_rate",
         "budget": "budget_accuracy",
         "security_control": "security_control_rate",
@@ -311,6 +335,34 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
         category_passed, category_total = grouped.get(category, [0, 0])
         if category_total:
             result[metric_name] = round(category_passed / category_total, 4)
+    if routing_case_diagnostics:
+        tp, fp, fn = (routing_counts[key] for key in ("tp", "fp", "fn"))
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        automatic_matches, automatic_total = routing_matches["automatic"]
+        override_matches, override_total = routing_matches["explicit_override"]
+        result.update({
+            "routing_case_count": len(routing_case_diagnostics),
+            "routing_accuracy": round(
+                sum(item["routing_match"] for item in routing_case_diagnostics)
+                / len(routing_case_diagnostics),
+                4,
+            ),
+            "routing_precision": round(precision, 4),
+            "routing_recall": round(recall, 4),
+            "routing_f1": round(f1, 4),
+            "routing_confusion_totals": routing_counts,
+            "automatic_routing_case_count": automatic_total,
+            "explicit_override_case_count": override_total,
+            "routing_case_diagnostics": routing_case_diagnostics,
+        })
+        if automatic_total:
+            result["automatic_routing_accuracy"] = round(
+                automatic_matches / automatic_total, 4
+            )
+        if override_total:
+            result["override_accuracy"] = round(override_matches / override_total, 4)
     if retrieval_recalls:
         result["source_recall_at_3"] = round(
             sum(retrieval_recalls) / len(retrieval_recalls), 4

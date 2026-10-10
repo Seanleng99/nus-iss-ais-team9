@@ -188,8 +188,12 @@ jobs:
         run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
       - name: Lint
         run: ruff check apps/ai-service apps/shared infra/scripts
-      - name: Validate AI test ownership
-        run: python -m pytest -q infra/scripts/tests/test_agent_test_selection.py
+      - name: Validate AI test ownership and evaluation reporting
+        run: >-
+          python -m pytest -q
+          infra/scripts/tests/test_agent_test_selection.py
+          infra/scripts/tests/test_summarize_pytest_junit.py
+          infra/scripts/tests/test_investment_evaluation_reporting.py
       - name: Remaining unit and API tests
         run: >-
           python infra/scripts/run_agent_tests.py --suite remaining
@@ -216,32 +220,6 @@ jobs:
           retention-days: 30
       - name: Shared language tests
         run: pytest apps/shared/tests
-      - name: Enforce LLMSecOps evaluation policy
-        run: >-
-          python -m app.evals.gate
-          --policy infra/llmsecops/evaluation-policy.json
-          --output artifacts/llm-evaluation-results.json
-      - name: Enforce full-document RAG evidence quality
-        run: >-
-          python -m app.evals.rag_evidence
-          --dataset apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl
-          --output artifacts/rag-evidence-results.json
-      - name: Upload full-document RAG evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: rag-evidence-results
-          path: artifacts/rag-evidence-results.json
-          if-no-files-found: error
-          retention-days: 30
-      - name: Upload evaluation evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: llm-evaluation-results
-          path: artifacts/llm-evaluation-results.json
-          if-no-files-found: error
-          retention-days: 30
 
   frontend:
     name: Streamlit tests

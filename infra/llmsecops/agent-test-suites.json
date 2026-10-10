@@ -106,6 +106,26 @@
         "tests/test_risk_compliance_functional.py"
       ],
       "name_prefix": "test_allows_safe_answer"
+    },
+    "investment-orchestrator": {
+      "test_paths": [
+        "tests/test_orchestrator.py",
+        "tests/test_education_routing_coverage.py",
+        "tests/test_evaluation_runner.py"
+      ]
+    },
+    "investment-rag-unit": {
+      "test_paths": [
+        "tests/test_retriever.py",
+        "tests/test_local_documents.py",
+        "tests/test_retrieval_boundaries.py",
+        "tests/test_request_retrieval_cache.py"
+      ]
+    },
+    "investment-rag-integration": {
+      "test_paths": [
+        "tests/test_rag_integration.py"
+      ]
     }
   }
 }

@@ -20,6 +20,31 @@ def _orchestrator() -> AgentOrchestrator:
     )
 
 
+def _stub_routing(monkeypatch, selected_by_session: dict[str, list[str]]) -> None:
+    class StubOrchestrator:
+        def __init__(self, **_kwargs):
+            pass
+
+        def handle(self, request):
+            return SimpleNamespace(
+                selected_agents=[
+                    SimpleNamespace(value=name)
+                    for name in selected_by_session[request.session_id]
+                ],
+                blocked=False,
+            )
+
+    monkeypatch.setattr("app.evals.runner.AgentOrchestrator", StubOrchestrator)
+
+
+def _write_routing_dataset(tmp_path: Path, cases: list[dict]) -> Path:
+    dataset = tmp_path / "routing.jsonl"
+    dataset.write_text(
+        "".join(json.dumps(case) + "\n" for case in cases), encoding="utf-8",
+    )
+    return dataset
+
+
 def test_expected_properties_are_conjunctive() -> None:
     response = _orchestrator().handle(
         CoachRequest(
@@ -140,6 +165,94 @@ def test_dataset_evidence_includes_failed_case_ids(tmp_path: Path) -> None:
 
     assert metrics["accuracy"] == 0
     assert metrics["failed_case_ids"] == ["wrong-route"]
+
+
+def test_routing_metrics_count_missed_extra_and_order_only_differences(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    _stub_routing(monkeypatch, {
+        "missed": ["budget"],
+        "extra": ["budget", "spending"],
+        "order": ["investment_education", "spending"],
+    })
+    cases = [
+        {"id": "missed", "input": {"user_id": "private", "session_id": "missed", "message": "x"},
+         "expected": {"selected_agents": ["budget", "goal_strategy"]}},
+        {"id": "extra", "input": {"user_id": "private", "session_id": "extra", "message": "x"},
+         "expected": {"selected_agents": ["budget"]}},
+        {"id": "order", "input": {"user_id": "private", "session_id": "order", "message": "x"},
+         "expected": {"selected_agents": ["spending", "investment_education"]}},
+    ]
+
+    metrics = run_dataset(_write_routing_dataset(tmp_path, cases))
+
+    assert metrics["routing_case_count"] == 3
+    assert metrics["routing_confusion_totals"] == {"tp": 4, "fp": 1, "fn": 1}
+    assert metrics["routing_precision"] == metrics["routing_recall"] == 0.8
+    assert metrics["routing_f1"] == 0.8
+    assert metrics["routing_accuracy"] == 0.3333
+    assert metrics["accuracy"] == 0
+    assert metrics["routing_case_diagnostics"][2]["routing_match"] is True
+    assert metrics["routing_case_diagnostics"][2]["overall_pass"] is False
+    assert set(metrics["routing_case_diagnostics"][0]) == {
+        "id", "mode", "expected_agents", "actual_agents", "routing_match", "overall_pass",
+    }
+
+
+def test_non_routing_safety_failure_does_not_change_route_accuracy(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    _stub_routing(monkeypatch, {"safety": ["budget"]})
+    case = {
+        "id": "safety", "input": {"user_id": "private", "session_id": "safety", "message": "x"},
+        "expected": {"selected_agents": ["budget"], "blocked": True},
+    }
+
+    metrics = run_dataset(_write_routing_dataset(tmp_path, [case]))
+
+    assert metrics["routing_accuracy"] == 1
+    assert metrics["automatic_routing_accuracy"] == 1
+    assert metrics["accuracy"] == 0
+
+
+def test_automatic_routing_and_explicit_overrides_are_reported_separately(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    _stub_routing(monkeypatch, {"automatic": ["spending"], "override": ["budget"]})
+    cases = [
+        {"id": "automatic", "input": {"user_id": "private", "session_id": "automatic", "message": "x"},
+         "expected": {"selected_agents": ["budget"]}},
+        {"id": "override", "input": {"user_id": "private", "session_id": "override", "message": "x",
+                                          "requested_agents": ["budget"]},
+         "expected": {"selected_agents": ["budget"]}},
+    ]
+
+    metrics = run_dataset(_write_routing_dataset(tmp_path, cases))
+
+    assert metrics["automatic_routing_case_count"] == 1
+    assert metrics["explicit_override_case_count"] == 1
+    assert metrics["automatic_routing_accuracy"] == 0
+    assert metrics["override_accuracy"] == 1
+    assert [item["mode"] for item in metrics["routing_case_diagnostics"]] == [
+        "automatic", "explicit_override",
+    ]
+
+
+def test_empty_routing_prediction_cannot_have_perfect_f1(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    _stub_routing(monkeypatch, {"empty": []})
+    case = {
+        "id": "empty", "input": {"user_id": "private", "session_id": "empty", "message": "x"},
+        "expected": {"selected_agents": ["budget"]},
+    }
+
+    metrics = run_dataset(_write_routing_dataset(tmp_path, [case]))
+
+    assert metrics["routing_confusion_totals"] == {"tp": 0, "fp": 0, "fn": 1}
+    assert metrics["routing_precision"] == 0
+    assert metrics["routing_recall"] == 0
+    assert metrics["routing_f1"] == 0
 
 
 def test_fairness_dataset_compares_structural_outcomes() -> None:

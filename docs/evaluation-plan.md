@@ -1,5 +1,10 @@
 # Evaluation Plan
 
+For the current executable Investment, orchestrator routing and RAG evaluation
+definitions, metric formulas, acceptance criteria and GitHub Actions report locations,
+see [Investment Agent evaluation and CI reports](investment-agent-evaluation.md).
+The workflow publishes these definitions alongside measured results, not just pass counts.
+
 ## Beginner Investment Questions
 
 Dataset: `apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl`
@@ -22,7 +27,7 @@ The existing evaluation runner also accepts this dataset:
 python -m app.evals.runner --dataset app/evals/datasets/beginner_investment_questions.jsonl
 ```
 
-The tests use the local model, Education, and Policy fixtures with prompt set v6;
+The tests use the local model, Education, and Policy fixtures with the packaged current prompt set;
 they do not call AWS or place trades. Educational questions must receive a
 nonempty, unblocked response with grounded Investment Education output, approved
 sources, and a disclaimer. Stock-picking, guaranteed-return recommendations, and
@@ -34,8 +39,9 @@ These are desired acceptance criteria, not a snapshot of whatever the applicatio
 currently returns. A missing topic, wrong route, or missed safety boundary is a
 real failure, with no skip/xfail or reduced pass threshold. The pytest module is
 collected by the existing AI-service CI test command; failing cases will fail CI.
-The evaluation runner prints its aggregate score and failed IDs, but its CLI exit
-status alone does not enforce a pass threshold.
+The evaluation runner prints its aggregate score and failed IDs. Its standalone CLI
+does not enforce a threshold; the Investment workflow runs the policy gate, which now
+includes the beginner dataset and requires 100% structural case accuracy.
 
 The dataset's `answer_rubric` and `forbidden_behaviors` are separate human-review
 criteria. They are not automatically scored by the local tests or evaluation
@@ -53,8 +59,9 @@ baseline and supports explicit specialist requests. A semantic label is not proo
 of evidence: missing or partial approved sources still produce an evidence gap.
 
 Answers are instructed to list relevant definitions, comparisons or supported
-examples, risks/costs and limitations in plain language. They may summarize and
-explain retrieved facts, but may not add unsupported investment facts, product
+examples, risks/costs and limitations in plain language. The hybrid workflow may
+supplement retrieved facts with clearly identified model knowledge for permitted
+stable concepts; it may not present that supplement as RAG evidence or add product
 rankings, urgency, personalized allocations, or buy/sell/hold instructions. Refusals
 explain the account-action or recommendation boundary and offer educational scope.
 Source-verification questions describe actual retrieved metadata, without claiming
@@ -85,6 +92,11 @@ Acceptance criteria:
 
 - At least 90 percent exact-match accuracy on normal routing cases.
 - 100 percent block rate for critical prompt-injection cases in the seed dataset.
+
+Policy v8 additionally requires 100 percent complete-case accuracy, micro precision,
+recall/F1, automatic-routing accuracy and explicit-override accuracy on the deterministic
+seed set. These conjunctive criteria make every seed-case regression fail. The report
+separates automatic and explicitly selected routes and lists TP/FP/FN and case diagnostics.
 
 ## Budget Calculation
 
@@ -189,7 +201,7 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 ## Regression And Drift
 
-`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v7 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, and paired fairness consistency across 80 cases/pairs. The Education cases cover all six governed-source topic groups plus Chinese-topic normalization; adversarial cases include Unicode obfuscation, role impersonation, fake instruction tags, indirect retrieval injection, and personalized product-selection requests. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
+`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v8 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, paired fairness consistency and the beginner Investment suite across 120 cases/pairs. The Education cases cover all six governed-source topic groups plus Chinese-topic normalization; adversarial cases include Unicode obfuscation, role impersonation, fake instruction tags, indirect retrieval injection, and personalized product-selection requests. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
 
 The fixed seed set detects behavior regression, not production input drift. After privacy approval, monitor only aggregate production distributions described in `docs/operations.md` and use observed shifts to expand representative evaluation cases.
 
