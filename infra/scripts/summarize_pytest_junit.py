@@ -93,9 +93,7 @@ def evaluation_summary(suite: str, cases: list[CaseResult]) -> tuple[str, dict |
     catalog = json.loads(EVALUATION_SPEC.read_text(encoding="utf-8"))
     definition = catalog["suites"].get(suite)
     if definition is None:
-        if suite.startswith("investment-"):
-            raise ValueError(f"Missing evaluation definition for {suite}")
-        return "", None
+        raise ValueError(f"Missing evaluation definition for {suite}")
     root = EVALUATION_SPEC.parents[2]
     datasets = [
         {**item, "sha256": sha256((root / item["path"]).read_bytes()).hexdigest()}
@@ -109,6 +107,10 @@ def evaluation_summary(suite: str, cases: list[CaseResult]) -> tuple[str, dict |
         **definition, "datasets": datasets,
         "results": {"total": len(cases), "passed": passed,
                     "assertion_pass_rate": passed / len(cases) if cases else None,
+                    "outcome_counts": {
+                        outcome: sum(case.outcome == outcome for case in cases)
+                        for outcome in OUTCOME_LABELS
+                    },
                     "failed_or_unexecuted_ids": [
                         case.test_id for case in cases if case.outcome != "passed"
                     ]},
@@ -124,6 +126,11 @@ def evaluation_summary(suite: str, cases: list[CaseResult]) -> tuple[str, dict |
         f"| `{item['path']}` | {_cell(item['expected_outputs'])} | `{item['sha256']}` |"
         for item in datasets
     )
+    if selection := definition.get("test_selection"):
+        lines += ["", "**Executed test selection:**", ""]
+        lines.extend(f"- `{path}`" for path in selection["test_paths"])
+        if prefix := selection.get("name_prefix"):
+            lines.append(f"- Pytest name filter: `-k {prefix}`")
     lines += ["", "**Metric definitions:**", ""]
     lines.extend(f"- {item}" for item in definition["metrics"])
     lines += ["", "**Acceptance criteria:**", ""]

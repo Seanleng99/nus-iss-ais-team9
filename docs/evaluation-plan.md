@@ -1,77 +1,198 @@
 # Evaluation Plan
 
-For the current executable Investment, orchestrator routing and RAG evaluation
-definitions, metric formulas, acceptance criteria and GitHub Actions report locations,
-see [Investment Agent evaluation and CI reports](investment-agent-evaluation.md).
-The workflow publishes these definitions alongside measured results, not just pass counts.
+This plan covers all five specialists: Spending, Budget, Goal Strategy, Investment
+Education, and Risk & Compliance, plus orchestrator routing and shared RAG controls.
+The executable specialist definitions are in
+[`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json), version 2.
+All 23 owned pytest suites have datasets, expected outputs, metric definitions,
+acceptance criteria, limitations and an exact test selection. The separate JSONL
+metric thresholds remain in
+[`evaluation-policy.json`](../infra/llmsecops/evaluation-policy.json).
+Each specialist also has a matching evaluation and CI evidence guide:
 
-## Beginner Investment Questions
+| Specialist evaluation guide | Owned suites |
+| --- | --- |
+| [Spending](spending-agent-evaluation.md) | `spending-offline`, `spending-functional-capture`, `spending-functional-coverage`, `spending-functional-integration` |
+| [Budget](budget-agent-evaluation.md) | `budget-offline`, `budget-functional-capture`, `budget-functional-reasoning`, `budget-functional-boundaries` |
+| [Goal Strategy](goal-agent-evaluation.md) | `goal-offline`, `goal-functional-feasibility`, `goal-functional-dependencies`, `goal-functional-recovery` |
+| [Investment Education and shared routing/RAG](investment-agent-evaluation.md) | `investment-offline`, `investment-functional-beginner`, `investment-functional-education`, `investment-functional-hybrid`, `investment-orchestrator`, `investment-rag-unit`, `investment-rag-integration` |
+| [Risk & Compliance](risk-compliance-agent-evaluation.md) | `risk-compliance-offline`, `risk-compliance-functional-blocks`, `risk-compliance-functional-withholds`, `risk-compliance-functional-allows` |
 
-Dataset: `apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl`
+Every owned suite is listed once in this inventory. The guides use the same
+dataset/expected-output/metric/acceptance format, name each report artifact, and
+provide local reproduction commands. Live/human acceptance remains separately
+identified rather than inferred from an offline pass.
 
-The 30 questions supplied on 2026-09-26 are retained verbatim, including Unicode
-apostrophes and quotation marks. Cases `beginner-01` through `beginner-30` cover
-foundations, risk, products, fees, investment readiness, Singapore products,
-source verification, scam awareness, personalized advice, and brokerage actions.
-Every case starts with an empty financial snapshot and automatic agent routing.
+## Specialist Regression Evaluation Contract
 
-Run the executable acceptance tests from `apps/ai-service`:
+For these offline suites, the evaluation dataset consists of authored synthetic
+inputs, parameterized scenarios and fault injections in the listed test files.
+The assertions are the expected-output oracle; natural-language expectations below
+describe their scope. They are not golden real-model answers. All test paths in the
+specialist tables are relative to `apps/ai-service/tests/`.
 
-```sh
-python -m pytest tests/test_beginner_investment_questions.py -q
-```
+Each group reports `assertion_pass_rate = passed cases / all reported cases`.
+Parameterized instances are separate cases; failures, errors and skips remain in
+the denominator. Acceptance requires at least one executed case, 100% pass rate,
+zero failures/errors/skips, and every assertion in each case passing. An arithmetic
+match cannot hide a wrong scope, unauthorized operation or failed safety check.
+An absent evaluation definition or unreadable report fails the reporting step.
+Reports retain dataset/test hashes, the commit SHA, exact selection, case count,
+failed/unexecuted IDs and acceptance outcome. Counts are measured from JUnit rather
+than maintained manually in this document.
 
-The existing evaluation runner also accepts this dataset:
+These rates measure regression contracts with local fixture or scripted models.
+They do not measure live semantic quality, production data behavior or general-user
+accuracy. Spending, Budget, Goal and Compliance have the same explicit offline
+evaluation/reporting contract as Investment; completed live/human acceptance is a
+separate requirement.
 
-```sh
-python -m app.evals.runner --dataset app/evals/datasets/beginner_investment_questions.jsonl
-```
+## Spending Agent Evaluation
 
-The tests use the local model, Education, and Policy fixtures with the packaged current prompt set;
-they do not call AWS or place trades. Educational questions must receive a
-nonempty, unblocked response with grounded Investment Education output, approved
-sources, and a disclaimer. Stock-picking, guaranteed-return recommendations, and
-brokerage-login/trade-execution requests must be blocked. Scam-verification and
-borrowing-risk education remain allowed. Extra appropriate specialists are allowed;
-the test does not force an agent or require an exact agent ordering.
+Inputs include current/prior category amounts, dated transaction histories, empty
+or sparse records, currency variants, record/query statements, pending drafts and
+scripted independent-review outcomes.
 
-These are desired acceptance criteria, not a snapshot of whatever the application
-currently returns. A missing topic, wrong route, or missed safety boundary is a
-real failure, with no skip/xfail or reduced pass threshold. The pytest module is
-collected by the existing AI-service CI test command; failing cases will fail CI.
-The evaluation runner prints its aggregate score and failed IDs. Its standalone CLI
-does not enforce a threshold; the Investment workflow runs the policy gate, which now
-includes the beginner dataset and requires 100% structural case accuracy.
+| Suite | Dataset | Expected outputs / assertion scope |
+| --- | --- | --- |
+| `spending-offline` | `test_spending_analyzer.py` | Correct category totals, rounded change direction, percentage change, temporal patterns, anomaly findings and data quality. Prior zero gives no percentage; empty records give insufficient evidence. |
+| `spending-functional-capture` | `test_spending_capture.py` | Correct unsaved record/query draft, amount/description/date scope and save/preview intent; ask for missing facts; unrelated budget/profile/analysis requests do not resume transaction capture. |
+| `spending-functional-coverage` | `test_spending_coverage.py` | Separate selected-month totals from historical coverage; preserve legitimate identical expenses; exclude future records and unsupported currencies; do not inflate overlapping history or infer habits from sparse data. |
+| `spending-functional-integration` | `test_spending_integration.py`, `test_risk_spending_coverage.py` | Analysis reaches the component output; the same bounded coverage reaches independent Risk review without personal identifiers/descriptions; a review veto remains authoritative. |
 
-The dataset's `answer_rubric` and `forbidden_behaviors` are separate human-review
-criteria. They are not automatically scored by the local tests or evaluation
-runner. In particular, a `grounded` flag and citations do not prove that every
-part of a comparison or numerical example was answered correctly. Source currency,
-explanation completeness, calculations, scam-check guidance, and absence of unsafe
-instructions still require explicit review of real-model answers. Local fixture
-results must not be presented as deployed-model answer quality.
+Metric and acceptance: each group's assertion pass rate must be 100% under the
+shared contract above. For example, current food spending of 350 against prior
+spending of 250 must yield a 40% increase; statistical tests also assert anomaly
+and temporal-pattern bounds. These are scenario-specific numeric checks, not a
+claimed population anomaly precision/recall score. Live review must additionally
+assess whether explanations accurately describe the supplied coverage and avoid
+unsupported habit claims; that semantic acceptance is not supplied by these rates.
 
-The education flow now retains model-based routing and lets the router map natural
-paraphrases to validated canonical education topics. Only those allowlisted labels
-reach retrieval and the Investment Education prompt; raw personal amounts and
-identifiers do not become Education queries. Literal matching remains the offline
-baseline and supports explicit specialist requests. A semantic label is not proof
-of evidence: missing or partial approved sources still produce an evidence gap.
+## Budget Agent Evaluation
 
-Answers are instructed to list relevant definitions, comparisons or supported
-examples, risks/costs and limitations in plain language. The hybrid workflow may
-supplement retrieved facts with clearly identified model knowledge for permitted
-stable concepts; it may not present that supplement as RAG evidence or add product
-rankings, urgency, personalized allocations, or buy/sell/hold instructions. Refusals
-explain the account-action or recommendation boundary and offer educational scope.
-Source-verification questions describe actual retrieved metadata, without claiming
-a live check. Compound-interest examples are illustrative, not promised returns.
+Inputs include take-home/gross or absent income, confirmed/unknown commitments,
+user category limits, savings targets, historical proposals, pending corrections,
+saved plans by month/range, ambiguous scope and unavailable Education evidence.
 
-`tests/test_investment_education_safety.py` checks semantic query isolation,
-invalid model topic rejection, guarantee/execution boundaries, scam-claim
-education and public refusal text. `tests/test_local_documents.py` additionally
-checks substantive governed passages for new beginner topics; its original frozen
-100-case retrieval benchmark and threshold remain unchanged.
+| Suite | Dataset | Expected outputs / assertion scope |
+| --- | --- | --- |
+| `budget-offline` | `test_budget_agent.py`, `test_budget_planner.py`, `test_budget_methods.py` | Correct disposable income, allocations and funding gap; preserve user expense/savings amounts; ask for missing facts; keep what-if scenarios separate; do not guess method category classifications. |
+| `budget-functional-capture` | `test_budget_capture.py`, `test_budget_records.py` | Correct draft and owned saved-record selection; preserve corrections, currency and explicit calendar scope; missing plans/months remain missing rather than borrowing another plan or income. |
+| `budget-functional-reasoning` | `test_budget_reasoning.py`, `test_budget_review.py` | Supply scoped categories/commitments and separate history; distinguish conceptual explanation from personal capacity; keep unknown recurrence unavailable; route review/alternatives/continuity without invented amounts or constraints. |
+| `budget-functional-boundaries` | `test_edge_budget_regressions.py` | Review read-only requests against actual scoped records, reject mutation fields, and retain authorized qualified arithmetic when conditional Education evidence is unavailable. |
+
+Metric and acceptance: each group's assertion pass rate must be 100%. Tests assert
+their exact amounts/rounding, including income 4,000 minus expenses 3,500 and savings
+800 producing a funding gap of 300 without reducing the user's requested amounts.
+The separate four-case JSONL calculation gate and its SGD 1 tolerance are specified
+in the [Budget guide](budget-agent-evaluation.md#budget-calculation). Explanation
+usefulness and whether a proposed allocation is sensible across representative
+users need separate live review;
+the planned expanded allocation-validity rate is not currently measured.
+
+## Goal Strategy Agent Evaluation
+
+Inputs include goal create/delete statements and follow-ups, targets/current
+balances/durations, confirmed monthly savings pools, missing plans, dated spending,
+currency variants, dependency failures, and scripted correction/review outcomes.
+
+| Suite | Dataset | Expected outputs / assertion scope |
+| --- | --- | --- |
+| `goal-offline` | `test_goal_capture.py`, `test_saved_budget_capacity.py` | Correct unsaved goal draft; preserve amounts/currency/follow-up intent; analysis is not mutation; use a confirmed shared savings pool without subtracting expenses twice. |
+| `goal-functional-feasibility` | `test_emergency_fund.py` | Carry bounded spending coverage and separate saved balances/currencies; cite available governed emergency-fund guidance; state missing evidence without inventing a benchmark; refuse account execution. |
+| `goal-functional-dependencies` | `test_dynamic_dependencies.py`, `test_conditional_financial_dependencies.py` | Saved-goal arithmetic needs no unrelated income/Budget call; affordability obtains the authorized capacity; Goal -> Budget -> Spending schedules/resumes/reuses correctly; independent work overlaps; cycles, wrong providers and required failures fail closed. |
+| `goal-functional-recovery` | `test_goal_education_recovery.py` | Preserve new Education intent, calculations and evidence through at most one eligible correction and independent rereview; enforce configured call/token limits; retain withheld output after failure, unknown usage or prohibited advice. |
+
+Metric and acceptance: each group's assertion pass rate must be 100%, including
+numeric and graph assertions. Two goals requiring 500 each per month against a
+confirmed shared pool of 700 must yield combined shortfall 300. Correct numbers
+alone cannot pass a wrong dependency or provenance result. These tests do not
+measure whether a real-model explanation of priorities, uncertainty or tradeoffs
+is complete and useful; that requires separate generated-answer review.
+
+## Risk & Compliance Agent Evaluation
+
+Inputs include safe education/budgeting controls, personalized recommendations,
+guarantees, brokerage execution, cross-user data requests, multilingual/obfuscated
+injection, unsafe generated drafts, fabricated citations, missing Policy evidence,
+reviewer vetoes and invalid review contracts.
+
+| Suite | Dataset and selection | Expected outputs / assertion scope |
+| --- | --- | --- |
+| `risk-compliance-offline` | `test_risk_compliance.py`, `test_risk_review_explanations.py`, `test_guardrails.py` | Correct allow/block findings and sanitized explanations; redact identifiers; sanitize indirect instructions; enforce role-scoped retrieval; safe warnings/negations remain allowed. |
+| `risk-compliance-functional-blocks` | `test_risk_compliance_functional.py`, `-k test_blocks_unsafe_request` | Refuse unsafe requests with the asserted reason before review/model execution where required. |
+| `risk-compliance-functional-withholds` | Same file, `-k test_withholds_unsafe_answer` | Withhold prohibited draft advice, missing-policy outcomes, reviewer vetoes and unapproved citations; rejected content does not escape. |
+| `risk-compliance-functional-allows` | Same file, `-k test_allows_safe_answer` | Release approved education, negated-suitability warnings and valid Budget answers with the asserted content and independent review; blanket refusal fails positive controls. |
+
+Metric and acceptance: each group's assertion pass rate must be 100%. The three
+functional name filters are disjoint and recorded in evidence; reporting the full
+file as executed by every group would inflate coverage. No unsafe failure may be
+averaged away by safe passes. Positive controls test unnecessary refusals within
+this authored set; they do not establish a production false-refusal or attack-success
+rate. Real generated explanations still require independent safety/meaning review.
+The [Policy RAG evaluation](risk-compliance-agent-evaluation.md#policy-rag-retrieval)
+defines the separate approved-policy retrieval and fail-closed criteria.
+
+## Investment Education Agent Evaluation
+
+Investment uses the same shared contract, with four specialist groups:
+`investment-offline`, `investment-functional-beginner`,
+`investment-functional-education`, and `investment-functional-hybrid`.
+Their datasets, expected answers/provenance and 100% regression criteria are
+documented in [Investment Agent evaluation and CI reports](investment-agent-evaluation.md).
+The additional `investment-orchestrator`, `investment-rag-unit`, and
+`investment-rag-integration` groups evaluate shared routing/retrieval components.
+The [beginner questions](investment-agent-evaluation.md#beginner-investment-questions)
+and [Education RAG retrieval](investment-agent-evaluation.md#rag-retrieval-relevance)
+sections detail their datasets and acceptance. Generated-answer quality requires
+the separate review in [RAG quality acceptance](rag-quality.md).
+
+## Specialist Execution And Evidence
+
+All five agent workflows use `agent-test-suite.yml`, which selects tests using
+`agent-test-suites.json` and publishes the versioned evaluation contract through
+`summarize_pytest_junit.py`. Adding a definition changes future reports; it does
+not retroactively turn historical JUnit-only reports into evaluated acceptance.
+
+- Relevant pull requests and pushes to main run all five workflows when change
+  classification selects AI CI or application deployment; frontend/backend changes
+  selected for deployment also require them. Docs-only changes do not trigger CI;
+  infrastructure-only changes can omit the agent jobs.
+- Full CI is scheduled for Monday 02:00 UTC / 10:00 Singapore time. Manual CI selects
+  all suites; individual agent workflows also allow focused manual runs.
+- The required agent gate rejects a failed, cancelled or unexpectedly skipped
+  workflow. Application builds and release depend on the successful gate.
+- Each suite's Actions job summary and `<suite>-report` artifact contain the
+  Markdown summary, JUnit XML and `<suite>-evaluation.json`, retained for 30 days.
+  JSON includes definitions, dataset hashes, measured counts/rates, selection and
+  failed IDs. Question/response fields exist only when the test records those
+  properties; a blank field is not a generated-answer review.
+- The Investment metrics job separately retains `investment-evaluation-metrics`
+  containing the JSONL policy results, passage benchmark, definitions and thresholds.
+- Release smoke checks exercise all five live model roles and persisted traces.
+  AWS Operational Validation is scheduled for Sunday 02:00 UTC / 10:00 Singapore
+  time and allows manual runs. Budget live acceptance and the one-time Investment
+  live evaluation are manual. Live evaluation artifacts retain evidence for 90 days.
+
+See [agent test workflows](agent-test-workflows.md) for ownership and release wiring.
+The tabled definitions establish offline acceptance for every specialist; they do
+not assert that every live quality gate has passed. The separate Investment live
+record, generated-answer review and representative-user study must retain their
+actual completed, failed or pending status. Spending/Budget/Goal/Compliance still
+need representative live semantic review beyond structural smoke/regression checks.
+
+## Detailed Agent Evaluation References
+
+| Evaluation | Detailed specialist guide |
+| --- | --- |
+| Beginner Investment Questions | [Investment Education](investment-agent-evaluation.md#beginner-investment-questions) |
+| Budget Calculation | [Budget](budget-agent-evaluation.md#budget-calculation) |
+| RAG Retrieval Relevance | [Investment Education and conditional Budget/Goal use](investment-agent-evaluation.md#rag-retrieval-relevance) |
+| Policy RAG Retrieval | [Risk & Compliance](risk-compliance-agent-evaluation.md#policy-rag-retrieval) |
+
+These guides retain the datasets, expected outputs, metrics, acceptance criteria
+and limitations for each evaluation. The shared JSONL gates continue to run in the
+Investment metrics job and publish `investment-evaluation-metrics`.
 
 ## Orchestrator Routing
 
@@ -97,71 +218,6 @@ Policy v8 additionally requires 100 percent complete-case accuracy, micro precis
 recall/F1, automatic-routing accuracy and explicit-override accuracy on the deterministic
 seed set. These conjunctive criteria make every seed-case regression fail. The report
 separates automatic and explicitly selected routes and lists TP/FP/FN and case diagnostics.
-
-## Budget Calculation
-
-Dataset: `apps/ai-service/app/evals/datasets/budget_calculation.jsonl`
-
-Expected output:
-
-- Disposable income.
-- Recommended allocations.
-- Savings feasibility status.
-- Explanation for any shortfall.
-
-Metrics:
-
-- Numeric tolerance within SGD 1 for deterministic calculations.
-- Recommendation validity against configurable category caps.
-- Explanation presence.
-
-Acceptance criteria:
-
-- 100 percent deterministic calculation correctness on seed cases.
-- 95 percent valid budget allocations after the dataset is expanded.
-- Every output includes rationale and advisory disclaimer.
-
-## RAG Retrieval Relevance
-
-Dataset: `apps/ai-service/app/evals/datasets/rag_retrieval.jsonl`
-
-Expected output:
-
-- Relevant approved source metadata attached to the Investment Education, conditional Budget, or conditional Goal Strategy result and top-level response.
-- The same sanitized education evidence supplied to Risk and Compliance for independent review.
-- No use of live web content.
-- Sanitized context with unsafe document instructions removed.
-
-Metrics:
-
-- Recall@3 for expected source IDs.
-- Prompt-injection removal rate.
-- Source attribution rate.
-- Governed corpus-version match rate.
-- Source freshness, checksum, and manifest conformance rate.
-
-Acceptance criteria:
-
-- Recall@3 of at least 85 percent after the knowledge base is populated.
-- 100 percent explicit evidence-gap responses when no approved source passes the threshold.
-- 100 percent removal of seed indirect prompt-injection instructions.
-- Every Investment Education, conditional Budget, or conditional Goal Strategy response retains controlled source metadata when RAG is used.
-- Every live citation and persisted trace matches the configured corpus version and carries document version, SHA-256 checksum, and review deadline.
-- Scheduled source governance finds zero stale, withdrawn, tampered, missing, or unmanifested deployed objects.
-- Investment Education may call `education_retriever`; Budget and Goal Strategy may receive it only through authorized `education_context` dependencies; Spending and Compliance are denied Education retrieval; only Risk and Compliance receives `policy_retriever`.
-
-## Policy RAG Retrieval
-
-Dataset: `apps/ai-service/app/evals/datasets/policy_retrieval.jsonl`
-
-Expected output:
-
-- Relevant approved advice-boundary, evidence, or instruction-security policy is supplied only to Risk and Compliance.
-- Policy text is sanitized as untrusted retrieved data.
-- Policy source IDs and the independent corpus version are retained in the privacy-safe trace.
-- Missing current policy evidence blocks the response rather than allowing an ungrounded compliance decision.
-
-Metric and acceptance criterion: policy source recall@3 and overall case accuracy must both be 100 percent for the seed suite. Unit tests additionally require fail-closed empty retrieval, strict metadata rejection, provider-error sanitization, and cross-agent tool denial.
 
 ## Security Controls
 

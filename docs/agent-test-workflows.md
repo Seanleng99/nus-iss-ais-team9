@@ -45,7 +45,7 @@ All test paths below are relative to `apps/ai-service/tests/`.
 | Investment | Beginner | `test_beginner_investment_questions.py` | Thirty learner scenarios plus dataset integrity |
 | Investment | Education | `test_investment_education_agent.py` | Topic retrieval, privacy, sources, missing evidence and education output contracts |
 | Investment | Hybrid | `test_hybrid_investment_education.py` | Grounded and general explanations, attribution, follow-ups, synthesis and independent safety review |
-| Risk & Compliance | Offline | `test_risk_compliance.py`, `test_guardrails.py` | Policy rules and request guardrails |
+| Risk & Compliance | Offline | `test_risk_compliance.py`, `test_risk_review_explanations.py`, `test_guardrails.py` | Policy rules, sanitized review explanations and request guardrails |
 | Risk & Compliance | Blocks | `test_risk_compliance_functional.py`, `-k test_blocks_unsafe_request` | Refuse unsafe requests before model review |
 | Risk & Compliance | Withholds | Same file, `-k test_withholds_unsafe_answer` | Withhold unsafe drafts, invalid evidence and citations |
 | Risk & Compliance | Allows | Same file, `-k test_allows_safe_answer` | Allow safe education and budgeting with sources |
@@ -57,10 +57,26 @@ in owned files is covered exactly once, so a newly added unmatched compliance
 scenario cannot silently be excluded from testing. New files outside the manifest
 automatically run in the remaining AI suite.
 
-Each job uploads JUnit XML and a Markdown report for 30 days and appends the report
-to its Actions summary. The summary includes test name, outcome and failure
-reason. Question/response cells are populated only by tests that explicitly record
-those JUnit properties; other tests show a dash.
+All 23 owned suites have an executable definition in
+`infra/llmsecops/agent-evaluation-specs.json` version 2. The
+[evaluation plan](evaluation-plan.md) specifies inputs, expected outputs, metrics,
+acceptance and limitations for every specialist. Tests existing in a workflow alone
+are not a substitute for that evaluation definition.
+
+The matching per-specialist guides cover every owned suite and its evidence:
+[Spending](spending-agent-evaluation.md), [Budget](budget-agent-evaluation.md),
+[Goal Strategy](goal-agent-evaluation.md), [Investment](investment-agent-evaluation.md)
+and [Risk & Compliance](risk-compliance-agent-evaluation.md).
+
+Each job uploads JUnit XML, a Markdown report and a `<suite>-evaluation.json` report
+in `<suite>-report` for 30 days and appends the report to its Actions summary.
+The evaluation JSON retains the commit, datasets/hashes, exact file/name selection,
+expected outputs, metric definitions, acceptance criteria, measured pass rate,
+outcome counts and failed/unexecuted IDs. Every owned suite requires at least one
+case and zero failures/errors/skips; a missing definition fails reporting. These
+definitions apply to subsequent runs, not historical reports. Question/response
+cells are populated only by tests that explicitly record those JUnit properties;
+other tests show a dash. The offline rates do not measure generated-answer quality.
 
 ## The Investment workflow already visible in Actions
 
