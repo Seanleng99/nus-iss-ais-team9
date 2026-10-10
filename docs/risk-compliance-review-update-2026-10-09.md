@@ -54,9 +54,10 @@ edge, backend forecast-template composition, model choice or workflow deadlines.
 It therefore does not claim to resolve all seven previous live failures. The
 existing frozen live reports remain historical evidence.
 
-The manifest and deployment template are updated together. Release loads the
-manifest's policy pin and the current prompt identity. Commit/push, deployment
-and repeated signed-in model testing are separate subsequent steps. Active
+The manifest and deployment template were updated together in this 9 October change, committed as
+`45ea010`; the follow-on local claim-recovery work is recorded as `7356713`. Release loads the
+manifest's policy pin and the current prompt identity. This report does not establish deployment of either
+commit; consult the separately dated live reports for deployment and acceptance evidence. Active
 model-comparison and user-study configuration, the user-study template, smoke
 fixtures and current architecture/orchestration docs now match v10. Deployment
 and application defaults derive their prompt identity from the current manifest.

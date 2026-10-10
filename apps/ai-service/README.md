@@ -5,7 +5,7 @@ Private Python API containing the model-driven LangGraph orchestration layer.
 ## Responsibilities
 
 - Normalize and validate user requests.
-- Authenticate Streamlit service requests with an API key.
+- Authenticate backend-to-AI service requests with an independent API key.
 - Redact sensitive values before prompts and logs.
 - Detect direct and indirect prompt-injection attempts.
 - Route requests through OpenAI GPT-6 Luna to one or more specialist agents.
@@ -41,7 +41,7 @@ $env:POLICY_CORPUS_VERSION="financial-coach-policy-sg@local-fixture-v1"
 uvicorn app.main:app --reload --port 8001
 ```
 
-For a deployed environment, set `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, `MODEL_REASONING_EFFORT=medium`, and supply `OPENAI_API_KEY` through a secret. Set both `RAG_PROVIDER=local_documents` and `POLICY_RAG_PROVIDER=local_documents`, with exact Education and Policy corpus versions. The image packages the reviewed files and manifests. Retrieval verifies hashes, provenance, approval, and review deadlines before use; policy retrieval supplies all three approved policy documents. No Bedrock service is called by the deployed AI task.
+For a deployed environment, set `MODEL_PROVIDER=openai`, `MODEL_ID=gpt-6-luna`, `MODEL_REASONING_EFFORT=medium`, and supply `OPENAI_API_KEY` through a secret. AWS release sets `RAG_PROVIDER=bedrock` and `POLICY_RAG_PROVIDER=bedrock`, the separate Knowledge Base IDs and exact corpus pins. The image packages the reviewed documents/manifests for provenance validation. Release synchronizes the approved S3 source objects, ingests both KBs and audits them before activation. Runtime uses Bedrock Retrieve, with provenance, version, freshness and injection checks; Policy retrieval requires all three approved policy sources. Bedrock does not generate the answer. Local live-model runs may instead select both `local_documents` providers with the same manifest pins.
 For a local live-model run, place the key in the ignored repository-root `.env` file or the shell environment. The service reads `.env` from either the repository root or `apps/ai-service`; the `OPENAI_API_KEY` entry in `.env.example` must remain blank.
 `MODEL_ROLE_OVERRIDES` accepts optional `model_id`, `reasoning_effort`, and `max_tokens` per prompt role. Application defaults load the packaged canonical role policy; environment overrides remain available for explicit experiments. OpenAI receives the typed schema on the initial request; open maps retain local validation and a bounded repair. OpenAI reasoning requests omit temperature, and telemetry reports reasoning usage and distinct failure reasons. See [Coach remediation](../../docs/coach-response-remediation-2026-10-03.md).
 

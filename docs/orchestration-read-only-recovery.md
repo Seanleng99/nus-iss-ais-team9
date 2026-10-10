@@ -1,5 +1,7 @@
 # Recovery after the third 8 October live retest
 
+This is a dated implementation/verification record. Its local-only or pending statements describe that checkpoint, not current deployment status. For the current behavior see [the orchestration overview](orchestration-current-implementation-2026-10-07.md); later model outcomes are preserved in [the 9 October live report](agent-reasoning-live-test-results-2026-10-09.md).
+
 The [retest after dae539d](agent-reasoning-live-test-results-2026-10-08-postdae539d.md)
 passed 27 of the 34 original turns. Cases 13, 19P, 21, 22, 25, 26b and 29 failed;
 additional full-chain case 35 also failed. These changes address the routing,

@@ -1,6 +1,6 @@
 # Prompt set v8
 
-The running application accepts only v8 and rejects older prompt versions at startup. Based on the deployed v6 concepts and retrieval contracts; archived prompt sets remain available for explicitly pinned evaluations.
+Historical v8 runtime note: at that snapshot, the application accepted only v8 and rejected older prompt versions at startup. The current catalog is v10; this paragraph does not describe the current runtime. The remaining behavior and limits below document the v8-era design and verification. v8 was based on the then-deployed v6 concepts and retrieval contracts.
 
 Education model-knowledge topics each receive a visible provenance label. The formatter records exact character ranges for sourced, model-knowledge and limitation sections. Compliance receives those ranges and specialist ownership alongside the unchanged draft and approved evidence, rather than inferring label scope from blank paragraphs.
 
@@ -8,4 +8,4 @@ The Education review contract returns `blocking_issues` containing a supplied `s
 
 The request budget is 80,000 input/output tokens. Application defaults and deployment apply the checked-in role policy: Budget/Goal/Spending medium with 3,200 output tokens; Education medium with 4,000; Compliance medium with 3,000. Smaller routing/planning limits, call limits, deadlines and explicit lower request limits remain enforced.
 
-Budget reports capacity affirmatively and Goal Strategy owns feasibility. Independent review distinguishes that role deferral from a conflicting affordability conclusion, while still checking the amounts, shared pool and sustained-allocation conditions. A local backend-shaped combined replay passed independent review; deployed Edge acceptance remains pending.
+Budget reports capacity affirmatively and Goal Strategy owns feasibility. Independent review distinguishes that role deferral from a conflicting affordability conclusion, while still checking the amounts, shared pool and sustained-allocation conditions. A local backend-shaped combined replay passed independent review in the v8-era verification. Deployed Edge acceptance was pending at that report’s cutoff; consult the dated live reports for later evidence.

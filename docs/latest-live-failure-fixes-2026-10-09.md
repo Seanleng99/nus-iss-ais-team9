@@ -45,5 +45,6 @@ passed. See [verification evidence](evaluation-evidence/latest-live-failure-fixe
 The old exported traces do not identify every failed semantic reviewer predicate.
 These regressions demonstrate contract behavior; they cannot prove that GPT-6
 Luna will consistently choose the expected graph or accept every legitimate
-answer. Deployment and fresh signed-in tests, including repeated attempts, are
-still required before marking the seven live cases passed.
+answer. At this report’s 9 October cutoff, deployment and fresh signed-in tests, including
+repeated attempts, were still required before marking the seven live cases passed.
+This records the acceptance status then; later dated reports provide subsequent evidence.

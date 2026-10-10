@@ -22,11 +22,11 @@ Use the approved goal projection tool. State the target, current amount, time ho
 
 ## Investment Education Agent
 
-Historical v1 behavior: explain concepts from the sanitized request without retrieval or source claims. Current behavior is defined by v2, where Investment Education reads approved Education RAG context and returns source metadata.
+Historical v1 behavior: explain concepts from the sanitized request without retrieval or source claims. v2 later added Education RAG; current prompt behavior is defined by v10. Consult the current manifest and v10 prompt files.
 
 ## Risk And Compliance Agent
 
-Historical v1 behavior: use the legacy trusted retriever for sanitized policy context. Current v2 behavior also reviews the Education evidence carried in Investment agent results; Compliance does not query the Education RAG collection.
+Historical v1 behavior: use the legacy trusted retriever for sanitized policy context. In the historical v2 design, Compliance also reviewed Education evidence carried in Investment agent results; it did not query the Education RAG collection.
 
 ## Change Control
 

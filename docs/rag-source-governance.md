@@ -60,7 +60,7 @@ python infra/scripts/rag_source_governance.py audit-aws `
 
 ## Runtime Enforcement And Traceability
 
-The ECS task definition pins `EDUCATION_CORPUS_VERSION`, derived from the Education manifest at the release SHA. The deployed local-document retriever loads the approved documents and manifest from the image and verifies the configured corpus version before serving evidence. The historical Bedrock retriever accepts a chunk only when its metadata:
+The ECS task definition pins `EDUCATION_CORPUS_VERSION`, derived from the Education manifest at the release SHA. The deployed Bedrock retriever validates returned source metadata against the approved manifest packaged in the image. The local-document provider additionally verifies and loads the packaged document bytes for local runs. Bedrock accepts a chunk only when its metadata:
 
 - validates against manifest schema version 2;
 - is approved for the synthetic demo;
@@ -68,11 +68,11 @@ The ECS task definition pins `EDUCATION_CORPUS_VERSION`, derived from the Educat
 - has not passed its review deadline; and
 - carries a valid SHA-256 checksum and required provenance.
 
-Accepted citations expose document version, checksum, corpus version, and review deadline through the AI and backend APIs. Privacy-safe orchestration traces additionally record the retrieval consumer, dependency edge, corpus versions, and source/version/checksum tuples used by a response. Conditional retrieval queries contain canonical topic labels rather than personal financial amounts. Evidence-gap traces still record the configured corpus version through the consuming Investment Education, Budget, or Goal Strategy result.
+Accepted citations expose document version, checksum, corpus version, and review deadline through the AI and backend APIs. Privacy-safe orchestration traces additionally record the retrieval consumer, dependency edge, corpus versions, and source/version/checksum tuples used by a response. Retrieval queries contain canonical topics and validated public search concepts rather than raw personal questions or financial amounts. Evidence-gap traces still record the configured corpus version through the consuming Investment Education, Budget, or Goal Strategy result.
 
 ## AWS Evidence
 
-On 2026-08-28, governed metadata was published to the then-current six documents and ingestion job `D4C4MMUERE` completed successfully. The 2026-09-26 corpus expansion has not been synchronized to AWS; the recorded evidence below applies to the earlier six-document corpus only. Bedrock scanned six documents, modified six metadata documents, and reported zero failed documents. The post-ingestion audit verified:
+On 2026-08-28, governed metadata was published to the then-current six documents and ingestion job `D4C4MMUERE` completed successfully. The recorded evidence below applies only to that earlier six-document corpus. Later restoration and ingestion evidence is recorded in [Bedrock KB restoration](bedrock-kb-restoration-2026-10-09.md); historical IDs and results are not current deployment configuration. Bedrock scanned six documents, modified six metadata documents, and reported zero failed documents. The post-ingestion audit verified:
 
 - active knowledge base `X2BXBRYX2X` and available data source `H6D6Z2RUL2`;
 - 12 expected S3 objects and no unmanifested object under the approved prefix;

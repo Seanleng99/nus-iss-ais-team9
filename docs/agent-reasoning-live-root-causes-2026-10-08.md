@@ -1,9 +1,10 @@
 # Root causes of the 8 October live-test failures
 
-This is the pre-fix diagnosis of the deployed test run. The subsequent
+This is the pre-fix diagnosis of the deployed 8 October test run. The subsequent
 [local recovery implementation](orchestration-review-recovery.md) changes the evidence,
-capture-state and correction paths described below. Deployment and live acceptance
-of those changes remain pending; the historical failures are not reclassified.
+capture-state and correction paths described below. The pending-deployment statement
+reflects this diagnosis’s cutoff; it is not a current deployment-status assertion. The
+historical failures are not reclassified.
 
 This diagnosis combines the [live results](agent-reasoning-live-test-results-2026-10-08.md), the official UI profile export, and the current implementation. It distinguishes a confirmed execution cause from a likely explanation of a model verdict. A review category is not, by itself, proof that the model rejected a correct sentence.
 

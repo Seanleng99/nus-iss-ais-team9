@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented in the current runtime; the original proposal is retained as design history.
 
 ## Context
 
@@ -10,9 +10,9 @@ The module FAQ states that MCP and A2A are not mandatory, but teams must underst
 
 ## Decision
 
-The initial implementation will not require MCP or A2A.
+The initial implementation does not require MCP or A2A.
 
-The AI service will expose internal tools through a typed registry with explicit allowlists. This is sufficient for the current project because all agents run in one service and use a small controlled set of tools.
+The AI service exposes internal tools through a typed registry with explicit allowlists. This is sufficient for the current project because all agents run in one service and use a small controlled set of tools.
 
 ## Consequences
 

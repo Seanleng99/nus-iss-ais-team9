@@ -4,7 +4,7 @@
 
 Accepted
 
-## Context
+## Original context (before the 30 September update)
 
 The coach is a single-user assistant: the backend authorizes each request and
 sends the AI service only the authenticated user's minimized snapshot, so an
@@ -21,7 +21,7 @@ match only regulated-advice patterns. Neither targets a request to read another
 person's account or data, so the model-assisted review was the only line of
 defence and it did not block.
 
-## Decision
+## Original decision
 
 Add a deterministic cross-user data-access control inside the Risk & Compliance
 Agent: `CROSS_USER_DATA_ACCESS_REGEXES` and `cross_user_data_findings` in
@@ -80,6 +80,4 @@ changes followed:
 
 Both remain pattern-based. Known over-blocks are a merchant possessive with a
 read verb ("show McDonald's transactions") and household requests ("show my
-wife's spending"). These fail safe to a refusal. Instructing the model review
-about third-party data is a separate follow-up, because it changes a prompt and
-needs a new prompt-set version.
+wife's spending"). These fail safe to a refusal. The current Policy corpus also includes the IS-04 ownership/privacy boundary, and the current Compliance prompt requires privacy review. These additions complement pattern matching; they do not establish comprehensive detection. See [security guardrails](../security-guardrails.md) and [Policy governance](../policy-rag-governance.md).

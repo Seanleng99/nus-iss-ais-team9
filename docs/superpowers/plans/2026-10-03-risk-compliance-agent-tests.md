@@ -1,5 +1,7 @@
 # Risk & Compliance Agent Tests Implementation Plan
 
+> **Historical plan (2026-10-03):** The workflow described here was added on 2026-10-03 and removed on 2026-10-10 during evaluation consolidation. The unchecked steps and workflow commands below are preserved as the original plan; they are not current TODOs or instructions for an active workflow.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a "Risk & Compliance Agent Tests" GitHub Actions workflow with an offline safety job and three functional jobs (blocks / withholds / allows), each publishing a readable Markdown summary and a downloadable report.

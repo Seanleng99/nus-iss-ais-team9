@@ -6,6 +6,12 @@ This study validates whether intended users can understand and safely act on the
 
 The study package is implemented, but the validation remains open until real representative participants complete the governed protocol. Automated or fabricated responses are not acceptable human evidence.
 
+The current study policy and session template still require the historical model ID
+`apac.amazon.nova-lite-v1:0` (`infra/llmsecops/representative-user-study.json`),
+while the configured deployment uses OpenAI GPT-6 Luna. The validator enforces that
+policy field. Do not treat a GPT-6 Luna session as accepted study evidence until the
+study policy and template are reviewed and updated to the intended deployed model.
+
 ## Scope
 
 The study is exploratory usability evidence for the synthetic-data demo. It does not establish statistical generalizability, approve real personal financial data, or authorize regulated financial advice.

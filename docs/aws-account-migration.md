@@ -1,6 +1,6 @@
 # AWS Account Migration
 
-This runbook records the earlier Bedrock-based account migration. The current AI deployment uses OpenAI GPT-6 Luna and packaged local corpora; do not recreate the Bedrock knowledge bases described below as part of the new bootstrap. See [AWS demo infrastructure](../infra/aws/README.md) and [model selection](model-selection.md).
+This is the historical September 2026 account-migration record; resource IDs, login/health observations and remaining tasks below describe that cutover, not a fresh AWS inspection. The current templates use OpenAI GPT-6 Luna for generation and separate Bedrock Education/Policy Knowledge Bases for retrieval. Bootstrap validates or restores those KBs; use the current bootstrap configuration rather than copying historical IDs. See [AWS demo infrastructure](../infra/aws/README.md) and [model selection](model-selection.md).
 
 Source account: `902552928492`. Destination account: `862124275471`.
 Deployment Region: `ap-southeast-1`. Domain: `ai-financial-wellness-coach.click`.
@@ -22,8 +22,7 @@ until the previous delegation expires. Deployment scripts default to the destina
   account. Registrar operation `befbd4a7-a17f-47a4-8c9b-86b31dae1fe9`
   succeeded. Name servers are `ns-498.awsdns-62.com`,
   `ns-908.awsdns-49.net`, `ns-1813.awsdns-34.co.uk`, and
-  `ns-1468.awsdns-55.org`. Destination zone `Z053270513FALP98M94L0`
-  zone `Z053270513FALP98M94L0` aliases the apex to new CloudFront
+  `ns-1468.awsdns-55.org`. Destination zone `Z053270513FALP98M94L0` aliases the apex to new CloudFront
   distribution `E1I8G8SUBPQYYM` (`d1chx1r2f68pcy.cloudfront.net`).
   The old hosted zone `Z082992016ATT9Y4OFS9V` and distribution
   `E10L5HJWD7L257` were deleted.

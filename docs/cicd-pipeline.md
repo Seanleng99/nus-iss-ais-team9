@@ -123,7 +123,7 @@ policy evidence and the combined governance workflow.
 
 `infra/scripts/configure_github.ps1` populates the OIDC role ARNs, ECS cluster/service/task names, ECR repositories, public health and coach URLs, corpus versions, dashboard and alarm identifiers, and bounded validation thresholds. It also sets `SMOKE_BACKEND_API_KEY` in the `demo` environment. The workflow assumes short-lived GitHub OIDC credentials; it does not store AWS access keys.
 
-The deployment role can publish or deploy only the named resources. It no longer needs Bedrock or corpus S3 audit rights. Keep the `demo` environment restricted to `main`. Branch protection and native required reviewers depend on the repository plan.
+The OIDC deployment role has scoped Bedrock and S3 permissions for the two approved corpora: it can inspect and retrieve from the configured Education and Policy knowledge bases, read/list only their governed S3 prefixes, and start ingestion or publish objects within those prefixes. The separate RAG governance role is read-only for corpus and knowledge-base access. The deployment policy permits task/service inspection and task-definition registration, updates the three configured ECS services, and limits `iam:PassRole` to the configured ECS roles. Keep the `demo` environment restricted to `main`. Branch protection and native required reviewers depend on the repository plan.
 
 ## Change and acceptance gates
 

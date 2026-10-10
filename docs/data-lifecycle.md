@@ -34,7 +34,7 @@ The Streamlit `Privacy & data` tab exposes the same lifecycle summary, consent p
 
 ## Scheduled enforcement
 
-The weekly AWS operational workflow runs:
+When enabled, the weekly AWS operational workflow runs the lifecycle task below; it can also be dispatched manually. A policy value alone does not prove that the purge job ran:
 
 ```text
 python -m app.jobs.purge_data_lifecycle

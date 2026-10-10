@@ -41,8 +41,8 @@ concurrency independently of amounts. Optional provider failure may retain an
 explicitly qualified result; required unresolved evidence must not silently pass.
 
 Shared numeric dependency results also appear under the LLMSecOps policy job in
-`investment-evaluation-metrics`. These four Goal pytest suites remain owned by
-**Goal Agent Tests**.
+`investment-evaluation-metrics`. These four Goal scenario groups remain selected
+by the `goal` suite in **Agent and RAG Evaluations**.
 
 Conditional Education retrieval follows the shared
 [RAG Retrieval Relevance evaluation](investment-agent-evaluation.md#rag-retrieval-relevance),
@@ -74,8 +74,9 @@ actual application output with fixture providers.
 ## Live acceptance and limitations
 
 Release smoke checks exercise real Goal arithmetic, model calls and persisted
-traces. AWS Operational Validation and browser reasoning evaluations supply
-separate deployed dependency/behavior evidence. These fixture rates do not establish
-live explanation correctness, helpful goal prioritization or calibrated uncertainty.
+traces. AWS Operational Validation supplies separate deployed dependency and
+behavior evidence; the consolidated live suite does not exercise a browser/UI flow.
+These fixture rates do not establish live explanation correctness, helpful goal
+prioritization or calibrated uncertainty.
 Independent generated-answer and representative-user review remain necessary;
 reported live failures/pending reviews cannot be replaced by offline passes.

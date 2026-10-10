@@ -89,7 +89,7 @@ real failure, with no skip/xfail or reduced pass threshold. The pytest module is
 owned by the `investment` offline job in **Agent and RAG Evaluations**; failing
 cases fail CI.
 The evaluation runner prints its aggregate score and failed IDs. Its standalone CLI
-does not enforce a threshold; the Investment workflow runs the policy gate, which now
+does not enforce a threshold; the consolidated workflow's required metrics job runs the policy gate, which now
 includes the beginner dataset and requires 100% structural case accuracy.
 
 The dataset's `answer_rubric` and `forbidden_behaviors` are separate human-review

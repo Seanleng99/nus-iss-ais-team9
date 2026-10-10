@@ -1,5 +1,7 @@
 # Combined Education review and recovery
 
+This is the 6 October implementation and local-verification record. Its prompt v8/deployment-pending statements describe that checkpoint. The current catalog is v10; see [current prompt contract](current-prompt-contract.md) and [local claim recovery](orchestration-local-claim-recovery-2026-10-09.md) for the later correction paths. Original test outcomes are preserved.
+
 On 6 October 2026, two deployed combined Goal/Budget/Education requests were withheld for factual qualification with `repairable=false`. Both had estimated correction headroom below the 50,000-token ceiling. The separate Goal-context Education follow-up passed. Production intentionally retains fixed diagnostic categories and counts, not the rejected prose or private reviewer notes, so the exact original sentences remain unverified.
 
 A backend-shaped synthetic replay reproduced a provenance failure: the reviewer treated the second model-knowledge topic as outside a single shared label. Repeating the visible label immediately before that topic made the same draft pass. Another replay showed a contract retry changing repairability while still describing an Education-only qualification defect. AWS task revision 50 omitted role overrides; CloudWatch confirmed every call used low reasoning with a 1,600-token limit, differing from the local/template policies.

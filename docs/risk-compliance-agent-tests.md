@@ -1,61 +1,63 @@
 # Risk & Compliance Agent Tests
 
-All model-assisted blocking decisions require `block_categories` and a brief policy explanation, including ordinary Budget/Goal reviews. One bounded correction is allowed for an invalid verdict; exhausted correction withholds the draft as `review_contract_unverified`. Tests distinguish this failure from a valid `model_review` block, preserve fixed categories in privacy-safe traces and verify that optional Education gaps do not invalidate qualified Budget/Goal arithmetic. Saved-budget read tests provide the actual scoped record evidence to Compliance and reject mutation fields in read commands.
+Risk & Compliance tests are owned by the `risk-compliance` suite in the
+consolidated **Agent and RAG Evaluations** workflow
+([workflow file](../.github/workflows/agent-evaluations.yml)). The suite runs
+with local model and Policy fixtures; it makes no paid provider calls. Its exact
+test selection and reporting contract are in
+[`agent-test-suites.json`](../infra/llmsecops/agent-test-suites.json) and
+[`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json).
 
-The 9 October update adds `test_risk_review_explanations.py` to this workflow's
-offline selection. It checks safe user-facing explanations, precise semantic
-validation codes, bounded contract correction, relevant policy-family references,
-and sealed financial grounding on optional Education-gap results. Shared tracing
-tests reject unknown reason/category values and private explanation text. Viewer
-tests expose approved source provenance on blocked runs and retain validation
-codes in the model-call view. JSON syntax failures, schema failures and semantic
-ownership/evidence failures remain distinct diagnostics. These checks use local
-models and do not establish live routing or reviewer accuracy.
+The selection covers:
 
-The **Risk & Compliance Agent Tests** workflow
-(`.github/workflows/risk-compliance-agent-tests.yml`) checks the compliance
-agent offline. CI and LLMSecOps calls it for AI checks and every selected
-application release; manual runs remain available. It never calls a paid model
-and uses no secrets. See [all agent workflows and release integration](agent-test-workflows.md)
-for triggers, test-file mappings and the required release gate.
+| Scenario group | Tests | Expected behavior |
+|---|---|---|
+| Offline policy and guardrails | `test_risk_compliance.py`, `test_risk_review_explanations.py`, `test_guardrails.py` | Allow safe education and warnings; block prohibited requests; sanitize reasons and retrieved instructions; redact identifiers; enforce role-scoped retrieval. |
+| Block unsafe requests | `test_risk_compliance_functional.py -k test_blocks_unsafe_request` | Refuse recommendations, guarantees, account execution, cross-user access, and injection at the required boundary. |
+| Withhold unsafe answers | `test_risk_compliance_functional.py -k test_withholds_unsafe_answer` | Withhold unsafe drafts, missing or invalid Policy evidence, reviewer vetoes, and unapproved citations. |
+| Allow safe answers | `test_risk_compliance_functional.py -k test_allows_safe_answer` | Release permitted education, negated-suitability warnings, and valid Budget answers after independent review; blanket refusal fails the positive controls. |
+| Fixture-backed dialogue examples | `test_agent_evaluation_examples.py::test_example_risk_compliance` | Run versioned synthetic questions through application components and check their authored response, safety, and source expectations. |
 
-| Job | What it shows | Tests |
-| --- | --- | --- |
-| Offline compliance safety tests | Rule-level checks of the agent and request guardrails | `tests/test_risk_compliance.py`, `tests/test_guardrails.py` |
-| Functional — Blocks unsafe requests | Regulated advice and cross-user requests are refused without a model review; prompt injection is stopped at the boundary with no model call | `test_blocks_unsafe_request_*` |
-| Functional — Withholds unsafe answers | Unsafe drafts, a blocking review, missing policy evidence and unapproved citations never reach the user | `test_withholds_unsafe_answer_*` |
-| Functional — Allows safe answers | Education and budgeting answers are released with sources and without over-blocking | `test_allows_safe_answer_*` |
+The three functional filters are disjoint selections from one test file. Each
+parameterized case is counted separately. Acceptance requires at least one case,
+100% assertion pass rate, and zero failures, errors, skips, or xpasses in every
+group. An aggregate pass cannot hide a failed safety or privacy assertion.
 
-Functional tests run the whole `AgentOrchestrator` with the local fixture model
-and policy corpus. They prove the workflow's routing and compliance decisions;
-they do not measure the wording quality of a live model.
+The offline fixture reviewer is scripted, so these results verify application
+contracts and the authored cases; they do not measure live-model reviewer accuracy
+or answer quality. The separate shared Policy RAG metrics are published by the
+required metrics job. Optional deployed tests and release smoke are separate
+evidence; see the [evaluation guide](risk-compliance-agent-evaluation.md) and
+[consolidated workflow guide](agent-test-workflows.md).
 
-## Reading the results
+## Finding the results
 
-Each job writes a table to its GitHub Actions job summary: the scenario, the
-question asked, the result, a truncated agent answer and
-any failure reason. The JUnit XML and the summary are uploaded as artifacts and
-kept for 30 days.
+In GitHub Actions, open **Agent and RAG Evaluations** and the
+**risk-compliance — offline unit tests** job. Its job summary reports the
+definition, selected tests, hashes, expected outputs, measured cases, and
+acceptance. Download `agent-offline-risk-compliance` for JUnit XML, Markdown,
+and the complete JSON evaluation report. The combined
+`agent-evaluation-report` contains the consolidated results. These artifacts are
+retained for 90 days.
 
 ## Running locally
 
-From `apps/ai-service`:
+From the repository root with the project dependencies installed:
 
-    pytest tests/test_risk_compliance.py tests/test_guardrails.py
-    pytest tests/test_risk_compliance_functional.py -k test_blocks_unsafe_request
-    pytest tests/test_risk_compliance_functional.py -k test_withholds_unsafe_answer
-    pytest tests/test_risk_compliance_functional.py -k test_allows_safe_answer
+```sh
+MODEL_PROVIDER=local_fixture RAG_PROVIDER=local_fixture POLICY_RAG_PROVIDER=local_fixture \
+  python infra/scripts/run_agent_tests.py --suite risk-compliance --junitxml artifacts/risk-compliance.xml
+python infra/scripts/summarize_pytest_junit.py artifacts/risk-compliance.xml \
+  --suite risk-compliance --title "Risk & Compliance offline" \
+  --output artifacts/risk-compliance-summary.md \
+  --evaluation-output artifacts/risk-compliance-evaluation.json
+```
 
-On Windows, add `-X utf8` after `python` (`python -X utf8 -m pytest ...`).
+## Coverage limits
 
-## Known gaps
-
-With the offline fixture reviewer, which always approves, these unsafe drafts
-are released because no deterministic rule catches them in the full workflow.
-They are not asserted either way and are tracked for a decision by the agent
-owners:
-
-- an imperative trade instruction in a generated answer, for example
-  "Sell your stocks today and buy the ETFs listed above.";
-- another user's financial data in a generated answer, for example
-  "Another user DEMO_USER_B saves SGD 2000 a month."
+The functional unsafe-answer parameterization currently asserts three generated-advice
+patterns: a guaranteed return, a product presented as the best choice, and personal
+suitability. These checks do not establish that every imperative trade instruction
+or third-party financial disclosure in generated prose is caught deterministically.
+The real Compliance reviewer and broader adversarial testing remain necessary;
+see [the security risk register](security-risk-register.md).

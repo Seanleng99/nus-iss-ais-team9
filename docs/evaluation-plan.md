@@ -3,9 +3,10 @@
 This plan covers all five specialists: Spending, Budget, Goal Strategy, Investment
 Education, and Risk & Compliance, plus orchestrator routing and shared RAG controls.
 The executable specialist definitions are in
-[`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json), version 2.
-All 23 owned pytest suites have datasets, expected outputs, metric definitions,
-acceptance criteria, limitations and an exact test selection. The separate JSONL
+[`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json), version 3.
+The 23 scenario groups below are consolidated into seven owned pytest suite IDs;
+each has datasets, expected outputs, metric definitions, acceptance criteria,
+limitations and an exact test selection. The separate JSONL
 metric thresholds remain in
 [`evaluation-policy.json`](../infra/llmsecops/evaluation-policy.json).
 Each specialist also has a matching evaluation and CI evidence guide:
@@ -289,7 +290,7 @@ surfaces, which source-recall metrics alone cannot validate.
 
 The pull-request gate uses the explicit local fixture to test graph topology, schemas, deterministic financial calculations, retrieval, and hard security controls without AWS credentials, cost, or stochastic flakes. Passing this gate does not validate live model quality.
 
-Before the OpenAI deployment is accepted, run the same routing cases plus representative and adversarial cases against GPT-6 Luna. Measure groundedness, unsupported-claim rate, unsafe-advice rate, explanation quality, source attribution, P50/P95 latency, token use, and cost across repeated samples. Record model ID, prompt version, run count, and provider processing geography. Live-model thresholds must be stored separately from deterministic control thresholds.
+Current OpenAI model acceptance remains a separate gate. Run the same routing cases plus representative and adversarial cases against GPT-6 Luna. Measure groundedness, unsupported-claim rate, unsafe-advice rate, explanation quality, source attribution, P50/P95 latency, token use, and cost across repeated samples. Record model ID, prompt version, run count, and provider processing geography. Live-model thresholds must be stored separately from deterministic control thresholds.
 
 ### Live Quality Baseline And Drift Gate
 

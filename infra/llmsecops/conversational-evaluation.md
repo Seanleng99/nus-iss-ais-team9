@@ -1,3 +1,16 @@
+# Conversational evaluation — historical 3–5 October 2026 record
+
+This records the remediation implementation and verification at that cutoff.
+The 50,000-token default, test counts, deadlines and outstanding rollout items
+below are historical, not current configuration or fresh deployment evidence.
+Current defaults use an 80,000-token request budget; consult the
+[current prompt contract](../../docs/current-prompt-contract.md),
+[operations guide](../../docs/operations.md) and
+[consolidated evaluation workflow](../../docs/agent-test-workflows.md).
+Later hardening deployment evidence is recorded in the
+[security risk register](../../docs/security-risk-register.md#deployment-and-validation-evidence).
+The retained live outcomes have not been rerun for this documentation audit.
+
 The Coach regression checks exercise intent routing, pending drafts, follow-up references, volunteered household information, scam education, hypothetical arithmetic, response length, language selection and record coverage. `apps/ai-service/tests/test_conversational_pipeline.py` runs offline in CI and exports its test evidence. Offline evaluation reports identify their measurement as `offline_fixture_contract`; passing these checks does not establish generated answer quality.
 
 `conversational-live-evaluation-cases.jsonl` contains 21 synthetic scenarios with explicit qualitative rubrics. Seven scenarios use setup turns to establish the conversation before the final request. The scenarios cover pending-draft topic changes, paraphrased and attributed references, volunteered household facts, password-scam education, unsaved arithmetic, style/language preferences, record coverage and explicit recurring forecasts. `infra/scripts/live_evaluation.py` accepts either a plain setup request or an object containing `request` and `expected`, with at most six setup turns.
@@ -37,8 +50,19 @@ The initial live attempt failed authentication and stopped on unknown usage; its
 | Complete generated conversational run | 21/21 scenarios; 28 turns; complete usage and cleanup; p95 48,873.23 ms; estimated USD 0.056716 at supplied rates |
 | Assistant qualitative review | 21 final answers meet their case rubrics; all 28 turns reviewed; presentation limits retained; independent human review not performed |
 
-The [AI JUnit report](../../artifacts/root-final-ai-results.xml), [offline gate](../../artifacts/root-final-offline84.json) and [backend JUnit report](../../artifacts/root-final-backend-results.xml) retain completed evidence. The [complete live report](../../artifacts/closure-live-all-evaluation.json) and [assistant rubric review](../../artifacts/closure-live-all-assistant-rubric-review.json) identify the same generated run by trace IDs. The [full infrastructure report](../../artifacts/closure-infra-final-results.xml) and [isolated retry](../../artifacts/closure-infra-final-release-unsandboxed.xml) record the Bash environment failure; passing negative cases without Bash does not establish release behavior. Target PostgreSQL migration/concurrency, Linux release checks and deployment remain outstanding. See [the remediation record](../../docs/coach-response-remediation-2026-10-03.md) for rollout details.
+The following eight files are archived local evidence references outside this
+checkout; their filenames are retained as identifiers, not clickable repository
+links: `root-final-ai-results.xml`, `root-final-offline84.json`,
+`root-final-backend-results.xml`, `closure-live-all-evaluation.json`,
+`closure-live-all-assistant-rubric-review.json`, `closure-infra-final-results.xml`,
+`closure-infra-final-release-unsandboxed.xml`, and `closure-live-evaluation.json`.
+They retain the completed evidence and historical measurements described above.
+The infrastructure report and isolated retry record the Bash environment failure;
+passing negative cases without Bash does not establish release behavior. Target
+PostgreSQL migration/concurrency, Linux release checks and deployment remain
+outstanding. See [the remediation record](../../docs/coach-response-remediation-2026-10-03.md)
+for rollout details.
 
-The prior 18/21 run and later incomplete transport failures remain preserved. The complete passing run still contained long source/provenance blocks and a repeated verification message. After removing the contradictory writer instruction, a [targeted three-case run](../../artifacts/closure-live-evaluation.json) passed five turns with complete usage and an estimated USD 0.015970 at supplied rates. Its generated language-switch and arithmetic answers were concise; the follow-up example explicitly stated equal five-company weights. Those education turns had verified semantic coverage, so they do not independently demonstrate the unverified-status path; that conditional contract remains covered by offline regressions. Separate provenance blocks can still exceed a one-paragraph request. Human quality acceptance and comparative model tuning remain unperformed.
+The prior 18/21 run and later incomplete transport failures remain preserved. The complete passing run still contained long source/provenance blocks and a repeated verification message. After removing the contradictory writer instruction, the archived local `closure-live-evaluation.json` evidence recorded a targeted three-case run that passed five turns with complete usage and an estimated USD 0.015970 at supplied rates. Its generated language-switch and arithmetic answers were concise; the follow-up example explicitly stated equal five-company weights. Those education turns had verified semantic coverage, so they do not independently demonstrate the unverified-status path; that conditional contract remains covered by offline regressions. Separate provenance blocks can still exceed a one-paragraph request. Human quality acceptance and comparative model tuning remain unperformed.
 
 The helper explicitly selected OpenAI for these tests. Setting `OPENAI_API_KEY` alone does not switch Compose from its default fixture provider; live operation also requires `MODEL_PROVIDER=openai`. The private `.env` and running user deployment were not changed by these verification runs.

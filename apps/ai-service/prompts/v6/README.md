@@ -22,6 +22,4 @@ Investment Education answer is reused without a second model rewrite; source
 validation and independent compliance review still apply. Explicit specialist
 selection remains authoritative.
 
-The source and deployment templates target v6. Offline regression evidence does not
-establish live model grounding, retrieval quality, or deployed state; repeat the live
-OpenAI evaluation for this prompt set before accepting those behaviors.
+At the time this prompt set was current, the source and deployment templates targeted v6. This is a historical v6 note; the current catalog is v10. The offline regression evidence recorded here did not establish live model grounding, retrieval quality, or deployed state.

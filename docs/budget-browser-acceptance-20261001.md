@@ -54,7 +54,7 @@ new custom-category and empty-month inputs.
 The deployed section says “Open Budget for recorded-spending reviews and pace
 illustrations.” Budget no longer exposes those features; Coach retains them on
 request. Update the caption to direct category editing to Budget and reviews to
-Coach. The source is `apps/frontend/ui/pages.py:510`. This test did not change
+Coach. The current source path is [`apps/frontend/ui/pages.py`](../apps/frontend/ui/pages.py); the line number in the original report is omitted because the source has since moved. This test did not change
 application code to fix the caption.
 
 ### Local correction after acceptance
@@ -62,12 +62,12 @@ application code to fix the caption.
 Overview now says: “Edit your plan in Budget. Ask Coach for spending reviews or
 pace illustrations.” The correction changes only the caption; navigation and
 budget calculations are unchanged. All **11 Overview tests** passed; Ruff and
-diff whitespace checks passed. The corrected caption has not yet been verified
-in the deployed browser.
+diff whitespace checks passed. At the original 1 October report cutoff, the corrected caption had not yet been verified
+in the deployed browser. This is a dated finding, not a claim about later deployment status.
 
 ## Evidence and cleanup
 
-Screenshots are stored locally under `artifacts/budget-live-20261001/`:
+Screenshots were stored locally under ignored `artifacts/budget-live-20261001/`; those local-only evidence files are not included in this checkout:
 
 - `monitoring-desktop.jpg`: deployed charts before the save tests.
 - `monitoring-mobile.jpg`: mobile spending chart and stacked allocation.

@@ -10,53 +10,55 @@ Application currency is fixed to **SGD**. Profile income, transaction amounts, g
 
 Coach's everyday Budget reasoning uses saved category limits and commitments together with spending evidence for the requested month or range. Prior history stays separate from the requested totals. General budgeting explanations do not require personal income; personal capacity estimates require income and explicit recurring schedules when no confirmed plan exists. See [Budget reasoning contracts](docs/budget-planning.md#everyday-reasoning-context) for the local implementation and verification limits.
 
-Coach's everyday Budget reasoning uses saved category limits and commitments together with spending evidence for the requested month or range. Prior history stays separate from the requested totals. General budgeting explanations do not require personal income; personal capacity estimates require income and explicit recurring schedules when no confirmed plan exists. See [Budget reasoning contracts](docs/budget-planning.md#everyday-reasoning-context) for the local implementation and verification limits.
-
 ```text
 apps/
   frontend/          Streamlit user interface
   backend/           FastAPI application API, persistence, and Alembic migrations
-  ai-service/        Private FastAPI agent orchestration, guardrails, RAG hooks, and evals
+  ai-service/        Private FastAPI agent orchestration, guardrails, RAG, and evals
+  shared/            Shared financial math, language, and trace contracts
+knowledge/           Approved Education/Policy documents and source manifests
+security/            Security evaluation datasets and bounded scan harnesses
 docs/                Architecture, security, evaluation, and deployment documentation
 infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 ```
 
 ## Design Evidence
 
-- `docs/requirements-traceability.md`: requirement-to-evidence status and remaining work.
-- `docs/architecture.md`: logical and physical architecture, trust boundaries, and ECS/EKS decision.
-- `docs/agent-design.md`: roles, model strategy, memory, tools, prompts, MCP, and A2A.
-- `docs/responsible-ai.md`: intended use, fairness, accountability, human control, and lifecycle gates.
-- `docs/security-risk-register.md`: AI/security risks, controls, residual ratings, and owners.
-- `docs/evaluation-plan.md`: datasets, expected outputs, metrics, drift, and acceptance criteria.
+- [Documentation alignment audit](docs/documentation-audit-2026-10-10.md): review of all 100 tracked Markdown files against the current code, with per-file coverage and verification limits.
+- [requirements-traceability](docs/requirements-traceability.md): requirement-to-evidence status and remaining work.
+- [architecture](docs/architecture.md): logical and physical architecture, trust boundaries, and ECS/EKS decision.
+- [agent-design](docs/agent-design.md): roles, model strategy, memory, tools, prompts, MCP, and A2A.
+- [responsible-ai](docs/responsible-ai.md): intended use, fairness, accountability, human control, and lifecycle gates.
+- [security-risk-register](docs/security-risk-register.md): AI/security risks, controls, residual ratings, and owners.
+- [evaluation-plan](docs/evaluation-plan.md): datasets, expected outputs, metrics, drift, and acceptance criteria.
 - [Model drift monitoring](docs/model-drift-monitoring.md): same-model quality scoring with human-calibrated baselines, aggregate input comparisons, scheduled reporting, and activation requirements.
-- `docs/model-selection.md`: current OpenAI model decision and historical Bedrock comparison.
-- `docs/representative-user-validation.md`: representative-user protocol for explanations, confidence, uncertainty, sources, and safe next actions.
-- `docs/data-lifecycle.md`: versioned retention, consent, export, deletion, and scheduled-purge controls.
-- `docs/rag-source-governance.md`: source approval, freshness, ingestion, withdrawal, and corpus traceability.
-- `docs/policy-rag-governance.md`: separate policy-corpus lifecycle, runtime enforcement, and deployment gates.
-- `docs/operations.md`: SLO candidates, monitoring, alerts, load evidence, and incident response.
+- [model-selection](docs/model-selection.md): current OpenAI model decision and historical Bedrock comparison.
+- [representative-user-validation](docs/representative-user-validation.md): representative-user protocol for explanations, confidence, uncertainty, sources, and safe next actions.
+- [data-lifecycle](docs/data-lifecycle.md): versioned retention, consent, export, deletion, and scheduled-purge controls.
+- [rag-source-governance](docs/rag-source-governance.md): source approval, freshness, ingestion, withdrawal, and corpus traceability.
+- [policy-rag-governance](docs/policy-rag-governance.md): separate policy-corpus lifecycle, runtime enforcement, and deployment gates.
+- [operations](docs/operations.md): SLO candidates, monitoring, alerts, load evidence, and incident response.
 - [Investment Agent call-chain logging](docs/investment-call-logging.md): login, method calls, RAG/model execution, response packaging, CloudWatch queries, and explicitly marked synthetic Q&A logs.
 - [Chinese language support](docs/language-support.md): shared locale selection, fixed-message catalogs, supported scope, and the project-wide character inventory.
-- `docs/operational-evidence.md`: retained CI, release, live-model, load, and AWS control evidence.
-- `docs/cicd-pipeline.md`: GitHub/AWS pipeline and required configuration.
-- `docs/container-security.md`: exact-version image-scan exceptions, current risk review, and expiry controls.
-- `docs/final-assessment.md`: assessor-facing scope, architecture, interaction, evidence baseline, and acceptance gate.
-- `docs/demo-runbook.md`: reproducible six-scenario final demonstration procedure.
+- [operational-evidence](docs/operational-evidence.md): retained CI, release, live-model, load, and AWS control evidence.
+- [cicd-pipeline](docs/cicd-pipeline.md): GitHub/AWS pipeline and required configuration.
+- [container-security](docs/container-security.md): exact-version image-scan exceptions, current risk review, and expiry controls.
+- [final-assessment](docs/final-assessment.md): assessor-facing scope, architecture, interaction, evidence baseline, and acceptance gate.
+- [demo-runbook](docs/demo-runbook.md): reproducible six-scenario final demonstration procedure.
 
 ## Target Architecture
 
 - Presentation tier: Streamlit deployed as an ECS Fargate service.
 - Application tier: FastAPI backend for access control, profiles, transactions, monthly budgets, goals, dashboard summaries, and backend-built financial snapshots.
 - AI tier: private FastAPI service with a model-driven LangGraph orchestrator and five agents.
-- Data tier: PostgreSQL for transactional records and packaged, governed Education and Policy corpora.
-- AWS services: Cognito, CloudFront, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, and CloudWatch; the AI service calls the OpenAI API.
+- Data tier: PostgreSQL for transactional records and separate Bedrock Knowledge Bases for governed Education and Policy retrieval; reviewed source documents and manifests are retained in Git and the AI image.
+- AWS services: Cognito, CloudFront, RDS PostgreSQL, ECR with Inspector scanning, Secrets Manager, ECS Fargate, CloudWatch, and Bedrock Knowledge Bases backed by S3/S3 Vectors; the AI service calls the OpenAI API for generation.
 
 After authentication activation, Streamlit completes Cognito authorization-code login with PKCE and sends the server-side ID token to the backend. The backend validates the JWT and authorizes each profile by immutable issuer and subject. A separately scoped automation key remains only for synthetic CI/operational users, and the backend-to-AI key remains an independent service secret. All three services can scale and roll back independently.
 
 ## Spending capture and the transaction ledger
 
-In Coach, record spending in one natural sentence: "lunch 5.50", "dinner at jumbo seafood $120", or "can you help me add my Spotify monthly subscription that costs 10.90". Capture extracts the amount, description, and an optional inline date ("yesterday", "21/9", "last Saturday"), classifies a category, and saves the transaction to the authenticated profile only after the date is known. Polite directives ("please log…", "can you help me add…") and filler words are stripped from the description. Recurring wording flags an expense for the recurring summary, which reports the latest recorded amount for each item. The ledger does not store its cadence, so Coach asks for frequency before estimating a monthly or upcoming total. Personal amounts use SGD by default; explicit foreign currencies are rejected. Amounts are never defaulted and future dates are rejected unless the wording indicates a booking.
+In Coach, record spending in one natural sentence: "lunch 5.50", "dinner at jumbo seafood $120", or "can you help me add my Spotify monthly subscription that costs 10.90". Capture extracts the amount, description, and an optional inline date ("yesterday", "21/9", "last Saturday"), classifies a category, and saves the transaction to the authenticated profile only after the date is known. Polite directives ("please log…", "can you help me add…") and filler words are stripped from the description. Recurring wording flags an expense for the recurring summary, which reports the latest recorded amount for each item. The ledger can store explicit recurrence frequency, interval, dates and month-end terms. Scheduled captures require a preview and confirmation; a recurring flag without those terms cannot establish a monthly or upcoming total. Personal amounts use SGD by default; explicit foreign currencies are rejected. Amounts are never defaulted and future dates are rejected unless the wording indicates a booking.
 
 Incomplete statements enter a short clarification flow instead of guessing. Missing amount or date triggers a follow-up question; reply with the value ("10.90", "today"), provide a correction to replace the draft, or `cancel` to discard it. A just-saved transaction can also be corrected in chat: "oh sorry its 18.90" (or a date such as "oh sorry it was yesterday") updates that record for the same profile within a short window, re-checks the budget limit, and replies with the new amount. To edit an earlier record by name, say "change my Anniversary Dinner spending to 988" (or "would you be able to edit the spending to 988" after naming the transaction); Coach finds the match in your own records, previews the exact change, and applies it only after you reply `confirm` — you can narrow by date ("change my Lunch on 1st October to 25"), ambiguous matches list the candidates and ask you to pick one by description or date, and `cancel` changes nothing. Deleting works the same way: "delete my Anniversary Dinner transaction" previews the exact record and only removes it after you reply `confirm`. Pending drafts belong to the authenticated profile and conversation and expire after a TTL. Batch entry is supported: multi-line lists, "and"-joined items, and multiple sentences each become separate dated drafts, with undated lines asked one at a time. A saved capture also reports whether it pushed its category over the monthly budget limit. The Transactions page lists, edits, and deletes recorded transactions, including custom categories shared with Budget limits.
 
@@ -68,13 +70,13 @@ Coach can show all saved budgets, compare saved months, summarise a year, change
 
 Drafts belong to the authenticated profile and conversation. Confirmation updates only the listed categories and preserves other limits. A changed budget, an intervening turn, or a preview older than 30 minutes requires a fresh preview and confirmation. Draft consumption, budget updates, and the chat exchange commit together. The Budget page provides allocation and spending charts, over-limit indicators, and suggested or custom category names; transactions also accept custom categories so their spending can be tracked against the same limits.
 
-Apply migration `20260928_0010` with `alembic upgrade head` before running the updated backend (Compose already runs migrations). The offline model fixture accepts explicit `category: amount` syntax, for example: "Set budget for October 2026 in SGD; food: 500, pet care: 120". Production model extraction supports natural-language requests. Coach currently saves monthly SGD budgets; ambiguous dates, other currencies, and non-monthly periods require clarification.
+Apply all checked-in migrations with `alembic upgrade head` before running the updated backend (`20261010_0018` is the current head) (Compose already runs migrations). The offline model fixture accepts explicit `category: amount` syntax, for example: "Set budget for October 2026 in SGD; food: 500, pet care: 120". Production model extraction supports natural-language requests. Coach currently saves monthly SGD budgets; ambiguous dates, other currencies, and non-monthly periods require clarification.
 
 Coach now supports a first-stage **category budget planner**: ask “Help me create a realistic monthly budget,” provide take-home income and a savings allocation, and supply category limits or request recorded-spending suggestions. Coach clarifies missing details, asks whether all commitments are included, and checks the complete plan for funding gaps before confirmation. Savings stay separate from expense limits and appear in Budget and Overview after saving. See [Budget planning](docs/budget-planning.md) for the workflow, contracts, migration `20260929_0011`, examples, tests, and deferred features.
 
-Stage two adds selectable flexible, 50/30/20, 80/20, zero-based, savings-first and custom-percentage methods, plus read-only what-if comparisons in Coach and Budget. Adopting an option creates an unsaved draft; income, expense coverage and final saving require confirmation. Overview shows the saved method. Percentage targets use full take-home income and never silently overwrite savings or category limits.
+Stage two adds selectable flexible, 50/30/20, 80/20, zero-based, savings-first and custom-percentage methods, plus read-only what-if comparisons in Coach. Budget provides method selection and a live affordability summary while editing. Adopting an option creates an unsaved draft; income, expense coverage and final saving require confirmation. Overview shows the saved method. Percentage targets use full take-home income and never silently overwrite savings or category limits.
 
-Stage three adds on-demand recorded-spending reviews, clearly labeled month-end pace illustrations when records are sufficient, and adjustment proposals for overspent or unbudgeted categories. Reviews use owned SGD records through today, preserve savings and other commitments, and require fresh evidence plus user confirmation before an adjustment is saved. Ask “Review my budget for September 2026” or use Budget’s review panel.
+Coach supports on-demand recorded-spending reviews and clearly labeled month-end pace illustrations when records are sufficient. Ordinary reviews do not automatically propose higher limits. Users can request a comparison, adopt a draft and confirm its exact changes. Ask “Review my budget for September 2026”; Budget itself shows saved totals, charts and the monthly editor, without a separate review panel.
 
 ## Goal changes in Coach
 
@@ -92,7 +94,7 @@ The offline model fixture uses explicit fields, for example: `Create goal; name:
 
 ## Agents
 
-Coach retains attributed user-reported facts and corrections within each chat, alongside the latest eight messages and a bounded extractive summary of older preferences, objectives and discussion. Validated local replies also remain available as context. Explicit language requests apply to the current turn and synchronize the Coach selector. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Run `alembic upgrade head` through revision `20261004_0016` before updating the backend; this includes the previous memory/pending-transaction migration branches and adds durable chat-scoped transaction edit and just-saved references. Reinstall `apps/shared` and update the backend/AI service together. See [Session context](docs/session-context.md) and [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for supported inputs, limits and validation.
+Coach retains attributed user-reported facts and corrections within each chat, alongside the latest eight messages and a bounded extractive summary of older preferences, objectives and discussion. Validated local replies also remain available as context. The application’s globe selector explicitly chooses English or Simplified Chinese; conversational text does not override that selection. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Run `alembic upgrade head` (current head `20261010_0018`) before updating the backend; this includes the previous memory/pending-transaction migration branches and adds durable chat-scoped transaction edit and just-saved references. Reinstall `apps/shared` and update the backend/AI service together. See [Session context](docs/session-context.md) and [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for supported inputs, limits and validation.
 
 Read-only references such as `Explain that more simply`, `What about that goal?` and `Explain the second option` are resolved before routing. Ambiguous references ask one brief question; remembered dialogue cannot resume a pending goal, budget or transaction draft as an action.
 
@@ -122,7 +124,7 @@ cd C:\ai-financial-wellness-coach\apps\backend
 alembic upgrade head
 ```
 
-Compose defaults to `MODEL_PROVIDER=local_fixture` for offline development and loads an optional private `.env` after `.env.example` (Docker Compose 2.24+). It honors an explicit `MODEL_PROVIDER` from `.env` or the shell. The fixture uses canned responses; it does not measure live Coach quality. Its mode is shown in Coach. Deployed environments require `MODEL_PROVIDER=openai` with both governed local-document retrievers.
+Compose defaults to `MODEL_PROVIDER=local_fixture` for offline development and loads an optional private `.env` after `.env.example` (Docker Compose 2.24+). It honors an explicit `MODEL_PROVIDER` from `.env` or the shell. The fixture uses canned responses; it does not measure live Coach quality. Its mode is shown in Coach. AWS release uses `MODEL_PROVIDER=openai` with both governed Bedrock retrievers. Local live-model tests can use the packaged local-document retrievers below.
 
 For live local coaching, put these values in the ignored `.env`, alongside a private `OPENAI_API_KEY`, then rebuild/restart Compose:
 
@@ -131,7 +133,7 @@ MODEL_PROVIDER=openai
 RAG_PROVIDER=local_documents
 EDUCATION_CORPUS_VERSION=investment-education-sg@2026-09-27.2
 POLICY_RAG_PROVIDER=local_documents
-POLICY_CORPUS_VERSION=financial-coach-policy-sg@2026-08-29.1
+POLICY_CORPUS_VERSION=financial-coach-policy-sg@2026-10-09.1
 ```
 
 `MODEL_ROLE_OVERRIDES` accepts a JSON map keyed by prompt role, with optional `model_id`, `reasoning_effort`, and `max_tokens`. The example and AWS template give writers more output room than routing. OpenAI receives a schema on the initial request, and traces distinguish reasoning tokens, output limits, refusals, and invalid contracts. OpenAI reasoning calls do not use the application's temperature setting. See [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for regression coverage and remaining live validation.
@@ -155,11 +157,11 @@ streamlit run app.py --server.port 8501
 
 ## CI/CD And LLMSecOps
 
-Spending, Budget, Goal, Investment and Risk & Compliance have reusable offline test workflows that execute their owned tests. CI calls all five for AI checks and application releases, runs the remaining AI tests separately, and requires the agents to pass before container builds. A shared selection manifest prevents duplicate execution and validates coverage. Each Agent workflow also supports manual runs and publishes JUnit/Markdown evidence. The [agent workflow guide](docs/agent-test-workflows.md) maps every job to its test files and explains the CI-to-AWS release gate and separate live evaluations.
+One reusable **Agent and RAG Evaluations** workflow contains seven component suites: Orchestrator, Spending, Budget, Goal, Investment, Risk & Compliance, and RAG. CI requires their offline checks and runs remaining AI tests separately. A shared selection manifest prevents duplicate execution and validates coverage. Manual dispatch offers a yes/no live-test choice, defaulting to no. Optional live failures are reported but do not block deployment. Reports include datasets, expected outputs, metrics, criteria and per-case evidence; fixture responses are identified separately from live model responses. The [agent workflow guide](docs/agent-test-workflows.md) maps every job to its test files and explains the CI-to-AWS release gate and separate live evaluations.
 
-CI also calls the [Project OWASP Security Scan](docs/project-security-scan.md) before building release containers. Its Promptfoo cases cover the agents and router; backend/frontend tests run once in their service CI jobs. One **RAG Source Governance** workflow checks both packaged corpora weekly. The historical model-comparison notice and duplicate Policy-only governance workflow have been retired. Manual Budget Live Acceptance, AWS Operational Validation and Final Assessment remain available for their separate evidence purposes.
+CI also calls the [Project OWASP Security Scan](docs/project-security-scan.md) before building release containers. Its Promptfoo cases cover the agents and router; backend/frontend tests run once in their service CI jobs. One **RAG Source Governance** workflow checks both packaged corpora weekly. The historical model-comparison notice and duplicate Policy-only governance workflow have been retired. The separate Budget and Investment live workflows have been consolidated into Agent and RAG Evaluations. AWS Operational Validation, Final Assessment and opt-in Model Drift Monitoring retain their separate operational evidence purposes.
 
-GitHub Actions detects affected services, runs their Python tests and security gates, and builds only their containers. Backend or AI changes also run the cross-service integration and load smoke tests. Docs-only pushes and pull requests do not start CI. Successful push CI for the current `main` SHA automatically starts `Release to AWS`. An application release publishes and deploys all three service images from that SHA, including the backend migration check: after a failed release rolls back, a later push diff alone cannot identify earlier fixes still missing from AWS. A separate weekly/manual workflow records privacy-safe live OpenAI/RAG, governed data-lifecycle retention, load, scaling, and CloudWatch evidence. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
+GitHub Actions detects affected services, runs their Python tests and security gates, and builds only their containers. Backend or AI changes also run the cross-service integration and load smoke tests. Changes confined to `docs/**` do not start CI; Markdown elsewhere follows the workflow’s normal path classification. Successful push CI for the current `main` SHA automatically starts `Release to AWS`. An application release publishes and deploys all three service images from that SHA, including the backend migration check: after a failed release rolls back, a later push diff alone cannot identify earlier fixes still missing from AWS. A separate weekly/manual workflow records privacy-safe live OpenAI/RAG, governed data-lifecycle retention, load, scaling, and CloudWatch evidence. Setup requirements and private-repository plan limitations are documented in `docs/cicd-pipeline.md`.
 
 ## Evaluation
 
@@ -171,7 +173,7 @@ python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --outpu
 
 Use only synthetic financial profiles in the current demo. The production-readiness exclusions and AWS go/no-go sequence are documented in `infra/aws/README.md`.
 
-Evaluation policy v7 enforces all 80 cases/pairs conjunctively across routing, dynamic agent/tool
+Evaluation policy v8 enforces all 120 cases/pairs conjunctively across routing, dynamic agent/tool
 dependencies, direct and conditional Education RAG, Policy RAG, deterministic guardrails,
 regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,

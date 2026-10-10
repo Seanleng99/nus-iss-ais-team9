@@ -40,17 +40,19 @@ fields @timestamp, service, event, event_type, method, caller_method, span_id, p
 | Backend signature and ownership checks | `require_principal` → `OidcTokenVerifier.verify` → `enforce_user_access` | Authentication type, acceptance or rejection, method failure type |
 | Submit chat | `ui.pages.coach_page` → `client.build_request` → `BackendClient.ask_coach` → `BackendClient._request` | Request ID, sanitized route, question length |
 | Prepare backend request | `app.api.routes.coach` → `SQLAlchemyUserRepository.get_financial_snapshot` | Whether a persisted snapshot was found; no amounts or account details |
-| Call AI service | `AIServiceClient.coach` → AI middleware → `app.main.coach` | Shared request ID, cross-service parent span, HTTP status |
-| Dispatch workflow | `AgentOrchestrator.handle` → `_guard_input` → `_route` → `_run_ready_tasks` → `_execute_task` | Safety checks, selected agents, task IDs, parallel execution, dependencies and retries |
+| Call AI service | `AIServiceClient.coach` → `_stream` → AI middleware → `app.main.coach_stream` | Shared request ID, cross-service parent span, HTTP status |
+| Dispatch workflow | `AgentOrchestrator.handle` → `_guard_input` → `_resolve_follow_up` → `_route` → `_run_ready_tasks` → `_execute_task` | Safety checks, selected agents, task IDs, parallel execution, dependencies and retries |
 | Investment education | `BaseAgent.run_task` → `InvestmentEducationAgent._ground` → `build_education_context` | Evidence sufficiency, result count, response language |
 | Retrieval | `RequestScopedEducationRetriever.retrieve` → `BedrockEducationRetriever.retrieve` → `_retrieve` | Cache hit, knowledge base and version, retrieved/accepted/rejected counts |
-| Model response | `generate_structured_response` → `TracingModelGateway.generate` → `BedrockModelGateway.generate` → `parse_structured_response` | Model, calling component, input/output lengths, token counts, response type, validation and correction retries |
+| Model response | `generate_structured_response` → `TracingModelGateway.generate` → `OpenAIModelGateway.generate` (OpenAI Responses API) → `parse_structured_response` | Model, calling component, input/output lengths, token counts, response type, validation and correction retries |
 | Synthesis | `AgentOrchestrator._synthesize` | `synthesis.strategy` distinguishes direct education-agent answers, clarification questions and model synthesis |
 | Independent compliance check | `_review_compliance` → `RiskComplianceAgent.validate` → Policy RAG/model | Independent policy evidence, acceptance or refusal |
-| AI response packaging | `_finalize` → AI `coach.response.ready` | `CoachResponse` field names, source count, final status, answer length |
+| AI response packaging | `_finalize` → validated streamed response; legacy `/coach` also emits AI `coach.response.ready` | `CoachResponse` field names, source count, final status, answer length |
 | Backend packaging and persistence | `AIServiceClient.coach` → `CoachResponse.model_validate` → chat/audit repositories → `Session.commit` | Validation, safety filtering, persistence completion, final response structure |
 | Read saved answer | `get_chat_session` → `SQLAlchemyChatRepository.get` → `_chat_session_response` → `_message_explanation` | Chat history and explanation packaging, historical-content safety filtering |
 | Frontend display | `BackendClient._request` → `ui.pages._render_coach_message` → `_render_coach_explanation` | Response receipt, JSON unpacking, matching `coach.response_rendered` event |
+
+The normal backend path uses `/coach/stream` to persist decision events incrementally; direct clients without an active durable run can still use `/coach`. The backend emits the final `coach.response.ready` event after packaging and persistence.
 
 Model and retrieval calls may be skipped after a safety refusal, insufficient evidence, a cache hit or direct use of a specialist answer. These skips are part of the actual execution path and do not indicate missing logs.
 

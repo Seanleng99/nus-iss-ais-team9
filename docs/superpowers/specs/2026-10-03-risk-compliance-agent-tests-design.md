@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-03
 - **Owner:** Sky (Risk & Compliance Agent)
-- **Status:** Approved 2026-10-03; updated after implementation probe
+- **Status:** Historical design, approved 2026-10-03 and updated after the implementation probe. The workflow was added on 2026-10-03 and removed on 2026-10-10 when agent evaluations were consolidated; this spec records the original design, not an active workflow.
 
 ## Goal
 

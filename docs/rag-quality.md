@@ -13,7 +13,7 @@ fresh live evidence.
 `knowledge/investment_education/documents/` contains six saved source documents
 and four project-written educational summaries based on linked MoneySense pages.
 The manifest records `content_kind` so a summary is not presented as publisher text.
-The deployed `local_documents`
+The local `local_documents`
 provider verifies the manifest, freshness, exact checksums, trusted locations,
 metadata, content safety, and symlink containment before indexing. It rechecks review
 deadlines on retrieval. Restart after approved corpus updates: the index is a startup
@@ -35,8 +35,7 @@ EDUCATION_CORPUS_VERSION=investment-education-sg@2026-09-27.2
 
 `RAG_MANIFEST_PATH` and `RAG_DOCUMENTS_PATH` support governed files outside a checkout.
 The configured corpus version must match the manifest. Generation is separately
-controlled by `MODEL_PROVIDER`; fixture answers are not quality evidence. Deployment
-environments require real OpenAI generation and both local document retrievers.
+controlled by `MODEL_PROVIDER`; fixture answers are not quality evidence. AWS release uses real OpenAI generation and both Bedrock retrievers; local live-model tests may use both local-document providers.
 
 ## Answer provenance
 
@@ -75,7 +74,7 @@ python -m app.evals.rag_evidence \
 
 Acceptance requires at least 99% passage recall@3 and complete-case accuracy,
 including each language and represented status category; 100% correct scope; and
-bounded context. The original policy v7 / 80-case evaluation remains unchanged.
+bounded context. The separate current policy v8 gate covers 120 cases/pairs across nine datasets.
 CI runs both and retains separate reports.
 
 There are 84 development cases and 16 initially held-out cases, split by evidence
@@ -103,8 +102,7 @@ passage ranking before returning the top three raised the fresh real-Bedrock run
 model context unless selected. The candidate pool and final context stay bounded.
 These are regression results on the same frozen benchmark, not an independent holdout.
 
-For answer capture, configure `MODEL_PROVIDER=bedrock`, `RAG_PROVIDER=bedrock`,
-`POLICY_RAG_PROVIDER=bedrock` and both approved KB IDs/pins. The evaluator uses the
+The legacy answer-review harness has two explicit profiles: `bedrock` (Bedrock generation and retrieval, default model `apac.amazon.nova-lite-v1:0`) and `openai_local` (GPT-6 Luna with both local-document retrievers). Neither profile is the current deployed OpenAI-plus-Bedrock combination; use the RAG live job in [Agent and RAG Evaluations](agent-test-workflows.md) for that integration. To reproduce the legacy capture below, use `APP_ENV=local`, `MODEL_PROVIDER=bedrock`, `MODEL_ID=apac.amazon.nova-lite-v1:0`, both Bedrock retrievers and approved KB IDs/pins. The evaluator uses the
 packaged [current prompt contract](current-prompt-contract.md); omit
 `PROMPT_SET_VERSION` or supply its manifest release as a deployment assertion:
 
@@ -142,9 +140,11 @@ independent scrutiny; boolean scores are not semantic proof. These artifacts con
 only synthetic benchmark questions, public passages, and generated test responses;
 never use this capture flow with personal customer data.
 
-## Current release decision
+## Historical answer-quality decisions and results
 
-AWS authentication was restored on 2026-09-14. Real passage retrieval now passes,
+The current packaged prompt release is v10; the dated observations below remain historical and do not describe today’s deployed state.
+
+AWS authentication was restored on 2026-09-14. That real passage retrieval run passed,
 but generated-answer acceptance is **not passed**. Preserved bilingual pilots exposed
 unsupported fee generalization between CPFIS and general ETFs, reserves translated
 as deposits, limits transferred between accounts, missing citations, and false
@@ -152,7 +152,7 @@ safety blocks. A stronger APAC Nova Pro pilot also produced unsupported claims a
 citation errors. Neither pilot establishes generated-answer acceptance or approval
 for production financial use.
 
-As of 6 October, the running application accepts only v8; see [combined Education recovery](combined-education-recovery.md). The v7 evaluation candidate and v6 historical benchmark remain archived. At the earlier recovery check, the demo was still running v5. The v7 candidate sets the
+As recorded on 6 October, that application revision accepted only v8; see [combined Education recovery](combined-education-recovery.md). The v7 evaluation candidate and v6 historical benchmark remain archived. At the earlier recovery check, the demo was still running v5. The v7 candidate sets the
 requested language explicitly, uses literal Unicode through policy review, retains
 a single education specialist's answer without a second generation, and requires
 a summary citation with at most one bounded contract correction. Policy review,

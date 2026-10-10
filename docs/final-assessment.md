@@ -2,7 +2,7 @@
 
 ## Assessment Position
 
-The implemented system is ready for final assessment as a synthetic-data AWS demonstration. The assessment claim is deliberately narrower than a production-readiness claim: it demonstrates multi-agent orchestration, governed retrieval, responsible-AI controls, identity isolation, traceability, evaluation, CI/CD, and AWS operation without accepting real personal financial data or executing financial transactions.
+This package describes the system for final assessment as a synthetic-data AWS demonstration. The assessment claim is deliberately narrower than a production-readiness claim: it demonstrates multi-agent orchestration, governed retrieval, responsible-AI controls, identity isolation, traceability, evaluation, CI/CD, and AWS operation without accepting real personal financial data or executing financial transactions. Current live acceptance remains subject to the assessment gates below.
 
 The machine-readable evidence map is `infra/llmsecops/final-assessment-manifest.json`. `infra/scripts/final_assessment.py` fails when a required assessment area, demonstration scenario, scope decision, or referenced evidence file is absent. A passing report inventories every referenced file with a SHA-256 digest without copying prompts, credentials, personal data, or financial records into the artifact.
 
@@ -31,9 +31,11 @@ flowchart LR
 
   EducationKB["Governed Education Knowledge Base"] -->|"Role-allowed evidence"| Scheduler
   PolicyKB["Separate Policy Knowledge Base"] -->|"Compliance-only evidence"| Compliance
-  Router -.->|"Nova Lite APAC profile"| Bedrock["Amazon Bedrock"]
-  Synthesis -.-> Bedrock
-  Compliance -.-> Bedrock
+  Router -.->|"OpenAI GPT-6 Luna"| OpenAI["OpenAI Responses API"]
+  Synthesis -.-> OpenAI
+  Compliance -.-> OpenAI
+  EducationKB -.->|"Bedrock retrieval"| Bedrock["Amazon Bedrock"]
+  PolicyKB -.->|"Bedrock retrieval"| Bedrock
   Compliance -->|"Approved or blocked response"| Backend
   Backend --> Trace["Owner-scoped privacy-safe trace"]
   Backend --> UI

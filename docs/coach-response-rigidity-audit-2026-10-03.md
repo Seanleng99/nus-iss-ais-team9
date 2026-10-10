@@ -2,6 +2,8 @@
 
 Date: 3 October 2026 (Asia/Singapore)
 
+Historical findings and reproductions below describe the repository and checks as of 3 October 2026; they are not claims about current behavior. Source links use current repository-relative paths without line anchors so they remain navigable as files move.
+
 The strongest evidence points to application behavior around the model: premature local replies, lost context, forced routing, missing data, restrictive specialist preflight, and replacement of generated answers. Model configuration is a contributing design constraint, but changing the model or increasing temperature will leave the reproduced failures intact.
 
 ## Scope and evidence
@@ -28,7 +30,7 @@ No application code was modified. Only this report was added.
 
 “Am I on track to reach my emergency fund goal?” returned the canned instruction to add monthly income on Profile plus recorded spending of SGD 0.00, with no AI call. Adding a word such as “review” changes routing because another regex excludes it. The question is about goal feasibility, but the selected response is a spending-status template.
 
-Evidence: [budget_alert.py:19](C:/ai-financial-wellness-coach/apps/backend/app/services/budget_alert.py:19), [routes.py:185](C:/ai-financial-wellness-coach/apps/backend/app/api/routes.py:185).
+Evidence: [`budget_alert.py`](../apps/backend/app/services/budget_alert.py), [`routes.py`](../apps/backend/app/api/routes.py).
 
 Change direction: require explicit or context-resolved budget intent. Deterministic computation can remain authoritative; phrase occurrence should not determine the conversational subject.
 
@@ -38,7 +40,7 @@ Change direction: require explicit or context-resolved budget intent. Determinis
 
 When the scripted router chose education only with all capture flags false, “Explain bonds” still added goal/budget capture if a corresponding draft existed. “What is cash flow?” and “What does a bill mean?” forced budget capture. Extractors may subsequently reject an unrelated operation, so this proves extra work and context contamination, not an unauthorized save.
 
-Evidence: [orchestrator.py:553](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:553), [orchestrator.py:564](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:564), [orchestrator.py:568](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:568).
+Evidence: [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py).
 
 Change direction: constrain authorization and ownership deterministically; resolve whether the current turn continues a draft semantically. Keep an unrelated draft available without making it the active task.
 
@@ -52,7 +54,7 @@ Change direction: constrain authorization and ownership deterministically; resol
 
 Draft extraction and some education/emergency-fund routes can bypass these checks; the defect is the intent-insensitive preflight on the normal narrative path.
 
-Evidence: [base.py:354](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/base.py:354), [budget.py:146](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/budget.py:146), [goal_strategy.py:112](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/goal_strategy.py:112), [base.py:113](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/base.py:113).
+Evidence: [`base.py`](../apps/ai-service/app/agents/base.py), [`budget.py`](../apps/ai-service/app/agents/budget.py), [`goal_strategy.py`](../apps/ai-service/app/agents/goal_strategy.py), [`base.py`](../apps/ai-service/app/agents/base.py).
 
 Change direction: distinguish explanation, hypothetical calculation, analysis of saved records, and proposed mutation. Permit labeled hypothetical calculations from validated user-provided inputs without treating them as saved facts.
 
@@ -60,7 +62,7 @@ Change direction: distinguish explanation, hypothetical calculation, analysis of
 
 **Reproduced.** “Explain the second option” resolves when the previous answer uses contiguous numbered lines, but returns `ambiguous/MISSING_ORDERED_OPTIONS` after equivalent bullets or a table. The deterministic result overrides the semantic router and stops the writer before it can interpret the dialogue.
 
-Evidence: [follow_up.py:223](C:/ai-financial-wellness-coach/apps/ai-service/app/core/follow_up.py:223), [orchestrator.py:602](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:602), [base.py:70](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/base.py:70).
+Evidence: [`follow_up.py`](../apps/ai-service/app/core/follow_up.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`base.py`](../apps/ai-service/app/agents/base.py).
 
 Change direction: persist referenceable subjects/options as structured conversational metadata, with a bounded semantic resolution fallback. The user's meaning should survive changing bullets into a table.
 
@@ -70,7 +72,7 @@ Change direction: persist referenceable subjects/options as structured conversat
 
 After “How am I doing?” followed by “Please explain that status”, the model received “The previous answer is unavailable or was withheld. Ask for clarification.” instead of the actual status. Confirmations, recalls, forecasts and transaction edits have the same provenance problem.
 
-Evidence: [routes.py:336](C:/ai-financial-wellness-coach/apps/backend/app/api/routes.py:336), [repositories.py:944](C:/ai-financial-wellness-coach/apps/backend/app/infrastructure/repositories.py:944), [conversation_summary.py:64](C:/ai-financial-wellness-coach/apps/backend/app/services/conversation_summary.py:64).
+Evidence: [`routes.py`](../apps/backend/app/api/routes.py), [`repositories.py`](../apps/backend/app/infrastructure/repositories.py), [`conversation_summary.py`](../apps/backend/app/services/conversation_summary.py).
 
 Change direction: persist explicit provenance for validated deterministic replies. A response without model evidence is different from a withheld response.
 
@@ -80,7 +82,7 @@ Change direction: persist explicit provenance for validated deterministic replie
 
 Recent context contains eight messages, each cut at 1,500 characters. Older memory keeps six notes with the first 240 user characters and 160 assistant characters, reserving at most two preference/objective slots. Later options, decisions, qualifications and preferences can disappear while remaining visible to the user. Pending fields are also inferred by scanning assistant question prose.
 
-Evidence: [session_context.py:112](C:/ai-financial-wellness-coach/apps/backend/app/services/session_context.py:112), [session_context.py:230](C:/ai-financial-wellness-coach/apps/backend/app/services/session_context.py:230), [repositories.py:938](C:/ai-financial-wellness-coach/apps/backend/app/infrastructure/repositories.py:938), [conversation_summary.py:94](C:/ai-financial-wellness-coach/apps/backend/app/services/conversation_summary.py:94).
+Evidence: [`session_context.py`](../apps/backend/app/services/session_context.py), [`session_context.py`](../apps/backend/app/services/session_context.py), [`repositories.py`](../apps/backend/app/infrastructure/repositories.py), [`conversation_summary.py`](../apps/backend/app/services/conversation_summary.py).
 
 Change direction: extract attributed, uncertainty-aware facts into typed fields; carry pending-field IDs directly. Use a token budget and structured decisions/preferences/options, and retrieve older turns when referenced.
 
@@ -90,7 +92,7 @@ Change direction: extract attributed, uncertainty-aware facts into typed fields;
 
 A snapshot marked beginner, shorter/plain-language responses, weekly income and variable stability produced tasks containing none of those fields for any specialist. Changing these saved settings cannot influence normal Coach wording or reasoning through the profile path; a user must restate them in retained dialogue.
 
-Evidence: [pages.py:1409](C:/ai-financial-wellness-coach/apps/frontend/ui/pages.py:1409), [repositories.py:508](C:/ai-financial-wellness-coach/apps/backend/app/infrastructure/repositories.py:508), [orchestrator.py:442](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:442), [orchestrator.py:1770](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:1770), [schemas.py:244](C:/ai-financial-wellness-coach/apps/ai-service/app/core/schemas.py:244).
+Evidence: [`pages.py`](../apps/frontend/ui/pages.py), [`repositories.py`](../apps/backend/app/infrastructure/repositories.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`schemas.py`](../apps/ai-service/app/core/schemas.py).
 
 Change direction: pass a minimal allowed coaching-preferences object to relevant writers and financial-context fields to appropriate tools. Make saved settings have an observable effect.
 
@@ -102,7 +104,7 @@ With August SGD 100, September SGD 300 and a September analysis period, the spec
 
 Separately, the backend snapshot labels up to 500 records across all dates as `recent_transactions`, with no period or completeness metadata; recurring expenses are taken from the same bounded list. This can mix periods and silently omit data.
 
-Evidence: [orchestrator.py:1772](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:1772), [schemas.py:245](C:/ai-financial-wellness-coach/apps/ai-service/app/core/schemas.py:245), [spending.py:61](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/spending.py:61), [repositories.py:489](C:/ai-financial-wellness-coach/apps/backend/app/infrastructure/repositories.py:489), [repositories.py:629](C:/ai-financial-wellness-coach/apps/backend/app/infrastructure/repositories.py:629).
+Evidence: [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`schemas.py`](../apps/ai-service/app/core/schemas.py), [`spending.py`](../apps/ai-service/app/agents/spending.py), [`repositories.py`](../apps/backend/app/infrastructure/repositories.py), [`repositories.py`](../apps/backend/app/infrastructure/repositories.py).
 
 Change direction: provide an explicit analysis period, historical window, as-of date and completeness indicators; query the appropriate owned data rather than relying on an implicitly bounded list.
 
@@ -119,7 +121,7 @@ Change direction: provide an explicit analysis period, historical window, as-of 
 
 October analysis returned current SGD 150, previous SGD 10, **+1,400%**. Complete calendar-month October versus September is SGD 100 versus SGD 110, about **−9.1%**. The same bug exists in backend and AI-service copies.
 
-Evidence: [AI spending_analyzer.py:324](C:/ai-financial-wellness-coach/apps/ai-service/app/tools/spending_analyzer.py:324), [backend spending_analyzer.py:310](C:/ai-financial-wellness-coach/apps/backend/app/services/spending_analyzer.py:310).
+Evidence: [`spending_analyzer.py`](../apps/ai-service/app/tools/spending_analyzer.py), [`spending_analyzer.py`](../apps/backend/app/services/spending_analyzer.py).
 
 Change direction: use explicit calendar boundaries and distinguish month-to-date from completed-month comparisons. Share the calculation implementation.
 
@@ -129,7 +131,7 @@ Change direction: use explicit calendar boundaries and distinguish month-to-date
 
 Trend thresholds, the 29% weekend baseline, and fixed 0.85/0.75 confidence scores are heuristics rather than validated personal or population estimates. They are delivered as facts to the writer.
 
-Evidence: [spending_analyzer.py:128](C:/ai-financial-wellness-coach/apps/ai-service/app/tools/spending_analyzer.py:128), [spending_analyzer.py:260](C:/ai-financial-wellness-coach/apps/ai-service/app/tools/spending_analyzer.py:260), [spending.py:133](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/spending.py:133).
+Evidence: [`spending_analyzer.py`](../apps/ai-service/app/tools/spending_analyzer.py), [`spending_analyzer.py`](../apps/ai-service/app/tools/spending_analyzer.py), [`spending.py`](../apps/ai-service/app/agents/spending.py).
 
 Change direction: distinguish descriptive totals from supported patterns; require sample/coverage criteria and label heuristic flags. Avoid converting fixed constants into apparent statistical certainty.
 
@@ -139,7 +141,7 @@ Change direction: distinguish descriptive totals from supported patterns; requir
 
 January SGD 10, September SGD 20 and October SGD 30 yielded “this year” = SGD 10. A week spanning 28 September–4 October yielded SGD 20 instead of SGD 50. Filtering the returned rows afterward cannot restore excluded records.
 
-Evidence: [transaction_staging.py:115](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_staging.py:115), [repositories.py:621](C:/ai-financial-wellness-coach/apps/backend/app/infrastructure/repositories.py:621).
+Evidence: [`transaction_staging.py`](../apps/backend/app/services/transaction_staging.py), [`repositories.py`](../apps/backend/app/infrastructure/repositories.py).
 
 Change direction: query explicit start/end boundaries and aggregate complete results in storage. The repository already has a date-range method.
 
@@ -149,7 +151,7 @@ Change direction: query explicit start/end boundaries and aggregate complete res
 
 Period matching supports a small `this|last` × `month|week|year` grammar. Unresolved broad questions can become “Which day should I look up?” even when the requested analysis is not a single-day lookup.
 
-Evidence: [spending_capture.py:71](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/spending_capture.py:71), [transaction_staging.py:71](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_staging.py:71), [transaction_staging.py:104](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_staging.py:104).
+Evidence: [`spending_capture.py`](../apps/ai-service/app/agents/spending_capture.py), [`transaction_staging.py`](../apps/backend/app/services/transaction_staging.py), [`transaction_staging.py`](../apps/backend/app/services/transaction_staging.py).
 
 Change direction: extract a typed owned-data query with filters, date boundaries and requested output/analysis. Ask only for genuinely unresolved fields.
 
@@ -159,7 +161,7 @@ Change direction: extract a typed owned-data query with filters, date boundaries
 
 Prefix-token deduplication can also merge `Netflix` and `Netflix premium for family` without a stable obligation identity.
 
-Evidence: [recurring_forecast.py:54](C:/ai-financial-wellness-coach/apps/backend/app/services/recurring_forecast.py:54), [recurring_forecast.py:60](C:/ai-financial-wellness-coach/apps/backend/app/services/recurring_forecast.py:60), [recurring_forecast.py:86](C:/ai-financial-wellness-coach/apps/backend/app/services/recurring_forecast.py:86), [recurring_forecast.py:113](C:/ai-financial-wellness-coach/apps/backend/app/services/recurring_forecast.py:113).
+Evidence: [`recurring_forecast.py`](../apps/backend/app/services/recurring_forecast.py), [`recurring_forecast.py`](../apps/backend/app/services/recurring_forecast.py), [`recurring_forecast.py`](../apps/backend/app/services/recurring_forecast.py), [`recurring_forecast.py`](../apps/backend/app/services/recurring_forecast.py).
 
 Change direction: use expense-only obligations with cadence, due dates and stable identities. Clarify ambiguous cadence/duplicates instead of assuming monthly recurrence or silently merging names.
 
@@ -169,7 +171,7 @@ Change direction: use expense-only obligations with cadence, due dates and stabl
 
 This is an action-integrity defect beyond response style: confirmation is detached from the conversation that displayed the proposal.
 
-Evidence: [transaction_capture.py:405](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_capture.py:405), [transaction_capture.py:452](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_capture.py:452), [transaction_capture.py:1220](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_capture.py:1220).
+Evidence: [`transaction_capture.py`](../apps/backend/app/services/transaction_capture.py), [`transaction_capture.py`](../apps/backend/app/services/transaction_capture.py), [`transaction_capture.py`](../apps/backend/app/services/transaction_capture.py).
 
 Change direction: persist pending actions and last-saved pointers per chat and bind confirmation to an exact proposal/revision.
 
@@ -179,7 +181,7 @@ Change direction: persist pending actions and last-saved pointers per chat and b
 
 A `zh-Hans` request returned “Saved: Lunch for SGD 5.00 on 2 Oct 2026 under Food.” while its audit still reported `zh-Hans`. Localization on the separate local-return path does not cover these post-AI replacements.
 
-Evidence: [routes.py:245](C:/ai-financial-wellness-coach/apps/backend/app/api/routes.py:245), [transaction_staging.py:397](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_staging.py:397), [goal_capture.py:178](C:/ai-financial-wellness-coach/apps/backend/app/services/goal_capture.py:178), [budget_capture.py:253](C:/ai-financial-wellness-coach/apps/backend/app/services/budget_capture.py:253).
+Evidence: [`routes.py`](../apps/backend/app/api/routes.py), [`transaction_staging.py`](../apps/backend/app/services/transaction_staging.py), [`goal_capture.py`](../apps/backend/app/services/goal_capture.py), [`budget_capture.py`](../apps/backend/app/services/budget_capture.py).
 
 Change direction: return structured validated action/query outcomes, then compose and localize the user-facing reply once. Keep write confirmation and verified amounts authoritative.
 
@@ -189,7 +191,7 @@ Change direction: return structured validated action/query outcomes, then compos
 
 The synthesis payload carries summaries/rationales, not full conversation or calculation data, and forbids new explanations/examples. Some paths concatenate clarification templates or directly reuse specialist prose, so the last stage cannot reliably repair an unsuitable response structure.
 
-Evidence: [spending.py:171](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/spending.py:171), [spending.py:182](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/spending.py:182), [orchestrator.py:1382](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:1382), [orchestrator.py:1429](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:1429).
+Evidence: [`spending.py`](../apps/ai-service/app/agents/spending.py), [`spending.py`](../apps/ai-service/app/agents/spending.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py).
 
 Change direction: choose response depth from the request and preferences. Remove unsourced population benchmarks. Allow a final composer to adapt wording while preserving verified facts and evidence boundaries.
 
@@ -197,7 +199,7 @@ Change direction: choose response depth from the request and preferences. Remove
 
 **Code-confirmed.** The v6 Spending prompt tells the model that spending statements are saved automatically; actual capture returns an unsaved draft requiring backend preview/confirmation. v7 retains the automatic-save language.
 
-Evidence: [v6/prompts.json:4](C:/ai-financial-wellness-coach/apps/ai-service/prompts/v6/prompts.json:4), [spending.py:33](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/spending.py:33).
+Evidence: historical source `apps/ai-service/prompts/v6/prompts.json` (no longer present at this checkout; see repository history), plus current [`spending.py`](../apps/ai-service/app/agents/spending.py). The current catalog is [`manifest.json`](../apps/ai-service/prompts/current/manifest.json); it is not cited as evidence for the historical v6 prompt text.
 
 Change direction: describe exactly which actions are proposed, confirmed and saved. Generate user-facing state from backend outcomes, not contradictory prompt prose.
 
@@ -207,7 +209,7 @@ Change direction: describe exactly which actions are proposed, confirmed and sav
 
 Profile options include Malay and Tamil, but supported response locales are only English and Simplified Chinese. Unsupported saved preferences fall back; the UI does disclose the workspace-language rule. Existing tests explicitly protect the language lock, so this is a product-policy gap rather than an accidental model failure.
 
-Evidence: [coach_i18n/__init__.py:42](C:/ai-financial-wellness-coach/apps/shared/coach_i18n/__init__.py:42), [coach_language.py:14](C:/ai-financial-wellness-coach/apps/frontend/ui/coach_language.py:14), [pages.py:1266](C:/ai-financial-wellness-coach/apps/frontend/ui/pages.py:1266), [base.py:249](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/base.py:249), [test_coach_language.py:164](C:/ai-financial-wellness-coach/apps/frontend/tests/test_coach_language.py:164).
+Evidence: [`__init__.py`](../apps/shared/coach_i18n/__init__.py), [`coach_language.py`](../apps/frontend/ui/coach_language.py), [`pages.py`](../apps/frontend/ui/pages.py), [`base.py`](../apps/ai-service/app/agents/base.py), [`test_coach_language.py`](../apps/frontend/tests/test_coach_language.py).
 
 Change direction: make explicit current-turn language requests a supported preference, synchronize the selector, and clearly scope unsupported languages.
 
@@ -221,7 +223,7 @@ Change direction: make explicit current-turn language requests a supported prefe
 
 The same inspection is applied to generated prose, so an otherwise helpful fraud-prevention explanation can also be withheld.
 
-Evidence: [guardrails.py:22](C:/ai-financial-wellness-coach/apps/ai-service/app/core/guardrails.py:22), [guardrails.py:94](C:/ai-financial-wellness-coach/apps/ai-service/app/core/guardrails.py:94), [risk_compliance.py:554](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/risk_compliance.py:554).
+Evidence: [`guardrails.py`](../apps/ai-service/app/core/guardrails.py), [`guardrails.py`](../apps/ai-service/app/core/guardrails.py), [`risk_compliance.py`](../apps/ai-service/app/agents/risk_compliance.py).
 
 Change direction: distinguish credential disclosure/exfiltration or instruction override from ordinary metaphors, quotations and security education. Preserve strict controls for actual prohibited actions.
 
@@ -231,7 +233,7 @@ Change direction: distinguish credential disclosure/exfiltration or instruction 
 
 “You should put your monthly savings into an emergency fund.” matches `regulated_advice:personalized_allocation`, despite containing no investment-product allocation. That category is not one of the ambiguous findings eligible for contextual language review.
 
-Evidence: [risk_compliance.py:154](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/risk_compliance.py:154), [risk_compliance.py:78](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/risk_compliance.py:78), [risk_compliance.py:211](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/risk_compliance.py:211), [risk_compliance.py:579](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/risk_compliance.py:579).
+Evidence: [`risk_compliance.py`](../apps/ai-service/app/agents/risk_compliance.py), [`risk_compliance.py`](../apps/ai-service/app/agents/risk_compliance.py), [`risk_compliance.py`](../apps/ai-service/app/agents/risk_compliance.py), [`risk_compliance.py`](../apps/ai-service/app/agents/risk_compliance.py).
 
 Change direction: require actual data-access intent for cross-user blocking; distinguish ordinary savings/budget coaching from personal investment-product instructions.
 
@@ -241,7 +243,7 @@ Change direction: require actual data-access intent for cross-user blocking; dis
 
 Fallback category matching labels `baggage fee` as shopping (`bag`) and `business insurance` as transport (`bus`). This fallback is used when extraction supplies no category, so it does not affect every transaction.
 
-Evidence: [guardrails.py:13](C:/ai-financial-wellness-coach/apps/ai-service/app/core/guardrails.py:13), [transaction_capture.py:523](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_capture.py:523).
+Evidence: [`guardrails.py`](../apps/ai-service/app/core/guardrails.py), [`transaction_capture.py`](../apps/backend/app/services/transaction_capture.py).
 
 Change direction: distinguish typed monetary values from identifiers before redaction; use word boundaries or a validated category classifier with uncertainty.
 
@@ -253,7 +255,7 @@ The semantic router does explicitly recognize paraphrases and may supply a canon
 
 Deployed retrieval is a lexical baseline using ASCII word tokens, stemming and a small synonym list. “What is the difference between an accumulating and a distributing ETF?” becomes an ETF-only retrieval query; “What are the current fixed deposit rates?” becomes fixed-deposit-only. Specific distinctions/time intent are absent from search. Raw Chinese produces no lexical tokens; current canonical English queries compensate for this, so Chinese tokenization is a constraint rather than a demonstrated failure of every Chinese request.
 
-Evidence: [education_access.py:108](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/education_access.py:108), [education_access.py:242](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/education_access.py:242), [orchestrator.py:494](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:494), [ranking.py:39](C:/ai-financial-wellness-coach/apps/ai-service/app/rag/ranking.py:39), [local_documents.py:104](C:/ai-financial-wellness-coach/apps/ai-service/app/rag/local_documents.py:104).
+Evidence: [`education_access.py`](../apps/ai-service/app/agents/education_access.py), [`education_access.py`](../apps/ai-service/app/agents/education_access.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`ranking.py`](../apps/ai-service/app/rag/ranking.py), [`local_documents.py`](../apps/ai-service/app/rag/local_documents.py).
 
 Change direction: preserve sanitized semantic distinctions and question intent in retrieval queries; evaluate retrieval on paraphrases and subtopic comparisons. Keep personal identifiers out of queries and maintain source governance.
 
@@ -263,7 +265,7 @@ Change direction: preserve sanitized semantic distinctions and question intent i
 
 Fine-grained coverage checking is limited to a fixed topic subset and detects terms in passages rather than validating whether the passage answers the requested distinction. Thus “grounded” primarily describes accepted context/provenance, not a demonstrated complete answer.
 
-Evidence: [local_documents.py:60](C:/ai-financial-wellness-coach/apps/ai-service/app/rag/local_documents.py:60), [local_documents.py:137](C:/ai-financial-wellness-coach/apps/ai-service/app/rag/local_documents.py:137), [retriever.py:91](C:/ai-financial-wellness-coach/apps/ai-service/app/rag/retriever.py:91), [retriever.py:150](C:/ai-financial-wellness-coach/apps/ai-service/app/rag/retriever.py:150), [education_access.py:176](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/education_access.py:176).
+Evidence: [`local_documents.py`](../apps/ai-service/app/rag/local_documents.py), [`local_documents.py`](../apps/ai-service/app/rag/local_documents.py), [`retriever.py`](../apps/ai-service/app/rag/retriever.py), [`retriever.py`](../apps/ai-service/app/rag/retriever.py), [`education_access.py`](../apps/ai-service/app/agents/education_access.py).
 
 Change direction: budget relevant passages by requested subquestion using tokens, preserve list/table structure, and distinguish provenance success from coverage/answerability. Measure these changes against the existing governed corpus.
 
@@ -273,7 +275,7 @@ Change direction: budget relevant passages by requested subquestion using tokens
 
 These choices protect evidence attribution, but also add repeated technical labels and constrain how analogies, placeholders, mixed-format explanations and tables can be expressed. The frontend otherwise preserves assistant content; ordinary currency escaping and whitespace trimming are not the main cause.
 
-Evidence: [citations.py:32](C:/ai-financial-wellness-coach/apps/ai-service/app/core/citations.py:32), [citations.py:55](C:/ai-financial-wellness-coach/apps/ai-service/app/core/citations.py:55), [investment_education.py:269](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/investment_education.py:269), [investment_education.py:287](C:/ai-financial-wellness-coach/apps/ai-service/app/agents/investment_education.py:287).
+Evidence: [`citations.py`](../apps/ai-service/app/core/citations.py), [`citations.py`](../apps/ai-service/app/core/citations.py), [`investment_education.py`](../apps/ai-service/app/agents/investment_education.py), [`investment_education.py`](../apps/ai-service/app/agents/investment_education.py).
 
 Change direction: validate actual citation tokens/links separately from harmless punctuation and render concise provenance in the UI. Preserve the distinction between sourced and model-only claims without forcing the same explanatory layout for every question.
 
@@ -283,7 +285,7 @@ Change direction: validate actual citation tokens/links separately from harmless
 
 AWS source configuration selects OpenAI, `gpt-6-luna`, low reasoning, v6 prompts, local-document retrieval and 1,600 output tokens. The actual runtime/deployment was not inspected; do not infer fixture use in AWS from the local defaults.
 
-Evidence: [docker-compose.yml:23](C:/ai-financial-wellness-coach/docker-compose.yml:23), [gateway.py:226](C:/ai-financial-wellness-coach/apps/ai-service/app/models/gateway.py:226), [.env.example:37](C:/ai-financial-wellness-coach/.env.example:37), [demo-application.yaml:321](C:/ai-financial-wellness-coach/infra/aws/demo-application.yaml:321).
+Evidence: [`docker-compose.yml`](../docker-compose.yml), [`gateway.py`](../apps/ai-service/app/models/gateway.py), [`.env.example`](../.env.example), [`demo-application.yaml`](../infra/aws/demo-application.yaml).
 
 Change direction: expose an unambiguous live/fixture indicator and an explicit local live-model launch configuration. Verify provider/model/prompt identity from actual request traces before judging model quality.
 
@@ -298,7 +300,7 @@ Change direction: expose an unambiguous live/fixture indicator and an explicit l
 - Incomplete/empty output and most provider failures collapse to `OPENAI_INVOCATION_FAILED`; the adapter does not retain separate incomplete reasons or reasoning-token details. This limits diagnosis of budget exhaustion versus service failure.
 - Source defaults/releases still select v6; the existence of v7 does not mean it is active, and v7 retains several of the same specialist instructions. Merely switching versions is not a complete remedy.
 
-Evidence: [config.py:16](C:/ai-financial-wellness-coach/apps/ai-service/app/core/config.py:16), [config.py:33](C:/ai-financial-wellness-coach/apps/ai-service/app/core/config.py:33), [gateway.py:180](C:/ai-financial-wellness-coach/apps/ai-service/app/models/gateway.py:180), [gateway.py:197](C:/ai-financial-wellness-coach/apps/ai-service/app/models/gateway.py:197), [structured.py:64](C:/ai-financial-wellness-coach/apps/ai-service/app/models/structured.py:64), [orchestrator.py:241](C:/ai-financial-wellness-coach/apps/ai-service/app/orchestrator.py:241), [release.yml:402](C:/ai-financial-wellness-coach/.github/workflows/release.yml:402).
+Evidence: [`config.py`](../apps/ai-service/app/core/config.py), [`config.py`](../apps/ai-service/app/core/config.py), [`gateway.py`](../apps/ai-service/app/models/gateway.py), [`gateway.py`](../apps/ai-service/app/models/gateway.py), [`structured.py`](../apps/ai-service/app/models/structured.py), [`orchestrator.py`](../apps/ai-service/app/orchestrator.py), [`release.yml`](../.github/workflows/release.yml).
 
 Change direction: configure/measure each role's reasoning and output budget, remove misleading unsupported knobs, use explicit typed output contracts, and record actionable failure reasons. Compare live models only after addressing the deterministic data-flow failures.
 
@@ -308,7 +310,7 @@ Change direction: configure/measure each role's reasoning and output budget, rem
 
 The repository already contains live-evaluation, representative-user and human/model-assisted answerability tooling. The gap is that the routine fixture/structural gate cannot certify a helpful live conversation, and the reproduced cross-layer scenarios are not established by that gate. This audit did not inspect remote workflow results or claim that no live reviews have occurred.
 
-Evidence: [runner.py:227](C:/ai-financial-wellness-coach/apps/ai-service/app/evals/runner.py:227), [runner.py:58](C:/ai-financial-wellness-coach/apps/ai-service/app/evals/runner.py:58), [ci.yml:109](C:/ai-financial-wellness-coach/.github/workflows/ci.yml:109), [rag_answer_review.py:378](C:/ai-financial-wellness-coach/apps/ai-service/app/evals/rag_answer_review.py:378).
+Evidence: [`runner.py`](../apps/ai-service/app/evals/runner.py), [`runner.py`](../apps/ai-service/app/evals/runner.py), [`ci.yml`](../.github/workflows/ci.yml), [`rag_answer_review.py`](../apps/ai-service/app/evals/rag_answer_review.py).
 
 Change direction: add end-to-end adversarial paraphrase, multi-intent, follow-up-format, period-boundary and context-continuity cases; use the existing live/answerability tooling to score directness, useful next steps, repeated questions, format/language compliance and unnecessary refusals.
 
@@ -318,7 +320,7 @@ Change direction: add end-to-end adversarial paraphrase, multi-intent, follow-up
 
 UTC is used for transaction `today`, default budget month and default AI spending period, while budget planning uses Asia/Singapore. During the first eight hours of a Singapore day/month, temporal interpretation can disagree across handlers.
 
-Evidence: [budget_planning.py:56](C:/ai-financial-wellness-coach/apps/backend/app/services/budget_planning.py:56), [budget_workspace.py:49](C:/ai-financial-wellness-coach/apps/backend/app/services/budget_workspace.py:49), [transaction_capture.py:309](C:/ai-financial-wellness-coach/apps/backend/app/services/transaction_capture.py:309), [routes.py:63](C:/ai-financial-wellness-coach/apps/backend/app/api/routes.py:63), [spending_analyzer.py:318](C:/ai-financial-wellness-coach/apps/ai-service/app/tools/spending_analyzer.py:318).
+Evidence: [`budget_planning.py`](../apps/backend/app/services/budget_planning.py), [`budget_workspace.py`](../apps/backend/app/services/budget_workspace.py), [`transaction_capture.py`](../apps/backend/app/services/transaction_capture.py), [`routes.py`](../apps/backend/app/api/routes.py), [`spending_analyzer.py`](../apps/ai-service/app/tools/spending_analyzer.py).
 
 Change direction: carry one typed turn intent, query scope, reference resolution and user-local as-of date through the pipeline. Keep domain validation local, without reclassifying the conversational request by prose at every stage.
 

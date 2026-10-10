@@ -31,7 +31,7 @@ Expected result: Cognito authentication is required, issuer/subject ownership is
 For User A, enter these synthetic values or equivalent values:
 
 - monthly income: SGD 5,000;
-- recurring rent: SGD 1,500;
+- explicitly scheduled monthly rent: SGD 1,500;
 - recent grocery transaction: SGD 300; and
 - emergency-fund goal: SGD 12,000 from SGD 0 within 12 months.
 
@@ -67,7 +67,7 @@ Expected result: the first request is blocked by deterministic prompt-injection 
 
 1. Open **Profile**, then **Privacy & data**.
 2. Show policy `data-lifecycle-v1`, 90-day conversation retention, and 30-day detailed trace retention.
-3. Show that durable agent memory is disabled and that recording a future preference does not activate it.
+3. Show that cross-chat durable agent memory is disabled (bounded owned-chat context is implemented) and that recording a future preference does not activate it.
 4. Select **Prepare data export** and show that a portable JSON download becomes available. Do not display or retain its contents in the assessment recording.
 5. Explain the confirmed whole-workspace deletion control. Use a disposable synthetic profile if live deletion is demonstrated.
 
@@ -82,7 +82,7 @@ From GitHub Actions on `main`, dispatch **Final Assessment** with the defaults:
 - load concurrency: `2`; and
 - backend task replacement: disabled, because retained replacement evidence already exists.
 
-The workflow first validates `infra/llmsecops/final-assessment-manifest.json` and uploads `final-assessment-evidence-<run-id>`. It then reuses **AWS Operational Validation** to verify live Bedrock and both RAG paths, lifecycle enforcement, bounded load and cleanup, ECS/autoscaling state, alarms and confirmed notification path, custom-domain TLS, and direct-origin denial. That job uploads `aws-operational-evidence-<run-id>`.
+The workflow first validates `infra/llmsecops/final-assessment-manifest.json` and uploads `final-assessment-evidence-<run-id>`. It then reuses **AWS Operational Validation** to verify live OpenAI generation and both Bedrock RAG paths, lifecycle enforcement, bounded load and cleanup, ECS/autoscaling state, alarms and confirmed notification path, custom-domain TLS, and direct-origin denial. That job uploads `aws-operational-evidence-<run-id>`.
 
 Expected result: all workflow jobs pass, both privacy-safe artifacts are retained for 90 days, and the run URL is added to `docs/operational-evidence.md`. A transient failure remains visible; investigate it and rerun only after recording whether the cause was code, configuration, test data, or provider availability.
 
@@ -91,7 +91,7 @@ Expected result: all workflow jobs pass, both privacy-safe artifacts are retaine
 Close with these limitations:
 
 - the application is a synthetic-data education demo, not a production or regulated-advice service;
-- Nova Lite is selected because it passed the objective gate, not because it is universally superior;
+- generation uses GPT-6 Luna; the earlier Nova Lite comparison is historical evidence and does not establish current-model acceptance;
 - confidence values are component self-assessments, not calibrated probabilities;
 - representative-user validation was deliberately deferred and must not be claimed; and
 - production, real-data, durable-memory, MCP/A2A, and disaster-recovery activation gates remain outside this assessment.

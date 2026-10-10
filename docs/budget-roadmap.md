@@ -1,5 +1,7 @@
 # Budget planner roadmap implementation
 
+This roadmap preserves dated implementation checkpoints, including their original “local”, “pending” and no-release instructions; they are not current deployment status or active instructions. The changes are checked into the current code. [Budget usability](budget-usability.md) supersedes the old standalone form/reminder entry points, and [Agent and RAG Evaluations](agent-test-workflows.md) supersedes the former Budget live workflow. Historical test counts remain unchanged.
+
 ## Saved budget management — 5 October 2026
 
 Implemented locally: owned budget listing and saved-month/year comparisons; explicit single-month and multi-month limit/planning edits; category removal and monthly-budget deletion through Coach's preview/confirmation flow. Scope selection now overrides the sidebar default consistently for saved savings capacity and goal feasibility. Batch changes validate every target and apply atomically. Transactions and other financial records are retained; deletion keeps restorable budget history. Coach labels the sidebar context as a default month. No database migration is required. Local regression results and contract details are recorded in `budget-planning.md`; these changes are not yet deployed or certified by live-provider acceptance.

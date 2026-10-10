@@ -2,8 +2,12 @@
 
 The workspace now has stronger application-enforced AI controls. The changes
 address the confirmed preference privacy leak and add aggregate abuse limits.
-They do not establish production readiness. Activation requires a coordinated
-database migration and application deployment, followed by deployed verification.
+They do not establish production readiness. The coordinated database migration
+and application deployment subsequently passed for `80c3482`; see the
+[deployment evidence in the risk register](security-risk-register.md#deployment-and-validation-evidence).
+That release does not establish quota-alarm activation, cross-replica behavior
+or complete live-matrix acceptance. The local and bounded live results below
+retain their original scope.
 
 ## Changes
 

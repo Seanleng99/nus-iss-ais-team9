@@ -1,5 +1,7 @@
 # Recovery after the second 8 October live retest
 
+This is a dated implementation/verification record. Its local-only or pending statements describe that checkpoint, not current deployment status. For the current behavior see [the orchestration overview](orchestration-current-implementation-2026-10-07.md); later model outcomes are preserved in [the 9 October live report](agent-reasoning-live-test-results-2026-10-09.md).
+
 The subsequent [retest after dae539d](agent-reasoning-live-test-results-2026-10-08-postdae539d.md)
 exposed further read-only routing and recovery gaps. See [the third-retest recovery changes](orchestration-read-only-recovery.md)
 for semantic operations, reserve context, forecast evidence, Education composition
@@ -36,8 +38,7 @@ planner receives a compact `available_inputs` description: source, per-month ava
 saved-limit presence and whether it provides Goal capacity. Private amounts and raw
 records are unnecessary for this planning description.
 
-`requires_spending` controls which capability may be offered. It does not command the
-planner to consume an offered capability. A matching confirmed allocation already supports
+At this checkpoint `requires_spending` filtered offered capabilities. The later 9 October correction removes a false hint as a veto when scoped/historical expenses exist; ordinary optional offers still do not command consumption. A matching confirmed allocation already supports
 capacity arithmetic. An actual-versus-plan reconciliation can still consume Spending totals.
 The planner decides from Budget's own assigned question and available inputs; transaction
 presence alone is insufficient. Missing months remain unavailable, and confirmed capacity

@@ -1,5 +1,7 @@
 # Fixes following the October 2026 live evaluation
 
+This is a dated implementation/verification record. Its local-only or pending statements describe that checkpoint, not current deployment status. For the current behavior see [the orchestration overview](orchestration-current-implementation-2026-10-07.md); later model outcomes are preserved in [the 9 October live report](agent-reasoning-live-test-results-2026-10-09.md).
+
 These changes address the findings in `agent-reasoning-live-test-results-2026-10-07.md`.
 Semantic decisions remain model-owned. Code validates attribution, capability ownership,
 financial evidence, calendar arithmetic and execution bounds. Evaluation expectations
@@ -9,9 +11,7 @@ identify the deployed build commit as well as the prompt version when retesting.
 ## 1. Scoped specialist work
 
 The current router produces one attributed `task_assignments` entry per selected specialist.
-Each specialist receives its assigned question. Budget's model-selected
-`requires_spending` determines whether recorded-total dependencies are available to
-its planner; the presence of records alone is insufficient. An actual-versus-plan
+Each specialist receives its assigned question. The original change used Budget's model-selected `requires_spending` as an availability filter. The 9 October correction removed that negative veto: scoped or historical recorded expenses can offer the capability, while Budget's planner decides whether its own work needs it; reconciliation requires consumption. An actual-versus-plan
 assessment can still need Spending even with a confirmed budget. Providers added
 dynamically inherit the requesting task's question instead of unrelated clauses.
 

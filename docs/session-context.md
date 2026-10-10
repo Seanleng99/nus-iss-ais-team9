@@ -3,14 +3,14 @@
 The Coach uses three complementary forms of context within an owned conversation:
 
 - The latest eight messages, capped at 1,500 characters each, retain recent dialogue.
-- Backend-owned structured state retains supported user-reported details, their source message positions, corrections, the active topic and pending clarification fields.
+- Backend-owned structured state retains supported user-reported facts, attributed observations and referents, source positions, corrections, the active topic and pending clarification fields.
 - A rolling extractive summary retains selected older exchanges, with original user/assistant message positions, topics and exact shortened excerpts.
 
 This is derived chat state, not cross-chat durable agent memory. It has the same ownership, 90-day inactivity retention, export and deletion boundary as its chat. It never writes profile income, goals, budgets or transactions. Saved records and deterministic grounding remain authoritative for financial calculations; normal previews and confirmations still govern draft changes.
 
 ## Supported facts and examples
 
-The first-stage extractor intentionally accepts explicit forms and single-field clarification answers. General natural-language understanding continues to use recent dialogue; arbitrary statements are not converted into long-term facts by a model.
+A deterministic extractor accepts explicit forms and single-field clarification answers. The model-assisted turn plan can additionally propose up to twelve observations and twelve referents. The backend admits only bounded, schema-valid context with attributable source text; supported financial facts require a unique quote from the current user message, a matching value and field-specific checks (including explicit monthly cadence for income/expenses). Hypothetical or third-party amounts do not become the user’s financial facts. This is owned chat context, not autonomous long-term memory.
 
 | Field | Explicit example |
 |---|---|
@@ -66,9 +66,9 @@ The model router sees the typed resolution. For supported read-only follow-ups, 
 
 An unnecessary education clarification may receive one bounded completeness repair when deterministic resolution already identifies the subject and the reviewer supplies correction requirements. Existing privately sealed evidence is reused when available, and the repaired answer receives a new full review. A reviewer assertion alone cannot resolve a genuinely ambiguous reference; those questions still clarify without running retrieval or the writer. Resolved referents identify the subject, not the task: an explicit new Education question about a saved goal keeps its current concepts and Education routing rather than repeating Goal Strategy feasibility. Read-only reference resolution never resumes a draft.
 
-Writers, synthesis and Compliance receive the reference outside financial grounding. Education uses only canonical topic labels for retrieval and minimizes personal amounts in the referenced subject. Source text cannot supply calculation inputs or consent. If the referenced saved context is absent, writers must explain that gap rather than substitute another goal or period. Workflow logs and public audit record only resolution status/reason codes, not the subject text. This adds no database migration or extra resolver model call.
+Writers, synthesis and Compliance receive the reference outside financial grounding. Education uses canonical topic labels and validated public search concepts for retrieval and minimizes personal amounts in the referenced subject. Source text cannot supply calculation inputs or consent. If the referenced saved context is absent, writers must explain that gap rather than substitute another goal or period. Workflow logs and public audit record only resolution status/reason codes, not the subject text. This adds no database migration or extra resolver model call.
 
-This first stage is deliberately bounded: it recognizes explicit reference phrases, known subject patterns and numbered lists, not arbitrary natural-language anaphora. Missing/truncated sources can still need clarification. Live multi-turn evaluation remains necessary to assess real reply quality.
+The deterministic resolver is deliberately bounded: it recognizes explicit reference phrases, known subject patterns and numbered lists. The model router additionally classifies reference scope; a current-message reference must identify unique, nonoverlapping exact reference/subject quotes, which the server validates before accepting the semantic override. Missing/truncated sources can still need clarification. Live multi-turn evaluation remains necessary to assess real reply quality.
 
 ## Rollout and validation
 
@@ -76,4 +76,4 @@ Apply `alembic upgrade head` in `apps/backend` before running the updated backen
 
 Backend regressions cover source attribution, corrections, recall beyond the recent-message window, isolated chats/owners, client-forged context, ambiguous input, failed/blocked replies, local follow-ups, export/deletion and transaction clarification isolation. Summary regressions cover window boundaries, bounded size/backfill, preference retention, deduplication, withheld exchanges and transactional checkpoints. AI regressions cover preflight acknowledgment, context-aware fixture routing, role minimization, summary sanitization/schema validation and unchanged calculation grounding. These offline tests do not establish live-model recall quality; verify representative multi-turn conversations after deployment using synthetic inputs and automatic agent routing.
 
-Semantic model-generated summarization, arbitrary natural-language fact extraction, a session-state editing UI and cross-chat memory are deferred. The ordinary local fixture still produces deterministic narratives; its limited follow-up routing is for regression coverage, not a substitute for live-model behavior.
+Semantic model-generated summarization, unrestricted fact extraction, a session-state editing UI and cross-chat memory are deferred. The implemented bounded model-proposed observations above do not remove attribution, role minimization or backend validation requirements. The ordinary local fixture still produces deterministic narratives; its limited follow-up routing is for regression coverage, not a substitute for live-model behavior.

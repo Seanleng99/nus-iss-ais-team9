@@ -23,7 +23,9 @@ instruction to use only `gpt-6-luna`, policy version 3 selects `same_model`
 evaluation. Generation and grading both use Luna, with separate prompts and
 contexts. This does not provide different-model independence; independent human
 calibration remains mandatory. `MODEL_DRIFT_ENABLED` remains `false` until a
-complete passing capture is reviewed and accepted.
+complete passing capture is reviewed and accepted. No
+`infra/llmsecops/model-drift-baseline.json` is currently committed, so scheduled
+comparison cannot pass until a reviewed baseline is created and checked in.
 
 The project's existing credential lists only `gpt-6-luna`; a direct Structured
 Outputs invocation of the selected `gpt-6-sol` evaluator returned HTTP 403.
@@ -107,9 +109,11 @@ intervals describe uncertainty and are not an automatic significance test.
 
 ## Establish The First Baseline
 
-First deploy the new provider-model and input observation metadata with the service.
-Configure the `demo` GitHub environment with the coach URL and synthetic backend
-key, plus the settings below. GitHub-only monitoring publishes job summaries and
+The provider-model and input-observation metadata deployment is recorded in the
+2026-10-10 activation evidence above; it is no longer a deployment prerequisite.
+Before a candidate capture, verify the deployed build and configure the `demo`
+GitHub environment with the coach URL and synthetic backend key, plus the settings
+below. GitHub-only monitoring publishes job summaries and
 retained artifacts without an SNS subscription or AWS credentials. The deployment
 role is used when enabling optional email alerts or input aggregate queries.
 
