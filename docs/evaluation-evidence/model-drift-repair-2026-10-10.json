@@ -128,5 +128,50 @@
       "budget-en:3"
     ],
     "finding": "The two inappropriate clarifications remain rejected; one noncritical groundedness flag differed. Chinese citation and safety-refusal flags passed the clarified contract."
+  },
+  "final_repair_commit": "33880a5a5ea7940e727a42d00bdac506ea0c988c",
+  "final_ci_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38060297132",
+  "final_ci_status": "success",
+  "final_release_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38060526407",
+  "final_release_status": "success",
+  "currency_capture": {
+    "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38061657059",
+    "build_commit": "33880a5a5ea7940e727a42d00bdac506ea0c988c",
+    "complete": true,
+    "operational_pass": false,
+    "sample_count": 36,
+    "structural_pass_count": 34,
+    "generation_usage_complete": true,
+    "evaluator_usage_complete": true,
+    "cleanup_count": 36,
+    "p95_ms": 34648.38,
+    "generation_cost_usd": 0.076257,
+    "evaluator_cost_usd": 0.0095682,
+    "education_checks_passed": true,
+    "failed_samples": ["goal-en:2", "goal-zh:3"],
+    "confirmed_cause": "Goal projections and progress omitted owned currency; generated monetary answers used a bare dollar sign or omitted the currency label."
+  },
+  "currency_and_draft_fixes": [
+    "Retain each goal's currency in deterministic projections and progress, require currency labels and permit one bounded correction against unchanged grounding.",
+    "Pass unsaved Goal drafts to synthesis and Risk review without granting saved-record, consent, execution or financial-repair authority."
+  ],
+  "currency_and_draft_validation": {
+    "focused_tests_passed": 162,
+    "ruff_passed": true,
+    "language_resource_scan_passed": true,
+    "local_synthetic_luna_goal_diagnostics": {
+      "is_baseline_evidence": false,
+      "english_currency_retained": true,
+      "chinese_currency_retained": true,
+      "english_risk_blocked": false,
+      "chinese_risk_blocked": false
+    }
+  },
+  "generality_audit": {
+    "production_case_id_exceptions": false,
+    "production_exact_question_exceptions": false,
+    "quality_thresholds_relaxed": false,
+    "evaluation_changes": ["Budget arithmetic fixture scope", "currency label matching", "translated attribution and safe-refusal grading"],
+    "fresh_capture_and_human_calibration_required": true
   }
 }

@@ -175,6 +175,14 @@ English Education responses still asked an unnecessary clarification and had no
 citations. Current-sentence subject resolution was corrected; translated citation
 attribution and appropriate-refusal grading were clarified. These changes require
 fresh capture and human calibration; the original failed evidence is preserved.
+The next stable-build capture completed 36/36 with full usage, 36 cleanups and
+P95 34.65 seconds; Education checks passed. Two Goal answers omitted currency,
+leaving structural acceptance at 34/36. Goal projections/progress now retain owned
+currency, with a bounded correction for unlabeled monetary narrative. Unsaved
+Goal drafts also reach synthesis and Risk review as proposals requiring backend
+validation, preview and separate confirmation. These fixes apply to general
+requests, without benchmark-ID or exact-question exceptions. Evaluation contract
+changes require new evidence and human calibration; scheduling remains disabled.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for

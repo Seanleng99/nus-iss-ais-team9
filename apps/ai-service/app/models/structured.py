@@ -160,6 +160,8 @@ def generate_structured_response(
             validation_issues = str(exc) + " Replan the assignments using the original request and supplied selection."
         elif getattr(exc, "component", None) == "financial_narrative_repair" and exc.code == "INVALID_STRUCTURED_RESPONSE":
             validation_issues = str(exc) + " Use the supplied original text and claim ranges. Reproduce every unaffected character exactly; change only the independently identified claims."
+        elif getattr(exc, "component", None) == "financial_narrative_currency" and exc.code == "INVALID_STRUCTURED_RESPONSE":
+            validation_issues = str(exc) + " Preserve the supplied grounding and calculations; use their ISO currency codes or unambiguous localized labels. Do not change amounts, convert currencies or invent financial facts."
         elif response_type.__name__ == "ScopedEducationComplianceDecision" and exc.code == "INVALID_STRUCTURED_RESPONSE" and not isinstance(cause, ValidationError):
             validation_issues = (
                 str(exc) + " Identify only a supplied review_sections section_id. "

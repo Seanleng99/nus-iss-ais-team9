@@ -914,6 +914,10 @@ class RiskComplianceAgent:
                 "A spending_draft with action=query is a read-only handoff for the authenticated backend to calculate from owned records. "
                 "It proposes no new expense, does not require write confirmation, and does not yet establish any requested total. "
                 "Assess whether the draft truthfully describes that handoff; the final backend result is separately composed and reviewed. "
+                "A goal_draft is an untrusted, unsaved proposal to create, update or delete a goal. "
+                "Inspect its action, identification, currency, amounts, duration and unresolved questions against the user's explicit request. "
+                "It does not establish a saved record, affordability, consent or successful execution. "
+                "The backend must validate owned records and missing fields, show an exact preview and require separate confirmation before a write. "
                 "Still block invented amounts, claims that missing inputs are known, personal investment/product advice, guarantees and unsafe content; do not treat draft labels as proof of safety."
                 "\nDeterministic Budget/Goal tool outputs and owned saved records support budget arithmetic without investment citations. "
                 "An optional Education evidence gap does not invalidate those calculations or make the request prohibited. "
@@ -1094,6 +1098,7 @@ class RiskComplianceAgent:
                                     "saved_budget_context",
                                     "budget_draft",
                                     "spending_draft",
+                                    "goal_draft",
                                     "planning_analysis",
                                     "budget_record_read",
                                     "subquestion_coverage",

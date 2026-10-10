@@ -53,6 +53,7 @@ def project_goals(snapshot: UserFinancialSnapshot) -> list[dict[str, float | str
         projections.append(
             {
                 "name": goal.name,
+                "currency": goal.target_amount.currency,
                 "remaining": round(remaining, 2),
                 "target_months": goal.target_months,
                 "monthly_required": round(monthly_required, 2),

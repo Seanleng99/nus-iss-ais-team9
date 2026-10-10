@@ -420,6 +420,24 @@ def test_read_only_spending_synthesis_receives_handoff_contract():
     assert "not a result" in gateway.synthesis_calls[0]["system_prompt"]
 
 
+@pytest.mark.parametrize("action", ["create", "update", "delete"])
+def test_goal_synthesis_receives_unsaved_proposal(action):
+    answer = "An unsaved goal change was proposed for backend validation and preview."
+    gateway = RecordingSynthesisGateway([answer])
+    state = synthesis_state()
+    draft = {"action": action, "goal_name": "Holiday", "currency": "SGD",
+             "target_amount": 1200 if action != "delete" else None, "target_months": None}
+    state["agent_results"] = [AgentResult(agent="goal_strategy", summary=answer,
+        data={"goal_draft": draft, "unrelated_private_note": "PRIVATE-NOTE"})]
+    state["goal_capture"] = True
+    result = workflow(gateway)._synthesize(state)
+    assert result["draft_answer"] == answer
+    payload = json.loads(gateway.synthesis_calls[0]["user_prompt"])
+    assert payload["verified_grounding"][0]["data"]["goal_draft"] == draft
+    assert "PRIVATE-NOTE" not in gateway.synthesis_calls[0]["user_prompt"]
+    assert "untrusted and unsaved" in gateway.synthesis_calls[0]["system_prompt"]
+
+
 def test_mixed_ready_and_missing_input_still_synthesizes_with_exact_questions():
     answer = f"{BUDGET_ANSWER}\n\n{GOAL_QUESTION}"
     gateway = RecordingSynthesisGateway([answer])

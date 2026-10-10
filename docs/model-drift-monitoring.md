@@ -10,6 +10,29 @@ requires a completed, independently reviewed capture and the configuration below
 
 ## Demo Activation Status — 2026-10-10
 
+The [next stable-build capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38061657059)
+completed all 36 samples with full generation/grader usage and 36 cleanups. All
+Education checks passed. P95 was 34,648.38 ms; generation cost was USD 0.076257
+and grading cost USD 0.0095682. Two Goal answers omitted an explicit currency,
+so structural acceptance remained 34/36 and the Goal subgroup failed. This is
+failed evidence, not an approved baseline.
+
+Goal projections and progress now carry their owned currency to the writer and
+reviewer. The writer must preserve currency labels; an unlabeled monetary result
+gets one bounded structured-response correction against unchanged grounding.
+Separately, unsaved Goal extraction bypasses the normal financial grounding
+snapshot. Its draft now reaches both synthesis and Risk review, with explicit
+instructions to inspect proposed fields without treating them as saved records,
+affordability, consent or execution. Backend validation, preview and confirmation
+remain required. Regression tests cover create/update/delete proposals, retained
+vetoes, unrelated-private-field exclusion and varied projection amounts/currencies.
+
+These are general implementation fixes, with no production branches keyed to
+benchmark case IDs, run/trace IDs or exact failing questions. Evaluation changes
+also corrected currency matching, the Budget fixture's arithmetic scope and
+grader attribution/refusal rules. Their changed identities require a fresh full
+capture and independent human calibration; they never replace old failed scores.
+
 The [stable-build capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38058466228)
 completed all 36 samples with full generation/grader usage and 36 successful cleanups.
 P95 was 32,032.45 ms. All 18 financial-correctness scores, all 36 safety scores and
@@ -28,7 +51,7 @@ capture and independent human calibration; it does not replace old flags or rela
 absolute/subgroup thresholds. A held-answer calibration trial remains separate from
 eligible baseline evidence.
 
-The latest [repair capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38055863270)
+An earlier [repair capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38055863270)
 stopped after 11 of 36 attempts because a concurrent deployment changed the build
 from `3732e89` to `50f94b5`. All attempted generation usage was accounted for;
 P95 was 37,951.59 ms. This mixed-build capture is ineligible as a baseline.

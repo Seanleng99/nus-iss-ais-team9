@@ -2,9 +2,10 @@ import json
 import math
 import re
 from collections.abc import Sequence
+from decimal import Decimal
 from typing import Literal
 
-from coach_i18n import translate
+from coach_i18n import load_data, translate
 from pydantic import BaseModel, ConfigDict, StrictBool
 
 from app.agents.base import BaseAgent
@@ -284,6 +285,7 @@ class GoalStrategyAgent(BaseAgent):
             grounding["calculation_scope"] = "saved_goal_arithmetic"
             grounding["goal_progress"] = [
                 {"name": goal.name, "target_amount": goal.target_amount.amount,
+                 "currency": goal.target_amount.currency,
                  "current_amount": goal.current_amount.amount,
                  "progress_percent": round(goal.current_amount.amount / goal.target_amount.amount * 100, 2)
                     if goal.target_amount.amount else None}
@@ -369,6 +371,36 @@ class GoalStrategyAgent(BaseAgent):
         if task.dependency_warnings:
             grounding["dependency_warnings"] = task.dependency_warnings
         return grounding
+
+    def _model_message(self, task, sanitized_message, grounding):
+        return json.dumps({"user_request": super()._model_message(task, sanitized_message, grounding),
+            "instruction": "Preserve each projection's currency. Prefix every monetary amount, "
+                "including remaining balance and monthly_required, with its ISO currency code "
+                "or an unambiguous localized currency label. Never use a bare dollar sign or "
+                "an unqualified number for money. Percentages and month counts are not money. "
+                "Do not convert currencies, invent affordability or change a saved goal."})
+
+    def _validate_narrative(self, narrative, grounding):
+        narrative = super()._validate_narrative(narrative, grounding)
+        if grounding.get("calculation_scope") != "saved_goal_arithmetic":
+            return narrative
+        # Currency survives the typed tool result and must survive its prose.
+        # A percentage-only/status answer does not introduce an amount.
+        amounts = re.findall(r"(?<![0-9_.,])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?!\d|[,.]\d|\s*%)",
+                             narrative.summary)
+        monetary_values = {Decimal(str(row[key])) for row in grounding.get("projections", [])
+                           for key in ("remaining", "monthly_required") if key in row}
+        if not any(Decimal(value.replace(",", "")) in monetary_values for value in amounts):
+            return narrative
+        labels = load_data("currency_aliases")
+        for currency in {row["currency"] for row in grounding.get("projections", []) if "currency" in row}:
+            if (not re.search(rf"(?<![A-Za-z_]){re.escape(currency)}(?![A-Za-z_])", narrative.summary)
+                    and not any(label in narrative.summary for label in labels.get(currency, []))):
+                from app.models.gateway import ModelGatewayError
+                raise ModelGatewayError("State the grounded goal currency explicitly with monetary amounts; "
+                    "a bare dollar sign or number does not identify the currency.",
+                    code="INVALID_STRUCTURED_RESPONSE", component="financial_narrative_currency")
+        return narrative
 
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
         if "emergency_fund" in grounding:

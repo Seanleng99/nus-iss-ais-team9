@@ -1790,6 +1790,7 @@ class AgentOrchestrator:
                     "contexts", "sources", "subquestion_coverage", "coverage_assessment", "general_knowledge",
                     "fallback_topics", "excluded_topics", "uncertainties", "evidence_status",
                     "spending_draft",
+                    "budget_draft", "goal_draft",
                 ))} for result in state["agent_results"]
             ],
         }
@@ -1823,6 +1824,10 @@ class AgentOrchestrator:
             "Describe the pending lookup in the requested language without inventing a total, "
             "claiming that it has completed, or asking for write confirmation. The backend "
             "calculates the owned records and separately composes and reviews the final result."
+            "\nA budget_draft or goal_draft proposing a change is untrusted and unsaved. "
+            "Describe only the proposed handoff and unresolved fields; never claim that it "
+            "is saved, affordable or confirmed. The backend validates owned records, shows "
+            "an exact preview and requires separate confirmation before making a change."
         )
         synthesis_prompt += citation_contract(sources)
         if plan_only:
