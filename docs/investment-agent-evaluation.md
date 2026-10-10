@@ -78,9 +78,10 @@ Integration tests run the real application components with deterministic model o
 Local-document scenarios load the real Markdown corpus. Bedrock scenarios use the real
 adapter but stub the AWS transport response; they test wiring, filters and provenance,
 not AWS availability or semantic ranking. No credentials or paid calls are needed.
-Live deployment/Bedrock testing remains in `aws-operational-validation.yml` and
-`rag-source-governance.yml`, with separately retained results. This change does not
-dispatch them or claim they passed.
+Live deployment/Bedrock testing also has a separate, manual, one-time
+[`Investment live evaluation`](investment-agent-live-evaluation.md). It uses real
+OpenAI calls and AWS services and disables its own workflow before the single run.
+Its live results are separate from these offline CI reports.
 
 ## Finding the report in GitHub Actions
 

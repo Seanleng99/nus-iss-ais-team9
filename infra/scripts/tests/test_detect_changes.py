@@ -172,6 +172,7 @@ class ChangeDetectionTests(unittest.TestCase):
         for path in (
             ".github/workflows/aws-operational-validation.yml",
             ".github/workflows/final-assessment.yml",
+            ".github/workflows/investment-agent-live.yml",
         ):
             with self.subTest(path=path):
                 result = detect_changes.classify_changes([path])

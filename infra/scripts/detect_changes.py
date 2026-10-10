@@ -39,6 +39,7 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 ".github/workflows/budget-agent-tests.yml",
                 ".github/workflows/goal-agent-tests.yml",
                 ".github/workflows/investment-agent-tests.yml",
+                ".github/workflows/investment-agent-live.yml",
                 ".github/workflows/risk-compliance-agent-tests.yml",
                 ".github/workflows/project-security-scan.yml",
                 ".github/workflows/aws-operational-validation.yml",

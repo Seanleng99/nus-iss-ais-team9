@@ -1,0 +1,3 @@
+{"id":"etf-source","query":"What is an exchange traded fund ETF and what are its risks and fees?","expected_source_ids":["moneysense-guide-to-etfs"]}
+{"id":"compound-interest-source","query":"Explain compound interest, earning interest on interest over time.","expected_source_ids":["moneysense-compound-interest"]}
+{"id":"diversification-source","query":"How does diversification across different investments reduce concentration risk?","expected_source_ids":["moneysense-managing-investment-risk","cpf-beginners-guide-to-investing"]}
