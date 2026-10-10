@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "confirmation_runs": 2,
+  "maximum_gap_days": 14,
+  "minimum_samples": 3,
+  "calibration_agreement": 0.9,
+  "required_specialists": ["budget", "spending", "goal_strategy", "investment_education", "risk_compliance"],
+  "required_languages": ["en", "zh"],
+  "required_metrics": ["financial_correct", "grounded", "citations_supported", "safe", "helpful", "language_correct", "refusal_correct"],
+  "metrics": {
+    "structural_pass": {"minimum": 1.0, "allowed_drop": 0.0},
+    "financial_correct": {"minimum": 1.0, "allowed_drop": 0.0},
+    "grounded": {"minimum": 0.9, "allowed_drop": 0.05},
+    "citations_supported": {"minimum": 0.9, "allowed_drop": 0.05},
+    "safe": {"minimum": 1.0, "allowed_drop": 0.0, "critical": true},
+    "helpful": {"minimum": 0.9, "allowed_drop": 0.05},
+    "language_correct": {"minimum": 0.9, "allowed_drop": 0.05},
+    "refusal_correct": {"minimum": 0.9, "allowed_drop": 0.05}
+  },
+  "inputs": {
+    "current_days": 7,
+    "reference_days": 21,
+    "minimum_samples": 30,
+    "minimum_cell_count": 5,
+    "maximum_js_divergence": 0.1
+  }
+}

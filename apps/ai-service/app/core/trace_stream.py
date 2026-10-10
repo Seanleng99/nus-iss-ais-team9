@@ -54,6 +54,10 @@ async def stream_run(orchestrator, request, trace_id: str, *, operation="coach",
                 source_count=len(result.sources),
                 response_fields=list(type(result).model_fields),
             )
+            if operation == "coach":
+                from app.core.drift import log_observation
+
+                log_observation(request, result)
             send({"type": "response", "response": result.model_dump(mode="json")})
         except Exception as exc:  # noqa: BLE001 - private errors must become content-free frames.
             if not closed.is_set():

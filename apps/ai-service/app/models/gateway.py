@@ -296,7 +296,8 @@ class OpenAIModelGateway:
                     "outputTokens": output_tokens,
                     "totalTokens": input_tokens + output_tokens,
                 },
-                provider_metrics={"reasoningTokens": reasoning_tokens},
+                provider_metrics={"reasoningTokens": reasoning_tokens,
+                                  "providerModelId": getattr(response, "model", None)},
             )
         except ModelGatewayError:
             raise
@@ -1017,6 +1018,7 @@ class TracingModelGateway:
                 output_tokens=usage.get("outputTokens"),
                 duration_ms=round((perf_counter() - started) * 1000, 2),
                 error_code=error_code,
+                provider_model_id=getattr(generation, "provider_metrics", {}).get("providerModelId"),
             )
             if trace_id:
                 usage = getattr(generation, "usage", {})
@@ -1029,6 +1031,7 @@ class TracingModelGateway:
                     "total_tokens": usage.get("totalTokens"),
                     "error_code": error_code,
                     "reasoning_tokens": getattr(generation, "provider_metrics", {}).get("reasoningTokens"),
+                    "provider_model_id": getattr(generation, "provider_metrics", {}).get("providerModelId"),
                 }
                 with self._lock:
                     if self._calls.get(trace_id) is not calls:

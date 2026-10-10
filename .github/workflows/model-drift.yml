@@ -1,0 +1,155 @@
+name: Model Drift Monitoring
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_candidate:
+        description: Capture a candidate and private synthetic review packet instead of monitoring
+        type: boolean
+        default: false
+  schedule:
+    - cron: "15 2 * * 0"
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: model-drift-demo
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || vars.MODEL_DRIFT_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: demo
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+      MODEL_DRIFT_OPENAI_API_KEY: ${{ secrets.MODEL_DRIFT_OPENAI_API_KEY }}
+      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+      COACH_URL: ${{ vars.COACH_SMOKE_URL }}
+      JUDGE_MODEL: ${{ vars.MODEL_DRIFT_JUDGE_MODEL }}
+      JUDGE_INPUT_RATE: ${{ vars.MODEL_DRIFT_JUDGE_INPUT_RATE }}
+      JUDGE_OUTPUT_RATE: ${{ vars.MODEL_DRIFT_JUDGE_OUTPUT_RATE }}
+      JUDGE_BUDGET: ${{ vars.MODEL_DRIFT_JUDGE_BUDGET_USD || '0.5' }}
+      GENERATOR_BUDGET: ${{ vars.MODEL_DRIFT_GENERATOR_BUDGET_USD || '0.05' }}
+      ALERT_TOPIC: ${{ vars.OPERATIONAL_ALERTS_TOPIC_ARN }}
+      INPUT_LOG_GROUP: ${{ vars.MODEL_DRIFT_INPUT_LOG_GROUP }}
+      BASELINE: infra/llmsecops/model-drift-baseline.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install evaluator runtime
+        run: python -m pip install -e apps/shared -e apps/ai-service
+      - name: Configure notification and aggregate-query credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Validate configured evaluator and approved baseline
+        env:
+          BASELINE_CANDIDATE: ${{ inputs.baseline_candidate || false }}
+        run: |
+          for name in COACH_URL MODEL_DRIFT_OPENAI_API_KEY SMOKE_BACKEND_API_KEY JUDGE_MODEL JUDGE_INPUT_RATE JUDGE_OUTPUT_RATE ALERT_TOPIC; do
+            [[ -n "${!name}" ]] || { echo "Missing drift setting: $name" >&2; exit 1; }
+          done
+          if [[ "$BASELINE_CANDIDATE" != 'true' ]]; then
+            [[ -f "$BASELINE" ]] || { echo 'An independently reviewed baseline must be committed before monitoring.' >&2; exit 1; }
+          fi
+      - name: Verify a confirmed operational notification endpoint
+        run: |
+          count=$(aws sns list-subscriptions-by-topic --topic-arn "$ALERT_TOPIC" \
+            --query "length(Subscriptions[?Protocol=='email' && SubscriptionArn!='PendingConfirmation' && SubscriptionArn!='Deleted'])" \
+            --output text)
+          [[ "$count" =~ ^[0-9]+$ && "$count" -ge 1 ]] || { echo 'No confirmed drift notification endpoint.' >&2; exit 1; }
+      - name: Restore latest comparison state from this workflow on main
+        if: inputs.baseline_candidate != true
+        id: history
+        run: |
+          mkdir -p artifacts
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=model-drift-state&per_page=100" > artifacts-index.json
+          url=$(jq -r '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == "main")] | sort_by(.created_at) | last | .archive_download_url // empty' artifacts-index.json)
+          if [[ -n "$url" ]]; then
+            gh api "$url" > drift-state.zip
+            python -c 'from zipfile import ZipFile; from pathlib import Path; z = ZipFile("drift-state.zip"); Path("artifacts/previous-drift.json").write_bytes(z.read("model-drift.json"))'
+          fi
+          echo "restored=true" >> "$GITHUB_OUTPUT"
+      - name: Capture independent synthetic quality scores
+        id: quality
+        continue-on-error: true
+        env:
+          BASELINE_CANDIDATE: ${{ inputs.baseline_candidate || false }}
+        run: |
+          review_args=()
+          if [[ "$BASELINE_CANDIDATE" == 'true' ]]; then
+            review_args=(--review-packet review/synthetic-quality-review.jsonl)
+          fi
+          python -m infra.scripts.drift_quality \
+            --url "$COACH_URL" --judge-model "$JUDGE_MODEL" \
+            --judge-input-rate "$JUDGE_INPUT_RATE" --judge-output-rate "$JUDGE_OUTPUT_RATE" \
+            --judge-budget-usd "$JUDGE_BUDGET" --generator-budget-usd "$GENERATOR_BUDGET" \
+            --output artifacts/model-quality-capture.json "${review_args[@]}"
+      - name: Compare quality and optional approved input aggregates
+        if: always() && inputs.baseline_candidate != true
+        id: comparison
+        continue-on-error: true
+        env:
+          HISTORY_RESTORED: ${{ steps.history.outputs.restored }}
+        run: |
+          input_args=()
+          if [[ "$HISTORY_RESTORED" != true ]]; then
+            input_args+=(--history-required)
+          fi
+          if [[ -n "$INPUT_LOG_GROUP" ]]; then
+            input_args+=(--input-log-group "$INPUT_LOG_GROUP")
+          fi
+          python -m infra.scripts.model_drift compare \
+            --capture artifacts/model-quality-capture.json --baseline "$BASELINE" \
+            --previous artifacts/previous-drift.json --output artifacts/model-drift.json \
+            "${input_args[@]}"
+      - name: Publish actionable drift or evidence failure
+        if: always() && inputs.baseline_candidate != true && hashFiles('artifacts/model-drift.json') != ''
+        run: |
+          python -c 'import os, boto3; from infra.scripts.model_drift import load, notify; notify(load("artifacts/model-drift.json"), boto3.client("sns"), os.environ["ALERT_TOPIC"])'
+      - name: Persist comparison state, including failed and incomplete runs
+        if: always() && inputs.baseline_candidate != true && hashFiles('artifacts/model-drift.json') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-drift-state
+          path: artifacts/model-drift.json
+          retention-days: 90
+      - name: Retain aggregate evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-drift-evidence-${{ github.run_id }}
+          path: artifacts/model-quality-capture.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Retain private synthetic calibration packet
+        if: always() && inputs.baseline_candidate == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: model-drift-synthetic-review-${{ github.run_id }}
+          path: review/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Enforce completed quality and comparison gates
+        if: always()
+        env:
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          COMPARISON_OUTCOME: ${{ steps.comparison.outcome }}
+          BASELINE_CANDIDATE: ${{ inputs.baseline_candidate || false }}
+        run: |
+          [[ "$QUALITY_OUTCOME" == success ]] || exit 1
+          [[ "$BASELINE_CANDIDATE" == true || "$COMPARISON_OUTCOME" == success ]] || exit 1

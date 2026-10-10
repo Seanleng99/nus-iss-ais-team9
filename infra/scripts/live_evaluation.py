@@ -386,10 +386,17 @@ def _answer_has_amount(answer: str, currency: str, amount: Any) -> bool:
     # Decimal equality permits normal thousands formatting without accepting
     # substrings of a different amount or silently changing its currency.
     pattern = re.compile(
-        rf"\b{re.escape(currency)}\s*([+-]?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)"
+        rf"(?<![A-Za-z0-9_]){re.escape(currency)}\s*([+-]?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)"
         r"(?:\.\d{1,2})?)(?!\d|[,.]\d)", re.IGNORECASE,
     )
-    return any(_same_decimal(match.group(1).replace(",", ""), amount) for match in pattern.finditer(answer))
+    matches = list(pattern.finditer(answer))
+    aliases_path = Path(__file__).resolve().parents[2] / "apps/shared/coach_i18n/data/currency_aliases.json"
+    aliases = json.loads(aliases_path.read_text(encoding="utf-8"))
+    for alias in aliases.get(currency, []):
+        numeric = r"([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?!\d|[,.]\d)"
+        for localized in (rf"{re.escape(alias)}\s*{numeric}", rf"(?<![\d.,]){numeric}\s*{re.escape(alias)}"):
+            matches.extend(re.finditer(localized, answer))
+    return any(_same_decimal(match.group(1).replace(",", ""), amount) for match in matches)
 
 
 def evaluate_response(
@@ -754,6 +761,8 @@ def run_live_evaluation(
     maximum_total_tokens: int | None = None,
     capture_synthetic_dialogue: bool = False,
     response_checks: Callable[[dict, dict], list[dict]] | None = None,
+    response_observer: Callable | None = None,
+    observer_stopped: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     if maximum_total_tokens is not None and maximum_total_tokens < 1:
         raise ValueError("maximum_total_tokens must be positive")
@@ -776,6 +785,7 @@ def run_live_evaluation(
         estimated = (total_input_tokens * input_cost_per_million
                      + total_output_tokens * output_cost_per_million) / 1_000_000
         return (usage_unknown
+                or (observer_stopped is not None and observer_stopped())
                 or (maximum_estimated_cost_usd is not None and estimated >= maximum_estimated_cost_usd)
                 or (maximum_total_tokens is not None
                     and total_input_tokens + total_output_tokens >= maximum_total_tokens))
@@ -803,6 +813,7 @@ def run_live_evaluation(
                 "rubric_review": "required" if case.get("rubric") else "not_requested",
             }
             active_turn_index = None
+            observer_duration = 0.0
             try:
                 # The authenticated backend snapshot overrides request snapshots
                 # after a profile exists. Seed its owned source records once,
@@ -908,6 +919,12 @@ def run_live_evaluation(
                         "policy_source_ids": [source["source_id"] for source in audit.get("policy_sources", []) if source.get("source_id")],
                     })
                     record["passed"] = bool(record["passed"] and passed)
+                    if response_observer is not None and turn_index == len(turns) - 1:
+                        observer_started = time.perf_counter()
+                        try:
+                            response_observer(case, request, response, repeat, passed)
+                        finally:
+                            observer_duration += time.perf_counter() - observer_started
                     if (maximum_estimated_cost_usd is not None or maximum_total_tokens is not None) and not record["token_usage_complete"]:
                         usage_unknown = True
                     if not passed and turn_index < len(turns) - 1:
@@ -964,7 +981,7 @@ def run_live_evaluation(
                             "token_usage_complete": bool(recovered and recovered["token_usage_complete"]),
                         })
             finally:
-                record["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
+                record["latency_ms"] = round((time.perf_counter() - started - observer_duration) * 1000, 2)
                 # Setup and final turns share one disposable owned session.
                 cleaned_up = cleanup_session(
                     url, api_key, synthetic_user_id, session_id, timeout_seconds,

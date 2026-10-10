@@ -59,6 +59,7 @@ COUNTS = {
     "source_quote_count",
 }
 FLAGS = {
+    "needs_input",
     "partial_answer",
     "blocked",
     "allowed",
@@ -83,6 +84,11 @@ FLAGS = {
     "requires_capacity",
 }
 CODES = {
+    "input_language",
+    "input_length_band",
+    "agent_mix",
+    "intent_bucket",
+    "provider_model_id",
     "estimate_basis",
     "source",
     "category",

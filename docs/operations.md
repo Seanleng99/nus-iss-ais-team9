@@ -123,9 +123,71 @@ Route deployment failures through EventBridge and operational alerts through SNS
 
 ## Drift Detection
 
-The weekly GitHub Actions evaluation reruns fixed datasets and compares metrics with versioned policy baselines. A release fails on either an absolute threshold breach or excessive regression. The weekly RAG governance job checks both reviewed manifests and exact local documents, then audits both Bedrock Knowledge Bases and their S3 objects for checksums, approval, provenance, review deadlines, and completed ingestion. Release ingests and audits both approved corpora before activating their version pins; any issue blocks corpus promotion.
+Drift observation is partially implemented. Weekly CI reruns fixed datasets against
+versioned offline fixture baselines; acceptance fails on an absolute threshold
+breach or excessive regression. This detects application regressions, not changes
+in live model semantics. AWS Operational Validation runs weekly on Sunday at 10:00
+Singapore time and on demand, using repeated synthetic sessions against the deployed
+model, prompts, orchestrator and retrieval. Its structural, latency and estimated-cost
+gates do not replace independent answer-quality scoring. Dedicated quality capture,
+baseline comparison, aggregate input queries and SNS reporting now have executable
+scripts and an opt-in Sunday 10:15 Singapore workflow. Deployment, an accepted
+baseline and notification verification remain activation gates; existing CloudWatch
+generation-failure alarms remain separate operational signals. See
+[Model drift monitoring](model-drift-monitoring.md) for setup and commands.
 
-After approved production telemetry exists, observe only privacy-preserving aggregates: intent distribution, selected-agent distribution, missing-input rate, message-length bands, guardrail category rate, retrieval source frequency, source age, latency, token use, and user feedback. Do not retain raw prompts merely to measure drift. A sustained distribution shift triggers dataset review first, followed by prompt, retrieval, or model changes; fine-tuning is considered only when simpler mitigations fail.
+The weekly RAG governance job checks both reviewed manifests and exact local
+documents, then audits both Bedrock Knowledge Bases and their S3 objects for
+checksums, approval, provenance, review deadlines and completed ingestion. Release
+ingests and audits both approved corpora before activating their version pins;
+any issue blocks corpus promotion. These controls detect source/configuration
+changes but do not establish retrieval relevance or generated-answer groundedness.
+
+| Signal | Measurements | Interpretation and current status |
+|---|---|---|
+| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Independent boolean scoring and overall/specialist/language/intent baseline comparison are implemented; first reviewed baseline and scheduled activation remain pending. |
+| Input distribution | Capture/analysis intent, selected-agent shares, language, missing-input rate and message-length bands | Regular and streamed completed requests emit bounded buckets; optional server-side aggregate queries and marginal distribution comparison are implemented. Production activation remains subject to data review. |
+| Retrieval | Relevant-source recall, evidence gaps, source frequency/age, corpus versions and provenance | Offline retrieval gates, runtime diagnostics and corpus audits exist; the new judge checks citation support against approved reference documents. Exact retrieved-passage replay and recurring live retrieval recall remain separate work. |
+| Execution | Provider errors/retries, review/repair failures, P95 latency, model-call/token use and estimated cost per request | Telemetry and selected alarms/live limits exist. Compare within similar tasks and configurations before attributing a change to the model. |
+
+Use the versioned baseline and scoring contract in
+[the evaluation plan](evaluation-plan.md#live-quality-baseline-and-drift-gate).
+Keep the frozen quality benchmark and its approved baseline alongside a separate
+monitor of changing runtime traffic. Increased Compliance blocks, evidence gaps or
+negative feedback are investigation signals; they do not independently label an
+answer incorrect, and model self-reported confidence is not a calibrated drift metric.
+
+After production-data approval, the proposed input monitor compares the latest
+seven complete UTC days with an approved, non-overlapping 21-day reference period,
+fitting the existing 30-day log retention. The collector verifies adequate retention
+and filters to the current model/effective prompt. It compares fixed marginal
+intent/language/length/agent/missing-input/blocked buckets; conditional live cohorts
+are not implemented. Quality benchmark scores separately report specialist, intent
+and language strata. Use Jensen-Shannon divergence and calibrate
+its threshold and minimum sample counts from ordinary variation. Rare strata with
+too few observations are marked insufficient evidence and can use a longer window.
+The demo should use synthetic runs to validate the job and notification path before
+activation for real traffic. A change in traffic mix alone must not trigger model
+replacement or rollback.
+
+Retain only purpose-limited aggregates: intent/agent shares, missing-input and
+guardrail-category rates, language/length bands, retrieval source frequency/age,
+latency, token use and coded user feedback. Do not add raw prompts, answers,
+financial amounts, personal identifiers or free-text feedback to drift logs.
+Suppress small aggregate cells, restrict access and define aggregate retention
+before activation. Existing 30-day logs/traces and 90-day operational evidence
+retention do not automatically authorize a new production data store.
+
+The opt-in monitor alerts on sustained ordinary relative-quality regression or
+eligible input-distribution shifts across two consecutive scheduled comparisons.
+Critical safety/ownership failures and absolute acceptance failures do not wait for
+confirmation. A missing or incomplete evaluation is an evidence failure, not a green
+quality result. Every notification carries the baseline/current versions, window,
+metric and subgroup, counts, threshold, case IDs where applicable, severity, owner
+and [response procedure](operational-alert-runbook.md#drift-response). SNS/email
+delivery must be exercised for the new alert source before it is described as active.
+Investigate first, then make a reviewed prompt, retrieval, application or model
+change supported by a new regression case and completed acceptance evidence.
 
 ## Scalability And Reliability Exercise
 

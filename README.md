@@ -29,6 +29,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - `docs/responsible-ai.md`: intended use, fairness, accountability, human control, and lifecycle gates.
 - `docs/security-risk-register.md`: AI/security risks, controls, residual ratings, and owners.
 - `docs/evaluation-plan.md`: datasets, expected outputs, metrics, drift, and acceptance criteria.
+- [Model drift monitoring](docs/model-drift-monitoring.md): executable independent quality scoring, reviewed baselines, aggregate input comparisons, scheduled reporting, and activation requirements.
 - `docs/model-selection.md`: current OpenAI model decision and historical Bedrock comparison.
 - `docs/representative-user-validation.md`: representative-user protocol for explanations, confidence, uncertainty, sources, and safe next actions.
 - `docs/data-lifecycle.md`: versioned retention, consent, export, deletion, and scheduled-purge controls.

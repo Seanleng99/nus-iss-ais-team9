@@ -81,6 +81,9 @@ def coach(
     try:
         log_event("coach.request.accepted", input_characters=len(request.message))
         response = agent_orchestrator.handle(request)
+        from app.core.drift import log_observation
+
+        log_observation(request, response)
         log_event(
             "coach.response.ready",
             trace_id=response.audit.get("trace_id"),

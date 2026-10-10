@@ -7,8 +7,8 @@ The Team 9 operations owner is the primary owner of the shared operational-alert
 | Severity | Example signals | Acknowledge target | Primary action owner |
 |---|---|---:|---|
 | P1 critical | ECS deployment failure, unhealthy backend target, safety-control or authorization failure | 15 minutes during an active demo window | Team 9 operations owner, with security/safety owner engaged immediately |
-| P2 high | Backend 5xx threshold, AI generation failure, Bedrock server errors or throttling | 30 minutes during an active demo window | Team 9 operations owner, then backend or AI owner |
-| P3 medium | Sustained model latency or AI CPU pressure without errors | 4 business hours | Team 9 operations owner, then AI/cloud owner |
+| P2 high | Backend 5xx threshold, AI generation failure, provider server errors or throttling; failed absolute live-quality acceptance or confirmed quality regression when drift monitoring is activated | 30 minutes during an active demo window | Team 9 operations owner, then backend or AI owner |
+| P3 medium | Sustained model latency or AI CPU pressure without errors; confirmed input-distribution shift without a quality/safety failure when drift monitoring is activated | 4 business hours | Team 9 operations owner, then AI/cloud owner |
 
 The targets are demo operating objectives, not a staffed 24-hour support commitment. Outside an announced demo window, the owner acknowledges the alert at the start of the next agreed support period. A P1 alert blocks release and continued demonstration until triage establishes a safe path.
 
@@ -23,6 +23,38 @@ The targets are demo operating objectives, not a staffed 24-hour support commitm
 7. Record impact, root cause, control effectiveness, owner, follow-up date, and a regression test or monitoring correction before closing the incident.
 
 If the email notification is not received, inspect the SNS subscription state and topic delivery metrics, re-confirm the subscription from the team mailbox, and use the AWS console/dashboard as the temporary observation path. A failed notification test is itself a P2 operational incident.
+
+## Drift Response
+
+The [implemented drift workflow](model-drift-monitoring.md) uses this procedure.
+Its presence in source does not establish deployed activation or delivery. See
+[Operations](operations.md#drift-detection) for implemented controls and planned
+activation, and [the evaluation plan](evaluation-plan.md#live-quality-baseline-and-drift-gate)
+for the baseline and scoring contract. Safety or ownership failures remain P1.
+
+1. Verify the comparison's baseline ID, model/prompt/role settings, build, corpus
+   versions, dataset/evaluator hashes, completed samples and affected subgroup.
+   Treat unavailable scores as incomplete evidence. Check whether a deployment,
+   source change, traffic mix, evaluator change or provider outage explains it.
+2. For failed quality acceptance, stop promotion; immediately contain any critical
+   safety or ownership failure. For an input shift alone, review representative
+   synthetic cases and task coverage before changing the model.
+3. Replay failed synthetic cases with fixed trusted retrieved passages and identical
+   inputs/settings. If quality recovers, inspect retrieval relevance, coverage,
+   ingestion and corpus freshness. If it still fails, isolate prompt/application
+   changes and compare available provider versions under the same evidence.
+   Check errors, usage and timing for operational causes. An unchanged model ID
+   alone cannot establish or exclude provider behavior drift.
+4. Preserve aggregate comparisons, failed case/trace IDs and version identities
+   under existing evidence rules. Add synthetic regression cases for new failure
+   families; do not copy real user conversations or financial values into incidents.
+5. Restore the last accepted configuration where applicable, or disable the affected
+   behavior while resolving the cause. An ECS rollback restores application settings;
+   it cannot guarantee restoration of an externally changed model alias. Verify
+   recovery with both affected semantic scores and existing structural/safety gates.
+6. Record cause, owner and remediation. Keep the prior baseline until the corrected
+   configuration passes acceptance and a reviewed replacement baseline is approved;
+   never clear an alert simply by lowering thresholds or adopting the failed run.
 
 ## Controlled Notification Test
 
