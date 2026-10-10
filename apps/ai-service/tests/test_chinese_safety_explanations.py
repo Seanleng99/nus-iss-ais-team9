@@ -521,7 +521,7 @@ def test_missing_education_preserves_budget_and_goal_calculations_without_specia
     if agent_name == "goal_strategy":
         goal = specialists["goal_strategy"]
         assert goal.data["projections"] == [{
-            "name": "Emergency fund", "remaining": 9600.0, "target_months": 12,
+            "name": "Emergency fund", "currency": "SGD", "remaining": 9600.0, "target_months": 12,
             "monthly_required": 800.0,
         }]
         assert goal.data["monthly_savings_capacity"]["source"] == "illustrative_fallback"
