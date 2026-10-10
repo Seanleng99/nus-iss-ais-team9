@@ -494,6 +494,14 @@ jobs:
               || dependency_audit_failed=1
           done
           exit "$dependency_audit_failed"
+      - name: Show dependency audit report and chart
+        if: always()
+        run: >-
+          python infra/scripts/summarize_dependency_audit.py
+          artifacts/dependency-audit-ai-service.json
+          artifacts/dependency-audit-backend.json
+          artifacts/dependency-audit-frontend.json
+          --output artifacts/dependency-audit-summary.md
       - name: Upload dependency audit evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -501,6 +509,7 @@ jobs:
           name: dependency-audit-results
           path: |
             artifacts/dependency-audit-*.json
+            artifacts/dependency-audit-summary.md
             artifacts/dependency-versions-*.txt
           if-no-files-found: error
           retention-days: 30
