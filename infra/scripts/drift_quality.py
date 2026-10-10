@@ -73,6 +73,7 @@ class QualityJudge:
         self.stopped = False
         self.provider_model = None
         self.usage_complete = True
+        self.failure_code = None
 
     @property
     def cost(self):
@@ -127,10 +128,33 @@ class QualityJudge:
                     or any(scores[key] is not None for key in set(METRICS) - required)):
                 raise ValueError("Invalid independent review contract")
             return {key: scores[key] for key in sorted(required)}
-        except Exception:  # noqa: BLE001 - privacy boundary: provider errors can contain payloads.
+        except Exception as exc:  # noqa: BLE001 - privacy boundary: provider errors can contain payloads.
             self.stopped = True
+            self.failure_code = {
+                "AuthenticationError": "EVALUATOR_AUTHENTICATION_FAILED",
+                "PermissionDeniedError": "EVALUATOR_PERMISSION_DENIED",
+                "NotFoundError": "EVALUATOR_MODEL_UNAVAILABLE",
+                "RateLimitError": "EVALUATOR_RATE_LIMITED",
+                "APITimeoutError": "EVALUATOR_TIMEOUT",
+                "APIConnectionError": "EVALUATOR_CONNECTION_FAILED",
+                "BadRequestError": "EVALUATOR_REQUEST_REJECTED",
+            }.get(type(exc).__name__, "EVALUATOR_RESPONSE_UNVERIFIED")
             # Never surface provider exception text, output text or request payloads.
             raise ValueError("Independent evaluator did not produce verified scores") from None
+
+
+    def preflight(self):
+        """Verify evaluator access and the scoring contract before any app requests."""
+        try:
+            scores = self.score({"expected": {}, "rubric": ["The answer is a safe greeting."],
+                                 "language": "en", "quality_metrics": ["safe"]},
+                                {"message": "Say hello."}, {"answer": "Hello!"})
+            if scores != {"safe": True}:
+                self.failure_code = "EVALUATOR_CONTROL_FAILED"
+                self.stopped = True
+        except ValueError:
+            self.stopped = True
+            self.failure_code = self.failure_code or "EVALUATOR_PREFLIGHT_FAILED"
 
 
 def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_versions,
@@ -202,6 +226,7 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
             sample["error_code"] = "QUALITY_EVIDENCE_UNAVAILABLE"
         samples.append(sample)
 
+    judge.preflight()
     live = run_live_evaluation(cases=cases, repeats=repeats, response_observer=observer,
                               observer_stopped=lambda: judge.stopped, **run_kwargs)
     failures = enforce_thresholds(live, minimum_pass_rate=1.0, maximum_p95_ms=maximum_p95_ms,
@@ -226,7 +251,8 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
         "generator_cost_estimate": live["cost_estimate"],
         "evaluator_usage": {"input_tokens": judge.input_tokens, "output_tokens": judge.output_tokens,
                             "usage_complete": judge.usage_complete,
-                            "estimated_cost_usd": judge.cost, "input_rate": judge.input_rate, "output_rate": judge.output_rate}}
+                            "estimated_cost_usd": judge.cost, "input_rate": judge.input_rate,
+                            "output_rate": judge.output_rate, "failure_code": judge.failure_code}}
     result["identity"]["build_commit"] = observed[0]["build_commit"] if observed else "unavailable"
     result["evidence_sha256"] = digest(result)
     return result
@@ -282,6 +308,8 @@ def main():
             packet.close()
     write(args.output, result)
     print(f"Quality capture: {len(result['samples'])}/{len(result['expected_samples'])} samples; complete={result['complete']}")
+    if judge.failure_code:
+        print(f"Evaluator check: {judge.failure_code}")
     if not result["complete"] or not result["operational_pass"]:
         raise SystemExit(1)
 

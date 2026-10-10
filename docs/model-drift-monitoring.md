@@ -54,6 +54,9 @@ and independently checksum-verified approved source documents. Source support is
 checked against the approved reference documents, not an exact replay of Bedrock's
 retrieved passages. Runtime provenance checks remain separate. Provider storage and
 SDK retries are disabled; input/output spend is reserved before each judge call.
+An evaluator preflight scores a harmless control answer before any app requests;
+its usage counts toward the judge budget. Failures retain only an allowlisted code
+for authentication, model access, rate limits, connectivity or invalid responses.
 Missing usage, malformed scores, refusals, model changes or budget exhaustion stop
 further scoring and produce incomplete evidence. Evaluator time is excluded from
 the application's measured latency, and evaluator cost is reported separately.

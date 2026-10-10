@@ -16,9 +16,10 @@ def case():
 
 def client_factory(output=None, **overrides):
     calls = []
-    scores = {metric: True if metric in case()["quality_metrics"] else None for metric in model_drift.METRICS}
     def create(**kwargs):
         calls.append(kwargs)
+        required = json.loads(kwargs["input"])["required_metrics"]
+        scores = {metric: True if metric in required else None for metric in model_drift.METRICS}
         return SimpleNamespace(status="completed", usage=SimpleNamespace(input_tokens=100, output_tokens=10),
                                model="judge-version", output_text=json.dumps(scores) if output is None else output,
                                **overrides)
@@ -85,6 +86,32 @@ def test_unverified_citation_is_rejected_before_review():
     with pytest.raises(ValueError, match="Unverified"):
         judge(client).score(case(), case()["request"], answer)
     assert calls == []
+
+
+def test_failed_evaluator_preflight_stops_before_app_requests(monkeypatch):
+    import httpx
+    from openai import PermissionDeniedError
+
+    client, _ = client_factory()
+    def denied(**kwargs):
+        raise PermissionDeniedError("PRIVATE-PROVIDER-ERROR", response=httpx.Response(403,
+            request=httpx.Request("POST", "https://api.openai.com/v1/responses")), body={"private": "PRIVATE"})
+    client.responses.create = denied
+    evaluator = judge(client)
+    def app_request(*args):
+        pytest.fail("Evaluator access must be verified before making app requests")
+    monkeypatch.setattr(live_evaluation, "request_json", app_request)
+    captured = drift_quality.capture_quality(judge=evaluator, cases=[case()], repeats=3,
+        dataset_hash="dataset-hash", corpus_versions={"education": "education-v1", "policy": "policy-v1"},
+        run_kwargs={"url": "https://example.test/api/coach", "api_key": "PRIVATE-KEY",
+            "timeout_seconds": 1, "expected_model_provider": "openai", "expected_model_id": "generator",
+            "expected_prompt_version": "v10", "input_cost_per_million": 1,
+            "output_cost_per_million": 1, "commit_sha": "test", "maximum_estimated_cost_usd": 0.05})
+    assert not captured["complete"] and captured["samples"] == []
+    assert captured["generator_cost_estimate"]["estimated_total"] == 0
+    assert captured["evaluator_usage"]["failure_code"] == "EVALUATOR_PERMISSION_DENIED"
+    assert not captured["evaluator_usage"]["usage_complete"]
+    assert "PRIVATE" not in json.dumps(captured)
 
 
 @pytest.mark.parametrize("p95,accepted", [(22707.77, True), (60000, True), (60000.01, False)])
