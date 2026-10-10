@@ -90,7 +90,7 @@ The detailed operating record is in `docs/operational-evidence.md`. The assessme
 | CI and LLMSecOps | All service tests, eight policy suites, migrations, SAST, infrastructure checks, integration/load smoke, and hardened container builds passed in run `33375543534`. |
 | AWS release | Migration `20260831_0008`, immutable image checks, three stable ECS services, and lifecycle-aware live smoke passed in run `33375735946`. |
 | Live operation | 39/39 repeated Bedrock/RAG cases and 10/10 bounded-load requests passed with zero cleanup failures in run `33377416351`. |
-| Model selection | Nova Lite passed 45/45; Nova Micro passed 42/45 and was rejected by the dependency gate in run `33354207859`. |
+| Model selection | Current selection: `gpt-6-luna`, for scoped agent tasks, structured responses, role-specific reasoning and budget headroom; [selection rationale](model-selection.md#why-gpt-6-luna-is-chosen). Full current acceptance remains outstanding. Historical run `33354207859` retained Nova Lite (45/45) over Nova Micro (42/45, dependency gate failed). |
 | Retrieval governance | Education run `33193755856` and Policy run `33231041612` passed exact object, checksum, metadata, freshness, and ingestion audits. |
 | Identity and edge | Two-user owner isolation, Cognito logout, custom-domain TLS, HTTPS origin, and direct-origin denial have retained evidence. |
 | Operations and lifecycle | CloudWatch-to-SNS delivery was human-acknowledged; `data-lifecycle-v1` retention, export, and complete deletion have automated evidence. |

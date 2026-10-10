@@ -2,6 +2,8 @@
 
 This register contains privacy-safe evidence for the synthetic-data AWS demo. It does not approve real personal financial data or production users.
 
+The current model selection, confirmed against repository configuration on 2026-10-10, is **OpenAI GPT-6 Luna** (`gpt-6-luna`) through the Responses API with the current v10 prompt contract. See [model selection](model-selection.md) for the configuration references and acceptance limits. The August Nova comparison and operational baseline below remain historical evidence.
+
 ## Budget planner deployment and live acceptance — 2026-09-29
 
 The four Budget roadmap increments, merged with the newer Coach transaction/privacy fixes, are deployed at application revision `f821887a62e8b8d94aa77975f34d6770042e6312`. [CI 36566192931](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566192931) and [release 36566489405](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566489405) passed. The release verified migrations through `20260930_0012`, deployed all three services, and passed health and AI safety smoke tests.
@@ -10,7 +12,7 @@ The four Budget roadmap increments, merged with the newer Coach transaction/priv
 
 The earlier runs [36562754209](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36562754209) (9/14) and [36565391432](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36565391432) (12/14) exposed capture/clarification and safety-handoff issues. Code and prompt-context corrections produced the final pass without relaxing cases or thresholds. This is bounded synthetic Budget acceptance, not validation of every interaction, production users or real financial data.
 
-## Verified Baseline
+## Historical Bedrock Baseline (2026-08-31)
 
 - Baseline date: 2026-08-31
 - Commit: `ccc199fafee4e91fd791508589647756d4be8b31`
@@ -57,9 +59,13 @@ The gate now requires review metadata and limits every exception to 30 days. The
 
 ## Candidate Model Decision
 
-The formal 2026-08-31 AWS comparison ran 15 cases three times per model through the service orchestrator and prompt set v4. Both the Nova Lite and Nova Micro APAC profiles were active from Singapore, listed six APAC destinations, completed all 45 executions, and had zero invocation errors.
+**Current model selection: `gpt-6-luna`.** This is the configured OpenAI model; the historical `retain_baseline` result below does not select the current module model or establish Luna acceptance.
 
-Nova Lite passed 45/45 structural runs with 7.54-second P95 and USD 0.014744 estimated cost. Nova Micro passed 42/45, with 8.02-second P95 and USD 0.006486 estimated cost. Micro failed all three repeats of the missing-income dependency case by marking the request blocked while correctly identifying that the Budget agent needed user input. Its overall pass rate was 93.33 percent and its dependency pass rate was 66.67 percent against 100-percent gates. The versioned policy therefore recorded `retain_baseline` and `human_review_required: false`; `apac.amazon.nova-lite-v1:0` remains selected. The JSON report, 45-row blinded diagnostic file, and separate review key are retained for 90 days in [run 33354207859](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33354207859). See `docs/model-selection.md` for the complete decision record.
+The choice fits bounded agent tasks and the implemented Responses API integration: schema-constrained results, medium reasoning for specialist writing/final Compliance review, and low reasoning for coordination and composition. Current Standard token rates give an illustrative USD 0.0279 at the historical Nova Lite token mix, within the USD 0.05 run cap, compared with USD 0.0623 for GPT-5.6 Luna. Historical Nova prices were lower; there is no current head-to-head quality or latency result. The [selection rationale and candidate table](model-selection.md#why-gpt-6-luna-is-chosen) record the official sources checked on 2026-10-10 and the estimate assumptions. Current live acceptance remains a separate gate.
+
+The historical 2026-08-31 AWS comparison ran 15 cases three times per model through the service orchestrator and prompt set v4. Both the Nova Lite and Nova Micro APAC profiles were active from Singapore, listed six APAC destinations, completed all 45 executions, and had zero invocation errors.
+
+Nova Lite passed 45/45 structural runs with 7.54-second P95 and USD 0.014744 estimated cost. Nova Micro passed 42/45, with 8.02-second P95 and USD 0.006486 estimated cost. Micro failed all three repeats of the missing-income dependency case by marking the request blocked while correctly identifying that the Budget agent needed user input. Its overall pass rate was 93.33 percent and its dependency pass rate was 66.67 percent against 100-percent gates. The versioned policy therefore recorded `retain_baseline` and `human_review_required: false`; that run retained the then-selected `apac.amazon.nova-lite-v1:0`. The JSON report, 45-row blinded diagnostic file, and separate review key are retained for 90 days in [run 33354207859](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33354207859). See [model selection](model-selection.md) for the current decision and complete historical record.
 
 ## Education RAG Source Governance
 
@@ -85,4 +91,4 @@ Controlled test `84399b3a-c683-4d2c-a723-bb6eb2cb6be5` then moved the backend 5x
 
 - Representative-user validation of explanations and confidence presentation was explicitly deferred from this project scope; the prepared protocol remains an activation gate for real users.
 - Backup restoration and disaster-recovery exercises are outside the bounded academic demo; revisit them before a production recoverability claim.
-- If a Nova Micro change is pursued, first correct or otherwise resolve its repeatable missing-input dependency behavior, then produce a fresh all-green comparison before blinded review.
+- Any future replacement of `gpt-6-luna` needs fresh objective comparison evidence and blinded review on the current contract. If Nova Micro is reconsidered, its historical missing-input dependency failures must also be resolved.
