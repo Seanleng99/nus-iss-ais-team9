@@ -7,214 +7,104 @@ and [a weekly/manual workflow](../.github/workflows/model-drift.yml). Its policy
 and [model-drift-cases.jsonl](../infra/llmsecops/model-drift-cases.jsonl). It does not
 ship a fabricated or automatically approved live baseline. Scheduled activation
 requires a completed, independently reviewed capture and the configuration below.
-Weekly/manual drift captures and the capture CLI default to two repetitions of
-each of the 12 cases, for 24 samples. The scored-subgroup minimum is two so the
-two citation samples per language can be eligible. Smaller groups have wider
+Weekly/manual drift captures and the capture CLI default to one run of
+each of the 12 cases, for 12 samples. The scored-subgroup minimum is one so the
+single citation sample per language can be eligible. Smaller groups have wider
 uncertainty; quality percentages, safety/financial gates, two-run regression
 confirmation and independent human calibration remain required. Historical
-36-sample captures below retain their original three-repetition evidence.
+24- and 36-sample captures below retain their original repetition counts and evidence.
 
 ## Demo Activation Status — 2026-10-11
 
-The [currency-fix capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38065549966)
-ran against deployed build `ba27b07`. All five completed Goal answers passed the
-currency and quality checks. It attempted all 36 samples, accounted for every
-generation call and cleaned up all 36 sessions, but two HTTP 503 responses left
-only 34 answers. Structural acceptance was 33/34: one Spending answer was
-withheld by Risk for `factual_qualification`. P95 was 37,580.74 ms; generation
-cost was USD 0.072292 and grading cost USD 0.0096342. Two Education citation
-flags also failed. This capture is ineligible; scheduled monitoring stays disabled.
+The deployed implementation and previous two-repetition configuration are published at `42d7137`,
+with successful [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38068208470)
+and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38068426326).
+The [fresh 24-sample capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972)
+completed against that stable build and failed the final acceptance gate.
+All 24 answers were captured with known generation/grading usage and successful
+cleanup. Structural acceptance was 22/24; Risk and Compliance withheld
+`budget-en:1` and `education-en:1`. No HTTP 503 or token-count failure occurred.
+Citation support passed 4/4, safety and language passed 24/24, and financial
+correctness passed 11/12 because the withheld Budget answer supplied no result.
+P95 was 41,293.20 ms, below the 60,000 ms limit. Generation cost was USD 0.051921
+and grading cost was USD 0.0067606, both within their allowances. The subsequent
+one-run request changes the workflow and CLI to 12 samples and the subgroup
+minimum to one; a fresh capture and reviewed baseline are required. No reviewed
+baseline is committed, and scheduled monitoring remains disabled.
 
-Owned trace metadata confirmed one 503 followed two router semantic-contract
-rejections (`INVALID_STRUCTURED_RESPONSE`); the old logs did not retain the
-particular rule. A local replay observed overlapping reference/antecedent spans
-when a directly named saved goal was mistaken for a current-message reference.
-Its one correction succeeded. Router guidance now distinguishes direct subjects
-from reference expressions, and each rejected constraint has a fixed diagnostic
-reason. These checks still reject invented, repeated or overlapping provenance.
+The owned Budget trace records an initial `factual_qualification` veto and an
+`unverifiable_claim` veto after one bounded claim correction. The Education trace
+records `factual_qualification`, then `citation_attribution` after correction,
+then `unverifiable_claim` after a separately reviewed partial answer. These are
+runtime Compliance decisions, rather than citation-grader failures or transport
+errors. The original intermediate drafts and correction requirements are not
+retained; content-free issue locations, categories and requirement hashes cannot
+establish whether each disputed claim or review was wrong. One local synthetic
+diagnostic per affected case completed without withholding; neither veto was
+reproduced. Those diagnostics cannot replace the original evidence or approve
+this failed capture.
+No veto, acceptance threshold or previous score has been overridden.
 
-The other 503 occurred before Risk inference: exact provider input-token counting
-failed after approximately three seconds (`MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE`).
-The old trace omitted the provider exception type, so timeout is an inference
-from timing, not a confirmed exception classification. Counting now permits at
-most two attempts for typed timeout/connection/server failures, with a local
-eight-second budget and the remaining workflow deadline. No generation starts
-without a valid exact count; invalid counts and permission failures do not retry.
-Inference retries remain disabled when spend could be unknown. Static cause
-codes and recovered workflow error codes are retained without prompt/error text.
+Generation and separate rubric grading both use `gpt-6-luna`, as requested.
+The evaluator credential's Luna access is verified. This uses separate prompts
+and contexts but does not provide different-model independence; independent
+human calibration remains mandatory. Reports use GitHub Actions only. Optional
+email alerts and input-distribution monitoring remain disabled. The repository
+and `demo` enable switches are both false; repository scope is required by the
+schedule's job-level gate.
+
+The previous [currency-fix capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38065549966)
+attempted all 36 samples, accounted for generation/grading usage and cleaned up
+all 36 sessions. All five completed Goal answers passed currency and quality
+checks. Two HTTP 503 responses left 34 answers; structural acceptance was 33/34
+because Risk withheld one Spending answer for `factual_qualification`. Two
+Education citation flags also failed. P95 was 37,580.74 ms, generation cost
+USD 0.072292 and grading cost USD 0.0096342. This remains failed evidence.
+
+Owned traces confirmed two router semantic-contract rejections for one 503;
+the old logs did not identify the constraint. A local replay caught overlapping
+reference/antecedent spans for a directly named saved goal, then its one bounded
+correction succeeded. Router guidance now distinguishes direct subjects from
+reference expressions. Static reason codes identify each rejected constraint;
+exact, unique and nonoverlapping provenance is still required.
+
+The other 503 happened before Risk inference when exact provider input-token
+counting failed after about three seconds. Timeout is inferred from timing;
+the old trace omitted the exception type. Counting now permits at most two
+attempts for typed timeout/connection/server failures, within a local eight-second
+budget and the remaining workflow deadline. Invalid counts and permission
+failures do not retry. Generation still requires a valid exact count, and uncertain
+inference spend cannot be retried. Capture execution records retain bounded
+recovered error codes without prompt text or provider exception messages.
 
 A separate held-answer diagnostic found the Chinese citations supported and
-returned a contradictory English flag: false while describing all attributed
-claims as supported. Grading guidance now explicitly accepts cautious faithful
-paraphrases and requires a false citation flag to correspond to an actual
-unsupported/distorted attribution. Original scores remain unchanged; the new
-grader identity requires fresh capture and independent human calibration.
-The Spending veto was not reproduced by a local diagnostic and remains a
-failure to investigate, rather than an exception or an overridden safety verdict.
+returned a contradictory English flag: false while describing the attributed
+claims as supported. Grading guidance now accepts cautious faithful paraphrases
+and requires a false citation flag to represent an actual unsupported/distorted
+attribution. Four fixed English/Chinese positive and negative controls passed.
+Original scores remain unchanged; diagnostics are not baseline evidence or human
+calibration. The Spending veto was not reproduced locally and remains a failure
+to investigate; its safety verdict was not overridden.
 
-The [next stable-build capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38061657059)
-completed all 36 samples with full generation/grader usage and 36 cleanups. All
-Education checks passed. P95 was 34,648.38 ms; generation cost was USD 0.076257
-and grading cost USD 0.0095682. Two Goal answers omitted an explicit currency,
-so structural acceptance remained 34/36 and the Goal subgroup failed. This is
-failed evidence, not an approved baseline.
+Production repairs apply to general requests without branches keyed to benchmark
+case IDs, run/trace IDs or exact failing questions. They preserve owned Goal
+currency, carry unsaved Spending/Budget/Goal proposals into synthesis and Risk,
+and maintain backend validation, preview and separate write confirmation.
+Evaluation corrections cover currency-label parsing, the Budget fixture's known-rent
+arithmetic scope, citation attribution and appropriate refusal. Changed identities
+require fresh capture and independent human calibration; old failures are preserved.
 
-Goal projections and progress now carry their owned currency to the writer and
-reviewer. The writer must preserve currency labels; an unlabeled monetary result
-gets one bounded structured-response correction against unchanged grounding.
-Separately, unsaved Goal extraction bypasses the normal financial grounding
-snapshot. Its draft now reaches both synthesis and Risk review, with explicit
-instructions to inspect proposed fields without treating them as saved records,
-affordability, consent or execution. Backend validation, preview and confirmation
-remain required. Regression tests cover create/update/delete proposals, retained
-vetoes, unrelated-private-field exclusion and varied projection amounts/currencies.
+Current complete-answer P95 acceptance is the provisional 60,000 ms limit.
+Forty-two selected earlier Luna traces had P95 51.38 seconds, motivating revision
+of the inherited ten-second gate; they are not a current-build baseline. The
+85-second workflow deadline remains enforced. Fixture setup, cleanup and grading
+time are excluded from answer latency. Per-run allowances remain USD 0.10 for
+generation and USD 0.45 for grading; missing usage stops further spending.
 
-These are general implementation fixes, with no production branches keyed to
-benchmark case IDs, run/trace IDs or exact failing questions. Evaluation changes
-also corrected currency matching, the Budget fixture's arithmetic scope and
-grader attribution/refusal rules. Their changed identities require a fresh full
-capture and independent human calibration; they never replace old failed scores.
-
-The [stable-build capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38058466228)
-completed all 36 samples with full generation/grader usage and 36 successful cleanups.
-P95 was 32,032.45 ms. All 18 financial-correctness scores, all 36 safety scores and
-all 36 language scores passed. Budget, Spending and missing-input structural checks
-passed, but two English Education responses asked an unnecessary concept clarification
-and returned no citations. The current-sentence reference rule now recognizes a
-single named education subject before its later possessive while preserving unresolved
-and multiple-subject clarification. The original capture remains failed evidence.
-
-Citation grading also proved sensitive to faithful translation and separately labeled
-model knowledge. A separate Luna diagnostic found the cited Chinese claims supported
-by the approved reference. The grader now checks actual source attribution, evaluates
-other material claims under groundedness, and grades appropriate refusal against the
-safe expected outcome. This changes evaluator prompt identity and requires a fresh
-capture and independent human calibration; it does not replace old flags or relax
-absolute/subgroup thresholds. A held-answer calibration trial remains separate from
-eligible baseline evidence.
-
-An earlier [repair capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38055863270)
-stopped after 11 of 36 attempts because a concurrent deployment changed the build
-from `3732e89` to `50f94b5`. All attempted generation usage was accounted for;
-P95 was 37,951.59 ms. This mixed-build capture is ineligible as a baseline.
-It also exposed a false amount failure for the correct `2,500 SGD` format,
-another withheld Spending response, and a withheld missing-input clarification.
-The amount oracle now accepts the ISO currency suffix with strict numeric and
-currency boundaries. The Spending lookup contract reaches both synthesis and
-Compliance. Budget clarification now asks for take-home income and unknown
-confirmed commitments in the requested language, without implying budget creation.
-A local synthetic Luna review accepted that corrected clarification. Captures
-now report a specific content-free code such as `QUALITY_DEPLOYED_BUILD_CHANGED`
-instead of hiding identity failures behind a generic evidence code. Complete
-deployment before recapturing; quality, safety, usage and human-calibration gates
-still apply. These repairs do not authorize an automatic baseline approval.
-
-The implementation is published on `main`, with successful [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38044974592)
-and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38045210894)
-for `0c314010720baf47af537949da4ec2ad838cfe61`. The `demo` environment is
-configured for GitHub Actions reports only; email alerts and input monitoring
-remain disabled. Evaluator rates and spending limits are configured, and the
-evaluator secret was added on 2026-10-10. The [candidate retry](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38047917395)
-returned `EVALUATOR_PERMISSION_DENIED` (HTTP 403) from its harmless evaluator
-preflight, before any app requests. No complete capture or accepted baseline exists.
-Those failed attempts used `gpt-6-sol` only as a grader. Following the user's
-instruction to use only `gpt-6-luna`, policy version 3 selects `same_model`
-evaluation. Generation and grading both use Luna, with separate prompts and
-contexts. This does not provide different-model independence; independent human
-calibration remains mandatory. `MODEL_DRIFT_ENABLED` remains `false` until a
-complete passing capture is reviewed and accepted. No
-`infra/llmsecops/model-drift-baseline.json` is currently committed, so scheduled
-comparison cannot pass until a reviewed baseline is created and checked in.
-
-The project's existing credential lists only `gpt-6-luna`; a direct Structured
-Outputs invocation of the selected `gpt-6-sol` evaluator returned HTTP 403.
-The new GitHub secret also lacked permission for that grader call. Its Luna access
-was verified by the [first Luna capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38048528519).
-That run scored five answers and stopped when the sixth grader response could not
-be verified. All six app responses passed structural checks; their observed P95
-was 28,792.43 ms. The first sample failed automated helpfulness, which remains
-visible in its evidence. This incomplete run cannot become a baseline. The scoring
-schema now requires booleans only for applicable metrics and null for unused
-metrics, with a new schema identity and more specific sanitized failure codes.
-The tightened schema passed two small Luna-only connectivity checks, separate from
-baseline evidence. The configured Standard rates for Luna are
-USD 0.10 input / USD 0.50 output per million tokens, matching the
-[official model card](https://developers.openai.com/api/docs/models/gpt-6-luna).
-
-The [corrected-schema capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049061224)
-verified all six returned grader scores, but stopped before completing 36 samples
-because generation usage could not be fully accounted for. Two Spending responses
-were withheld by Compliance with `factual_qualification` categories, and the Budget
-English sample again failed automated helpfulness. Observed P95 was 34,615.95 ms,
-below the provisional latency limit; quality and completeness still failed. A
-separate disposable Education diagnostic failed the approved-citation minimum,
-with complete token accounting and successful cleanup. These are acceptance
-failures, not confirmed relative drift: no accepted comparison baseline exists.
-Resolve the live behavior and accounting failures, complete the fixed capture,
-and independently calibrate it before enabling the schedule. Implementation CI
-passed for the [schema correction](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049044875).
-
-Capture diagnostics now retain content-free per-case execution metadata: the
-failure stage, bounded HTTP status/error type, usage failure codes, failed checks
-and cleanup result. Fixture setup failures stop the capture with a fixture error;
-because these APIs do not invoke the model, they no longer claim unknown generation
-usage. Actual generation or composition usage gaps still stop further requests.
-Both cost and token budgets verify per-call usage against aggregate totals.
-Read-only Spending handoffs now describe a lookup rather than a proposed expense,
-and Compliance receives that operation's scope without bypassing its safety review.
-
-A three-case diagnostic on 2026-10-10 completed with verified token usage and
-successful cleanup. Education returned two approved citations; English Spending
-passed. Chinese Spending returned the correct SGD 300 as `300新加坡元（SGD）`,
-but the amount oracle recognized only `新元`. The localized currency aliases now
-include `新加坡元` and `新币`, with negative tests for wrong currencies, amounts
-and numeric substrings. This diagnostic and the parser correction do not establish
-a repeated, human-reviewed baseline; the earlier run's exact stop trigger remains
-unconfirmed and scheduling remains disabled.
-Replaying the held Chinese answer passes the corrected currency oracle. The
-[repair CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38054470151)
-passed for commit `3732e89`; the content-free
-[repair evidence](evaluation-evidence/model-drift-repair-2026-10-10.json) records
-the diagnostic and changes.
-
-The Budget prompts and rubrics now consistently ask for the amount left after the
-known monthly rent, with the same SGD 2500 arithmetic requirement in both languages.
-They do not equate that partial calculation with complete savings capacity or
-penalize an honest qualification about unknown other expenses. This changes the
-dataset identity and requires a fresh capture and reviewed baseline; it does not
-change any quality, safety or latency threshold.
-
-One disposable deployed Budget case passed structural checks, matched the release
-build and included provider response model IDs in all completed calls. Cleanup
-succeeded. Its observed duration was 22,707.77 ms, above the inherited 10,000 ms
-acceptance limit used for that historical smoke. This single observation is neither
-a quality baseline nor a representative latency distribution. The content-free
-[activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
-preserves the original checks and remaining work at that time.
-
-The current policy retains the provisional 60,000 ms P95 introduced in version 2
-for complete app answers. Forty-two recorded GPT-6 Luna traces from 2026-10-09
-had a median of 33.91 seconds and P95 of 51.38 seconds; 41 exceeded 10 seconds.
-Those selected traces came from an earlier build and justify provisional
-recalibration, not a current-build acceptance baseline. The candidate capture must
-verify the limit on the deployed build. Fixture setup, cleanup and evaluator time
-are excluded from measured answer latency. The app's 85-second hard workflow
-deadline remains in force; time to first streamed progress is a separate target.
-The versioned policy and capture identity both record the latency limit, so changing
-it requires fresh baseline acceptance. Quality and safety thresholds and application
-release cost gates are unchanged.
-The [candidate activation evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json)
-records the policy correction, validation and failed candidate attempts. The
-first attempt observed a structurally passing app response in 29,775.57 ms before
-the evaluator failed; this is one response, not a validated latency distribution.
-
-The configured per-run budget is reallocated from USD 0.05 generation / USD 0.50
-grading to USD 0.10 generation / USD 0.45 grading, preserving the USD 0.55 combined
-limit. The observed Budget response cost USD 0.002507; thirty model-backed samples
-at that cost would exceed the previous generation allowance. This is a sampling
-budget change, with no change to application release cost gates. Captures record
-the generation allowance; a change requires fresh baseline acceptance. Missing
-provider usage still stops the run and does not establish actual billed cost.
+Historical attempts and validation are retained in [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json),
+[candidate evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json)
+and [repair evidence](evaluation-evidence/model-drift-repair-2026-10-10.json).
+Earlier 36-sample captures keep their original three repetitions and outcomes.
 
 ## What Runs
 
@@ -245,7 +135,7 @@ Ordinary relative regressions need two distinct consecutive eligible comparisons
 Missing samples, duplicate IDs, altered evidence hashes, stale history, a fixture
 provider, changed policy or changed runtime/evaluator identity cannot establish a
 passing comparison. The approved baseline is never reset by the monitor. The initial
-policy thresholds and minimum two samples per scored subgroup are demo defaults;
+policy thresholds and minimum one sample per scored subgroup are demo defaults;
 review measured variation and sampling needs before accepting that policy. Wilson
 intervals describe uncertainty and are not an automatic significance test.
 
@@ -265,8 +155,8 @@ role is used when enabling optional email alerts or input aggregate queries.
 | Variable `MODEL_DRIFT_JUDGE_MODEL` | Explicit evaluator supporting Responses Structured Outputs and low reasoning; current policy version 3 requires `gpt-6-luna`, matching every generation role. Separate-model grading is available only with a policy change and fresh baseline acceptance. |
 | Variables `MODEL_DRIFT_JUDGE_INPUT_RATE`, `MODEL_DRIFT_JUDGE_OUTPUT_RATE` | Reviewed USD-per-million-token assumptions for that evaluator; both must be positive. |
 | Variable `MODEL_DRIFT_JUDGE_BUDGET_USD` | Judge spending limit, default USD 0.45. |
-| Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.10 for the 24-sample capture. Changes require reviewed sampling-budget configuration and fresh baseline acceptance. |
-| Variable `MODEL_DRIFT_ENABLED` | Set to `true` after baseline acceptance to enable Sunday 10:15 Singapore scheduled monitoring. |
+| Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.10 for the 12-sample capture. Changes require reviewed sampling-budget configuration and fresh baseline acceptance. |
+| Repository variable `MODEL_DRIFT_ENABLED` | Set to `true` after baseline acceptance to enable Sunday 10:15 Singapore scheduled monitoring. The job-level gate requires repository scope; a `demo` environment variable alone cannot enable it. |
 | Optional variable `MODEL_DRIFT_EMAIL_ALERTS_ENABLED` | Default `false`; set to `true` to publish actionable failures to the existing `OPERATIONAL_ALERTS_TOPIC_ARN`. Requires updated IAM and a confirmed email subscription. |
 | Optional variable `MODEL_DRIFT_INPUT_LOG_GROUP` | Enables aggregate input comparison for an approved log group after data/retention review. |
 
@@ -276,6 +166,9 @@ SNS publication to the existing topic and aggregate-query access to the configur
 updated. Confirm the SNS subscription and exercise the new sender before enabling
 email alerts or claiming notification delivery. The workflow runs only on `main`
 in the `demo` environment.
+Keep the scheduling switch at repository scope: GitHub makes environment-scoped
+configuration available after the runner declares the environment, while the
+job-level `if` runs before that point. See [GitHub's vars context reference](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#vars-context).
 
 Dispatch **Model Drift Monitoring** with `baseline_candidate=true`. Review the
 aggregate capture artifact. A complete passing capture also produces a separate,

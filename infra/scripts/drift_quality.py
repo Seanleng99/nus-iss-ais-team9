@@ -364,7 +364,7 @@ def main():
     parser.add_argument("--generator-budget-usd", type=float, default=0.1)
     parser.add_argument("--generator-input-rate", type=float, default=0.1)
     parser.add_argument("--generator-output-rate", type=float, default=0.5)
-    parser.add_argument("--repeats", type=int, choices=range(1, 6), default=2)
+    parser.add_argument("--repeats", type=int, choices=range(1, 6), default=1)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--review-packet", type=Path, help="Optional private synthetic Q&A packet for human calibration")
     args = parser.parse_args()

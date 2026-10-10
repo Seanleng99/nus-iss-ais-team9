@@ -307,9 +307,9 @@ Establish a baseline for the current model, prompts, role settings and retrieval
 configuration using repeated synthetic cases covering Spending, Budget, Goal
 Strategy, Investment Education and Risk & Compliance. Include English and Chinese,
 safe answerable requests, missing facts, partial evidence, compound requests and
-adversarial cases. The drift workflow runs each of its 12 cases twice (24 samples),
-with a minimum of two samples per scored subgroup. Measure variation across
-independent runs; two repeats alone do not establish statistical confidence. Keep
+adversarial cases. The drift workflow runs each of its 12 cases once (12 samples),
+with a minimum of one sample per scored subgroup. Measure variation across
+independent runs; one sample per case does not measure within-run variation. Keep
 separate scores by specialist, intent and language so aggregate success cannot hide
 a weak subgroup.
 

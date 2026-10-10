@@ -119,7 +119,7 @@ def test_failed_evaluator_preflight_stops_before_app_requests(monkeypatch):
 
 @pytest.mark.parametrize("p95,accepted", [(22707.77, True), (60000, True), (60000.01, False)])
 @pytest.mark.parametrize("evaluation_mode", ["separate_model", "same_model"])
-@pytest.mark.parametrize("repeats", [2, 3])
+@pytest.mark.parametrize("repeats", [1, 2, 3])
 def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch, p95, accepted, evaluation_mode, repeats):
     from app.core.prompts import CURRENT_PROMPT_VERSION
 

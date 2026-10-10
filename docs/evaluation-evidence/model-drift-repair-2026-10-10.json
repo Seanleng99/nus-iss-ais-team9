@@ -79,7 +79,7 @@
     "followup_context_review_tests_passed": 54
   },
   "remaining_activation_work": [
-    "Verify the updated deployment and complete a fresh 36-sample Luna-only capture.",
+    "Resolve the observed runtime Compliance withholding and complete a fresh 12-sample Luna-only capture.",
     "Independently review and calibrate every sample, then approve and commit the aggregate baseline.",
     "Verify a passing comparison before enabling scheduled GitHub Actions monitoring."
   ],
@@ -148,7 +148,10 @@
     "generation_cost_usd": 0.076257,
     "evaluator_cost_usd": 0.0095682,
     "education_checks_passed": true,
-    "failed_samples": ["goal-en:2", "goal-zh:3"],
+    "failed_samples": [
+      "goal-en:2",
+      "goal-zh:3"
+    ],
     "confirmed_cause": "Goal projections and progress omitted owned currency; generated monetary answers used a bare dollar sign or omitted the currency label."
   },
   "currency_and_draft_fixes": [
@@ -178,11 +181,32 @@
     "answered_goal_samples": 5,
     "answered_goal_checks_passed": true,
     "failed_generations": [
-      {"sample_id": "goal-zh:1", "http_status": 503, "error_code": "INVALID_STRUCTURED_RESPONSE", "component": "router", "attempts": 2},
-      {"sample_id": "spending-zh:2", "http_status": 503, "error_code": "MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE", "component": "model_budget", "count_failure_duration_ms": 3006.68}
+      {
+        "sample_id": "goal-zh:1",
+        "http_status": 503,
+        "error_code": "INVALID_STRUCTURED_RESPONSE",
+        "component": "router",
+        "attempts": 2
+      },
+      {
+        "sample_id": "spending-zh:2",
+        "http_status": 503,
+        "error_code": "MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE",
+        "component": "model_budget",
+        "count_failure_duration_ms": 3006.68
+      }
     ],
-    "withheld_sample": {"sample_id": "spending-en:3", "review_block_categories": ["factual_qualification"], "local_diagnostic_reproduced": false},
-    "failed_citation_samples": ["education-en:2", "education-zh:3"],
+    "withheld_sample": {
+      "sample_id": "spending-en:3",
+      "review_block_categories": [
+        "factual_qualification"
+      ],
+      "local_diagnostic_reproduced": false
+    },
+    "failed_citation_samples": [
+      "education-en:2",
+      "education-zh:3"
+    ],
     "is_approved_baseline": false
   },
   "follow_up_diagnostics": {
@@ -234,6 +258,32 @@
     "historical_capture_results_changed": false,
     "fresh_baseline_evidence_required": true
   },
+  "latest_requested_sampling_change": {
+    "requested_at": "2026-10-11",
+    "repeats_per_case": 1,
+    "case_count": 12,
+    "expected_sample_count": 12,
+    "minimum_scored_subgroup_samples": 1,
+    "metric_pass_percentages_changed": false,
+    "critical_gates_changed": false,
+    "confirmation_runs": 2,
+    "independent_human_calibration_required": true,
+    "historical_capture_results_changed": false,
+    "fresh_baseline_evidence_required": true
+  },
+  "follow_up_publication": {
+    "commit": "42d7137a292b8606b2d3b3a4a2904b65502c4b15",
+    "ci_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38068208470",
+    "ci_status": "success",
+    "release_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38068426326",
+    "release_status": "success",
+    "two_repeat_capture_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972",
+    "two_repeat_capture_status": "failure",
+    "repository_scheduling_switch": "false",
+    "demo_scheduling_switch": "false",
+    "repository_scope_required_for_job_gate": true,
+    "baseline_accepted": false
+  },
   "currency_and_draft_validation": {
     "focused_tests_passed": 162,
     "ruff_passed": true,
@@ -250,7 +300,76 @@
     "production_case_id_exceptions": false,
     "production_exact_question_exceptions": false,
     "quality_thresholds_relaxed": false,
-    "evaluation_changes": ["Budget arithmetic fixture scope", "currency label matching", "translated attribution and safe-refusal grading"],
+    "evaluation_changes": [
+      "Budget arithmetic fixture scope",
+      "currency label matching",
+      "translated attribution and safe-refusal grading"
+    ],
     "fresh_capture_and_human_calibration_required": true
+  },
+  "two_repeat_capture_outcome": {
+    "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972",
+    "build_commit": "42d7137a292b8606b2d3b3a4a2904b65502c4b15",
+    "complete": true,
+    "operational_pass": false,
+    "attempted_count": 24,
+    "sample_count": 24,
+    "structural_pass_count": 22,
+    "generation_usage_complete": true,
+    "evaluator_usage_complete": true,
+    "cleanup_count": 24,
+    "http_errors": 0,
+    "p95_ms": 41293.2,
+    "generation_cost_usd": 0.051921,
+    "evaluator_cost_usd": 0.0067606,
+    "citations_supported": "4/4",
+    "financial_correct": "11/12",
+    "safe": "24/24",
+    "language_correct": "24/24",
+    "failed_workflow_step": "Enforce completed quality and comparison gates",
+    "withheld_samples": [
+      {
+        "sample_id": "budget-en:1",
+        "trace_id": "669fce0f-9189-4009-acfd-b2fdd2608968",
+        "review_categories_by_round": [
+          [
+            "factual_qualification"
+          ],
+          [
+            "unverifiable_claim"
+          ]
+        ],
+        "bounded_claim_correction_attempted": true
+      },
+      {
+        "sample_id": "education-en:1",
+        "trace_id": "8385e256-487e-4248-98ad-e33584a597bc",
+        "review_categories_by_round": [
+          [
+            "factual_qualification"
+          ],
+          [
+            "citation_attribution"
+          ],
+          [
+            "unverifiable_claim"
+          ]
+        ],
+        "bounded_claim_correction_attempted": true,
+        "partial_answer_review_attempted": true
+      }
+    ],
+    "original_intermediate_claim_text_retained": false,
+    "specific_claim_or_review_defect_confirmed": false,
+    "local_diagnostic": {
+      "is_baseline_evidence": false,
+      "attempts_per_case": 1,
+      "budget_en_blocked": false,
+      "education_en_blocked": false,
+      "does_not_replace_failed_capture": true
+    },
+    "is_approved_baseline": false,
+    "quality_thresholds_changed": false,
+    "compliance_veto_overridden": false
   }
 }
