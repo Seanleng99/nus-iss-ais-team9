@@ -45,6 +45,18 @@ the shared calendar-scope models. A frontend regression renders routing decision
 with budget and spending scopes, including nested before/after values, so a missing
 dependency fails CI instead of first failing in the deployed Decision traces page.
 
+The `Dependency review` job audits each service's resolved Python dependencies
+with pinned `pip-audit` and fails on any known advisory. After the audit,
+`infra/scripts/summarize_dependency_audit.py` writes a report to the run's job
+summary and to the `dependency-audit-summary.md` artifact, even when the audit
+fails. The report gives per-service totals, a package-health chart, and tables of
+vulnerabilities and skipped packages. `pip-audit` provides advisory identifiers
+and fix versions, not severity scores, so the chart groups packages as clean,
+vulnerable with a fix, vulnerable without a fix, or skipped. Each repeated advisory
+for one package counts once. A missing or malformed service result appears as an
+unavailable audit and fails the report step. The report does not change the
+audit's pass/fail result.
+
 `Budget Live Acceptance` remains an optional manual check of nine focused deployed-model cases and multi-turn confirmation behaviour. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
