@@ -57,6 +57,13 @@ for one package counts once. A missing or malformed service result appears as an
 unavailable audit and fails the report step. The report does not change the
 audit's pass/fail result.
 
+CI tools that can fail a build use exact versions: Ruff, `pip-audit`, Bandit,
+and the npm, Promptfoo and Playwright versions used by the security scan.
+Dependabot proposes weekly updates for GitHub Actions, the three Python services
+and `security/promptfoo`. Each update arrives as a pull request that must pass CI
+before merging, so pinned tool upgrades are reviewed instead of arriving with
+a new upstream release.
+
 `Budget Live Acceptance` remains an optional manual check of nine focused deployed-model cases and multi-turn confirmation behaviour. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
