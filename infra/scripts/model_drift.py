@@ -382,6 +382,16 @@ def input_checks(evidence, policy):
     return results
 
 
+def matching_runtime_identity(current, reference):
+    """Observed calls may omit a role; each observed policy must remain approved."""
+    return (
+        {key: value for key, value in current.items() if key != "roles"}
+        == {key: value for key, value in reference.items() if key != "roles"}
+        and current["roles"].keys() <= reference["roles"].keys()
+        and all(role == reference["roles"][component] for component, role in current["roles"].items())
+    )
+
+
 def compare(capture, baseline, policy, previous=None, inputs=None, now=None):
     validate_capture(capture)
     now = now or datetime.now(UTC)
@@ -411,7 +421,13 @@ def compare(capture, baseline, policy, previous=None, inputs=None, now=None):
             raise ValueError("Baseline is not reviewed and complete")
         if baseline["policy_sha256"] != digest(policy):
             config_changed = True
-        config_changed |= baseline["capture"]["identity"] != capture["identity"]
+        identity_matches = matching_runtime_identity(capture["identity"], baseline["capture"]["identity"])
+        config_changed |= not identity_matches
+        if identity_matches:
+            # The immutable baseline supplies the approved role set for history.
+            # A role taking no part in this run does not reset a regression streak.
+            # New roles or any changed observed policy still require acceptance.
+            report["identity_sha256"] = digest(baseline["capture"]["identity"])
         config_changed |= baseline["capture"]["expected_samples"] != capture["expected_samples"]
         reference_metrics = metrics(baseline["capture"])
     eligible_previous = bool(previous and baseline and not config_changed

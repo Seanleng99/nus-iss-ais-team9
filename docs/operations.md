@@ -137,7 +137,11 @@ cleaned up. P95 was 30.57 seconds against the provisional 60-second limit. The
 user independently reviewed all answers, facts, rubrics and cited documents and
 confirmed every listed criterion passed. The approval command accepted
 [baseline-8608648e6e38f46b](../infra/llmsecops/model-drift-baseline.json), with 100%
-human/judge agreement for every metric. A fresh live comparison and schedule
+human/judge agreement for every metric. The first fresh comparison passed every
+answer gate but falsely reported a configuration change when three approved roles
+were not called. The detector now compares each observed policy against the
+approved baseline, preserving exact matching for shared policies, all non-role
+identity fields and rejection of new roles. A new workflow validation and schedule
 activation are pending; both enable switches remain false.
 
 The [current activation record](evaluation-evidence/model-drift-activation-2026-10-11.json)

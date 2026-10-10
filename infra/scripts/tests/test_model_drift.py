@@ -166,6 +166,66 @@ def test_changed_policy_or_runtime_requires_new_acceptance_baseline(policy):
     assert drift.compare(capture(), reference, altered)["status"] == "configuration_changed"
 
 
+@pytest.mark.parametrize("omitted", [("response_composer",), ("spending_capture",),
+                                      ("response_composer", "spending_capture")])
+def test_unused_approved_roles_do_not_change_same_build_identity(policy, omitted):
+    original = capture()
+    original["identity"]["roles"].update({name: deepcopy(original["identity"]["roles"]["router"])
+                                         for name in ("response_composer", "spending_capture")})
+    reference = baseline(seal(original), policy)
+    frozen = deepcopy(reference)
+    current = capture()
+    current["identity"]["roles"] = {name: deepcopy(role)
+                                    for name, role in original["identity"]["roles"].items() if name not in omitted}
+    result = drift.compare(seal(current), reference, policy)
+    assert result["status"] == "pass" and result["passed"]
+    assert result["identity_sha256"] == drift.digest(reference["capture"]["identity"])
+    assert reference == frozen
+
+
+@pytest.mark.parametrize("field,value", [("model_id", "other-generator"),
+                                         ("provider_model_id", "other-version"),
+                                         ("reasoning_effort", "high"), ("max_output_tokens", 2000)])
+def test_changed_observed_role_policy_still_requires_acceptance(policy, field, value):
+    reference = baseline(capture(), policy)
+    current = capture()
+    current["identity"]["roles"]["router"][field] = value
+    assert drift.compare(seal(current), reference, policy)["status"] == "configuration_changed"
+
+
+def test_new_observed_role_cannot_infer_an_approved_policy(policy):
+    reference = baseline(capture(), policy)
+    current = capture()
+    current["identity"]["roles"]["answer_correction"] = deepcopy(current["identity"]["roles"]["router"])
+    assert drift.compare(seal(current), reference, policy)["status"] == "configuration_changed"
+
+
+def test_changed_build_is_rejected_even_when_only_approved_roles_are_observed(policy):
+    original = capture()
+    original["identity"]["roles"]["response_composer"] = deepcopy(original["identity"]["roles"]["router"])
+    reference = baseline(seal(original), policy)
+    current = capture()
+    current["identity"]["build_commit"] = "new-build"
+    assert drift.compare(seal(current), reference, policy)["status"] == "configuration_changed"
+
+
+def test_regression_confirmation_survives_different_approved_role_coverage(policy):
+    instant = datetime.now(UTC) - timedelta(minutes=2)
+    original = capture(instant=instant - timedelta(minutes=1))
+    original["identity"]["roles"].update({name: deepcopy(original["identity"]["roles"]["router"])
+                                         for name in ("response_composer", "spending_capture")})
+    reference = baseline(seal(original), policy)
+    first_capture = capture(failed=6, instant=instant)
+    first_capture["identity"]["roles"]["response_composer"] = deepcopy(original["identity"]["roles"]["response_composer"])
+    first = drift.compare(seal(first_capture), reference, policy)
+    second_capture = capture(failed=6)
+    second_capture["identity"]["roles"]["spending_capture"] = deepcopy(original["identity"]["roles"]["spending_capture"])
+    second = drift.compare(seal(second_capture), reference, policy, first)
+    assert first["status"] == "warning" and first["passed"]
+    assert second["status"] == "drift" and not second["passed"]
+    assert second["checks"]["all/helpful"]["consecutive_breaches"] == 2
+
+
 def test_latency_policy_change_requires_fresh_acceptance(policy):
     reference = baseline(capture(), policy)
     changed = deepcopy(policy)

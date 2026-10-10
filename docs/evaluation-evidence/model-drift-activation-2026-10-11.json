@@ -2,7 +2,7 @@
   "schema_version": 1,
   "measurement": "drift_activation_readiness",
   "date": "2026-10-11",
-  "status": "human_reviewed_baseline_accepted_live_comparison_pending",
+  "status": "human_reviewed_baseline_accepted_comparison_role_coverage_fix_pending_validation",
   "deployed_build": "49843e3ccebb5b9115e2d4f2ef36b0c2746e44e6",
   "ci": {
     "status": "success",
@@ -65,12 +65,45 @@
     "minimum_scored_subgroup_samples": 1
   },
   "live_comparison": {
-    "status": "pending",
-    "passed": false
+    "status": "failure",
+    "comparison_status": "configuration_changed",
+    "passed": false,
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38075962909",
+    "all_12_quality_samples_pass": true,
+    "operational_pass": true,
+    "p95_ms": 56390.61,
+    "confirmed_cause": "Role observations were incorrectly compared as a complete configuration; current roles were a matching subset of approved roles.",
+    "unobserved_approved_roles": [
+      "spending_capture",
+      "response_composer",
+      "action_grounding_review"
+    ],
+    "non_role_identity_changed": false,
+    "shared_role_settings_changed": false,
+    "corrected_same_evidence_replay_status": "pass",
+    "original_github_run_outcome_changed": false
   },
   "remaining_activation_work": [
-    "Publish the accepted baseline.",
-    "Verify a fresh live comparison against the same deployed build.",
+    "Verify the fresh live comparison against the same deployed build.",
     "Enable and verify repository and demo schedule switches."
-  ]
+  ],
+  "baseline_publication_commit": "252ee32467e65c7016e602153424503e030708da",
+  "baseline_publication_ci": {
+    "status": "success",
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38075920498"
+  },
+  "baseline_publication_deployment_selected": false,
+  "comparison_repair": {
+    "generality": "Same-build captures may omit approved roles; each currently observed policy must exactly match an approved baseline role.",
+    "new_roles_rejected": true,
+    "changed_observed_policies_rejected": true,
+    "non_role_identity_changes_rejected": true,
+    "baseline_capture_changed": false,
+    "baseline_human_scores_changed": false,
+    "policy_thresholds_changed": false,
+    "regression_confirmation_preserved": true,
+    "tests_passed": 102,
+    "ruff": "passed",
+    "fresh_workflow_validation": "pending"
+  }
 }

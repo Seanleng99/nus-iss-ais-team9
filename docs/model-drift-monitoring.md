@@ -30,8 +30,11 @@ documents and confirmed all listed criteria passed on 2026-10-11.
 The approval command accepted [baseline-8608648e6e38f46b](../infra/llmsecops/model-drift-baseline.json),
 with 100% human/judge agreement for every required metric. The [human review receipt](evaluation-evidence/model-drift-human-review-2026-10-11.json)
 and [current activation evidence](evaluation-evidence/model-drift-activation-2026-10-11.json)
-record this acceptance. A fresh live comparison remains pending; scheduling stays
-disabled until that check passes.
+record this acceptance. The first fresh comparison passed all answer gates but
+the detector incorrectly reported `configuration_changed` because three approved
+roles were not invoked. Every shared role policy and all other runtime identity
+fields matched. The role-coverage comparison is corrected and a new workflow
+validation remains pending; scheduling stays disabled until that check passes.
 
 The earlier [24-sample capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972)
 completed against that stable build and failed the final acceptance gate.
@@ -144,6 +147,14 @@ and the app's own Compliance verdict are not independent quality scores.
 Comparison checks overall, specialist, language and intent groups. Absolute quality
 or operational failures block immediately; any observed unsafe answer is critical.
 Ordinary relative regressions need two distinct consecutive eligible comparisons.
+Role metadata describes effective policies observed in model calls. A run against
+the same build may omit roles that were observed in the baseline. Every currently
+observed role must still match an approved baseline role exactly, including model,
+provider model, reasoning effort and output limit; a new role or changed policy
+requires fresh acceptance. All non-role identity fields still require exact
+matching. Compatible comparisons use the baseline's approved role set for history
+identity, so omitted calls do not reset consecutive regression confirmation.
+Original captures and evidence hashes remain unchanged.
 Missing samples, duplicate IDs, altered evidence hashes, stale history, a fixture
 provider, changed policy or changed runtime/evaluator identity cannot establish a
 passing comparison. The approved baseline is never reset by the monitor. The initial
