@@ -33,6 +33,12 @@ approved sources, grounded evidence and persisted retrieval provenance.
 
 ## Validation workflows
 
+The integration load smoke uses one automation credential, so all its synthetic
+profiles share the coaching quota. Its 20 requests run with concurrency two to
+match the default per-principal limit. Every request must still return HTTP 200;
+quota denials remain failures and the report records their HTTP status. Backend
+quota tests separately verify rejection and `Retry-After` above the limit.
+
 `AWS Operational Validation` runs weekly or on demand against the deployed synthetic demo. It repeats the live OpenAI/RAG cases, measures bounded load and estimated model cost, checks service state, lifecycle controls, dashboard and alarms, and can exercise backend task replacement. Its current model expectation is GPT-6 Luna. This is the required live acceptance evidence for the migration; historical Nova results cannot validate it.
 
 `RAG Source Governance` validates both approved local corpora and audits the deployed KBs/S3 objects weekly or on demand. Its dedicated OIDC role has read-only corpus and KB permissions. It checks approval, provenance, review deadlines, content inspection, SHA-256 checksums, sidecars and completed ingestion, and retains privacy-safe evidence for 90 days. Historical Bedrock generation comparisons remain historical.

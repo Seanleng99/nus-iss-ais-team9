@@ -139,7 +139,7 @@ def main() -> None:
     parser.add_argument("--url", required=True)
     parser.add_argument("--api-key", required=True)
     parser.add_argument("--requests", type=int, default=20)
-    parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument("--concurrency", type=int, default=2)
     parser.add_argument("--timeout-seconds", type=float, default=30)
     parser.add_argument("--minimum-success-rate", type=float, default=1.0)
     parser.add_argument("--maximum-p95-ms", type=float, default=8000)
@@ -167,6 +167,8 @@ def main() -> None:
                 else:
                     failures.append(f"HTTP {status}")
                 cleanup_failures += int(not cleaned_up)
+            except urllib.error.HTTPError as error:
+                failures.append(f"HTTP {error.code}")
             except (OSError, ValueError) as error:
                 failures.append(type(error).__name__)
 

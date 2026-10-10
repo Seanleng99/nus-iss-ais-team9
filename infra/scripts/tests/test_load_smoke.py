@@ -1,6 +1,8 @@
 import json
 import urllib.error
 
+import pytest
+
 from infra.scripts import load_smoke
 from infra.scripts.load_smoke import (
     build_report,
@@ -95,3 +97,19 @@ def test_build_report_contains_privacy_safe_operational_evidence() -> None:
     assert report["latency_ms"] == {"p50": 20, "p95": 30, "p99": 30}
     assert report["failure_types"] == ["TimeoutError"]
     assert report["cleanup_failures"] == 1
+
+
+def test_http_quota_denial_still_fails_load_and_reports_its_status(monkeypatch, capsys):
+    def denied(*_args):
+        raise urllib.error.HTTPError("https://example.test/api/coach", 429,
+                                     "Too Many Requests", {}, None)
+
+    monkeypatch.setattr(load_smoke, "send_request", denied)
+    monkeypatch.setattr("sys.argv", ["load_smoke.py", "--url", "https://example.test/api/coach",
+                                    "--api-key", "synthetic", "--requests", "1"])
+    with pytest.raises(SystemExit, match="success rate was below threshold"):
+        load_smoke.main()
+    report = json.loads(capsys.readouterr().out)
+    assert report["passed"] is False
+    assert report["successes"] == 0
+    assert report["failure_types"] == ["HTTP 429"]

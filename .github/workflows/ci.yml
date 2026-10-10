@@ -413,7 +413,7 @@ jobs:
           --url http://127.0.0.1:8080/api/coach
           --api-key change-me-locally
           --requests 20
-          --concurrency 4
+          --concurrency 2
           --maximum-p95-ms 5000
       - name: Upload service logs on failure
         if: failure()

@@ -50,6 +50,8 @@ def test_existing_deployment_paths_supply_origin_restriction_contract() -> None:
 
 
 def test_backend_reservations_match_ai_budget_and_expose_quota_monitoring():
+    import shlex
+
     import yaml
 
     class Loader(yaml.SafeLoader):
@@ -66,6 +68,13 @@ def test_backend_reservations_match_ai_budget_and_expose_quota_monitoring():
         environments[name] = {item["Name"]: item["Value"] for item in container["Environment"] if "Name" in item}
     assert environments["BackendTaskDefinition"]["MAX_MODEL_TOKENS_PER_RUN"] == environments["AiTaskDefinition"]["MAX_MODEL_TOKENS_PER_RUN"]
     assert int(environments["BackendTaskDefinition"]["COACH_CONCURRENT_REQUESTS"]) == 2
+    # The integration test shares one automation credential across every
+    # synthetic profile, so its parallelism must respect that principal's cap.
+    workflow = yaml.safe_load((PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["service-integration"]["steps"]
+    command = shlex.split(next(step["run"] for step in steps if step.get("name") == "Verify bounded concurrency"))
+    concurrency = int(command[command.index("--concurrency") + 1])
+    assert concurrency <= int(environments["BackendTaskDefinition"]["COACH_CONCURRENT_REQUESTS"])
     assert resources["CoachQuotaDeniedMetricFilter"]["Properties"]["LogGroupName"] == "BackendLogGroupName"
     assert resources["CoachQuotaDeniedAlarm"]["Properties"]["MetricName"] == "CoachQuotaDenials"
     assert resources["CoachModelTokensMetricFilter"]["Properties"]["MetricTransformations"][0]["MetricValue"] == "$.total_tokens"
