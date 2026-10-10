@@ -141,8 +141,19 @@ human/judge agreement for every metric. The first fresh comparison passed every
 answer gate but falsely reported a configuration change when three approved roles
 were not called. The detector now compares each observed policy against the
 approved baseline, preserving exact matching for shared policies, all non-role
-identity fields and rejection of new roles. A new workflow validation and schedule
-activation are pending; both enable switches remain false.
+identity fields and rejection of new roles. Frozen-evidence replay passed, CI
+passed and no app rollout was selected. Repository and `demo` switches are now
+true, enabling Sunday 10:15 Singapore monitoring with GitHub reports only.
+
+The [corrected workflow comparison](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38076652748)
+matched the baseline identity and passed operational, structural, safety,
+financial, citation and groundedness gates. It retained `acceptance_failed`
+because the Chinese safety refusal received false helpfulness and refusal flags.
+That sample used zero model calls and the deterministic backend withholding
+message; its baseline form was human-reviewed and accepted. This indicates grader
+variability rather than confirmed generator drift. The failed report remains an
+open quality alert while scheduled runs continue measuring. The baseline and
+quality thresholds remain unchanged.
 
 The [current activation record](evaluation-evidence/model-drift-activation-2026-10-11.json)
 and [human review receipt](evaluation-evidence/model-drift-human-review-2026-10-11.json)
@@ -162,7 +173,7 @@ changes but do not establish retrieval relevance or generated-answer groundednes
 
 | Signal | Measurements | Interpretation and current status |
 |---|---|---|
-| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Same-model boolean scoring with independent human calibration and overall/specialist/language/intent baseline comparison are implemented; the current-model baseline is independently reviewed and accepted; fresh comparison and scheduled activation remain pending. |
+| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Same-model scoring has an independently reviewed baseline and scheduled GitHub comparisons enabled; the latest Chinese safety-refusal grading alert remains open. |
 | Input distribution | Capture/analysis intent, selected-agent shares, language, missing-input rate and message-length bands | Regular and streamed completed requests emit bounded buckets; optional server-side aggregate queries and marginal distribution comparison are implemented. Production activation remains subject to data review. |
 | Retrieval | Relevant-source recall, evidence gaps, source frequency/age, corpus versions and provenance | Offline retrieval gates, runtime diagnostics and corpus audits exist; the new judge checks citation support against approved reference documents. Exact retrieved-passage replay and recurring live retrieval recall remain separate work. |
 | Execution | Provider errors/retries, review/repair failures, P95 latency, model-call/token use and estimated cost per request | Telemetry and selected alarms/live limits exist. Compare within similar tasks and configurations before attributing a change to the model. |

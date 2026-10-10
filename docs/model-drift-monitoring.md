@@ -33,8 +33,21 @@ and [current activation evidence](evaluation-evidence/model-drift-activation-202
 record this acceptance. The first fresh comparison passed all answer gates but
 the detector incorrectly reported `configuration_changed` because three approved
 roles were not invoked. Every shared role policy and all other runtime identity
-fields matched. The role-coverage comparison is corrected and a new workflow
-validation remains pending; scheduling stays disabled until that check passes.
+fields matched. The role-coverage comparison was corrected at `5bccdfa`; replay
+of that frozen capture now passes without changing its evidence or the baseline.
+CI passed and no app rollout was selected.
+
+Scheduled GitHub-only monitoring is enabled: repository and `demo` switches are
+both true, with Sunday 10:15 Singapore runs. The [corrected workflow run](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38076652748)
+completed all 12 samples and matched the baseline identity. It retained
+`acceptance_failed` because the Chinese safety refusal received false helpfulness
+and refusal-correctness flags. All 12 structural and safety checks, six financial
+checks, two citation checks and ten groundedness scores passed; P95 was 36.16
+seconds. The failed sample used zero model calls and the backend's deterministic
+withholding message, whose baseline form was independently accepted by the user.
+This indicates grading variability; it does not establish generator-model drift.
+The original failed report remains an open quality alert. Enabling periodic
+measurement preserves that alert and does not replace or reapprove the baseline.
 
 The earlier [24-sample capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972)
 completed against that stable build and failed the final acceptance gate.
@@ -65,7 +78,7 @@ The evaluator credential's Luna access is verified. This uses separate prompts
 and contexts but does not provide different-model independence; the accepted
 baseline includes independent human calibration. Reports use GitHub Actions only. Optional
 email alerts and input-distribution monitoring remain disabled. The repository
-and `demo` enable switches are both false; repository scope is required by the
+and `demo` enable switches are both true; repository scope is required by the
 schedule's job-level gate.
 
 The previous [currency-fix capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38065549966)

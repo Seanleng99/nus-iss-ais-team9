@@ -299,9 +299,11 @@ existing structural checks; `infra/scripts/model_drift.py` enforces baseline,
 coverage, subgroup, configuration and consecutive-regression checks. The separate
 `model-drift.yml` workflow runs weekly/manual comparisons with GitHub reports and
 optional SNS notifications.
-It is opt-in until the activation requirements in
-[the implementation guide](model-drift-monitoring.md) are satisfied; source code
-alone does not establish a deployed monitor or accepted current-model baseline.
+The 2026-10-11 Luna baseline was independently reviewed and accepted; scheduled
+GitHub-only comparisons are enabled. The latest safety-refusal grading alert
+remains a failed measurement. See [the implementation guide](model-drift-monitoring.md)
+and [activation evidence](evaluation-evidence/model-drift-activation-2026-10-11.json)
+for current outcomes, calibration and configuration.
 
 Establish a baseline for the current model, prompts, role settings and retrieval
 configuration using repeated synthetic cases covering Spending, Budget, Goal
