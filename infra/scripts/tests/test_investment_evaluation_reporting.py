@@ -22,6 +22,12 @@ junit = load("summarize_pytest_junit")
 metrics = load("summarize_investment_evaluations")
 
 
+@pytest.fixture(autouse=True)
+def isolate_ci_summary(monkeypatch):
+    """Synthetic reporter examples must never appear as actual CI results."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+
+
 def test_every_investment_suite_has_complete_versioned_evaluation_definition():
     ownership = json.loads((ROOT / "infra/llmsecops/agent-test-suites.json").read_text())
     catalog = json.loads(junit.EVALUATION_SPEC.read_text())

@@ -3,6 +3,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 MODULE_PATH = Path(__file__).parents[1] / "summarize_pytest_junit.py"
 SPEC = importlib.util.spec_from_file_location("summarize_pytest_junit", MODULE_PATH)
 assert SPEC and SPEC.loader
@@ -23,6 +25,12 @@ REPORT = """<?xml version="1.0" encoding="utf-8"?>
   <testcase classname="t" name="test_skip"><skipped message="not on windows" /></testcase>
 </testsuite></testsuites>
 """
+
+
+@pytest.fixture(autouse=True)
+def isolate_ci_summary(monkeypatch):
+    """Tests opting into summaries use their own temporary destination."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
 
 
 def _write(tmp_path: Path, text: str) -> Path:
