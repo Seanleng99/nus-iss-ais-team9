@@ -58,6 +58,28 @@ def test_matching_live_quality_passes_without_replacing_baseline(policy):
     assert reference == original
 
 
+@pytest.mark.parametrize("mutation", ["private_field", "unknown_stage", "unknown_usage", "count_mismatch"])
+def test_execution_diagnostics_reject_content_or_contradictory_acceptance(mutation):
+    current = capture(count=1)
+    current["samples"][0]["sample_id"] = current["expected_samples"][0]["sample_id"] = "case:1"
+    record = {"case_id": "case", "repeat": 1, "passed": True, "cleanup_succeeded": True,
+              "token_usage_complete": True, "input_tokens": 10, "output_tokens": 5, "model_call_count": 1,
+              "usage_failure_codes": [], "failed_checks": [], "trace_id": None, "correlation_id": None}
+    current["generator_execution"] = {"requested_runs": 1, "attempted_runs": 1,
+        "completed_requested_runs": True, "usage_unknown": False, "fixture_stopped": False, "records": [record]}
+    drift.validate_capture(seal(current))
+    if mutation == "private_field":
+        record["answer"] = "PRIVATE-CONTENT"
+    elif mutation == "unknown_stage":
+        record["failure_stage"] = "PRIVATE-CONTENT"
+    elif mutation == "unknown_usage":
+        current["generator_execution"]["usage_unknown"] = True
+    else:
+        current["generator_execution"]["attempted_runs"] = 0
+    with pytest.raises(ValueError):
+        drift.validate_capture(seal(current))
+
+
 def test_relative_drop_requires_two_distinct_runs(policy):
     instant = datetime.now(UTC) - timedelta(minutes=2)
     reference = baseline(capture(instant=instant - timedelta(minutes=1)), policy)

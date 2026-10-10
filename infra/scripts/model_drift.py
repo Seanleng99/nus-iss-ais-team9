@@ -14,7 +14,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 POLICY_PATH = Path("infra/llmsecops/model-drift-policy.json")
 METRICS = ("financial_correct", "grounded", "citations_supported", "safe", "helpful",
@@ -98,7 +98,8 @@ def load_policy(path=POLICY_PATH):
 def validate_capture(capture):
     allowed = {"schema_version", "measurement", "run_id", "generated_at", "commit_sha", "identity",
                "expected_samples", "samples", "complete", "operational_pass", "operational_failures",
-               "latency_ms", "generator_token_usage", "generator_cost_estimate", "evaluator_usage", "evidence_sha256"}
+               "latency_ms", "generator_token_usage", "generator_cost_estimate", "generator_execution",
+               "evaluator_usage", "evidence_sha256"}
     if set(capture) - allowed:
         raise ValueError("Unapproved fields in quality evidence")
     if capture.get("schema_version") != 1 or capture.get("measurement") != "live_quality_capture":
@@ -152,6 +153,8 @@ def validate_capture(capture):
     if not expected or len({code(item["sample_id"]) for item in expected}) != len(expected):
         raise ValueError("Invalid expected sample inventory")
     inventory = {item["sample_id"]: item for item in expected}
+    if "generator_execution" in capture:
+        _validate_execution(capture, inventory)
     seen = set()
     for sample in capture["samples"]:
         if set(sample) - {"sample_id", "case_id", "specialist", "language", "intent", "structural_pass",
@@ -174,6 +177,64 @@ def validate_capture(capture):
                 or any(type(v) is not bool for v in sample["scores"].values())):
             raise ValueError("Incomplete or nonboolean quality scores")
     return inventory
+
+
+def _validate_execution(capture, inventory):
+    execution = capture["generator_execution"]
+    if set(execution) != {"requested_runs", "attempted_runs", "completed_requested_runs",
+                          "usage_unknown", "fixture_stopped", "records"}:
+        raise ValueError("Unapproved generator execution fields")
+    if (type(execution["requested_runs"]) is not int or execution["requested_runs"] != len(inventory)
+            or type(execution["attempted_runs"]) is not int
+            or not 0 <= execution["attempted_runs"] <= len(inventory)
+            or len(execution["records"]) != execution["attempted_runs"]):
+        raise ValueError("Invalid generator execution counts")
+    for key in ("completed_requested_runs", "usage_unknown", "fixture_stopped"):
+        if type(execution[key]) is not bool:
+            raise ValueError("Invalid generator execution flag")
+    fields = {"case_id", "repeat", "passed", "cleanup_succeeded", "token_usage_complete",
+              "input_tokens", "output_tokens", "model_call_count", "usage_failure_codes", "failed_checks",
+              "trace_id", "correlation_id"}
+    optional = {"failure_stage", "error_type", "http_status", "composition_fallback_code"}
+    usage_codes = {"COMPOSITION_USAGE_UNAVAILABLE", "MODEL_USAGE_TOTALS_MISSING", "MODEL_CALL_USAGE_MISSING",
+                   "MODEL_USAGE_INCONSISTENT", "GENERATION_USAGE_UNRECOVERED"}
+    seen = set()
+    for record in execution["records"]:
+        if not fields <= set(record) or set(record) - fields - optional:
+            raise ValueError("Unapproved generator execution record fields")
+        code(record["case_id"])
+        for key in ("repeat", "input_tokens", "output_tokens", "model_call_count"):
+            if type(record[key]) is not int or record[key] < (1 if key == "repeat" else 0):
+                raise ValueError("Invalid generator execution counts")
+        sample_id = f"{record['case_id']}:{record['repeat']}"
+        if sample_id not in inventory or sample_id in seen:
+            raise ValueError("Generator execution differs from dataset")
+        seen.add(sample_id)
+        for key in ("passed", "cleanup_succeeded", "token_usage_complete"):
+            if type(record[key]) is not bool:
+                raise ValueError("Invalid generator execution flag")
+        if (not set(record["usage_failure_codes"]) <= usage_codes
+                or any(not isinstance(value, str) or not re.fullmatch(r"[a-z][a-zA-Z0-9_.\[\]-]{0,95}", value)
+                       for value in record["failed_checks"])):
+            raise ValueError("Invalid generator execution diagnostic")
+        for key in ("trace_id", "correlation_id"):
+            if record[key] is not None:
+                UUID(record[key])
+        if record.get("failure_stage", "fixture_setup") not in {
+                "fixture_setup", "generation_request", "response_validation", "quality_review"}:
+            raise ValueError("Invalid generator failure stage")
+        if record.get("error_type", "OSError") not in {"LiveEndpointError", "OSError", "URLError", "TimeoutError",
+                "ConnectionError", "TypeError", "ValueError", "JSONDecodeError", "OtherExecutionError"}:
+            raise ValueError("Invalid generator error type")
+        if "http_status" in record and (type(record["http_status"]) is not int or not 100 <= record["http_status"] <= 599):
+            raise ValueError("Invalid generator HTTP status")
+        if record.get("composition_fallback_code") is not None:
+            code(record["composition_fallback_code"])
+    if capture.get("operational_pass") is True and (
+            execution["usage_unknown"] or execution["fixture_stopped"] or not execution["completed_requested_runs"]
+            or len(seen) != len(inventory) or any(not all(record[key] for key in (
+                "passed", "cleanup_succeeded", "token_usage_complete")) for record in execution["records"])):
+        raise ValueError("Operational acceptance contradicts generator execution")
 
 
 def complete(capture):

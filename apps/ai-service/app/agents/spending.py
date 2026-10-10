@@ -36,16 +36,20 @@ class SpendingAgent(BaseAgent):
                 task.context_features["spending_capture"] = False
                 return super().run_task(task)
             if draft.is_spending_request:
+                lookup = draft.action == "query"
                 return CompletedInvocation(
                     result=AgentResult(
                         agent=self.name,
                         summary=(
+                            "A read-only lookup of recorded spending was requested. The backend "
+                            "will calculate the requested amounts from the user's own records. "
+                            "No new expense or write confirmation is involved."
+                        ) if lookup else (
                             "An unsaved spending entry was proposed. The backend validates it and "
                             "shows an exact preview for explicit confirmation before anything is "
-                            "saved. A recorded-spending lookup is answered by the backend from the "
-                            "user's own records."
+                            "saved."
                         ),
-                        rationale=[
+                        rationale=["Recorded-spending lookups are read-only backend operations."] if lookup else [
                             "Spending records require a backend preview and explicit user confirmation."
                         ],
                         confidence=1.0,

@@ -55,6 +55,31 @@ Resolve the live behavior and accounting failures, complete the fixed capture,
 and independently calibrate it before enabling the schedule. Implementation CI
 passed for the [schema correction](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049044875).
 
+Capture diagnostics now retain content-free per-case execution metadata: the
+failure stage, bounded HTTP status/error type, usage failure codes, failed checks
+and cleanup result. Fixture setup failures stop the capture with a fixture error;
+because these APIs do not invoke the model, they no longer claim unknown generation
+usage. Actual generation or composition usage gaps still stop further requests.
+Both cost and token budgets verify per-call usage against aggregate totals.
+Read-only Spending handoffs now describe a lookup rather than a proposed expense,
+and Compliance receives that operation's scope without bypassing its safety review.
+
+A three-case diagnostic on 2026-10-10 completed with verified token usage and
+successful cleanup. Education returned two approved citations; English Spending
+passed. Chinese Spending returned the correct SGD 300 as `300新加坡元（SGD）`,
+but the amount oracle recognized only `新元`. The localized currency aliases now
+include `新加坡元` and `新币`, with negative tests for wrong currencies, amounts
+and numeric substrings. This diagnostic and the parser correction do not establish
+a repeated, human-reviewed baseline; the earlier run's exact stop trigger remains
+unconfirmed and scheduling remains disabled.
+
+The Budget prompts and rubrics now consistently ask for the amount left after the
+known monthly rent, with the same SGD 2500 arithmetic requirement in both languages.
+They do not equate that partial calculation with complete savings capacity or
+penalize an honest qualification about unknown other expenses. This changes the
+dataset identity and requires a fresh capture and reviewed baseline; it does not
+change any quality, safety or latency threshold.
+
 One disposable deployed Budget case passed structural checks, matched the release
 build and included provider response model IDs in all completed calls. Cleanup
 succeeded. Its observed duration was 22,707.77 ms, above the inherited 10,000 ms

@@ -153,6 +153,16 @@ Luna grading access is now verified. The corrected capture remains incomplete an
 failed quality/usage acceptance; a separate Education diagnostic returned no
 approved citations. These failures keep scheduling disabled and cannot establish
 confirmed relative drift without an accepted baseline.
+The capture now retains per-case failure stages, bounded HTTP/usage diagnostics
+and cleanup results, distinguishes fixture failures from unknown model spend,
+and validates aggregate usage for both cost and token budgets. Read-only Spending
+handoffs describe queries correctly, and localized amount checks accept standard
+Chinese SGD labels. The Budget benchmark consistently tests the remainder after
+known rent and permits honest qualifications; its changed dataset identity requires
+fresh calibration. A later three-case diagnostic completed with known usage and
+cleanup; Education retrieved approved citations, and a correct Chinese Spending
+amount exposed the now-fixed currency-label oracle defect. Scheduling stays
+disabled pending a complete, independently reviewed capture.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for

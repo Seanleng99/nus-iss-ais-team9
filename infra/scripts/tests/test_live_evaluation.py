@@ -768,6 +768,10 @@ def test_partial_fixture_seed_failure_cleans_generated_user_and_stops_coach(monk
     assert not coach_calls and len(deleted) == 1
     assert report["passed_runs"] == 0 and report["records"][0]["cleanup_succeeded"]
     assert report["records"][0]["http_status"] == 422
+    assert report["records"][0]["failure_stage"] == "fixture_setup"
+    assert report["fixture_stopped"] and not report["completed_requested_runs"]
+    assert report["token_usage_complete"] and not report["usage_unknown"]
+    assert report["records"][0]["usage_failure_codes"] == []
 
 
 def test_invalid_setup_stops_final_request_and_still_counts_usage_and_cleanup(monkeypatch):
@@ -1063,6 +1067,7 @@ def test_composition_transport_unknown_usage_stops_even_when_backend_answer_has_
     if not usage_complete:
         assert report["records"][0]["composition_usage_complete"] is False
         assert report["records"][0]["composition_fallback_code"] == "COMPOSITION_UNAVAILABLE"
+        assert report["records"][0]["usage_failure_codes"] == ["COMPOSITION_USAGE_UNAVAILABLE"]
         assert any("account for model usage" in failure for failure in enforce_thresholds(
             report, minimum_pass_rate=0, maximum_p95_ms=1000, maximum_estimated_cost_usd=1))
     assert "Private" not in json.dumps(report)

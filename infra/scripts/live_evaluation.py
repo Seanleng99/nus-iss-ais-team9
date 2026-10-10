@@ -780,11 +780,12 @@ def run_live_evaluation(
     total_output_tokens = 0
     spending_stopped = False
     usage_unknown = False
+    fixture_stopped = False
 
     def cannot_start_turn():
         estimated = (total_input_tokens * input_cost_per_million
                      + total_output_tokens * output_cost_per_million) / 1_000_000
-        return (usage_unknown
+        return (usage_unknown or fixture_stopped
                 or (observer_stopped is not None and observer_stopped())
                 or (maximum_estimated_cost_usd is not None and estimated >= maximum_estimated_cost_usd)
                 or (maximum_total_tokens is not None
@@ -810,9 +811,13 @@ def run_live_evaluation(
                 "output_tokens": 0,
                 "model_call_count": 0,
                 "token_usage_complete": True,
+                "usage_failure_codes": [],
                 "rubric_review": "required" if case.get("rubric") else "not_requested",
             }
             active_turn_index = None
+            generation_attempted = False
+            response_usage_processed = False
+            failure_stage = "fixture_setup"
             observer_duration = 0.0
             try:
                 # The authenticated backend snapshot overrides request snapshots
@@ -836,24 +841,31 @@ def run_live_evaluation(
                     payload["session_id"] = session_id
                     turn_started = time.perf_counter()
                     active_turn_index = turn_index
+                    failure_stage = "generation_request"
+                    generation_attempted = True
+                    response_usage_processed = False
                     response, correlation_id = request_json(
                         url, api_key, payload, timeout_seconds,
                     )
                     audit = response.get("audit", {})
+                    failure_stage = "response_validation"
                     if audit.get("composition_usage_complete") is False:
                         record["token_usage_complete"] = False
+                        record["usage_failure_codes"].append("COMPOSITION_USAGE_UNAVAILABLE")
                         record["composition_usage_complete"] = False
                         record["composition_fallback_code"] = _safe_error_code(audit.get("composition_fallback_code"))
                     if audit.get("model_call_count") and not {
                         "model_input_tokens", "model_output_tokens",
                     }.issubset(audit):
                         record["token_usage_complete"] = False
+                        record["usage_failure_codes"].append("MODEL_USAGE_TOTALS_MISSING")
                     if (expected_model_provider != "local_fixture" and audit.get("model_call_count")
                             and any(not isinstance(call.get(field), int)
                                     for call in audit.get("model_calls", [])
                                     for field in ("input_tokens", "output_tokens"))):
                         record["token_usage_complete"] = False
-                    if maximum_total_tokens is not None:
+                        record["usage_failure_codes"].append("MODEL_CALL_USAGE_MISSING")
+                    if maximum_total_tokens is not None or maximum_estimated_cost_usd is not None:
                         calls = audit.get("model_calls", [])
                         consistent = (type(audit.get("model_call_count")) is int
                                       and audit["model_call_count"] == len(calls)
@@ -862,6 +874,8 @@ def run_live_evaluation(
                                       and all(audit.get("model_" + key) == sum(call.get(key) or 0 for call in calls)
                                               for key in ("input_tokens", "output_tokens")))
                         record["token_usage_complete"] = record["token_usage_complete"] and consistent
+                        if not consistent:
+                            record["usage_failure_codes"].append("MODEL_USAGE_INCONSISTENT")
                     input_tokens = int(audit.get("model_input_tokens") or 0)
                     output_tokens = int(audit.get("model_output_tokens") or 0)
                     total_input_tokens += input_tokens
@@ -870,6 +884,7 @@ def run_live_evaluation(
                     record["output_tokens"] += output_tokens
                     call_count = int(audit.get("model_call_count") or 0)
                     record["model_call_count"] += call_count
+                    response_usage_processed = True
                     passed, checks = evaluate_response(
                         response, expected,
                         expected_model_provider=expected_model_provider,
@@ -920,6 +935,7 @@ def run_live_evaluation(
                     })
                     record["passed"] = bool(record["passed"] and passed)
                     if response_observer is not None and turn_index == len(turns) - 1:
+                        failure_stage = "quality_review"
                         observer_started = time.perf_counter()
                         try:
                             response_observer(case, request, response, repeat, passed)
@@ -950,8 +966,14 @@ def run_live_evaluation(
                         recovered_completed_model_call_count=recovered["completed_model_call_count"],
                         error_code=recovered["error_code"], error_codes=recovered["error_codes"],
                     )
-                else:
+                elif generation_attempted and not response_usage_processed:
                     record["token_usage_complete"] = False
+                    record["usage_failure_codes"].append("GENERATION_USAGE_UNRECOVERED")
+                if failure_stage == "fixture_setup":
+                    # Fixture APIs do not invoke the model. A failed seed blocks
+                    # this capture, but cannot establish unknown provider spend.
+                    fixture_stopped = True
+                record["failure_stage"] = failure_stage
                 if (maximum_estimated_cost_usd is not None or maximum_total_tokens is not None) and not record["token_usage_complete"]:
                     usage_unknown = True
                 record.update(
@@ -996,8 +1018,11 @@ def run_live_evaluation(
             record["passed"] = bool(record["passed"] and cleaned_up and user_cleaned_up)
             category_results[case["category"]][0] += int(record["passed"])
             category_results[case["category"]][1] += 1
+            record["usage_failure_codes"] = sorted(set(record["usage_failure_codes"]))
             records.append(record)
-        if spending_stopped:
+            if fixture_stopped:
+                break
+        if spending_stopped or fixture_stopped:
             break
 
     passed_runs = sum(int(record["passed"]) for record in records)
@@ -1028,8 +1053,9 @@ def run_live_evaluation(
         "passed_runs": passed_runs,
         "pass_rate": round(passed_runs / len(records), 4) if records else 0,
         "requested_runs": len(cases) * repeats,
-        "completed_requested_runs": len(records) == len(cases) * repeats and not spending_stopped,
+        "completed_requested_runs": len(records) == len(cases) * repeats and not spending_stopped and not fixture_stopped,
         "spending_stopped": spending_stopped,
+        "fixture_stopped": fixture_stopped,
         "usage_unknown": usage_unknown,
         "category_pass_rates": category_metrics,
         "latency_ms": {
@@ -1065,6 +1091,8 @@ def enforce_thresholds(
         failures.append("live evaluation stopped before all requested runs completed")
     if report.get("usage_unknown"):
         failures.append("live evaluation could not account for model usage")
+    if report.get("fixture_stopped"):
+        failures.append("live evaluation fixture setup failed")
     if float(report["pass_rate"]) < minimum_pass_rate:
         failures.append("live evaluation pass rate was below threshold")
     p95 = report["latency_ms"]["p95"]

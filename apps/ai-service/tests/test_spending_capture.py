@@ -42,6 +42,9 @@ def test_spend_query_extracts_query_action():
     draft = result.data["spending_draft"]
     assert draft["action"] == "query"
     assert draft["query_date"] == f"{datetime.now(tz=UTC).date().year}-09-21"
+    assert "read-only" in result.summary and "unsaved" not in result.summary
+    assert "preview" not in result.summary
+    assert result.rationale == ["Recorded-spending lookups are read-only backend operations."]
 
 
 def test_recorded_category_aggregate_selects_supplied_period_without_inventing_a_day():

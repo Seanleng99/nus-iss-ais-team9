@@ -3,11 +3,13 @@
 import argparse
 import json
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from infra.scripts.live_evaluation import (
+    _safe_error_code,
     _safe_uuid,
     enforce_thresholds,
     load_cases,
@@ -277,12 +279,44 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
         "operational_pass": not failures, "operational_failures": failures,
         "latency_ms": live["latency_ms"], "generator_token_usage": live["token_usage"],
         "generator_cost_estimate": live["cost_estimate"],
+        "generator_execution": {
+            "requested_runs": live["requested_runs"], "attempted_runs": live["total_runs"],
+            "completed_requested_runs": live["completed_requested_runs"],
+            "usage_unknown": live["usage_unknown"], "fixture_stopped": live["fixture_stopped"],
+            "records": [_execution_metadata(record) for record in live["records"]]},
         "evaluator_usage": {"input_tokens": judge.input_tokens, "output_tokens": judge.output_tokens,
                             "usage_complete": judge.usage_complete,
                             "estimated_cost_usd": judge.cost, "input_rate": judge.input_rate,
                             "output_rate": judge.output_rate, "failure_code": judge.failure_code}}
     result["identity"]["build_commit"] = observed[0]["build_commit"] if observed else "unavailable"
     result["evidence_sha256"] = digest(result)
+    return result
+
+
+def _execution_metadata(record):
+    """Retain stop diagnostics without copying dialogue, facts or error messages."""
+    stages = {"fixture_setup", "generation_request", "response_validation", "quality_review"}
+    error_types = {"LiveEndpointError", "OSError", "URLError", "TimeoutError", "ConnectionError",
+                   "TypeError", "ValueError", "JSONDecodeError"}
+    result = {"case_id": code(record["case_id"]), "repeat": record["repeat"],
+              "passed": record["passed"], "cleanup_succeeded": record["cleanup_succeeded"],
+              "token_usage_complete": record["token_usage_complete"],
+              "input_tokens": record["input_tokens"], "output_tokens": record["output_tokens"],
+              "model_call_count": record["model_call_count"],
+              "usage_failure_codes": [value for value in record.get("usage_failure_codes", [])
+                                      if _safe_error_code(value)],
+              "failed_checks": [item["check"] for item in record["checks"] if not item["passed"]
+                                and re.fullmatch(r"[a-z][a-zA-Z0-9_.\[\]-]{0,95}", item["check"])],
+              "trace_id": _safe_uuid(record.get("trace_id")),
+              "correlation_id": _safe_uuid(record.get("correlation_id"))}
+    if record.get("failure_stage") in stages:
+        result["failure_stage"] = record["failure_stage"]
+    if record.get("error_type"):
+        result["error_type"] = record["error_type"] if record["error_type"] in error_types else "OtherExecutionError"
+    if type(record.get("http_status")) is int and 100 <= record["http_status"] <= 599:
+        result["http_status"] = record["http_status"]
+    if record.get("composition_fallback_code"):
+        result["composition_fallback_code"] = _safe_error_code(record["composition_fallback_code"])
     return result
 
 
@@ -339,6 +373,11 @@ def main():
     print(f"Quality capture: {len(result['samples'])}/{len(result['expected_samples'])} samples; complete={result['complete']}")
     if judge.failure_code:
         print(f"Evaluator check: {judge.failure_code}")
+    for failure in result["operational_failures"]:
+        print(f"Capture gate: {failure}")
+    for record in result["generator_execution"]["records"]:
+        if not record["passed"] or not record["token_usage_complete"]:
+            print("Generator diagnostic: " + json.dumps(record, sort_keys=True))
     if not result["complete"] or not result["operational_pass"]:
         raise SystemExit(1)
 

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "measurement": "three_case_repair_diagnostic",
+  "is_baseline_evidence": false,
+  "generator_model": "gpt-6-luna",
+  "deployed_build": "8fcd3fdd92403bf0f53935b5dce5924d050b7e98",
+  "original_capture_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049061224",
+  "original_usage_stop_trigger": "unconfirmed; the original capture omitted per-case execution diagnostics",
+  "diagnostic_generation_usage_complete": true,
+  "diagnostic_estimated_generation_cost_usd": 0.007855,
+  "cases": [
+    {
+      "case_id": "education-en",
+      "trace_id": "4265e117-75e5-4dd4-89ac-131599373ac3",
+      "structural_pass": true,
+      "approved_source_count": 2,
+      "cleanup_succeeded": true
+    },
+    {
+      "case_id": "spending-en",
+      "trace_id": "439951ba-a42a-4ab1-975e-174af7a33aca",
+      "structural_pass": true,
+      "cleanup_succeeded": true
+    },
+    {
+      "case_id": "spending-zh",
+      "trace_id": "fb4e888e-c7c0-4cb2-bcfe-45fd39e6a1b4",
+      "structural_pass_before_oracle_correction": false,
+      "failed_check": "answer_amounts",
+      "confirmed_defect": "the SGD oracle recognized only one Chinese currency label",
+      "cleanup_succeeded": true
+    }
+  ],
+  "implemented_fixes": [
+    "Retain sanitized per-case generator execution diagnostics in capture evidence and CLI output.",
+    "Stop on failed fixture setup without claiming unknown model spend when no generation was attempted.",
+    "Verify aggregate and per-call usage for both token and cost budgets; actual usage gaps still stop calls.",
+    "Describe read-only spending lookups separately from proposed expense writes, preserving Compliance review.",
+    "Accept additional standard Chinese SGD labels while rejecting wrong amounts and currencies.",
+    "Align both Budget benchmark languages with arithmetic after known rent and honest expense limitations."
+  ],
+  "validation": {
+    "focused_infrastructure_tests_passed": 153,
+    "focused_ai_tests_passed": 30,
+    "live_diagnostic_case_count": 3,
+    "live_diagnostic_case_cleanup_count": 3
+  },
+  "remaining_activation_work": [
+    "Verify the updated deployment and complete a fresh 36-sample Luna-only capture.",
+    "Independently review and calibrate every sample, then approve and commit the aggregate baseline.",
+    "Verify a passing comparison before enabling scheduled GitHub Actions monitoring."
+  ]
+}

@@ -147,6 +147,10 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
     assert captured["identity"]["maximum_p95_ms"] == 60000
     assert "PRIVATE" not in json.dumps(captured)
     assert len(packets) == 3 and "PRIVATE-SYNTHETIC-ANSWER" in json.dumps(packets)
+    execution = captured["generator_execution"]
+    assert execution["attempted_runs"] == 3 and not execution["usage_unknown"]
+    assert all(record["token_usage_complete"] and record["failed_checks"] == []
+               for record in execution["records"])
     policy = model_drift.load_policy()
     policy["evaluation_mode"] = evaluation_mode
     policy.update(required_specialists=["budget"], required_languages=["en"], required_metrics=case()["quality_metrics"])
@@ -174,6 +178,62 @@ def test_benchmark_cases_are_typed_bilingual_and_cover_all_specialists():
 def test_reference_corpus_is_verified_and_available():
     sources, versions = drift_quality.load_reference_documents()
     assert len(sources) >= 9 and set(versions) == {"education", "policy"}
+
+
+def test_fixture_failure_is_retained_without_claiming_unknown_generation_spend(monkeypatch):
+    client, _ = client_factory()
+    def fail_seed(*args):
+        raise live_evaluation.LiveEndpointError(503, "PRIVATE-ERROR-CONTENT")
+    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", fail_seed)
+    monkeypatch.setattr(live_evaluation, "request_json", lambda *args: pytest.fail("No model request after failed seeding"))
+    monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
+    monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
+    captured = drift_quality.capture_quality(judge=judge(client), cases=[case()], repeats=3,
+        dataset_hash="dataset-hash", corpus_versions={"education": "education-v1", "policy": "policy-v1"},
+        run_kwargs={"url": "https://example.test/api/coach", "api_key": "PRIVATE-KEY", "timeout_seconds": 1,
+            "expected_model_provider": "openai", "expected_model_id": "generator", "expected_prompt_version": "v10",
+            "input_cost_per_million": 1, "output_cost_per_million": 1, "commit_sha": "test",
+            "maximum_estimated_cost_usd": 0.05})
+    execution = captured["generator_execution"]
+    assert not captured["complete"] and not captured["operational_pass"]
+    assert execution["fixture_stopped"] and not execution["usage_unknown"]
+    assert execution["attempted_runs"] == 1
+    record = execution["records"][0]
+    assert record["http_status"] == 503 and record["failure_stage"] == "fixture_setup"
+    assert record["token_usage_complete"] and record["input_tokens"] == record["output_tokens"] == 0
+    assert record["correlation_id"] is None and "PRIVATE" not in json.dumps(captured)
+    assert "live evaluation fixture setup failed" in captured["operational_failures"]
+    assert "live evaluation could not account for model usage" not in captured["operational_failures"]
+
+
+@pytest.mark.parametrize("problem", ["missing_call_tokens", "count_mismatch", "total_mismatch"])
+def test_cost_budget_requires_consistent_per_call_usage_and_retains_reason(monkeypatch, problem):
+    answer = response()
+    audit = answer["audit"]
+    if problem == "missing_call_tokens":
+        audit["model_calls"][0].pop("input_tokens")
+    elif problem == "count_mismatch":
+        audit["model_call_count"] = 2
+    else:
+        audit["model_input_tokens"] = 101
+    monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (answer, "correlation"))
+    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args: {})
+    monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
+    monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
+    client, _ = client_factory()
+    captured = drift_quality.capture_quality(judge=judge(client), cases=[case()], repeats=3,
+        dataset_hash="dataset-hash", corpus_versions={"education": "education-v1", "policy": "policy-v1"},
+        run_kwargs={"url": "https://example.test/api/coach", "api_key": "PRIVATE-KEY", "timeout_seconds": 1,
+            "expected_model_provider": "openai", "expected_model_id": "generator", "expected_prompt_version": "v10",
+            "input_cost_per_million": 1, "output_cost_per_million": 1, "commit_sha": "test",
+            "maximum_estimated_cost_usd": 0.05})
+    execution = captured["generator_execution"]
+    assert not captured["complete"] and execution["usage_unknown"]
+    assert not execution["fixture_stopped"] and execution["attempted_runs"] == 1
+    assert "MODEL_USAGE_INCONSISTENT" in execution["records"][0]["usage_failure_codes"]
+    if problem == "missing_call_tokens":
+        assert "MODEL_CALL_USAGE_MISSING" in execution["records"][0]["usage_failure_codes"]
+    assert "PRIVATE" not in json.dumps(captured)
 
 
 @pytest.mark.parametrize("answer,expected", json.loads(
