@@ -293,7 +293,7 @@ Before the OpenAI deployment is accepted, run the same routing cases plus repres
 
 ### Live Quality Baseline And Drift Gate
 
-`infra/scripts/drift_quality.py` performs independent live scoring alongside the
+`infra/scripts/drift_quality.py` performs rubric-based live scoring alongside the
 existing structural checks; `infra/scripts/model_drift.py` enforces baseline,
 coverage, subgroup, configuration and consecutive-regression checks. The separate
 `model-drift.yml` workflow runs weekly/manual comparisons with GitHub reports and
@@ -329,6 +329,14 @@ them against independent human reviews. The app's own Compliance verdict is a
 runtime signal, not the sole quality oracle: generation and review can share model
 failure modes. Compare meaning and evidence rather than exact response wording.
 Evaluator or rubric changes require rescoring the baseline before comparison.
+
+Current drift policy version 3 uses `same_model`: both baseline/current generation
+and the separate grading calls use `gpt-6-luna`, as requested. This holds the tested
+model constant but does not provide different-model judging independence. Fixed
+deterministic oracles and independent human calibration remain necessary. Evaluator
+mode is pinned in the policy and capture identity; changing it requires a fresh
+reviewed baseline. Drift capture allocates USD 0.10 to generation and USD 0.45 to
+grading, retaining the existing USD 0.55 combined per-run allowance.
 
 The baseline record and each comparison must retain:
 
@@ -376,7 +384,7 @@ through the existing operations notification path, with the baseline, failed cas
 
 The expanded live set covers deterministic routing authority, independent fan-out, multi-hop scheduling, agent and tool provider reuse, typed missing input, PII-redaction telemetry, critical prompt injection, regulated-advice blocking, direct Investment Education RAG, and conditional Budget/Goal Strategy Education RAG. Grounded cases additionally require full Education and Policy source provenance, the exact configured corpus versions, and the same versions in the privacy-safe trace. The workflow repeats every case three times by default.
 
-The structural harness retains its historical default 10-second P95 ceiling and USD 0.05 estimated-cost ceiling. The bounded load gate uses an 8-second P95 ceiling. Those latency bounds were calibrated against the earlier AWS model, not GPT-6 Luna. Independent drift capture instead reads policy version 2's provisional 60-second complete-answer P95; recorded Luna timings motivate this recalibration, and a repeated current-build capture must validate it before baseline approval. The app's 85-second hard workflow deadline is unchanged. Cost is estimated from audited input/output token counts. The evaluator defaults to GPT-6 Luna rates of USD 0.10 input / USD 0.50 output per million tokens, configurable through command arguments. These Standard rates were checked against the [official OpenAI model card](https://developers.openai.com/api/docs/models/gpt-6-luna) on 2026-10-10 and must be rechecked before a formal assessment; estimates are not billed-cost telemetry.
+The structural harness retains its historical default 10-second P95 ceiling and USD 0.05 estimated-cost ceiling. The bounded load gate uses an 8-second P95 ceiling. Those latency bounds were calibrated against the earlier AWS model, not GPT-6 Luna. Drift capture instead reads policy version 3's provisional 60-second complete-answer P95 and USD 0.10 generation allowance; recorded Luna timings motivate this recalibration, and a repeated current-build capture must validate it before baseline approval. The app's 85-second hard workflow deadline is unchanged. Cost is estimated from audited input/output token counts. The evaluator defaults to GPT-6 Luna rates of USD 0.10 input / USD 0.50 output per million tokens, configurable through command arguments. These Standard rates were checked against the [official OpenAI model card](https://developers.openai.com/api/docs/models/gpt-6-luna) on 2026-10-10 and must be rechecked before a formal assessment; estimates are not billed-cost telemetry.
 
 The evaluator deletes every synthetic chat session after its result is measured and treats cleanup failure as a failed case. The JSON evidence records commit SHA, target host, model ID, prompt version, repeat count, category pass rate, correlation/trace IDs, check outcomes, cleanup status, Education and Policy source IDs, latency percentiles, token totals, and the price assumptions used. It excludes request messages, financial snapshots, answers, retrieved text, API keys, and provider payloads. The RAG governance workflow verifies both manifests, exact local files, and deployed Bedrock/S3 corpora weekly and retains privacy-safe evidence for 90 days.
 

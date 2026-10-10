@@ -1,7 +1,7 @@
 # Model Drift Monitoring
 
 The detector is implemented in [model_drift.py](../infra/scripts/model_drift.py),
-with independent live scoring in [drift_quality.py](../infra/scripts/drift_quality.py)
+with rubric-based live scoring in [drift_quality.py](../infra/scripts/drift_quality.py)
 and [a weekly/manual workflow](../.github/workflows/model-drift.yml). Its policy and
 12 bilingual synthetic cases are in [model-drift-policy.json](../infra/llmsecops/model-drift-policy.json)
 and [model-drift-cases.jsonl](../infra/llmsecops/model-drift-cases.jsonl). It does not
@@ -15,15 +15,22 @@ and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/3
 for `0c314010720baf47af537949da4ec2ad838cfe61`. The `demo` environment is
 configured for GitHub Actions reports only; email alerts and input monitoring
 remain disabled. Evaluator rates and spending limits are configured, and the
-evaluator secret was added on 2026-10-10. A candidate run must verify its model
-access and produce a complete capture before independent human calibration.
-The accepted baseline is still absent. `MODEL_DRIFT_ENABLED` remains `false`.
+evaluator secret was added on 2026-10-10. The [candidate retry](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38047917395)
+returned `EVALUATOR_PERMISSION_DENIED` (HTTP 403) from its harmless evaluator
+preflight, before any app requests. No complete capture or accepted baseline exists.
+Those failed attempts used `gpt-6-sol` only as a grader. Following the user's
+instruction to use only `gpt-6-luna`, policy version 3 selects `same_model`
+evaluation. Generation and grading both use Luna, with separate prompts and
+contexts. This does not provide different-model independence; independent human
+calibration remains mandatory. `MODEL_DRIFT_ENABLED` remains `false` until a
+complete passing capture is reviewed and accepted.
 
 The project's existing credential lists only `gpt-6-luna`; a direct Structured
 Outputs invocation of the selected `gpt-6-sol` evaluator returned HTTP 403.
-The newly configured secret will be verified by the candidate workflow.
-The selected Standard rates are USD 2 input / USD 10 output per million tokens,
-verified against the [official model card](https://developers.openai.com/api/docs/models/gpt-6-sol).
+The new GitHub secret also lacked permission for that grader call. Its Luna access
+will be checked by the next preflight. The configured Standard rates for Luna are
+USD 0.10 input / USD 0.50 output per million tokens, matching the
+[official model card](https://developers.openai.com/api/docs/models/gpt-6-luna).
 
 One disposable deployed Budget case passed structural checks, matched the release
 build and included provider response model IDs in all completed calls. Cleanup
@@ -33,7 +40,7 @@ a quality baseline nor a representative latency distribution. The content-free
 [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
 preserves the original checks and remaining work at that time.
 
-Policy version 2 replaces that inherited limit with a provisional 60,000 ms P95
+The current policy retains the provisional 60,000 ms P95 introduced in version 2
 for complete app answers. Forty-two recorded GPT-6 Luna traces from 2026-10-09
 had a median of 33.91 seconds and P95 of 51.38 seconds; 41 exceeded 10 seconds.
 Those selected traces came from an earlier build and justify provisional
@@ -42,13 +49,26 @@ verify the limit on the deployed build. Fixture setup, cleanup and evaluator tim
 are excluded from measured answer latency. The app's 85-second hard workflow
 deadline remains in force; time to first streamed progress is a separate target.
 The versioned policy and capture identity both record the latency limit, so changing
-it requires fresh baseline acceptance. Quality, safety and cost thresholds are unchanged.
+it requires fresh baseline acceptance. Quality and safety thresholds and application
+release cost gates are unchanged.
+The [candidate activation evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json)
+records the policy correction, validation and both failed candidate attempts. The
+first attempt observed a structurally passing app response in 29,775.57 ms before
+the evaluator failed; this is one response, not a validated latency distribution.
+
+The configured per-run budget is reallocated from USD 0.05 generation / USD 0.50
+grading to USD 0.10 generation / USD 0.45 grading, preserving the USD 0.55 combined
+limit. The observed Budget response cost USD 0.002507; thirty model-backed samples
+at that cost would exceed the previous generation allowance. This is a sampling
+budget change, with no change to application release cost gates. Captures record
+the generation allowance; a change requires fresh baseline acceptance. Missing
+provider usage still stops the run and does not establish actual billed cost.
 
 ## What Runs
 
 The capture harness reuses disposable owned sessions, seeded synthetic records,
 structural checks, token accounting and cleanup from `live_evaluation.py`. Before
-discarding each final answer, a different configured OpenAI evaluator scores a
+discarding each final answer, a separate OpenAI grading call scores a
 strict boolean contract against authored expected results, rubrics, synthetic facts
 and independently checksum-verified approved source documents. Source support is
 checked against the approved reference documents, not an exact replay of Bedrock's
@@ -88,10 +108,10 @@ role is used when enabling optional email alerts or input aggregate queries.
 | Setting | Purpose |
 |---|---|
 | Secret `MODEL_DRIFT_OPENAI_API_KEY` | Evaluator credentials; never written into artifacts or command arguments. |
-| Variable `MODEL_DRIFT_JUDGE_MODEL` | Explicit evaluator model supporting Responses Structured Outputs and low reasoning; it must differ from every observed generation role. |
+| Variable `MODEL_DRIFT_JUDGE_MODEL` | Explicit evaluator supporting Responses Structured Outputs and low reasoning; current policy version 3 requires `gpt-6-luna`, matching every generation role. Separate-model grading is available only with a policy change and fresh baseline acceptance. |
 | Variables `MODEL_DRIFT_JUDGE_INPUT_RATE`, `MODEL_DRIFT_JUDGE_OUTPUT_RATE` | Reviewed USD-per-million-token assumptions for that evaluator; both must be positive. |
-| Variable `MODEL_DRIFT_JUDGE_BUDGET_USD` | Judge spending limit, default USD 0.50. |
-| Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.05. Raise only through a reviewed evaluation-budget change. |
+| Variable `MODEL_DRIFT_JUDGE_BUDGET_USD` | Judge spending limit, default USD 0.45. |
+| Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.10 for the 36-sample capture. Changes require reviewed sampling-budget configuration and fresh baseline acceptance. |
 | Variable `MODEL_DRIFT_ENABLED` | Set to `true` after baseline acceptance to enable Sunday 10:15 Singapore scheduled monitoring. |
 | Optional variable `MODEL_DRIFT_EMAIL_ALERTS_ENABLED` | Default `false`; set to `true` to publish actionable failures to the existing `OPERATIONAL_ALERTS_TOPIC_ARN`. Requires updated IAM and a confirmed email subscription. |
 | Optional variable `MODEL_DRIFT_INPUT_LOG_GROUP` | Enables aggregate input comparison for an approved log group after data/retention review. |

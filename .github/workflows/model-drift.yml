@@ -35,8 +35,8 @@ jobs:
       JUDGE_MODEL: ${{ vars.MODEL_DRIFT_JUDGE_MODEL }}
       JUDGE_INPUT_RATE: ${{ vars.MODEL_DRIFT_JUDGE_INPUT_RATE }}
       JUDGE_OUTPUT_RATE: ${{ vars.MODEL_DRIFT_JUDGE_OUTPUT_RATE }}
-      JUDGE_BUDGET: ${{ vars.MODEL_DRIFT_JUDGE_BUDGET_USD || '0.5' }}
-      GENERATOR_BUDGET: ${{ vars.MODEL_DRIFT_GENERATOR_BUDGET_USD || '0.05' }}
+      JUDGE_BUDGET: ${{ vars.MODEL_DRIFT_JUDGE_BUDGET_USD || '0.45' }}
+      GENERATOR_BUDGET: ${{ vars.MODEL_DRIFT_GENERATOR_BUDGET_USD || '0.10' }}
       ALERT_TOPIC: ${{ vars.OPERATIONAL_ALERTS_TOPIC_ARN }}
       EMAIL_ALERTS_ENABLED: ${{ vars.MODEL_DRIFT_EMAIL_ALERTS_ENABLED || 'false' }}
       INPUT_LOG_GROUP: ${{ vars.MODEL_DRIFT_INPUT_LOG_GROUP }}
@@ -90,7 +90,7 @@ jobs:
             python -c 'from zipfile import ZipFile; from pathlib import Path; z = ZipFile("drift-state.zip"); Path("artifacts/previous-drift.json").write_bytes(z.read("model-drift.json"))'
           fi
           echo "restored=true" >> "$GITHUB_OUTPUT"
-      - name: Capture independent synthetic quality scores
+      - name: Capture synthetic quality scores
         id: quality
         continue-on-error: true
         env:

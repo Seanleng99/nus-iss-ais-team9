@@ -1,4 +1,4 @@
-"""Compare independently scored synthetic runs and content-free traffic aggregates.
+"""Compare rubric-scored synthetic runs and content-free traffic aggregates.
 
 Run with ``python -m infra.scripts.model_drift --help``. No baseline is approved
 automatically, and unknown/incomplete evidence never produces a passing gate.
@@ -70,8 +70,10 @@ def timestamp(value):
 
 def load_policy(path=POLICY_PATH):
     policy = load(path)
-    if policy.get("version") != 2 or set(policy["metrics"]) != {"structural_pass", *METRICS}:
+    if policy.get("version") != 3 or set(policy["metrics"]) != {"structural_pass", *METRICS}:
         raise ValueError("Unsupported drift policy")
+    if policy.get("evaluation_mode") not in {"same_model", "separate_model"}:
+        raise ValueError("Unsupported evaluator mode")
     if set(policy.get("operational", {})) != {"maximum_p95_ms"}:
         raise ValueError("Missing operational latency policy")
     number(policy["operational"]["maximum_p95_ms"], 1)
@@ -100,7 +102,7 @@ def validate_capture(capture):
     if set(capture) - allowed:
         raise ValueError("Unapproved fields in quality evidence")
     if capture.get("schema_version") != 1 or capture.get("measurement") != "live_quality_capture":
-        raise ValueError("Expected live independently scored evidence")
+        raise ValueError("Expected live rubric-scored evidence")
     code(capture["run_id"])
     timestamp(capture["generated_at"])
     if not capture.get("identity") or capture["identity"].get("model_provider") == "local_fixture":
@@ -108,12 +110,14 @@ def validate_capture(capture):
     identity = capture["identity"]
     strings = {"model_provider", "model_id", "prompt_set_version", "prompt_content_hash", "dataset_sha256",
                "evaluator_model", "evaluator_response_model", "evaluator_prompt_sha256", "evaluator_schema_sha256",
-               "evaluator_reasoning_effort", "build_commit", "target_host"}
+               "evaluator_reasoning_effort", "build_commit", "target_host", "evaluation_mode"}
     if set(identity) != strings | {"roles", "corpus_versions", "evaluator_max_output_tokens",
                                     "generator_price_assumptions", "generator_budget_usd", "maximum_p95_ms"}:
         raise ValueError("Incomplete or unapproved identity fields")
     for field in strings:
         code(identity[field])
+    if identity["evaluation_mode"] not in {"same_model", "separate_model"}:
+        raise ValueError("Unsupported evaluator mode")
     number(identity["evaluator_max_output_tokens"], 1)
     number(identity["generator_budget_usd"], 0.000001)
     number(identity["maximum_p95_ms"], 1)
@@ -135,8 +139,13 @@ def validate_capture(capture):
         for field in ("model_id", "provider_model_id", "reasoning_effort"):
             code(role[field])
         number(role["max_output_tokens"], 1)
-        if role["model_id"] == identity["evaluator_model"] or role["provider_model_id"] == identity["evaluator_response_model"]:
+        matches = (role["model_id"] == identity["evaluator_model"],
+                   role["provider_model_id"] == identity["evaluator_response_model"])
+        if identity["evaluation_mode"] == "separate_model" and any(matches):
             raise ValueError("Evaluator is not independent of generation")
+        if identity["evaluation_mode"] == "same_model" and (not all(matches)
+                or identity["evaluator_model"] != identity["model_id"]):
+            raise ValueError("Same-model evaluation requires matching generator and evaluator models")
     if capture.get("evidence_sha256") != digest({k: v for k, v in capture.items() if k != "evidence_sha256"}):
         raise ValueError("Quality evidence checksum mismatch")
     expected = capture["expected_samples"]
@@ -202,6 +211,8 @@ def approve_baseline(capture, reviews, policy, approval_reference):
         raise ValueError("Baseline needs complete quality and operational acceptance")
     if capture["identity"]["maximum_p95_ms"] != policy["operational"]["maximum_p95_ms"]:
         raise ValueError("Captured latency limit differs from the approval policy")
+    if capture["identity"]["evaluation_mode"] != policy["evaluation_mode"]:
+        raise ValueError("Captured evaluator mode differs from the approval policy")
     for field, required in (("specialist", policy["required_specialists"]), ("language", policy["required_languages"])):
         if not set(required) <= {sample[field] for sample in capture["samples"]}:
             raise ValueError("Baseline is missing a required benchmark subgroup")
@@ -309,6 +320,7 @@ def compare(capture, baseline, policy, previous=None, inputs=None, now=None):
     report = {"schema_version": 1, "run_id": capture["run_id"], "generated_at": capture["generated_at"],
               "baseline_id": baseline.get("baseline_id") if baseline else None,
               "policy_sha256": digest(policy), "identity_sha256": digest(capture["identity"]),
+              "evaluation_mode": capture["identity"]["evaluation_mode"],
               "evidence_sha256": capture["evidence_sha256"], "status": "pass", "passed": False,
               "checks": {}, "failed_case_ids": sorted({code(sample["case_id"]) for sample in capture["samples"]
                   if sample.get("scores") is None or not sample["structural_pass"] or not all(sample["scores"].values())}),
@@ -319,6 +331,7 @@ def compare(capture, baseline, policy, previous=None, inputs=None, now=None):
                    for sample in capture["samples"])
     critical |= any(sample.get("intent") == "safety" and not sample["structural_pass"] for sample in capture["samples"])
     config_changed = capture["identity"]["maximum_p95_ms"] != policy["operational"]["maximum_p95_ms"]
+    config_changed |= capture["identity"]["evaluation_mode"] != policy["evaluation_mode"]
     reference_metrics = {}
     if baseline:
         validate_capture(baseline["capture"])
@@ -432,6 +445,7 @@ def collect_inputs(client, log_group, policy, now=None, identity=None):
 
 def summary(report):
     lines = ["## Model drift", "", f"- Result: **{report['status']}**",
+             f"- Evaluator mode: {report.get('evaluation_mode', 'unavailable')}",
              f"- Baseline: {report['baseline_id'] or 'required'}",
              f"- Input comparison: {report['inputs_status']}", "",
              "| Metric/subgroup | Current | Baseline | Count | Consecutive breaches |",

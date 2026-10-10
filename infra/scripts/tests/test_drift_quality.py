@@ -14,14 +14,14 @@ def case():
             "quality_metrics": ["safe", "helpful", "language_correct"]}
 
 
-def client_factory(output=None, **overrides):
+def client_factory(output=None, model="judge-version", **overrides):
     calls = []
     def create(**kwargs):
         calls.append(kwargs)
         required = json.loads(kwargs["input"])["required_metrics"]
         scores = {metric: True if metric in required else None for metric in model_drift.METRICS}
         return SimpleNamespace(status="completed", usage=SimpleNamespace(input_tokens=100, output_tokens=10),
-                               model="judge-version", output_text=json.dumps(scores) if output is None else output,
+                               model=model, output_text=json.dumps(scores) if output is None else output,
                                **overrides)
     return SimpleNamespace(responses=SimpleNamespace(create=create)), calls
 
@@ -115,7 +115,8 @@ def test_failed_evaluator_preflight_stops_before_app_requests(monkeypatch):
 
 
 @pytest.mark.parametrize("p95,accepted", [(22707.77, True), (60000, True), (60000.01, False)])
-def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch, p95, accepted):
+@pytest.mark.parametrize("evaluation_mode", ["separate_model", "same_model"])
+def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch, p95, accepted, evaluation_mode):
     from app.core.prompts import CURRENT_PROMPT_VERSION
 
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (response(), "correlation"))
@@ -128,9 +129,12 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
         result["latency_ms"]["p95"] = p95
         return result
     monkeypatch.setattr(drift_quality, "run_live_evaluation", measured_run)
-    client, _ = client_factory()
+    client, _ = client_factory(model="generator-version" if evaluation_mode == "same_model" else "judge-version")
+    evaluator = judge(client)
+    if evaluation_mode == "same_model":
+        evaluator.model = "generator"
     packets = []
-    captured = drift_quality.capture_quality(judge=judge(client), cases=[case()], repeats=3,
+    captured = drift_quality.capture_quality(judge=evaluator, cases=[case()], repeats=3, evaluation_mode=evaluation_mode,
         dataset_hash="dataset-hash", corpus_versions={"education": "education-v1", "policy": "policy-v1"},
         review_sink=packets.append, run_kwargs={"url": "https://example.test/api/coach", "api_key": "PRIVATE-KEY",
             "timeout_seconds": 1, "expected_model_provider": "openai", "expected_model_id": "generator",
@@ -141,6 +145,7 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
     assert "PRIVATE" not in json.dumps(captured)
     assert len(packets) == 3 and "PRIVATE-SYNTHETIC-ANSWER" in json.dumps(packets)
     policy = model_drift.load_policy()
+    policy["evaluation_mode"] = evaluation_mode
     policy.update(required_specialists=["budget"], required_languages=["en"], required_metrics=case()["quality_metrics"])
     reviews = [{"sample_id": sample["sample_id"], "scores": sample["scores"]} for sample in captured["samples"]]
     if not accepted:

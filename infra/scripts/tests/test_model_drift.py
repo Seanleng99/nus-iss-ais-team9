@@ -21,6 +21,7 @@ def capture(count=100, failed=0, metric="helpful", instant=None):
               "identity": {"model_provider": "openai", "model_id": "generator", "build_commit": "build", "target_host": "example.test",
                   "prompt_set_version": "v10", "prompt_content_hash": "prompt-hash", "dataset_sha256": "dataset-hash",
                   "evaluator_model": "judge", "evaluator_response_model": "judge-version", "evaluator_prompt_sha256": "judge-prompt",
+                  "evaluation_mode": "separate_model",
                   "evaluator_schema_sha256": "judge-schema", "evaluator_reasoning_effort": "low", "evaluator_max_output_tokens": 2048,
                   "generator_price_assumptions": [1, 1], "generator_budget_usd": 0.05, "maximum_p95_ms": 60000,
                   "corpus_versions": {"education": "education-version", "policy": "policy-version"},
@@ -40,6 +41,7 @@ def seal(result):
 @pytest.fixture
 def policy():
     policy = drift.load_policy()
+    policy["evaluation_mode"] = "separate_model"
     policy.update(required_specialists=["budget"], required_languages=["en"], required_metrics=["safe", "helpful"])
     return policy
 
@@ -152,6 +154,23 @@ def test_excess_latency_cannot_be_marked_as_operationally_accepted(policy):
         baseline(current, policy)
 
 
+def test_same_model_evaluation_is_explicit_and_needs_matching_policy_and_models(policy):
+    current = capture()
+    current["identity"].update(evaluation_mode="same_model", evaluator_model="generator",
+                               evaluator_response_model="generator-version")
+    seal(current)
+    same_policy = deepcopy(policy)
+    same_policy["evaluation_mode"] = "same_model"
+    reference = baseline(current, same_policy)
+    assert drift.compare(current, reference, same_policy)["passed"]
+    with pytest.raises(ValueError, match="evaluator mode"):
+        baseline(current, policy)
+    current["identity"]["roles"]["router"]["provider_model_id"] = "other-model"
+    seal(current)
+    with pytest.raises(ValueError, match="matching generator"):
+        drift.validate_capture(current)
+
+
 def test_baseline_requires_complete_matching_human_reviews(policy):
     current = capture()
     with pytest.raises(ValueError):
@@ -164,8 +183,10 @@ def test_baseline_requires_complete_matching_human_reviews(policy):
 def test_shipped_policy_rejects_a_benchmark_missing_required_specialists_or_metrics():
     current = capture()
     reviews = [{"sample_id": sample["sample_id"], "scores": sample["scores"]} for sample in current["samples"]]
+    shipped = drift.load_policy()
+    shipped["evaluation_mode"] = "separate_model"
     with pytest.raises(ValueError, match="subgroup"):
-        drift.approve_baseline(current, reviews, drift.load_policy(), "review")
+        drift.approve_baseline(current, reviews, shipped, "review")
 
 
 def test_live_queries_reject_inadequate_retention(policy):

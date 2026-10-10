@@ -129,7 +129,7 @@ breach or excessive regression. This detects application regressions, not change
 in live model semantics. AWS Operational Validation runs weekly on Sunday at 10:00
 Singapore time and on demand, using repeated synthetic sessions against the deployed
 model, prompts, orchestrator and retrieval. Its structural, latency and estimated-cost
-gates do not replace independent answer-quality scoring. Dedicated quality capture,
+gates do not replace calibrated answer-quality scoring. Dedicated quality capture,
 baseline comparison, aggregate input queries and SNS reporting now have executable
 scripts and an opt-in Sunday 10:15 Singapore workflow. Deployment and an accepted
 baseline remain activation gates; optional email reporting additionally requires
@@ -141,10 +141,14 @@ generation-failure alarms remain separate operational signals. See
 The 2026-10-10 [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
 records a successful code release and provider-model metadata verification, with
 GitHub-only reporting configured. The evaluator secret has since been added, and
-drift policy version 2 uses a provisional 60-second complete-answer P95 based on
+drift policy version 3 uses a provisional 60-second complete-answer P95 based on
 recorded GPT-6 Luna timings. The original smoke evidence retains its historical
 10-second threshold. Scheduling remains disabled until the new credential succeeds
-and a complete passing capture is independently reviewed and accepted.
+and a complete passing capture is independently reviewed and accepted. The new
+secret's earlier GPT-6 Sol preflight returned HTTP 403 before any app requests.
+Current configuration uses GPT-6 Luna for generation and separate rubric grading,
+with mandatory independent human calibration. See
+[candidate activation evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json).
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for
@@ -155,7 +159,7 @@ changes but do not establish retrieval relevance or generated-answer groundednes
 
 | Signal | Measurements | Interpretation and current status |
 |---|---|---|
-| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Independent boolean scoring and overall/specialist/language/intent baseline comparison are implemented; first reviewed baseline and scheduled activation remain pending. |
+| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Same-model boolean scoring with independent human calibration and overall/specialist/language/intent baseline comparison are implemented; first reviewed baseline and scheduled activation remain pending. |
 | Input distribution | Capture/analysis intent, selected-agent shares, language, missing-input rate and message-length bands | Regular and streamed completed requests emit bounded buckets; optional server-side aggregate queries and marginal distribution comparison are implemented. Production activation remains subject to data review. |
 | Retrieval | Relevant-source recall, evidence gaps, source frequency/age, corpus versions and provenance | Offline retrieval gates, runtime diagnostics and corpus audits exist; the new judge checks citation support against approved reference documents. Exact retrieved-passage replay and recurring live retrieval recall remain separate work. |
 | Execution | Provider errors/retries, review/repair failures, P95 latency, model-call/token use and estimated cost per request | Telemetry and selected alarms/live limits exist. Compare within similar tasks and configurations before attributing a change to the model. |

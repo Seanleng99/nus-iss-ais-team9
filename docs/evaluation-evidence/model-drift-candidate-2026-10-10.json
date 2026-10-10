@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "measurement": "drift_candidate_activation_readiness",
+  "date": "2026-10-10",
+  "generator_model": "gpt-6-luna",
+  "configured_evaluator": "gpt-6-luna",
+  "evaluation_mode": "same_model",
+  "different_model_independence": false,
+  "reporting": "github_actions_only",
+  "demo_evaluator_secret_present": true,
+  "scheduled_monitoring_enabled": false,
+  "approved_baseline_present": false,
+  "policy": {
+    "version": 3,
+    "maximum_complete_answer_p95_ms": 60000,
+    "status": "provisional_pending_repeated_current_build_acceptance",
+    "workflow_hard_deadline_seconds": 85,
+    "quality_and_safety_thresholds_changed": false,
+    "generator_budget_usd": 0.1,
+    "evaluator_budget_usd": 0.45,
+    "combined_budget_usd": 0.55
+  },
+  "validation": {
+    "policy_commit": "9b930ba1c0a13fdbb65c5242fd4cc42c320ac336",
+    "preflight_commit": "6761ab15f764e498b4a09437733c8297ad146e91",
+    "focused_tests_passed": 54,
+    "ruff": "passed",
+    "policy_ci": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38047597846",
+    "policy_ci_conclusion": "success"
+  },
+  "candidate_attempts": [
+    {
+      "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38047601642",
+      "complete": false,
+      "evaluator_model": "gpt-6-sol",
+      "sample_count": 1,
+      "expected_sample_count": 36,
+      "first_sample_structural_pass": true,
+      "observed_answer_duration_ms": 29775.57,
+      "deployed_build_commit": "0c314010720baf47af537949da4ec2ad838cfe61",
+      "independent_scores_available": false,
+      "generator_estimated_cost_usd": 0.002507
+    },
+    {
+      "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38047917395",
+      "complete": false,
+      "evaluator_model": "gpt-6-sol",
+      "evaluator_preflight": "EVALUATOR_PERMISSION_DENIED",
+      "http_status": 403,
+      "evaluator_usage_available": false,
+      "app_requests_made": 0,
+      "sample_count": 0,
+      "expected_sample_count": 36,
+      "generator_estimated_cost_usd": 0.0
+    }
+  ],
+  "remaining_activation_work": [
+    "Verify gpt-6-luna grading access with the configured demo secret.",
+    "Complete a passing repeated current-build capture, including latency and bounded costs.",
+    "Independently review every synthetic sample and approve the calibrated baseline.",
+    "Commit the accepted aggregate baseline, verify a passing monitoring comparison, and enable the schedule."
+  ]
+}

@@ -1,5 +1,6 @@
 {
-  "version": 2,
+  "version": 3,
+  "evaluation_mode": "same_model",
   "operational": {"maximum_p95_ms": 60000},
   "confirmation_runs": 2,
   "maximum_gap_days": 14,
