@@ -132,6 +132,13 @@ These are separate dataset evaluations, not simply pytest test files. The focuse
 agent reports complement those metrics; they do not replace them.
 
 **Budget Live Acceptance** remains a manual evaluation of the deployed model.
+AWS post-deploy smoke is a required release check covering all five agents:
+Budget calculation, Spending category analysis, Goal Strategy monthly savings
+arithmetic, and an Investment Education answer with independent Risk & Compliance
+review. Each role must have a successful model call in the response audit and
+persisted trace. Failure invokes the release's service rollback. CI also executes
+these probes against its local fixture services. See [deployment smoke coverage](cicd-pipeline.md).
+
 Other live evaluations and AWS post-deploy smoke checks remain separate from
 these offline pre-release tests.
 

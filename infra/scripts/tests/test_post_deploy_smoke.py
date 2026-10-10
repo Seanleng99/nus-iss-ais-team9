@@ -1,7 +1,9 @@
 import copy
 import io
 import json
+import sys
 import urllib.error
+import urllib.parse
 from datetime import date
 
 import pytest
@@ -14,10 +16,25 @@ MODEL_SECTION_LABEL = (
 )
 
 
+def completed_model_call(role, max_tokens=3200):
+    return {
+        "component": role, "reasoning_effort": "medium", "max_output_tokens": max_tokens,
+        "status": "completed", "output_characters": 100, "error_code": None,
+    }
+
+
+def persisted_trace(response, audit=None):
+    return {
+        "trace_id": response["audit"]["trace_id"],
+        "prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION,
+        "audit": response["audit"] if audit is None else audit,
+    }
+
+
 def test_runtime_smoke_checks_current_prompt_and_recommended_policies():
     audit = {"prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION, "model_calls": [
-        {"component": "agent_budget", "reasoning_effort": "medium", "max_output_tokens": 3200},
-        {"component": "risk_compliance", "reasoning_effort": "medium", "max_output_tokens": 3000},
+        completed_model_call("agent_budget"),
+        completed_model_call("risk_compliance", 3000),
     ]}
     post_deploy_smoke.check_runtime_policy(audit, "agent_budget")
     for field, stale in (("reasoning_effort", "low"), ("max_output_tokens", 1600)):
@@ -31,14 +48,27 @@ def test_runtime_smoke_checks_current_prompt_and_recommended_policies():
         post_deploy_smoke.check_runtime_policy({**audit, "model_calls": []}, "agent_budget")
 
 
+@pytest.mark.parametrize("change", [
+    {"status": "failed"}, {"status": "running"}, {"status": None},
+    {"error_code": "MODEL_UNAVAILABLE"}, {"output_characters": 0},
+])
+def test_runtime_smoke_requires_a_successful_nonempty_role_call(change):
+    call = {**completed_model_call("agent_spending"), **change}
+    audit = {"prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION, "model_calls": [call]}
+    with pytest.raises(AssertionError, match="no successful model call"):
+        post_deploy_smoke.check_runtime_policy(audit, "agent_spending")
+    audit["model_calls"].append(completed_model_call("agent_spending"))
+    post_deploy_smoke.check_runtime_policy(audit, "agent_spending")
+
+
 def budget_response():
     return {
         "blocked": False, "selected_agents": ["budget"], "answer": "Illustrative disposable income is SGD 2,500.",
-        "agent_results": [{"agent": "budget", "data": {"disposable_income": 2500}}],
+        "agent_results": [{"agent": "budget", "blocked": False, "data": {"disposable_income": 2500}}],
         "audit": {"trace_id": "budget-analysis", "model_provider": "openai", "prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION,
                   "model_calls": [
-                      {"component": "agent_budget", "reasoning_effort": "medium", "max_output_tokens": 3200},
-                      {"component": "risk_compliance", "reasoning_effort": "medium", "max_output_tokens": 3000},
+                      completed_model_call("agent_budget"),
+                      completed_model_call("risk_compliance", 3000),
                   ]},
     }
 
@@ -52,7 +82,7 @@ def test_model_smoke_uses_fresh_read_only_inputs_and_checks_the_owned_persisted_
         if kwargs.get("method") == "POST":
             payloads.append(kwargs["body"])
         else:
-            response = {"trace_id": "budget-analysis", "prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION, "audit": response["audit"]}
+            response = persisted_trace(response)
         return 200, json.dumps(response)
 
     monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
@@ -86,12 +116,164 @@ def test_model_smoke_keeps_calculation_and_runtime_policy_guards(monkeypatch, fa
         elif failure == "wrong_calculation":
             response["agent_results"][0]["data"]["disposable_income"] = 4000
         if persisted:
-            response = {"trace_id": "budget-analysis", "prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION, "audit": response["audit"]}
+            response = persisted_trace(response)
         return 200, json.dumps(response)
 
     monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
     with pytest.raises(AssertionError):
         post_deploy_smoke.check_model_backed_coaching("https://example.test/api/coach", "synthetic-key", "openai")
+
+
+ANALYSIS_CHECKS = [
+    ("spending", "agent_spending", post_deploy_smoke.check_spending_coaching),
+    ("goal_strategy", "agent_goal_strategy", post_deploy_smoke.check_goal_coaching),
+]
+
+
+def analysis_response(agent, role):
+    data = (
+        {"category_totals": {"food": 120, "transport": 30}, "transaction_count": 2,
+         "analysis_period_start": "2026-11-01"}
+        if agent == "spending" else
+        {"projections": [{"remaining": 6000, "monthly_required": 500}]}
+    )
+    return {
+        "blocked": False, "selected_agents": [agent], "answer": "A read-only calculation.",
+        "agent_results": [{"agent": agent, "blocked": False, "data": data}],
+        "audit": {"trace_id": "analysis-trace", "model_provider": "openai",
+                  "prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION,
+                  "model_calls": [completed_model_call(role)]},
+    }
+
+
+@pytest.mark.parametrize("agent,role,check", ANALYSIS_CHECKS)
+def test_analysis_smoke_uses_fresh_inputs_and_owned_persisted_model_trace(monkeypatch, agent, role, check):
+    monkeypatch.setattr(post_deploy_smoke, "_financial_today", lambda: date(2026, 11, 1))
+    calls = []
+
+    def fake_request(url, **kwargs):
+        calls.append((url, kwargs))
+        if url.endswith("/transactions"):
+            return 201, "{}"
+        if url.endswith(("/profile", "/data")):
+            return 200, "{}"
+        response = analysis_response(agent, role)
+        return 200, json.dumps(response if kwargs.get("method") == "POST" else persisted_trace(response))
+
+    monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
+    for _ in range(2):
+        check("https://example.test/api/coach", "synthetic-key", "openai")
+    payloads = [kwargs["body"] for url, kwargs in calls if url.endswith("/coach")]
+    trace_calls = [(url, kwargs) for url, kwargs in calls if "/traces/" in url]
+    first, second = payloads
+    assert first["user_id"] != second["user_id"]
+    assert first["session_id"] != second["session_id"]
+    for index, payload in enumerate((first, second)):
+        assert payload["requested_agents"] == [agent]
+        assert payload["user_id"].startswith("deployment-")
+        assert "read-only" in payload["message"]
+        assert trace_calls[index][0].endswith("?user_id=" + payload["user_id"])
+        assert trace_calls[index][1]["api_key"] == "synthetic-key"
+        if agent == "spending":
+            assert payload["budget_period_start"] == payload["snapshot"]["period_start"] == "2026-11-01"
+            transactions = payload["snapshot"]["recent_transactions"]
+            assert all(item["occurred_on"] == "2026-11-01" for item in transactions)
+            assert sum(item["amount"]["amount"] for item in transactions) == 150
+            user_url = "https://example.test/api/users/" + payload["user_id"]
+            saved = [kwargs["body"] for url, kwargs in calls if url == user_url + "/transactions"]
+            assert saved == transactions
+            cleanup = next(kwargs for url, kwargs in calls if url == user_url + "/data")
+            assert cleanup["method"] == "DELETE"
+            assert cleanup["body"] == {
+                "confirm_user_id": payload["user_id"], "policy_version": "data-lifecycle-v1",
+            }
+        else:
+            assert "SGD 6,000 over 12 months" in payload["message"]
+            assert payload["snapshot"] == {}
+
+
+@pytest.mark.parametrize("agent,role,check", ANALYSIS_CHECKS)
+@pytest.mark.parametrize("failure", [
+    "wrong_calculation", "capture_only", "needs_input", "blocked_result", "missing_result",
+    "wrong_provider", "missing_role", "failed_role", "persisted_missing_role",
+    "persisted_wrong_provider", "persisted_wrong_trace", "persisted_wrong_prompt",
+])
+def test_analysis_smoke_rejects_incomplete_results_and_unverified_model_execution(
+    monkeypatch, agent, role, check, failure,
+):
+    monkeypatch.setattr(post_deploy_smoke, "_financial_today", lambda: date(2026, 11, 1))
+
+    def fake_request(url, **kwargs):
+        if url.endswith("/transactions"):
+            return 201, "{}"
+        if url.endswith(("/profile", "/data")):
+            return 200, "{}"
+        response = analysis_response(agent, role)
+        persisted = kwargs.get("method") != "POST"
+        data = response["agent_results"][0]["data"]
+        audit = response["audit"]
+        if failure == "wrong_calculation":
+            if agent == "spending":
+                data["category_totals"]["food"] = 121
+            else:
+                data["projections"][0]["monthly_required"] = 6000
+        elif failure == "capture_only":
+            data["spending_draft" if agent == "spending" else "goal_draft"] = {"action": "create"}
+        elif failure == "needs_input":
+            data["needs_input"] = True
+        elif failure == "blocked_result":
+            response["agent_results"][0]["blocked"] = True
+        elif failure == "missing_result":
+            response["agent_results"] = []
+        elif failure == "wrong_provider" or (failure == "persisted_wrong_provider" and persisted):
+            audit["model_provider"] = "local_fixture"
+        elif failure == "missing_role" or (failure == "persisted_missing_role" and persisted):
+            audit["model_calls"] = [completed_model_call("agent_budget")]
+        elif failure == "failed_role":
+            audit["model_calls"][0]["status"] = "failed"
+        if persisted:
+            response = persisted_trace(response)
+            if failure == "persisted_wrong_trace":
+                response["trace_id"] = "another-trace"
+            elif failure == "persisted_wrong_prompt":
+                response["prompt_set_version"] = "stale-prompt"
+        return 200, json.dumps(response)
+
+    monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
+    with pytest.raises(AssertionError):
+        check("https://example.test/api/coach", "synthetic-key", "openai")
+
+
+@pytest.mark.parametrize("failure", ["seeding", "coaching", "trace", "cleanup"])
+def test_spending_smoke_cleans_up_its_owned_fixture_after_failures(monkeypatch, failure):
+    calls = []
+    monkeypatch.setattr(post_deploy_smoke, "_financial_today", lambda: date(2026, 11, 1))
+
+    def fake_request(url, method="GET", body=None, api_key=None):
+        calls.append((url, method, body))
+        if url.endswith("/data"):
+            return (500 if failure == "cleanup" else 200), "{}"
+        if url.endswith("/profile"):
+            return 200, "{}"
+        if url.endswith("/transactions"):
+            if failure == "seeding":
+                raise post_deploy_smoke.SmokeRequestError("HTTP 503; synthetic seed failure")
+            return 201, "{}"
+        if url.endswith("/coach") and failure == "coaching":
+            raise post_deploy_smoke.SmokeRequestError("HTTP 503; synthetic model failure")
+        if "/traces/" in url and failure == "trace":
+            raise post_deploy_smoke.SmokeRequestError("HTTP 503; synthetic trace failure")
+        response = analysis_response("spending", "agent_spending")
+        return 200, json.dumps(response if method == "POST" else persisted_trace(response))
+
+    monkeypatch.setattr(post_deploy_smoke, "request", fake_request)
+    with pytest.raises((AssertionError, post_deploy_smoke.SmokeRequestError)):
+        post_deploy_smoke.check_spending_coaching("https://example.test/api/coach", "synthetic-key", "openai")
+    url, method, body = calls[-1]
+    assert method == "DELETE"
+    assert url == "https://example.test/api/users/" + body["confirm_user_id"] + "/data"
+    assert body["confirm_user_id"].startswith("deployment-spending-analysis-smoke-")
+    assert body["policy_version"] == "data-lifecycle-v1"
 
 
 @pytest.fixture
@@ -111,6 +293,12 @@ def education_response():
     fields = ("source_id", "document_version", "checksum", "corpus_version", "review_due_at")
     audit = {
         "trace_id": "synthetic-trace",
+        "model_provider": "openai",
+        "prompt_set_version": post_deploy_smoke.CURRENT_PROMPT_VERSION,
+        "model_calls": [
+            completed_model_call("agent_investment_education", 4000),
+            completed_model_call("risk_compliance", 3000),
+        ],
         "retrieval_corpus_versions": ["education-v1"],
         "retrieval_sources": [{key: item[key] for key in fields} for item in (first, second)],
         "policy_corpus_versions": ["policy-v1"],
@@ -118,6 +306,7 @@ def education_response():
     }
     return {
         "blocked": False,
+        "selected_agents": ["investment_education"],
         "answer": (
             "RAG knowledge base (saved documents; no live web search):\n\n"
             "Approved material. [Approved education](https://example.test/cited)"
@@ -151,7 +340,7 @@ def hybrid_education_response(education_response):
 def run_education_smoke(monkeypatch, response, persisted_audit=None):
     replies = iter([
         (200, json.dumps(response)),
-        (200, json.dumps({"audit": persisted_audit or response["audit"]})),
+        (200, json.dumps(persisted_trace(response, persisted_audit))),
     ])
     urls = []
 
@@ -173,6 +362,70 @@ def test_education_trace_retains_retrieved_sources_beyond_final_citations(
     monkeypatch, education_response,
 ):
     run_education_smoke(monkeypatch, education_response)
+
+
+@pytest.mark.parametrize("role", ["agent_investment_education", "risk_compliance"])
+@pytest.mark.parametrize("persisted", [False, True])
+@pytest.mark.parametrize("failure", ["absent", "failed"])
+def test_education_smoke_requires_successful_writer_and_reviewer_calls(
+    monkeypatch, education_response, role, persisted, failure,
+):
+    audit = copy.deepcopy(education_response["audit"]) if persisted else education_response["audit"]
+    if failure == "absent":
+        audit["model_calls"] = [call for call in audit["model_calls"] if call["component"] != role]
+    else:
+        next(call for call in audit["model_calls"] if call["component"] == role)["status"] = "failed"
+    with pytest.raises(AssertionError, match=role):
+        run_education_smoke(monkeypatch, education_response, audit if persisted else None)
+
+
+def test_full_coach_smoke_executes_all_five_model_roles_with_local_runtime(monkeypatch):
+    from app.core.config import Settings
+    from app.core.schemas import CoachRequest
+    from app.orchestrator import AgentOrchestrator
+
+    orchestrator = AgentOrchestrator(config=Settings(
+        _env_file=None, MODEL_PROVIDER="local_fixture", RAG_PROVIDER="local_fixture",
+        POLICY_RAG_PROVIDER="local_fixture",
+    ))
+    traces, owners, verified_roles = {}, {}, set()
+
+    def local_request(url, method="GET", body=None, api_key=None):
+        assert api_key in {None, "synthetic-key"}
+        if not api_key:
+            raise post_deploy_smoke.SmokeRequestError("HTTP 401; authentication required")
+        if url.endswith("/transactions"):
+            return 201, "{}"
+        if url.endswith(("/profile", "/data")):
+            return 200, "{}"
+        if method == "POST":
+            response = orchestrator.handle(CoachRequest.model_validate(body)).model_dump(mode="json")
+            trace_id = response["audit"]["trace_id"]
+            traces[trace_id] = persisted_trace(response)
+            owners[trace_id] = body["user_id"]
+            return 200, json.dumps(response)
+        parsed = urllib.parse.urlparse(url)
+        trace_id = parsed.path.rsplit("/", 1)[-1]
+        assert urllib.parse.parse_qs(parsed.query)["user_id"] == [owners[trace_id]]
+        trace = traces[trace_id]
+        verified_roles.update(
+            call["component"] for call in trace["audit"]["model_calls"] if call["status"] == "completed"
+        )
+        return 200, json.dumps(trace)
+
+    monkeypatch.setattr(post_deploy_smoke, "request", local_request)
+    monkeypatch.setattr(post_deploy_smoke, "retry", lambda check, label: check())
+    monkeypatch.setattr(sys, "argv", [
+        "post_deploy_smoke.py", "--coach-url", "https://example.test/api/coach",
+        "--api-key", "synthetic-key", "--expected-model-provider", "local_fixture",
+        "--expected-corpus-version", "investment-education-sg@local-fixture-v1",
+        "--expected-policy-corpus-version", "financial-coach-policy-sg@local-fixture-v1",
+    ])
+    post_deploy_smoke.main()
+    assert verified_roles.issuperset({
+        "agent_spending", "agent_budget", "agent_goal_strategy",
+        "agent_investment_education", "risk_compliance",
+    })
 
 
 def test_education_smoke_accepts_hybrid_investment_response(

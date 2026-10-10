@@ -23,6 +23,14 @@ def check_runtime_policy(audit: dict, required_role: str) -> None:
     assert any(call.get("component") == required_role for call in calls), (
         f"{required_role} model-call telemetry was absent"
     )
+    assert any(
+        call.get("component") == required_role
+        and call.get("status") == "completed"
+        and not call.get("error_code")
+        and isinstance(call.get("output_characters"), int)
+        and call["output_characters"] > 0
+        for call in calls
+    ), f"{required_role} had no successful model call"
     for call in calls:
         policy = policies.get(call.get("component"))
         if policy:
@@ -146,7 +154,7 @@ def check_model_backed_coaching(
     # Budget creation may use budget_capture without invoking agent_budget.
     # Isolate this analysis from previous releases' saved profiles and plans.
     user_id = "deployment-budget-analysis-smoke-" + uuid4().hex
-    period = datetime.now(timezone.utc).date().replace(day=1).isoformat()
+    period = _financial_today().replace(day=1).isoformat()
     payload = {
         "user_id": user_id,
         "session_id": "deployment-model-smoke-test-" + uuid4().hex,
@@ -168,20 +176,51 @@ def check_model_backed_coaching(
     status, body = request(url, method="POST", body=payload, api_key=api_key)
     assert status == 200, f"expected HTTP 200, received {status}"
     response = json.loads(body)
-    assert response.get("blocked") is False, "normal coaching request was blocked"
-    assert "budget" in response.get("selected_agents", []), "budget agent was not selected"
-    assert response.get("answer"), "model-backed response did not include an answer"
-    budget = next((item for item in response.get("agent_results", [])
-                   if item.get("agent") == "budget"), {})
+    budget = check_specialist_result(response, "budget")
     assert budget.get("data", {}).get("disposable_income") == 2500, (
         "budget analysis did not preserve the supplied income minus recurring expense"
     )
-    audit = response.get("audit", {})
-    check_runtime_policy(audit, "agent_budget")
-    assert audit.get("model_provider") == expected_model_provider, (
-        f"expected model provider {expected_model_provider!r}, "
-        f"received {audit.get('model_provider')!r}"
+    check_specialist_model_trace(
+        url, api_key, response, user_id, expected_model_provider, ("agent_budget",),
     )
+
+
+def check_specialist_result(response: dict, agent: str) -> dict:
+    assert response.get("blocked") is False, f"{agent} coaching request was blocked"
+    assert agent in response.get("selected_agents", []), f"{agent} agent was not selected"
+    assert response.get("answer", "").strip(), f"{agent} response did not include an answer"
+    result = next(
+        (item for item in response.get("agent_results", []) if item.get("agent") == agent),
+        None,
+    )
+    assert result is not None, f"{agent} result was absent"
+    assert result.get("blocked") is False, f"{agent} result was blocked"
+    data = result.get("data", {})
+    assert not data.get("needs_input"), f"{agent} requested clarification instead of analysis"
+    assert not any(data.get(field) for field in ("budget_draft", "spending_draft", "goal_draft")), (
+        f"{agent} returned a capture draft instead of analysis"
+    )
+    return result
+
+
+def check_specialist_model_trace(
+    url: str,
+    api_key: str,
+    response: dict,
+    user_id: str,
+    expected_model_provider: str,
+    required_roles: tuple[str, ...],
+) -> dict:
+    def check_audit(audit):
+        assert audit.get("model_provider") == expected_model_provider, (
+            f"expected model provider {expected_model_provider!r}, "
+            f"received {audit.get('model_provider')!r}"
+        )
+        for role in required_roles:
+            check_runtime_policy(audit, role)
+
+    audit = response.get("audit", {})
+    check_audit(audit)
     trace_id = audit.get("trace_id")
     assert trace_id, "model-backed response did not include a trace ID"
     trace_url = (
@@ -193,7 +232,93 @@ def check_model_backed_coaching(
     trace = json.loads(trace_body)
     assert trace.get("trace_id") == trace_id, "persisted trace ID did not match"
     assert trace.get("prompt_set_version") == CURRENT_PROMPT_VERSION, "unexpected persisted prompt version"
-    check_runtime_policy(trace.get("audit", {}), "agent_budget")
+    persisted_audit = trace.get("audit", {})
+    assert persisted_audit.get("trace_id") == trace_id, "persisted audit trace ID did not match"
+    check_audit(persisted_audit)
+    return trace
+
+
+def check_spending_coaching(url: str, api_key: str, expected_model_provider: str) -> None:
+    user_id = "deployment-spending-analysis-smoke-" + uuid4().hex
+    user_url = f"{url.removesuffix('/coach')}/users/{user_id}"
+    period = _financial_today().replace(day=1).isoformat()
+    payload = {
+        "user_id": user_id,
+        "session_id": "deployment-spending-smoke-" + uuid4().hex,
+        "message": (
+            f"Analyze the supplied recorded spending by category for {period} "
+            "and report its total. This is a read-only analysis."
+        ),
+        "budget_period_start": period,
+        "snapshot": {
+            "period_start": period,
+            "recent_transactions": [
+                {"description": "Synthetic groceries", "category": "food",
+                 "amount": {"currency": "SGD", "amount": 120}, "occurred_on": period},
+                {"description": "Synthetic train fares", "category": "transport",
+                 "amount": {"currency": "SGD", "amount": 30}, "occurred_on": period},
+            ],
+        },
+        "requested_agents": ["spending"],
+    }
+    # The backend owns complete Spending aggregates and replaces caller totals.
+    # Seed the actual ledger for this isolated automation user before analysis.
+    status, _ = request(
+        f"{user_url}/profile", method="PUT",
+        body={"monthly_income": {"currency": "SGD", "amount": 4000}}, api_key=api_key,
+    )
+    assert status == 200, f"Spending fixture profile creation returned HTTP {status}"
+    try:
+        for transaction in payload["snapshot"]["recent_transactions"]:
+            status, _ = request(
+                f"{user_url}/transactions", method="POST", body=transaction, api_key=api_key,
+            )
+            assert status == 201, f"Spending fixture transaction creation returned HTTP {status}"
+        status, body = request(url, method="POST", body=payload, api_key=api_key)
+        assert status == 200, f"expected HTTP 200, received {status}"
+        response = json.loads(body)
+        data = check_specialist_result(response, "spending").get("data", {})
+        assert data.get("category_totals") == {"food": 120, "transport": 30}, (
+            "Spending did not preserve the supplied category totals"
+        )
+        assert data.get("transaction_count") == 2, "Spending did not analyze both supplied records"
+        assert data.get("analysis_period_start") == period, "Spending analyzed the wrong month"
+        check_specialist_model_trace(
+            url, api_key, response, user_id, expected_model_provider, ("agent_spending",),
+        )
+    finally:
+        status, _ = request(
+            f"{user_url}/data", method="DELETE",
+            body={"confirm_user_id": user_id, "policy_version": "data-lifecycle-v1"}, api_key=api_key,
+        )
+        assert status == 200, f"Spending fixture cleanup returned HTTP {status}"
+
+
+def check_goal_coaching(url: str, api_key: str, expected_model_provider: str) -> None:
+    user_id = "deployment-goal-analysis-smoke-" + uuid4().hex
+    payload = {
+        "user_id": user_id,
+        "session_id": "deployment-goal-smoke-" + uuid4().hex,
+        "message": (
+            "For an illustrative savings goal of SGD 6,000 over 12 months, calculate "
+            "the equal monthly savings required. This is a read-only calculation."
+        ),
+        "snapshot": {},
+        "requested_agents": ["goal_strategy"],
+    }
+    status, body = request(url, method="POST", body=payload, api_key=api_key)
+    assert status == 200, f"expected HTTP 200, received {status}"
+    response = json.loads(body)
+    data = check_specialist_result(response, "goal_strategy").get("data", {})
+    projections = data.get("projections", [])
+    assert len(projections) == 1, "Goal Strategy did not calculate the supplied goal"
+    assert projections[0].get("remaining") == 6000, "Goal Strategy changed the goal amount"
+    assert projections[0].get("monthly_required") == 500, (
+        "Goal Strategy did not preserve the target divided by its duration"
+    )
+    check_specialist_model_trace(
+        url, api_key, response, user_id, expected_model_provider, ("agent_goal_strategy",),
+    )
 
 
 def retrieval_provenance(
@@ -221,6 +346,7 @@ def check_investment_education_rag(
     api_key: str,
     expected_corpus_version: str,
     expected_policy_corpus_version: str,
+    expected_model_provider: str = "openai",
 ) -> None:
     payload = {
         "user_id": "deployment-smoke-test",
@@ -232,7 +358,7 @@ def check_investment_education_rag(
     status, body = request(url, method="POST", body=payload, api_key=api_key)
     assert status == 200, f"expected HTTP 200, received {status}"
     response = json.loads(body)
-    assert response.get("blocked") is False, "approved education request was blocked"
+    check_specialist_result(response, "investment_education")
     sources = response.get("sources", [])
     assert sources, "The governed Education corpus returned no approved sources"
     required_source_fields = {
@@ -355,15 +481,10 @@ def check_investment_education_rag(
         compliance_data.get(field) is True
         for field in ("request_allowed", "financial_language_safe", "answer_complete")
     ), "Risk and Compliance did not approve a safe and complete answer"
-    trace_id = audit.get("trace_id")
-    assert trace_id, "education response did not include a trace ID"
-    trace_url = (
-        f"{url.removesuffix('/coach')}/coach/traces/"
-        f"{urllib.parse.quote(str(trace_id), safe='')}?user_id=deployment-smoke-test"
+    trace = check_specialist_model_trace(
+        url, api_key, response, payload["user_id"], expected_model_provider,
+        ("agent_investment_education", "risk_compliance"),
     )
-    trace_status, trace_body = request(trace_url, api_key=api_key)
-    assert trace_status == 200, f"education trace retrieval returned HTTP {trace_status}"
-    trace = json.loads(trace_body)
     assert trace.get("audit", {}).get("retrieval_corpus_versions") == [
         expected_corpus_version
     ], "persisted education trace did not retain the corpus version"
@@ -616,6 +737,18 @@ def main() -> None:
             f"{args.expected_model_provider}-backed coaching",
         )
         retry(
+            lambda: check_spending_coaching(
+                args.coach_url, args.api_key, args.expected_model_provider,
+            ),
+            "Spending specialist model execution and persisted trace",
+        )
+        retry(
+            lambda: check_goal_coaching(
+                args.coach_url, args.api_key, args.expected_model_provider,
+            ),
+            "Goal Strategy specialist model execution and persisted trace",
+        )
+        retry(
             lambda: check_prompt_injection(args.coach_url, args.api_key),
             "prompt-injection blocking",
         )
@@ -625,6 +758,7 @@ def main() -> None:
                 args.api_key,
                 args.expected_corpus_version,
                 args.expected_policy_corpus_version,
+                args.expected_model_provider,
             ),
             "Governed Education and Policy corpus retrieval",
         )

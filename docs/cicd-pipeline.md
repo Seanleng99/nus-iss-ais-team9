@@ -2,7 +2,33 @@
 
 ## Current delivery path
 
-A push to `main` runs CI and starts `Release to AWS` only after CI succeeds for the current commit. Application releases build and scan all three service images from that tested SHA so recovery also includes earlier fixes. The backend deployment runs Alembic before the service update. Post-deployment smoke verifies unauthenticated denial, scoped automation access, Education citations, independent Policy evidence, corpus pins, and persisted trace provenance. Failed checks restore the task definitions that were updated during the release; ECS deployment circuit breakers cover failed service starts.
+A push to `main` runs CI and starts `Release to AWS` only after CI succeeds for the current commit. Application releases build and scan all three service images from that tested SHA so recovery also includes earlier fixes. The backend deployment runs Alembic before the service update. Post-deployment smoke requires successful live model execution for all five agents and verifies unauthenticated denial, scoped automation access, Education citations, independent Policy evidence, corpus pins, and persisted trace provenance. Failed checks restore the task definitions that were updated during the release; ECS deployment circuit breakers cover failed service starts.
+
+Every deployment runs the following required probes through the deployed coaching API:
+
+| Agent | Required live smoke case |
+| --- | --- |
+| Budget | SGD 4,000 income minus SGD 1,500 recurring expense gives SGD 2,500 disposable income |
+| Spending | Two temporary stored current-month SGD records retain food 120, transport 30 and a count of two |
+| Goal Strategy | An illustrative SGD 6,000 target over 12 months requires SGD 500 per month |
+| Investment Education | Approved diversification explanation with governed Education citations |
+| Risk & Compliance | Independent approval of the Education answer with governed Policy evidence |
+
+Each role must have at least one completed, nonempty model call without an error
+in both the response audit and its owner-scoped persisted trace. The checks also
+require the expected model provider, current prompt version and reviewed role
+reasoning/output limits. Router, capture and dependency-planner calls do not
+substitute for specialist calls; capture drafts, missing results and clarification
+responses fail the normal analysis probes. Budget, Spending and Goal use fresh
+synthetic users and sessions. Investment Education and Risk & Compliance share
+one successful Education probe, which verifies both model roles. CI runs the same
+smoke entry point against local fixture services; the AWS release explicitly
+requires the OpenAI provider.
+
+The Spending probe seeds its synthetic profile and ledger through the owned
+backend API, since backend aggregates take precedence over caller snapshots.
+It deletes that user's workspace after trace verification, including when
+seeding, model execution or verification fails.
 
 Main pushes classify all changes since the last successful `Deploy demo environment`
 job, rather than just the newest push. Failed CI or deployment leaves application

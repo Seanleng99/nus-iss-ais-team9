@@ -588,6 +588,7 @@ jobs:
           --frontend-health-url "$FRONTEND_HEALTH_URL"
           --backend-health-url "$BACKEND_HEALTH_URL"
           --coach-url "$COACH_SMOKE_URL"
+          --expected-model-provider openai
           --expected-corpus-version "$EDUCATION_CORPUS_VERSION"
           --expected-policy-corpus-version "$POLICY_CORPUS_VERSION"
           --persistence-base-url "${COACH_SMOKE_URL%/coach}"
