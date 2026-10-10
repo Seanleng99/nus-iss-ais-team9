@@ -87,13 +87,20 @@ def test_unverified_citation_is_rejected_before_review():
     assert calls == []
 
 
-def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch):
+@pytest.mark.parametrize("p95,accepted", [(22707.77, True), (60000, True), (60000.01, False)])
+def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch, p95, accepted):
     from app.core.prompts import CURRENT_PROMPT_VERSION
 
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (response(), "correlation"))
     monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args: {})
     monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
     monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
+    original_run = drift_quality.run_live_evaluation
+    def measured_run(**kwargs):
+        result = original_run(**kwargs)
+        result["latency_ms"]["p95"] = p95
+        return result
+    monkeypatch.setattr(drift_quality, "run_live_evaluation", measured_run)
     client, _ = client_factory()
     packets = []
     captured = drift_quality.capture_quality(judge=judge(client), cases=[case()], repeats=3,
@@ -102,12 +109,17 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
             "timeout_seconds": 1, "expected_model_provider": "openai", "expected_model_id": "generator",
             "expected_prompt_version": CURRENT_PROMPT_VERSION, "input_cost_per_million": 1,
             "output_cost_per_million": 1, "commit_sha": "test", "maximum_estimated_cost_usd": 0.05})
-    assert captured["complete"] and captured["operational_pass"]
+    assert captured["complete"] and captured["operational_pass"] is accepted
+    assert captured["identity"]["maximum_p95_ms"] == 60000
     assert "PRIVATE" not in json.dumps(captured)
     assert len(packets) == 3 and "PRIVATE-SYNTHETIC-ANSWER" in json.dumps(packets)
     policy = model_drift.load_policy()
     policy.update(required_specialists=["budget"], required_languages=["en"], required_metrics=case()["quality_metrics"])
     reviews = [{"sample_id": sample["sample_id"], "scores": sample["scores"]} for sample in captured["samples"]]
+    if not accepted:
+        with pytest.raises(ValueError, match="operational acceptance"):
+            model_drift.approve_baseline(captured, reviews, policy, "human-calibration-test")
+        return
     baseline = model_drift.approve_baseline(captured, reviews, policy, "human-calibration-test")
     assert model_drift.compare(captured, baseline, policy)["passed"]
 

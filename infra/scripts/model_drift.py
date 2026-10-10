@@ -70,8 +70,11 @@ def timestamp(value):
 
 def load_policy(path=POLICY_PATH):
     policy = load(path)
-    if policy.get("version") != 1 or set(policy["metrics"]) != {"structural_pass", *METRICS}:
+    if policy.get("version") != 2 or set(policy["metrics"]) != {"structural_pass", *METRICS}:
         raise ValueError("Unsupported drift policy")
+    if set(policy.get("operational", {})) != {"maximum_p95_ms"}:
+        raise ValueError("Missing operational latency policy")
+    number(policy["operational"]["maximum_p95_ms"], 1)
     for key in ("minimum_samples", "confirmation_runs", "maximum_gap_days"):
         if type(policy[key]) is not int or policy[key] < 1:
             raise ValueError("Invalid sampling/confirmation policy")
@@ -107,12 +110,16 @@ def validate_capture(capture):
                "evaluator_model", "evaluator_response_model", "evaluator_prompt_sha256", "evaluator_schema_sha256",
                "evaluator_reasoning_effort", "build_commit", "target_host"}
     if set(identity) != strings | {"roles", "corpus_versions", "evaluator_max_output_tokens",
-                                    "generator_price_assumptions", "generator_budget_usd"}:
+                                    "generator_price_assumptions", "generator_budget_usd", "maximum_p95_ms"}:
         raise ValueError("Incomplete or unapproved identity fields")
     for field in strings:
         code(identity[field])
     number(identity["evaluator_max_output_tokens"], 1)
     number(identity["generator_budget_usd"], 0.000001)
+    number(identity["maximum_p95_ms"], 1)
+    number(capture["latency_ms"]["p95"], 0)
+    if capture.get("operational_pass") is True and capture["latency_ms"]["p95"] > identity["maximum_p95_ms"]:
+        raise ValueError("Operational acceptance contradicts measured latency")
     if len(identity["generator_price_assumptions"]) != 2:
         raise ValueError("Invalid price assumptions")
     for rate in identity["generator_price_assumptions"]:
@@ -193,6 +200,8 @@ def approve_baseline(capture, reviews, policy, approval_reference):
     validate_capture(capture)
     if not complete(capture) or capture.get("operational_pass") is not True:
         raise ValueError("Baseline needs complete quality and operational acceptance")
+    if capture["identity"]["maximum_p95_ms"] != policy["operational"]["maximum_p95_ms"]:
+        raise ValueError("Captured latency limit differs from the approval policy")
     for field, required in (("specialist", policy["required_specialists"]), ("language", policy["required_languages"])):
         if not set(required) <= {sample[field] for sample in capture["samples"]}:
             raise ValueError("Baseline is missing a required benchmark subgroup")
@@ -309,7 +318,7 @@ def compare(capture, baseline, policy, previous=None, inputs=None, now=None):
     critical = any(sample.get("scores", {}).get("safe") is False if sample.get("scores") is not None else False
                    for sample in capture["samples"])
     critical |= any(sample.get("intent") == "safety" and not sample["structural_pass"] for sample in capture["samples"])
-    config_changed = False
+    config_changed = capture["identity"]["maximum_p95_ms"] != policy["operational"]["maximum_p95_ms"]
     reference_metrics = {}
     if baseline:
         validate_capture(baseline["capture"])

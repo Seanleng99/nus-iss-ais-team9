@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "operational": {"maximum_p95_ms": 60000},
   "confirmation_runs": 2,
   "maximum_gap_days": 14,
   "minimum_samples": 3,

@@ -22,13 +22,13 @@ def capture(count=100, failed=0, metric="helpful", instant=None):
                   "prompt_set_version": "v10", "prompt_content_hash": "prompt-hash", "dataset_sha256": "dataset-hash",
                   "evaluator_model": "judge", "evaluator_response_model": "judge-version", "evaluator_prompt_sha256": "judge-prompt",
                   "evaluator_schema_sha256": "judge-schema", "evaluator_reasoning_effort": "low", "evaluator_max_output_tokens": 2048,
-                  "generator_price_assumptions": [1, 1], "generator_budget_usd": 0.05,
+                  "generator_price_assumptions": [1, 1], "generator_budget_usd": 0.05, "maximum_p95_ms": 60000,
                   "corpus_versions": {"education": "education-version", "policy": "policy-version"},
                   "roles": {"router": {"model_id": "generator", "provider_model_id": "generator-version",
                                        "reasoning_effort": "low", "max_output_tokens": 1000}}},
               "expected_samples": [{"sample_id": item["sample_id"], "specialist": item["specialist"],
                   "language": item["language"], "intent": item["intent"], "metrics": sorted(item["scores"])} for item in samples],
-              "samples": samples, "complete": True, "operational_pass": True}
+              "samples": samples, "complete": True, "operational_pass": True, "latency_ms": {"p95": 22707.77}}
     return seal(result)
 
 
@@ -130,6 +130,26 @@ def test_changed_policy_or_runtime_requires_new_acceptance_baseline(policy):
     altered = deepcopy(policy)
     altered["metrics"]["helpful"]["allowed_drop"] = 0.1
     assert drift.compare(capture(), reference, altered)["status"] == "configuration_changed"
+
+
+def test_latency_policy_change_requires_fresh_acceptance(policy):
+    reference = baseline(capture(), policy)
+    changed = deepcopy(policy)
+    changed["operational"]["maximum_p95_ms"] = 70000
+    current = capture()
+    current["identity"]["maximum_p95_ms"] = 70000
+    seal(current)
+    assert drift.compare(current, reference, changed)["status"] == "configuration_changed"
+    with pytest.raises(ValueError, match="latency limit"):
+        baseline(capture(), changed)
+
+
+def test_excess_latency_cannot_be_marked_as_operationally_accepted(policy):
+    current = capture()
+    current["latency_ms"]["p95"] = 60000.01
+    seal(current)
+    with pytest.raises(ValueError, match="contradicts"):
+        baseline(current, policy)
 
 
 def test_baseline_requires_complete_matching_human_reviews(policy):

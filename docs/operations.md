@@ -140,10 +140,11 @@ generation-failure alarms remain separate operational signals. See
 
 The 2026-10-10 [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
 records a successful code release and provider-model metadata verification, with
-GitHub-only reporting configured. Scheduling remains disabled: the selected
-independent evaluator returned HTTP 403 with the available credential, no reviewed
-baseline exists, and the one-case deployed smoke exceeded the 10-second latency
-limit. This is deployed preparation, not accepted scheduled monitoring.
+GitHub-only reporting configured. The evaluator secret has since been added, and
+drift policy version 2 uses a provisional 60-second complete-answer P95 based on
+recorded GPT-6 Luna timings. The original smoke evidence retains its historical
+10-second threshold. Scheduling remains disabled until the new credential succeeds
+and a complete passing capture is independently reviewed and accepted.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for

@@ -14,25 +14,35 @@ The implementation is published on `main`, with successful [CI](https://github.c
 and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38045210894)
 for `0c314010720baf47af537949da4ec2ad838cfe61`. The `demo` environment is
 configured for GitHub Actions reports only; email alerts and input monitoring
-remain disabled. Evaluator rates and spending limits are configured, but the
-evaluator secret and accepted baseline are still absent. `MODEL_DRIFT_ENABLED`
-remains `false`.
+remain disabled. Evaluator rates and spending limits are configured, and the
+evaluator secret was added on 2026-10-10. A candidate run must verify its model
+access and produce a complete capture before independent human calibration.
+The accepted baseline is still absent. `MODEL_DRIFT_ENABLED` remains `false`.
 
 The project's existing credential lists only `gpt-6-luna`; a direct Structured
 Outputs invocation of the selected `gpt-6-sol` evaluator returned HTTP 403.
-Evaluator access must be enabled or a suitable credential configured before capture.
+The newly configured secret will be verified by the candidate workflow.
 The selected Standard rates are USD 2 input / USD 10 output per million tokens,
 verified against the [official model card](https://developers.openai.com/api/docs/models/gpt-6-sol).
 
 One disposable deployed Budget case passed structural checks, matched the release
 build and included provider response model IDs in all completed calls. Cleanup
-succeeded. Its observed duration was 22,707.77 ms, above the current 10,000 ms
-acceptance limit. This single observation is neither a quality baseline nor a
-representative latency distribution. Resolve or formally review the latency
-criterion with current-model evidence before accepting a baseline. No threshold
-was relaxed and no baseline was fabricated. The content-free
+succeeded. Its observed duration was 22,707.77 ms, above the inherited 10,000 ms
+acceptance limit used for that historical smoke. This single observation is neither
+a quality baseline nor a representative latency distribution. The content-free
 [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
-records these checks and remaining work.
+preserves the original checks and remaining work at that time.
+
+Policy version 2 replaces that inherited limit with a provisional 60,000 ms P95
+for complete app answers. Forty-two recorded GPT-6 Luna traces from 2026-10-09
+had a median of 33.91 seconds and P95 of 51.38 seconds; 41 exceeded 10 seconds.
+Those selected traces came from an earlier build and justify provisional
+recalibration, not a current-build acceptance baseline. The candidate capture must
+verify the limit on the deployed build. Fixture setup, cleanup and evaluator time
+are excluded from measured answer latency. The app's 85-second hard workflow
+deadline remains in force; time to first streamed progress is a separate target.
+The versioned policy and capture identity both record the latency limit, so changing
+it requires fresh baseline acceptance. Quality, safety and cost thresholds are unchanged.
 
 ## What Runs
 
