@@ -1,6 +1,6 @@
 # Goal Strategy Agent evaluation and CI reports
 
-**Current entry point:** **Agent and RAG Evaluations** → `goal` offline / live jobs.
+**Current entry point:** **CI and LLMSecOps** → `goal` offline / live jobs.
 The former four suite IDs below describe retained scenario groups, now executed
 inside one `goal` offline job. They are not separate workflow or CLI names.
 Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
@@ -42,7 +42,7 @@ explicitly qualified result; required unresolved evidence must not silently pass
 
 Shared numeric dependency results also appear under the LLMSecOps policy job in
 `investment-evaluation-metrics`. These four Goal scenario groups remain selected
-by the `goal` suite in **Agent and RAG Evaluations**.
+by the `goal` suite in **CI and LLMSecOps**.
 
 Conditional Education retrieval follows the shared
 [RAG Retrieval Relevance evaluation](investment-agent-evaluation.md#rag-retrieval-relevance),
@@ -50,7 +50,7 @@ including authorized dependencies, evidence gaps and source provenance.
 
 ## Execution and finding evidence
 
-Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+Automatic CI runs these jobs with live tests disabled. Open
 its **goal — offline unit tests** job and download `agent-offline-goal`.
 It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
 full synthetic example responses and every case outcome, retained for 90 days.

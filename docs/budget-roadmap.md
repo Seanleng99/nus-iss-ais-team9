@@ -1,6 +1,6 @@
 # Budget planner roadmap implementation
 
-This roadmap preserves dated implementation checkpoints, including their original “local”, “pending” and no-release instructions; they are not current deployment status or active instructions. The changes are checked into the current code. [Budget usability](budget-usability.md) supersedes the old standalone form/reminder entry points, and [Agent and RAG Evaluations](agent-test-workflows.md) supersedes the former Budget live workflow. Historical test counts remain unchanged.
+This roadmap preserves dated implementation checkpoints, including their original “local”, “pending” and no-release instructions; they are not current deployment status or active instructions. The changes are checked into the current code. [Budget usability](budget-usability.md) supersedes the old standalone form/reminder entry points, and [CI and LLMSecOps](agent-test-workflows.md) supersedes the former Budget live workflow. Historical test counts remain unchanged.
 
 ## Saved budget management — 5 October 2026
 

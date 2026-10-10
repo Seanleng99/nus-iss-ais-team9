@@ -2,7 +2,12 @@
 
 [Promptfoo](https://www.promptfoo.dev/docs/getting-started/) runs test prompts against application providers and evaluates their actual responses. The [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) supplies the risk taxonomy. This project uses Promptfoo **0.123.1** with committed attack cases and deterministic assertions. It is a reproducible regression scan, not the remotely generated Promptfoo red-team preset, an OWASP certification, or proof that every attack is prevented.
 
-The **Project OWASP Security Scan** workflow exposes `workflow_call` and `workflow_dispatch`. CI owns automatic execution and calls its offline scan when AI, security or release checks are selected. Container builds require its success, and AWS Release requires successful push CI for the current main SHA. Each Agent workflow separately executes its owned pytest tests. The scan's previous backend/frontend companion jobs have been removed because service CI already runs those test files.
+The `project-security-scan` and `security-live` jobs now live directly in
+[CI and LLMSecOps](../.github/workflows/ci.yml). The separate security workflow
+was removed. Selected offline security checks remain required; agent pytest
+files belong to their own jobs in the same workflow. Infrastructure report-helper
+tests run once in the infrastructure job, and backend/frontend tests run once in
+their service jobs.
 
 The scan package explicitly pins Playwright 1.63.0 alongside Promptfoo so npm
 retains its optional dependency and the matching `playwright-core` in the lockfile
@@ -86,7 +91,13 @@ Backend and frontend tests run in their separate service CI environments. They a
 
 ## Optional live model scan
 
-After the workflow is merged to `main`, open **Actions → Project OWASP Security Scan → Run workflow**, select `main`, and enable `run_live`. The workflow first requires its offline scan to pass. A live request on another branch or from a reusable caller fails explicitly; normal CI cannot enable paid model calls.
+Open **Actions → CI and LLMSecOps → Run workflow**, select `main`, and enable
+`run_live`. This opts into both the seven deployed agent/RAG suites and the bounded
+live security scan. Offline CI must pass first; the security scan runs after the
+agent live matrix. Automatic events and other branches cannot execute paid jobs.
+Live scan failure is advisory to CI and never replaces mandatory release safety
+smoke. Its actual PASS/FAIL/NOT RUN status and detailed findings remain in the
+combined report, independently of GitHub's advisory job conclusion.
 
 It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. AWS OIDC grants secret retrieval only in the gated live job. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, supply `OPENAI_API_KEY` privately or select the project's credential file explicitly:
 

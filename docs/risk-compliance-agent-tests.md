@@ -1,8 +1,8 @@
 # Risk & Compliance Agent Tests
 
 Risk & Compliance tests are owned by the `risk-compliance` suite in the
-consolidated **Agent and RAG Evaluations** workflow
-([workflow file](../.github/workflows/agent-evaluations.yml)). The suite runs
+consolidated **CI and LLMSecOps** workflow
+([workflow file](../.github/workflows/ci.yml)). The suite runs
 with local model and Policy fixtures; it makes no paid provider calls. Its exact
 test selection and reporting contract are in
 [`agent-test-suites.json`](../infra/llmsecops/agent-test-suites.json) and
@@ -32,7 +32,7 @@ evidence; see the [evaluation guide](risk-compliance-agent-evaluation.md) and
 
 ## Finding the results
 
-In GitHub Actions, open **Agent and RAG Evaluations** and the
+In GitHub Actions, open **CI and LLMSecOps** and the
 **risk-compliance — offline unit tests** job. Its job summary reports the
 definition, selected tests, hashes, expected outputs, measured cases, and
 acceptance. Download `agent-offline-risk-compliance` for JUnit XML, Markdown,

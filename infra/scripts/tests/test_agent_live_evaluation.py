@@ -19,12 +19,12 @@ def no_summary_pollution(monkeypatch):
 
 
 def workflow():
-    return yaml.load((ROOT / ".github/workflows/agent-evaluations.yml").read_text(), Loader=yaml.BaseLoader)
+    return yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
 
 
 def test_seven_offline_and_seven_live_jobs_default_to_no_paid_calls():
     config = workflow()
-    for event in ("workflow_dispatch", "workflow_call"):
+    for event in ("workflow_dispatch",):
         assert config["on"][event]["inputs"]["run_live"]["type"] == "boolean"
         assert config["on"][event]["inputs"]["run_live"]["default"] == "false"
     assert set(config["jobs"]["offline"]["strategy"]["matrix"]["suite"]) == set(live.SUITES)
@@ -33,12 +33,12 @@ def test_seven_offline_and_seven_live_jobs_default_to_no_paid_calls():
     assert set(config["jobs"]["offline"]["env"].values()) == {"local_fixture", "${{ matrix.suite }}"}
     assert config["jobs"]["live"]["continue-on-error"] == "true"
     assert config["jobs"]["report"]["continue-on-error"] == "true"
-    assert config["jobs"]["required-offline"]["needs"] == ["offline", "metrics"]
-    assert config["jobs"]["live"]["needs"] == "required-offline"
+    assert config["jobs"]["agent-test-gate"]["needs"] == ["changes", "offline", "metrics"]
+    assert "agent-test-gate" in config["jobs"]["live"]["needs"]
     ci = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
-    assert ci["jobs"]["agent-evaluations"]["with"]["run_live"] == "false"
-    assert "secrets" not in ci["jobs"]["agent-evaluations"]
-    assert set(ci["jobs"]["agent-test-gate"]["needs"]) == {"changes", "agent-evaluations"}
+    assert "agent-evaluations" not in ci["jobs"]
+    assert "secrets" not in ci["jobs"]["offline"]
+    assert set(ci["jobs"]["agent-test-gate"]["needs"]) == {"changes", "offline", "metrics"}
     assert "live" not in ci["jobs"]["agent-test-gate"]["env"]
 
 

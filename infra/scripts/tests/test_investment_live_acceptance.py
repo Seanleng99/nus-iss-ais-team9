@@ -578,9 +578,9 @@ def test_datasets_have_bounded_scenario_turn_and_retrieval_counts():
 
 
 def test_live_workflow_is_optional_advisory_with_demo_environment_and_retains_90_days():
-    workflow = yaml.load((ROOT / ".github/workflows/agent-evaluations.yml").read_text(),
+    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(),
                          Loader=yaml.BaseLoader)
-    assert set(workflow["on"]) == {"workflow_dispatch", "workflow_call"}
+    assert set(workflow["on"]) == {"workflow_dispatch", "push", "pull_request", "schedule"}
     assert workflow["on"]["workflow_dispatch"]["inputs"]["run_live"]["default"] == "false"
     live_job = workflow["jobs"]["live"]
     assert "inputs.run_live" in live_job["if"]

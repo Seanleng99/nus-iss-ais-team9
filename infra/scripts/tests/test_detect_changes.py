@@ -134,6 +134,18 @@ class ChangeDetectionTests(unittest.TestCase):
 
         self.assertFalse(any(result.values()))
 
+    def test_service_readmes_are_documentation_but_runtime_markdown_still_deploys(self):
+        result = detect_changes.classify_changes([
+            "apps/ai-service/README.md", "apps/ai-service/prompts/v8/README.md",
+            "apps/backend/README.md", "infra/aws/README.md", "SECURITY.md",
+        ])
+        self.assertFalse(any(result.values()))
+        for path in ("knowledge/investment_education/documents/README.md",
+                     "knowledge/policy_controls/documents/advice_boundary.md",
+                     "apps/ai-service/prompts/current/system.md"):
+            with self.subTest(path=path):
+                self.assertTrue(detect_changes.classify_changes([path])["deploy"])
+
     def test_workflow_change_selects_all_services_without_migration(self):
         result = detect_changes.classify_changes([".github/workflows/release.yml"])
 

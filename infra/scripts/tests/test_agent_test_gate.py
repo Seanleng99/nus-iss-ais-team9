@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-RESULTS = ("EVALUATIONS_RESULT",)
+RESULTS = ("OFFLINE_RESULT", "METRICS_RESULT")
 
 
 def run_gate(tmp_path, *, ai_ci="true", deploy="false", changes="success", **results):
@@ -49,7 +49,7 @@ def run_gate(tmp_path, *, ai_ci="true", deploy="false", changes="success", **res
 def test_required_suite_must_pass(tmp_path, agent, result):
     outcome = run_gate(tmp_path, **{agent: result})
     assert outcome.returncode != 0
-    assert "An agent suite did not pass" in outcome.stderr
+    assert "Agent suites or metrics did not pass" in outcome.stderr
 
 
 def test_all_successful_suites_pass(tmp_path):
@@ -58,7 +58,7 @@ def test_all_successful_suites_pass(tmp_path):
 
 
 def test_frontend_only_release_still_requires_agents(tmp_path):
-    outcome = run_gate(tmp_path, ai_ci="false", deploy="true", EVALUATIONS_RESULT="skipped")
+    outcome = run_gate(tmp_path, ai_ci="false", deploy="true", OFFLINE_RESULT="skipped")
     assert outcome.returncode != 0
 
 

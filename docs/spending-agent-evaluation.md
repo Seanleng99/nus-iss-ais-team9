@@ -1,6 +1,6 @@
 # Spending Agent evaluation and CI reports
 
-**Current entry point:** **Agent and RAG Evaluations** → `spending` offline / live jobs.
+**Current entry point:** **CI and LLMSecOps** → `spending` offline / live jobs.
 The former four suite IDs below describe retained scenario groups, now executed
 inside one `spending` offline job. They are not separate workflow or CLI names.
 Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
@@ -41,7 +41,7 @@ or proof that a pattern generalizes to a user's future behavior.
 
 ## Execution and finding evidence
 
-Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+Automatic CI runs these jobs with live tests disabled. Open
 its **spending — offline unit tests** job and download `agent-offline-spending`.
 It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
 full synthetic example responses and every case outcome, retained for 90 days.

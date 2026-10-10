@@ -1,117 +1,104 @@
-# GitHub Actions: agent evaluations and workflow dependencies
+# CI, agent and RAG evaluations
 
-## One workflow for the seven components
+## One entry point
 
-Use **Agent and RAG Evaluations** (`agent-evaluations.yml`). It has seven
-**offline unit/contract jobs** and seven **optional live integration jobs**:
-Orchestrator, Spending, Budget, Goal Strategy, Investment Education,
-Risk & Compliance, and RAG. GitHub expands each matrix entry into a separate job.
-There are also **Required evaluation metrics**, **Required offline acceptance**,
-and **Combined evaluation report** jobs.
+Use **Actions → CI and LLMSecOps → Run workflow → main**. All pre-release
+service tests, the seven agent/RAG suites, evaluation metrics and security scans
+are defined directly in [ci.yml](../.github/workflows/ci.yml). The former
+`agent-evaluations.yml` and `project-security-scan.yml` entry points are removed.
+Historical runs remain visible in GitHub.
 
-To run: **Actions → Agent and RAG Evaluations → Run workflow → main**.
-The `Run live integration tests?` checkbox is the Yes/No choice **before dispatch**:
+The **Run paid live evaluations** checkbox defaults to **No**:
 
-| Choice | Offline jobs | Live jobs | Deployment effect |
-|---|---|---|---|
-| No / unchecked (default) | Required | SKIPPED; no live credentials or provider requests | Offline success can pass CI |
-| Yes / checked | Required | Real deployed API/OpenAI and AWS Bedrock; advisory | Live FAIL is retained but cannot fail the required offline gate |
-| Offline failure | FAIL; workflow fails | Not started | Blocks CI and release |
-| Live setup/credential failure | Offline result unchanged | NOT RUN/FAIL, with missing evidence identified | Does not block release |
-
-Automatic push/PR/scheduled CI calls the same workflow with `run_live: false`.
-No automatic event can enable its live jobs. A manual dispatch on a non-main
-branch cannot execute live tests. Re-running an old job cannot repeat paid calls;
-start a new manual dispatch and choose Yes to opt in again. Every live job also
-retains the existing `demo` environment approval and OIDC permissions. That
-approval is a **job-level gate after dispatch**, distinct from the checkbox.
-No new IAM role or permissions are created.
-
-This consolidates agent **evaluation** entry points. Deployment smoke,
-operational validation, corpus governance and OWASP scanning have separate
-purposes and retain their own controls. The checkbox does not disable those
-workflows. In particular, existing post-deployment health/security/agent smoke
-checks remain required and may roll back a release.
-
-## What existed before consolidation
-
-At the inspected main commit `afd90da8322d099be023926a8758bdb3b4b305a9`, the
-repository had **14 workflow files**, plus GitHub's generated Dependabot workflow.
-
-| Former workflow | Jobs | Relationship / disposition |
+| Choice | Execution | Effect |
 |---|---|---|
-| Reusable Agent Test Suite | `tests` | Shared pytest/report runner; replaced by consolidated offline matrix |
-| Spending Agent Tests | `offline`, `functional` (capture/coverage/integration) | Called by CI; now Spending offline |
-| Budget Agent Tests | `offline`, `functional` (capture/reasoning/boundaries) | Called by CI; now Budget offline |
-| Goal Agent Tests | `offline`, `functional` (feasibility/dependencies/recovery) | Called by CI; now Goal offline |
-| Investment Agent Tests | `offline`, `functional`, `routing-and-rag`, `evaluation` | Called by CI; split into Investment, Orchestrator, RAG and numeric metrics |
-| Risk & Compliance Agent Tests | `offline`, `functional` (blocks/withholds/allows) | Called by CI; now Risk & Compliance offline |
-| Investment Agent Live Integration (one time) | `arm-once` → `live` | Superseded by opt-in Investment/RAG jobs; existing bounded scenario tests reused |
-| Budget Live Acceptance | `validate` | Separate manual paid evaluation; superseded by focused Budget live job |
+| No | Required offline/fixture tests, security scans and CI validation | No optional paid model or AWS integration evaluations; CI can succeed |
+| Yes, manual dispatch on main | The same required checks, then seven bounded live suites and the bounded live security scan | Live failures remain visible but advisory; they do not block deployment |
 
-The current checkout has **eight maintained workflow files**, including the
-consolidated evaluation workflow and the newer Model Drift Monitoring workflow. Removed workflows may still appear in
-GitHub's historical run list; that is not another active test path. Prior Budget
-extended datasets and multi-turn runner remain available as specialist scripts;
-the new focused live sample does not claim to reproduce that entire older paid
-acceptance run. All previously owned **offline tests** remain selected exactly
-once.
+Automatic PR, push and scheduled CI cannot enable paid evaluation jobs. A new
+manual dispatch is required to repeat paid evaluations; rerunning an old job
+cannot generate again. Agent live jobs retain the existing `demo` environment
+and AWS OIDC role. The security live job retains its separately scoped existing
+model-secret role. No new IAM access is added.
 
-## Current workflows and every job
+This checkbox controls CI's optional evaluations. Required post-deployment smoke
+checks and separately invoked operational/monitoring workflows retain their
+own controls. Manual CI never triggers AWS release.
 
-| Workflow | Trigger | Jobs and dependencies | Purpose |
-|---|---|---|---|
-| **CI and LLMSecOps** | PR, main push, weekly, manual | `changes`; `agent-evaluations`; `project-security-scan`; `agent-test-gate`; `ai-service`; `frontend`; `backend`; `infrastructure`; `service-integration`; `container-build`; `dependency-review`; `python-sast` | Required pre-release validation |
-| **Agent and RAG Evaluations** | Reusable call from CI; manual | `offline` ×7 and `metrics` in parallel → `required-offline`; optional `live` ×7 after offline acceptance; `report` always after results | Datasets, questions, expected/actual outputs and acceptance evidence |
-| **Project OWASP Security Scan** | Reusable call from CI; manual | `promptfoo` and `dispatch-guard`; optional `live` needs both | Offline security scenarios; separately opted-in manual live red-team scan |
-| **Release to AWS** | Completion of successful **push** CI on current main | `release-gate` → `build-images` → `deploy-demo` (also needs release-gate) | Build/scan images, ingest approved corpora, deploy three ECS services, smoke checks and rollback |
-| **RAG Source Governance** | Weekly, manual | `audit` | Local corpus and deployed Bedrock/S3 approval, integrity and freshness |
-| **AWS Operational Validation** | Weekly when enabled, manual, reusable | `validate` | Service/monitoring/lifecycle validation, bounded live/load evidence and optional recovery drill |
-| **Model Drift Monitoring** | Weekly when enabled, manual | `monitor` | Synthetic quality capture/comparison; optional SNS alerts and aggregate input-distribution checks |
-| **Final Assessment** | Manual | `repository-evidence` → `operational-evidence` (calls AWS Operational Validation) | Academic evidence inventory tied to assessed main commit |
-| **Dependabot Updates** | GitHub-managed dependency schedule | Generated by GitHub, not a repository-authored job graph | Creates dependency update PRs that still need CI |
+## Jobs inside ci.yml
 
-CI's `changes` job classifies affected services. Its selected service/security
-jobs run in parallel. `agent-test-gate` waits for change detection and the unified
-evaluations; a selected offline suite cannot be failed, cancelled or skipped.
-`service-integration` waits for change detection, AI and backend checks.
-`container-build` waits for frontend/backend/AI, the agent gate and OWASP scan.
-Dependency audit, SAST, infrastructure and integration also contribute to CI's
-overall conclusion. A passing container build alone is not a successful CI run.
+| Job | Responsibility and dependencies |
+|---|---|
+| `changes` | Test the classifier/baseline helper, inventory language data, then classify changes since the last actual successful deployment |
+| `offline` ×7 | Orchestrator, Spending, Budget, Goal, Investment, Risk & Compliance and RAG; selected after change detection |
+| `metrics` | Required LLMSecOps thresholds and 100-case full-document RAG evidence evaluation |
+| `agent-test-gate` | Require all selected offline suites and metrics to pass; reject missing/skipped required results |
+| `project-security-scan` | Required offline Promptfoo attack/benign controls and provider/grader tests |
+| `ai-service` | Remaining AI tests, conversational contracts, shared tests and lint; excludes files owned by agent jobs |
+| `frontend`, `backend` | Each service's own unit/API tests |
+| `infrastructure` | Remaining infrastructure/helper/report tests, CloudFormation and Compose validation |
+| `service-integration` | PostgreSQL-backed backend-to-AI safety and bounded load checks after service tests |
+| `dependency-review`, `python-sast` | Resolved dependency audit and Bandit source scan |
+| `container-build` | Build validation for PRs, schedules and manual CI; skipped on main pushes because Release builds those images |
+| `live` ×7 | Optional deployed agent/model/Bedrock contracts, after required CI checks; serial matrix |
+| `security-live` | Optional bounded Promptfoo model scan after the live matrix; actual acceptance retained independently of advisory job status |
+| `report` | Always assemble job conclusions, all retained evidence, and per-agent questions/expected/actual results in one artifact |
+
+There is one owner for each selected AI pytest function. The two classifier and
+baseline tests run early in `changes` and are excluded from `infrastructure`.
+Test ownership and report-helper tests run only in `infrastructure`; provider and
+JavaScript grader tests run only in `project-security-scan`. Functional metrics
+and adversarial cases intentionally exercise related behavior with different
+acceptance criteria; they are not duplicate executions of the same pytest suite.
+
+Documentation-only changes still start change detection, which selects no
+application deployment when the deployed code is current. README/security guides
+are excluded from runtime classification; governed RAG Markdown and prompt
+runtime files still trigger appropriate checks and deployment. Comparing against
+the deployed baseline preserves pending application fixes even when a newer
+commit only updates documentation.
+
+## Remaining workflows
+
+There are **six repository workflow files**, plus GitHub-managed Dependabot:
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| CI and LLMSecOps | PR, main push, weekly, manual | All pre-release testing and the optional live evaluations described above |
+| Release to AWS | Successful push CI for current main | Build/publish/scan immutable images, ingest/audit corpora, migrate, deploy and require live safety smoke |
+| RAG Source Governance | Weekly, manual | Read-only corpus approval, checksum, freshness and deployed KB audit |
+| AWS Operational Validation | Weekly when enabled, manual, reusable | Live service, load, retention, edge and operational controls |
+| Model Drift Monitoring | Weekly when enabled, manual | Quality capture/baseline comparison and optional operational alerts |
+| Final Assessment | Manual | Repository evidence inventory, then reuse AWS Operational Validation |
+| Dependabot Updates | GitHub-managed weekly dependency checks | Propose dependency-update PRs, which still pass through CI |
+
+Release checks freshness before building and immediately before deployment.
+A superseded release skips deployment and reports that reason. A green no-op
+cannot advance the deployed baseline: successful service-update and safety-smoke
+steps are required. Authentication/configuration/API failures still fail closed.
 
 ```mermaid
 flowchart TD
-    Push[PR / main push / scheduled CI] --> Changes[CI: classify changes]
-    Changes --> Offline[Unified workflow: seven offline jobs]
-    Changes --> Metrics[Unified workflow: numeric evaluation gates]
-    Offline --> Required[Required offline acceptance]
-    Metrics --> Required
-    Required --> Gate[CI required agent gate]
-    Changes --> Other[Service tests, OWASP, infrastructure, dependency audit, SAST]
-    Gate --> Build[CI container builds]
-    Other --> Build
-    Build --> CI[Successful full CI]
-    CI --> ReleaseGate[Release gate: successful push at current main]
-    ReleaseGate --> Images[Build and scan release images]
-    Images --> AWS[Deploy demo + required smoke checks]
-    Manual[Manual evaluation dispatch: Yes / No] --> Offline
-    Manual --> Metrics
-    Required --> Choice{Live Yes on main?}
-    Choice -->|Yes + demo approval| Live[Seven advisory live evaluations]
-    Choice -->|No| Skip[SKIPPED: no live calls]
-    Live --> Report[Combined report: real PASS / FAIL / NOT RUN]
-    Skip --> Report
-    Offline --> Report
+    Start[PR / push / scheduled / manual CI] --> Changes[Classify changes]
+    Changes --> Tests[Service + seven agent suites + metrics + security + infrastructure]
+    Tests --> Gate[Required checks]
+    Gate --> PRBuild[PR / manual / scheduled container build]
+    Gate --> PushCI[Successful push CI]
+    PushCI --> Release[Release builds + scans immutable images]
+    Release --> Fresh{Still current main?}
+    Fresh -->|Yes| Deploy[Deploy + required health and safety smoke]
+    Fresh -->|No| Skip[Skip superseded deployment]
+    PRBuild --> Choice{Manual main + live Yes?}
+    Choice -->|Yes| Live[Seven advisory live suites + live security]
+    Choice -->|No| NoLive[No optional paid calls]
+    Tests --> Report[One combined CI and evaluation report]
+    Live --> Report
+    NoLive --> Report
 ```
 
-Manual evaluations **do not trigger deployment**. Live jobs run serially
-(`max-parallel: 1`) to limit pressure on the shared test principal and model
-spending. The seven offline jobs can run in parallel.
-
-For detailed scenario explanations, see [Spending](spending-agent-evaluation.md),
-[Budget](budget-agent-evaluation.md), [Goal](goal-agent-evaluation.md),
-[Investment](investment-agent-evaluation.md), and
-[Risk & Compliance](risk-compliance-agent-evaluation.md).
+The seven offline jobs can run in parallel. Live agent jobs run serially
+(`max-parallel: 1`); live security runs afterward. Deployments preserve their
+existing required safety checks and rollback behavior.
 
 ## Evaluation definitions and acceptance
 

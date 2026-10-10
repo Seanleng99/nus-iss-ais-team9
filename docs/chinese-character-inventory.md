@@ -1,6 +1,6 @@
 # Chinese-character inventory
 
-Scanned 670 tracked and non-ignored UTF-8 text files at `working_tree`; 28 files contain Han characters or Unicode escapes representing them.
+Scanned 670 tracked and non-ignored UTF-8 text files at `working_tree`; 29 files contain Han characters or Unicode escapes representing them.
 
 Literal characters and escaped code points are reported separately. Han script is also used by Japanese and other languages; this inventory identifies characters, rather than asserting the language of every string. Ignored environments, generated artifacts and binary files are excluded. No source contents are copied.
 
@@ -9,7 +9,7 @@ Developer documentation is English. Chinese display text, input recognition and 
 | Category | Files |
 | --- | ---: |
 | application or configuration | 1 |
-| documentation | 3 |
+| documentation | 4 |
 | evaluation datasets | 9 |
 | language resources | 8 |
 | test fixtures | 7 |
@@ -39,10 +39,11 @@ See [the JSON inventory](chinese-character-inventory.json) for every matching li
 | [apps/shared/tests/fixtures/language_cases.json](../apps/shared/tests/fixtures/language_cases.json) | test fixtures | 8 | 0 |
 | [docs/evaluation-evidence/ai-security-hardening-2026-10-10.json](../docs/evaluation-evidence/ai-security-hardening-2026-10-10.json) | documentation | 41 | 0 |
 | [docs/evaluation-evidence/ai-security-hardening-live-2026-10-10.md](../docs/evaluation-evidence/ai-security-hardening-live-2026-10-10.md) | documentation | 20 | 0 |
+| [docs/model-drift-monitoring.md](../docs/model-drift-monitoring.md) | documentation | 3 | 0 |
 | [docs/superpowers/plans/2026-10-03-risk-compliance-agent-tests.md](../docs/superpowers/plans/2026-10-03-risk-compliance-agent-tests.md) | documentation | 2 | 0 |
 | [infra/llmsecops/budget-live-evaluation-cases.jsonl](../infra/llmsecops/budget-live-evaluation-cases.jsonl) | evaluation datasets | 1 | 0 |
 | [infra/llmsecops/investment-live-evaluation-cases.jsonl](../infra/llmsecops/investment-live-evaluation-cases.jsonl) | evaluation datasets | 1 | 1 |
 | [infra/llmsecops/model-drift-cases.jsonl](../infra/llmsecops/model-drift-cases.jsonl) | evaluation datasets | 6 | 0 |
-| [infra/scripts/tests/fixtures/drift_amount_cases.json](../infra/scripts/tests/fixtures/drift_amount_cases.json) | test fixtures | 5 | 0 |
+| [infra/scripts/tests/fixtures/drift_amount_cases.json](../infra/scripts/tests/fixtures/drift_amount_cases.json) | test fixtures | 11 | 0 |
 | [infra/scripts/tests/fixtures/non_ascii_question.json](../infra/scripts/tests/fixtures/non_ascii_question.json) | test fixtures | 1 | 0 |
 | [security/promptfoo/cases.json](../security/promptfoo/cases.json) | application or configuration | 8 | 0 |

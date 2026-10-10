@@ -1,6 +1,6 @@
 # Budget Agent evaluation and CI reports
 
-**Current entry point:** **Agent and RAG Evaluations** → `budget` offline / live jobs.
+**Current entry point:** **CI and LLMSecOps** → `budget` offline / live jobs.
 The former four suite IDs below describe retained scenario groups, now executed
 inside one `budget` offline job. They are not separate workflow or CLI names.
 Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
@@ -78,7 +78,7 @@ Acceptance criteria:
 
 ## Execution and finding evidence
 
-Relevant CI calls **Agent and RAG Evaluations** with live tests disabled. Open
+Automatic CI runs these jobs with live tests disabled. Open
 its **budget — offline unit tests** job and download `agent-offline-budget`.
 It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
 full synthetic example responses and every case outcome, retained for 90 days.

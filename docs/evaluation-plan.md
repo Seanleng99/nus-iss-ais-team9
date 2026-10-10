@@ -150,8 +150,8 @@ the separate review in [RAG quality acceptance](rag-quality.md).
 
 ## Specialist Execution And Evidence
 
-**Agent and RAG Evaluations** replaces the five wrapper workflows, shared suite
-workflow and two separate live-evaluation entry points. It owns seven offline
+**CI and LLMSecOps** now directly contains the former agent-evaluation and
+security workflows, as well as service and infrastructure checks. It owns seven offline
 jobs (including Orchestrator and RAG), required numeric gates and seven optional
 live jobs. The earlier group IDs in the scenario tables remain descriptions of
 the tests now combined into those jobs; use the seven current suite IDs in
@@ -160,7 +160,7 @@ the tests now combined into those jobs; use the seven current suite IDs in
 - Relevant push/PR/scheduled CI selects the required offline jobs. The required
   gate rejects failed, cancelled or unexpectedly skipped offline tests.
 - Manual **Run workflow** exposes the default-off **Run live integration tests?**
-  checkbox. Yes enables bounded real model/AWS datasets after demo approval;
+  checkbox. Yes enables bounded real model/AWS datasets after demo approval and then the bounded live security scan;
   No skips them without failing the pipeline. Live failure is advisory and remains
   explicitly FAIL/NOT RUN in the report.
 - Per-job and combined reports show dataset/hashes, expected outputs, metrics,

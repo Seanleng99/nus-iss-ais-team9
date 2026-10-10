@@ -70,6 +70,11 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 )
                 continue
 
+            # README/security guides are not runtime inputs. Governed corpus
+            # Markdown above deliberately remains deployable.
+            if Path(path).name in {"README.md", "SECURITY.md"}:
+                continue
+
             if path.startswith("apps/shared/"):
                 _select_all(result)
                 continue

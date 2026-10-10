@@ -23,7 +23,24 @@ def run(run_id, sha="a" * 40, **overrides):
     return {"id": run_id, "head_sha": sha, "head_branch": "main", "conclusion": "success", **overrides}
 
 
+def deployed_steps():
+    return [{"name": name, "conclusion": "success"} for name in (
+        "Deploy AI service", "Run health and AI safety smoke tests",
+    )]
+
+
 class DeploymentBaselineTests(unittest.TestCase):
+    def test_successful_superseded_job_with_skipped_deployment_cannot_advance_baseline(self):
+        def api(path):
+            if "/workflows/" in path:
+                return {"workflow_runs": [run(2), run(1, "b" * 40)]}
+            steps = deployed_steps()
+            if "/runs/2/jobs" in path:
+                steps = [{**step, "conclusion": "skipped"} for step in steps]
+            return {"jobs": [{"name": "Deploy demo environment", "conclusion": "success", "steps": steps}]}
+
+        self.assertEqual(baseline.last_deployment("team/coach", api), {"sha": "b" * 40, "run_id": 1})
+
     def test_security_followup_retains_application_changes_since_deployment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -65,7 +82,7 @@ class DeploymentBaselineTests(unittest.TestCase):
                 return {"workflow_runs": [run(3), run(2), run(1, "b" * 40)]}
             conclusion = {3: "skipped", 2: "failure", 1: "success"}
             run_id = int(path.split("/runs/")[1].split("/")[0])
-            return {"jobs": [{"name": "Deploy demo environment", "conclusion": conclusion[run_id]}]}
+            return {"jobs": [{"name": "Deploy demo environment", "conclusion": conclusion[run_id], "steps": deployed_steps()}]}
 
         self.assertEqual(baseline.last_deployment("team/coach", api), {"sha": "b" * 40, "run_id": 1})
         self.assertEqual(len(calls), 4)
@@ -75,7 +92,7 @@ class DeploymentBaselineTests(unittest.TestCase):
             if "/workflows/" in path:
                 return {"workflow_runs": [run(3, conclusion="failure"), run(2, head_branch="feature"), run(1)]}
             self.assertIn("/runs/1/jobs", path)
-            return {"jobs": [{"name": "Deploy demo environment", "conclusion": "success"}]}
+            return {"jobs": [{"name": "Deploy demo environment", "conclusion": "success", "steps": deployed_steps()}]}
 
         self.assertEqual(baseline.last_deployment("team/coach", api), {"sha": "a" * 40, "run_id": 1})
 
@@ -89,7 +106,7 @@ class DeploymentBaselineTests(unittest.TestCase):
             if "/workflows/" in path:
                 return {"workflow_runs": [run(index) for index in range(2, 102)] if path.endswith("&page=1") else [run(1)]}
             return {"jobs": [{"name": "Deploy demo environment", "conclusion":
-                              "success" if "/runs/1/jobs" in path else "skipped"}]}
+                              "success" if "/runs/1/jobs" in path else "skipped", "steps": deployed_steps()}]}
 
         self.assertEqual(baseline.last_deployment("team/coach", api)["run_id"], 1)
 
@@ -114,7 +131,7 @@ class DeploymentBaselineTests(unittest.TestCase):
         def api(path):
             if "/workflows/" in path:
                 return {"workflow_runs": [run(1, "invalid\nsha=value")]}
-            return {"jobs": [{"name": "Deploy demo environment", "conclusion": "success"}]}
+            return {"jobs": [{"name": "Deploy demo environment", "conclusion": "success", "steps": deployed_steps()}]}
 
         with self.assertRaises(ValueError):
             baseline.last_deployment("team/coach", api)

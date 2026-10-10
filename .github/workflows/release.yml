@@ -282,15 +282,19 @@ jobs:
         with:
           python-version: "3.12"
       - name: Verify release is still current main
+        id: current
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
           if [[ "$RELEASE_SHA" != "$main_sha" ]]; then
-            echo "Release SHA $RELEASE_SHA became stale; current main is $main_sha." >&2
-            exit 1
+            echo "Superseded release $RELEASE_SHA skipped; current main is $main_sha." >> "$GITHUB_STEP_SUMMARY"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
       - name: Load packaged corpus versions
+        if: steps.current.outputs.deploy == 'true'
         run: |
           python - <<'PY'
           import json
@@ -317,9 +321,11 @@ jobs:
                   output.write(f"{name}={version}\n")
           PY
       - name: Load AI role policy
+        if: steps.current.outputs.deploy == 'true'
         run: |
           python infra/scripts/load_model_role_policy.py --github-env "$GITHUB_ENV"
       - name: Validate deployment configuration
+        if: steps.current.outputs.deploy == 'true'
         run: |
           required=(
             DEPLOY_ROLE ECS_CLUSTER
@@ -344,12 +350,14 @@ jobs:
             fi
           done
       - name: Configure short-lived AWS credentials
+        if: steps.current.outputs.deploy == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
       - name: Verify ECS rollback protection and capture current revisions
+        if: steps.current.outputs.deploy == 'true'
         run: |
           services=()
           [[ "$AI_CHANGED" != "true" ]] || services+=("$AI_SERVICE")
@@ -384,6 +392,7 @@ jobs:
             echo "FRONTEND_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
           fi
       - name: Download current task definitions
+        if: steps.current.outputs.deploy == 'true'
         run: |
           if [[ "$AI_CHANGED" == "true" ]]; then
             aws ecs describe-task-definition --task-definition "$AI_TASK_FAMILY" \
@@ -398,7 +407,7 @@ jobs:
               --query taskDefinition > frontend-task-definition.json
           fi
       - name: Ingest and verify approved Bedrock corpora
-        if: needs.release-gate.outputs.ai == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
         run: |
           python -m pip install -e "apps/shared" -e "apps/ai-service"
           python infra/scripts/sync_bedrock_corpora.py \
@@ -406,7 +415,7 @@ jobs:
             --policy-kb "$POLICY_KNOWLEDGE_BASE_ID" \
             --region "$AWS_REGION"
       - name: Retain Bedrock ingestion and governance evidence
-        if: always() && needs.release-gate.outputs.ai == 'true'
+        if: steps.current.outputs.deploy == 'true' && (always() && needs.release-gate.outputs.ai == 'true')
         uses: actions/upload-artifact@v7
         with:
           name: bedrock-corpus-governance-${{ github.run_id }}
@@ -415,7 +424,7 @@ jobs:
           retention-days: 90
       - name: Render AI service task definition
         id: render-ai
-        if: needs.release-gate.outputs.ai == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: ai-task-definition.json
@@ -443,7 +452,7 @@ jobs:
             EDUCATION_CORPUS_VERSION=${{ env.EDUCATION_CORPUS_VERSION }}
             POLICY_CORPUS_VERSION=${{ env.POLICY_CORPUS_VERSION }}
       - name: Verify AI runtime configuration has not drifted
-        if: needs.release-gate.outputs.ai == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
         env:
           RENDERED_AI_TASK: ${{ steps.render-ai.outputs.task-definition }}
           MODEL_ROLE_OVERRIDES: ${{ env.MODEL_ROLE_OVERRIDES }}
@@ -475,7 +484,7 @@ jobs:
           --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
           --require-secret OPENAI_API_KEY
       - name: Deploy AI service
-        if: needs.release-gate.outputs.ai == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-ai.outputs.task-definition }}
@@ -485,11 +494,11 @@ jobs:
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
       - name: Record AI deployment
-        if: needs.release-gate.outputs.ai == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
         run: echo "AI_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Render application backend task definition
         id: render-backend
-        if: needs.release-gate.outputs.backend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: backend-task-definition.json
@@ -502,7 +511,7 @@ jobs:
             SYNTHETIC_USER_RETENTION_DAYS=30
             DURABLE_AGENT_MEMORY_ENABLED=false
       - name: Verify backend data-lifecycle configuration has not drifted
-        if: needs.release-gate.outputs.backend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         env:
           RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
         run: >-
@@ -515,7 +524,7 @@ jobs:
           --expect SYNTHETIC_USER_RETENTION_DAYS=30
           --expect DURABLE_AGENT_MEMORY_ENABLED=false
       - name: Apply and verify database migrations as a one-shot task
-        if: needs.release-gate.outputs.backend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         env:
           RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
         run: |
@@ -549,7 +558,7 @@ jobs:
             exit 1
           fi
       - name: Deploy application backend
-        if: needs.release-gate.outputs.backend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-backend.outputs.task-definition }}
@@ -559,18 +568,18 @@ jobs:
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
       - name: Record backend deployment
-        if: needs.release-gate.outputs.backend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         run: echo "BACKEND_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Render Streamlit task definition
         id: render-frontend
-        if: needs.release-gate.outputs.frontend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: frontend-task-definition.json
           container-name: ${{ env.FRONTEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.frontend-image }}
       - name: Deploy Streamlit frontend
-        if: needs.release-gate.outputs.frontend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-frontend.outputs.task-definition }}
@@ -580,9 +589,10 @@ jobs:
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
       - name: Record frontend deployment
-        if: needs.release-gate.outputs.frontend == 'true'
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
         run: echo "FRONTEND_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Run health and AI safety smoke tests
+        if: steps.current.outputs.deploy == 'true'
         run: >-
           python infra/scripts/post_deploy_smoke.py
           --frontend-health-url "$FRONTEND_HEALTH_URL"
@@ -595,10 +605,7 @@ jobs:
           --api-key "$SMOKE_BACKEND_API_KEY"
       - name: Roll back services when post-deploy checks fail
         if: >-
-          failure() &&
-          (env.AI_DEPLOYED == 'true' ||
-           env.BACKEND_DEPLOYED == 'true' ||
-           env.FRONTEND_DEPLOYED == 'true')
+          steps.current.outputs.deploy == 'true' && (failure() && (env.AI_DEPLOYED == 'true' || env.BACKEND_DEPLOYED == 'true' || env.FRONTEND_DEPLOYED == 'true'))
         run: |
           services=()
           if [[ "$AI_DEPLOYED" == "true" ]]; then

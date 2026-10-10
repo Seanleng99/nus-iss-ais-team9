@@ -1,6 +1,6 @@
 # Budget planning: plans, methods, scenarios and spending reviews
 
-Current contract: `budget-planning-v4` with `budget-workspace-v1` for extended Coach commands. The Budget page contains monitoring, charts and a monthly editor; advanced cash-flow, reconciliation, history, review-preference and multi-month operations are available through Coach/backend APIs, not the removed Budget forms. Dated local test counts and deployment-pending statements below describe their original checkpoints. Use [Budget usability](budget-usability.md) for current UI entry points and [Agent and RAG Evaluations](agent-test-workflows.md) for current CI/live jobs.
+Current contract: `budget-planning-v4` with `budget-workspace-v1` for extended Coach commands. The Budget page contains monitoring, charts and a monthly editor; advanced cash-flow, reconciliation, history, review-preference and multi-month operations are available through Coach/backend APIs, not the removed Budget forms. Dated local test counts and deployment-pending statements below describe their original checkpoints. Use [Budget usability](budget-usability.md) for current UI entry points and [CI and LLMSecOps](agent-test-workflows.md) for current CI/live jobs.
 
 ## Saved budgets across months and years
 
@@ -372,7 +372,7 @@ Regression coverage includes confirmed-plan cross-agent sourcing, explicit typed
 
 ## Deployed Budget acceptance
 
-The former **Budget Live Acceptance** workflow has been consolidated into **Agent and RAG Evaluations** (`.github/workflows/agent-evaluations.yml`). Dispatch on `main` with `run_live=true` to opt into paid deployed-API checks after the required offline jobs. The Budget live job uses the Budget rows in `infra/llmsecops/agent-live-evaluation-cases.jsonl` and the exact definitions in `agent-live-evaluation-specs.json`: one repetition, no generation retries, actual responses, stable AWS/model identity checks and cleanup. Its report retains PASS/FAIL/NOT RUN; a live failure is advisory and does not block deployment. It is a small contract sample, not comprehensive Budget UI or semantic acceptance.
+The former **Budget Live Acceptance** workflow has been consolidated into **CI and LLMSecOps** (`.github/workflows/ci.yml`). Dispatch on `main` with `run_live=true` to opt into paid deployed-API checks after the required offline jobs. The Budget live job uses the Budget rows in `infra/llmsecops/agent-live-evaluation-cases.jsonl` and the exact definitions in `agent-live-evaluation-specs.json`: one repetition, no generation retries, actual responses, stable AWS/model identity checks and cleanup. Its report retains PASS/FAIL/NOT RUN; a live failure is advisory and does not block deployment. It is a small contract sample, not comprehensive Budget UI or semantic acceptance.
 
 The older focused Budget suite and its separate multi-turn harness remain in `infra/scripts/live_evaluation.py` (with `infra/llmsecops/budget-live-evaluation-cases.jsonl`) and `infra/scripts/budget_multiturn_acceptance.py` for explicitly authorized standalone checks. They are not automatically run by the unified Budget live job. The historical workflow results below refer to those earlier datasets and thresholds.
 

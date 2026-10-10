@@ -28,6 +28,11 @@ def last_deployment(repository: str, api=github_json) -> dict | None:
                 continue
             jobs = api(f"repos/{repository}/actions/runs/{run['id']}/jobs?filter=latest&per_page=100")["jobs"]
             if any(job.get("name") == "Deploy demo environment" and job.get("conclusion") == "success"
+                   and any(step.get("name") == "Run health and AI safety smoke tests"
+                           and step.get("conclusion") == "success" for step in job.get("steps", []))
+                   and any(step.get("name") in {
+                       "Deploy AI service", "Deploy application backend", "Deploy Streamlit frontend",
+                   } and step.get("conclusion") == "success" for step in job.get("steps", []))
                    for job in jobs):
                 sha = run["head_sha"]
                 if not re.fullmatch(r"[a-f0-9]{40}", sha):

@@ -30,6 +30,8 @@ backend API, since backend aggregates take precedence over caller snapshots.
 It deletes that user's workspace after trace verification, including when
 seeding, model execution or verification fails.
 
+Documentation and service README edits do not select deployment on their own. Every push still runs change detection, so a documentation-only successor cannot strand pending application changes. Governed RAG Markdown and runtime prompt files remain deployable inputs.
+
 Main pushes classify all changes since the last successful `Deploy demo environment`
 job, rather than just the newest push. Failed CI or deployment leaves application
 changes pending; a successful release with a skipped deployment does not advance
@@ -69,7 +71,13 @@ quota tests separately verify rejection and `Retry-After` above the limit.
 
 `RAG Source Governance` validates both approved local corpora and audits the deployed KBs/S3 objects weekly or on demand. Its dedicated OIDC role has read-only corpus and KB permissions. It checks approval, provenance, review deadlines, content inspection, SHA-256 checksums, sidecars and completed ingestion, and retains privacy-safe evidence for 90 days. Historical Bedrock generation comparisons remain historical.
 
-The unified **Agent and RAG Evaluations** workflow executes seven owned offline suites and required numeric gates; CI runs the remaining AI tests and the conversational contracts separately. `Project OWASP Security Scan` is reusable from CI and adds committed Promptfoo security cases across all agents and the router. Its backend/frontend companion test runs have been removed because the service CI jobs already execute those tests. Both the required Agent gate and the OWASP scan must pass before CI builds release containers. See [agent test ownership](agent-test-workflows.md) and [security scan coverage](project-security-scan.md).
+One [ci.yml](../.github/workflows/ci.yml) defines service tests, seven owned
+agent/RAG offline suites, required metrics, Promptfoo security scans, infrastructure
+checks and optional live evaluations. No reusable test workflow is called.
+Infrastructure/helper tests have one owner; agent selections exclude their files
+from the remaining AI suite. The required Agent gate and offline OWASP scan still
+block releases. See [all jobs and test ownership](agent-test-workflows.md) and
+[security coverage](project-security-scan.md).
 
 The frontend test job installs only the frontend and shared packages. The shared
 package declares Pydantic as a runtime dependency because trace sanitization uses
@@ -96,7 +104,7 @@ and `security/promptfoo`. Each update arrives as a pull request that must pass C
 before merging, so pinned tool upgrades are reviewed instead of arriving with
 a new upstream release.
 
-`Agent and RAG Evaluations` offers a default-off Yes/No checkbox for seven advisory deployed-model/AWS evaluations. It replaces the separate Budget and one-time Investment live workflow definitions. These optional failures cannot block CI or release; existing mandatory release smoke checks remain required. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
+`CI and LLMSecOps` offers a default-off Yes/No checkbox for seven advisory deployed-model/AWS evaluations followed by the bounded live security scan. It replaces the separate Budget and one-time Investment live workflow definitions. These optional failures cannot block CI or release; existing mandatory release smoke checks remain required. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
 
@@ -104,9 +112,7 @@ The workflow audit keeps the following responsibilities:
 
 | Workflow | Purpose and trigger |
 | --- | --- |
-| CI and LLMSecOps | Automatic PR/main validation, weekly checks and manual CI |
-| Agent and RAG Evaluations | Seven offline suites + required metrics; seven optional advisory live jobs selected before manual dispatch; combined question/expected/actual/result reports |
-| Project OWASP Security Scan | Reusable offline security scenarios; optional paid live scan only by manual main dispatch |
+| CI and LLMSecOps | All service, agent/RAG and security jobs; PR/main/weekly checks and manual optional live evaluations |
 | Release to AWS | Deployment after successful push CI at the current main SHA |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
 | AWS Operational Validation | Weekly/manual deployed-model, lifecycle, load and operational evidence |
@@ -124,6 +130,8 @@ policy evidence and the combined governance workflow.
 `infra/scripts/configure_github.ps1` populates the OIDC role ARNs, ECS cluster/service/task names, ECR repositories, public health and coach URLs, corpus versions, dashboard and alarm identifiers, and bounded validation thresholds. It also sets `SMOKE_BACKEND_API_KEY` in the `demo` environment. The workflow assumes short-lived GitHub OIDC credentials; it does not store AWS access keys.
 
 The OIDC deployment role has scoped Bedrock and S3 permissions for the two approved corpora: it can inspect and retrieve from the configured Education and Policy knowledge bases, read/list only their governed S3 prefixes, and start ingestion or publish objects within those prefixes. The separate RAG governance role is read-only for corpus and knowledge-base access. The deployment policy permits task/service inspection and task-definition registration, updates the three configured ECS services, and limits `iam:PassRole` to the configured ECS roles. Keep the `demo` environment restricted to `main`. Branch protection and native required reviewers depend on the repository plan.
+
+Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update and safety-smoke steps, so a green superseded run cannot hide pending code.
 
 ## Change and acceptance gates
 

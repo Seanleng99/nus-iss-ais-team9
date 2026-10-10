@@ -3,7 +3,9 @@ import argparse
 import html
 import json
 import os
+import shutil
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     from .agent_live_evaluation import SUITES, initial_report, questions, table_cell
@@ -119,12 +121,50 @@ def main():
     payload = json.dumps(reports, indent=2, ensure_ascii=False)
     (args.output / "report.json").write_text(payload + "\n")
     markdown = render(reports)
+    page = render_html(reports)
+    jobs = json.loads(os.getenv("CI_JOB_RESULTS", "{}"))
+    if jobs:
+        rows = [{"job": name, "result": data["result"]} for name, data in jobs.items()]
+        (args.output / "ci-jobs.json").write_text(json.dumps(rows, indent=2) + "\n")
+        shutil.copytree(args.input, args.output / "evidence", dirs_exist_ok=True)
+        overview_md, overview_html = ci_overview(rows, args.output / "evidence")
+        markdown = overview_md + "\n" + markdown
+        page = page.replace("<h1>Agent and RAG evaluations</h1>", overview_html + "<h1>Agent and RAG evaluations</h1>")
     (args.output / "summary.md").write_text(markdown)
-    (args.output / "index.html").write_text(render_html(reports))
+    (args.output / "index.html").write_text(page)
     if os.getenv("GITHUB_STEP_SUMMARY"):
         # A GitHub job summary is bounded. Full evidence is always in the artifact.
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
             handle.write(markdown[:700_000] + "\n\nFull unabridged evidence: agent-evaluation-report artifact.\n")
+
+
+def ci_overview(jobs, evidence_directory):
+    """One index for CI outcomes and retained detailed reports; never infer test passes."""
+    note = "Job conclusions are separate from test acceptance. Advisory live jobs can be green despite failing cases; inspect their detailed reports below."
+    lines = ["# CI and LLMSecOps report", "", note, "", "| Job | Conclusion |", "|---|---|"]
+    parts = ["<h1>CI and LLMSecOps report</h1><p>" + note + "</p><table><tr><th>Job</th><th>Conclusion</th></tr>"]
+    for row in jobs:
+        lines.append(f"| {table_cell(row['job'])} | {table_cell(row['result'])} |")
+        parts.append("<tr><td>" + html.escape(row["job"]) + "</td><td>" + html.escape(row["result"]) + "</td></tr>")
+    security = next((row for row in jobs if row["job"] == "security-live"), None)
+    if security:
+        candidates = list(evidence_directory.rglob("promptfoo-live-status.json"))
+        status = "SKIPPED" if security["result"] == "skipped" else "NOT RUN / INCOMPLETE"
+        if len(candidates) == 1:
+            status = json.loads(candidates[0].read_text())["status"]
+        lines.append(f"| Live security acceptance (actual evidence) | {table_cell(status)} |")
+        parts.append("<tr><td>Live security acceptance (actual evidence)</td><td>" + html.escape(status) + "</td></tr>")
+    lines += ["", "## Detailed evidence", ""]
+    parts.append("</table><h2>Detailed evidence</h2><ul>")
+    for path in sorted(evidence_directory.rglob("*")):
+        if not path.is_file():
+            continue
+        name = path.relative_to(evidence_directory).as_posix()
+        url = "evidence/" + quote(name)
+        lines.append(f"- [{table_cell(name)}]({url})")
+        parts.append(f'<li><a href="{html.escape(url, quote=True)}">{html.escape(name)}</a></li>')
+    parts.append("</ul>")
+    return "\n".join(lines) + "\n", "\n".join(parts)
 
 
 if __name__ == "__main__":

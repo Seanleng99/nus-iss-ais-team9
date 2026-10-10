@@ -1,6 +1,6 @@
 # Investment Agent evaluation and CI reports
 
-**Current workflow:** [Agent and RAG Evaluations](agent-test-workflows.md).
+**Current workflow:** [CI and LLMSecOps](agent-test-workflows.md).
 Investment, Orchestrator and RAG now have their own offline and optional live jobs.
 Former `investment-*` IDs below name the retained scenario groups; use `investment`,
 `orchestrator` and `rag` as current CLI suite IDs. Live Yes/No is chosen before
@@ -9,9 +9,8 @@ manual dispatch; live failure is advisory.
 
 The consolidated evaluation workflow retains the existing Investment
 suites, orchestrator/routing checks, RAG unit and integration tests, and the numeric
-LLMSecOps and frozen passage-retrieval gates. CI calls it for AI/deployment changes;
-it can also be dispatched manually. The required agent gate fails if this workflow
-fails. Moving the numeric gates out of the general AI job does not make them optional.
+LLMSecOps and frozen passage-retrieval gates as jobs directly inside CI. AI/deployment changes select them automatically;
+the same CI workflow can also be dispatched manually. The required agent gate fails if a selected offline job or metric gate fails. Moving the numeric gates out of the general AI job does not make them optional.
 
 ## Datasets, expected outputs, metrics and acceptance
 
@@ -86,7 +85,7 @@ the test does not force an agent or require an exact agent ordering.
 These are desired acceptance criteria, not a snapshot of whatever the application
 currently returns. A missing topic, wrong route, or missed safety boundary is a
 real failure, with no skip/xfail or reduced pass threshold. The pytest module is
-owned by the `investment` offline job in **Agent and RAG Evaluations**; failing
+owned by the `investment` offline job in **CI and LLMSecOps**; failing
 cases fail CI.
 The evaluation runner prints its aggregate score and failed IDs. Its standalone CLI
 does not enforce a threshold; the consolidated workflow's required metrics job runs the policy gate, which now
@@ -206,8 +205,7 @@ synthetic questions/answers. See [live evaluation](investment-agent-live-evaluat
 
 ## Finding the report in GitHub Actions
 
-Open **CI and LLMSecOps -> Agent and RAG evaluations**, or a manually dispatched
-**Agent and RAG Evaluations** run:
+Open an automatic or manually dispatched **CI and LLMSecOps** run:
 
 - Each suite's job summary includes datasets/hashes, expected outputs, metric definitions,
   acceptance criteria, measured assertion pass rate and individual case outcomes.

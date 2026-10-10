@@ -102,7 +102,7 @@ passage ranking before returning the top three raised the fresh real-Bedrock run
 model context unless selected. The candidate pool and final context stay bounded.
 These are regression results on the same frozen benchmark, not an independent holdout.
 
-The legacy answer-review harness has two explicit profiles: `bedrock` (Bedrock generation and retrieval, default model `apac.amazon.nova-lite-v1:0`) and `openai_local` (GPT-6 Luna with both local-document retrievers). Neither profile is the current deployed OpenAI-plus-Bedrock combination; use the RAG live job in [Agent and RAG Evaluations](agent-test-workflows.md) for that integration. To reproduce the legacy capture below, use `APP_ENV=local`, `MODEL_PROVIDER=bedrock`, `MODEL_ID=apac.amazon.nova-lite-v1:0`, both Bedrock retrievers and approved KB IDs/pins. The evaluator uses the
+The legacy answer-review harness has two explicit profiles: `bedrock` (Bedrock generation and retrieval, default model `apac.amazon.nova-lite-v1:0`) and `openai_local` (GPT-6 Luna with both local-document retrievers). Neither profile is the current deployed OpenAI-plus-Bedrock combination; use the RAG live job in [CI and LLMSecOps](agent-test-workflows.md) for that integration. To reproduce the legacy capture below, use `APP_ENV=local`, `MODEL_PROVIDER=bedrock`, `MODEL_ID=apac.amazon.nova-lite-v1:0`, both Bedrock retrievers and approved KB IDs/pins. The evaluator uses the
 packaged [current prompt contract](current-prompt-contract.md); omit
 `PROMPT_SET_VERSION` or supply its manifest release as a deployment assertion:
 

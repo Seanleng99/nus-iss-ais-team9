@@ -1,6 +1,6 @@
 # Investment Education live integration
 
-Use **Agent and RAG Evaluations** → **Run workflow** → **main** → check
+Use **CI and LLMSecOps** → **Run workflow** → **main** → check
 **Run live integration tests?**. The workflow runs its offline suites first,
 then the optional live jobs behind the existing demo environment approval.
 
