@@ -138,6 +138,13 @@ Existing CloudWatch
 generation-failure alarms remain separate operational signals. See
 [Model drift monitoring](model-drift-monitoring.md) for setup and commands.
 
+The 2026-10-10 [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
+records a successful code release and provider-model metadata verification, with
+GitHub-only reporting configured. Scheduling remains disabled: the selected
+independent evaluator returned HTTP 403 with the available credential, no reviewed
+baseline exists, and the one-case deployed smoke exceeded the 10-second latency
+limit. This is deployed preparation, not accepted scheduled monitoring.
+
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for
 checksums, approval, provenance, review deadlines and completed ingestion. Release

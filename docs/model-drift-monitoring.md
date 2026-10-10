@@ -8,6 +8,32 @@ and [model-drift-cases.jsonl](../infra/llmsecops/model-drift-cases.jsonl). It do
 ship a fabricated or automatically approved live baseline. Scheduled activation
 requires a completed, independently reviewed capture and the configuration below.
 
+## Demo Activation Status — 2026-10-10
+
+The implementation is published on `main`, with successful [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38044974592)
+and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38045210894)
+for `0c314010720baf47af537949da4ec2ad838cfe61`. The `demo` environment is
+configured for GitHub Actions reports only; email alerts and input monitoring
+remain disabled. Evaluator rates and spending limits are configured, but the
+evaluator secret and accepted baseline are still absent. `MODEL_DRIFT_ENABLED`
+remains `false`.
+
+The project's existing credential lists only `gpt-6-luna`; a direct Structured
+Outputs invocation of the selected `gpt-6-sol` evaluator returned HTTP 403.
+Evaluator access must be enabled or a suitable credential configured before capture.
+The selected Standard rates are USD 2 input / USD 10 output per million tokens,
+verified against the [official model card](https://developers.openai.com/api/docs/models/gpt-6-sol).
+
+One disposable deployed Budget case passed structural checks, matched the release
+build and included provider response model IDs in all completed calls. Cleanup
+succeeded. Its observed duration was 22,707.77 ms, above the current 10,000 ms
+acceptance limit. This single observation is neither a quality baseline nor a
+representative latency distribution. Resolve or formally review the latency
+criterion with current-model evidence before accepting a baseline. No threshold
+was relaxed and no baseline was fabricated. The content-free
+[activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
+records these checks and remaining work.
+
 ## What Runs
 
 The capture harness reuses disposable owned sessions, seeded synthetic records,

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "measurement": "drift_activation_readiness",
+  "date": "2026-10-10",
+  "status": "deployment_complete_monitoring_pending_acceptance",
+  "published_commit": "0c314010720baf47af537949da4ec2ad838cfe61",
+  "ci": {
+    "status": "success",
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38044974592"
+  },
+  "release": {
+    "status": "success",
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38045210894"
+  },
+  "local_verification": {
+    "passed": 604,
+    "skipped": 5,
+    "passed_subtests": 17,
+    "ruff": "passed",
+    "cloudformation_lint": "passed",
+    "language_resource_check": "passed"
+  },
+  "configuration": {
+    "reporting": "github_actions_only",
+    "schedule_enabled": false,
+    "email_alerts_enabled": false,
+    "input_monitor_enabled": false,
+    "evaluator_model": "gpt-6-sol",
+    "evaluator_input_usd_per_million_tokens": 2,
+    "evaluator_output_usd_per_million_tokens": 10,
+    "evaluator_budget_usd": 0.5,
+    "generator_budget_usd": 0.05,
+    "evaluator_secret_configured": false,
+    "pricing_reference": "https://developers.openai.com/api/docs/models/gpt-6-sol"
+  },
+  "evaluator_access_check": {
+    "generation_model_available": "gpt-6-luna",
+    "evaluator_model_metadata_http_status": 404,
+    "evaluator_structured_output_invocation_http_status": 403
+  },
+  "deployed_metadata_smoke": {
+    "case_id": "budget-en",
+    "sample_count": 1,
+    "structural_pass_rate": 1,
+    "build_matches_release": true,
+    "provider_model_ids_present": true,
+    "model_call_count": 4,
+    "trace_id": "31702e0c-ee46-4b72-a099-e5db984a2fa8",
+    "synthetic_session_and_user_cleanup_succeeded": true,
+    "observed_duration_ms": 22707.77,
+    "maximum_p95_ms": 10000,
+    "latency_acceptance_passed": false,
+    "input_tokens": 14708,
+    "output_tokens": 1676,
+    "estimated_cost_usd": 0.002309,
+    "independent_quality_scored": false
+  },
+  "baseline": {
+    "captured": false,
+    "human_calibrated": false,
+    "approved": false
+  },
+  "remaining_work": [
+    "Enable access to a separate evaluator and configure its encrypted GitHub secret.",
+    "Resolve or formally review latency acceptance using representative current-model evidence; the one-case smoke is not a baseline.",
+    "Capture and independently review a complete passing baseline before enabling scheduled monitoring."
+  ]
+}
