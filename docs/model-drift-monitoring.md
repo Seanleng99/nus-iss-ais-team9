@@ -10,6 +10,22 @@ requires a completed, independently reviewed capture and the configuration below
 
 ## Demo Activation Status — 2026-10-10
 
+The latest [repair capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38055863270)
+stopped after 11 of 36 attempts because a concurrent deployment changed the build
+from `3732e89` to `50f94b5`. All attempted generation usage was accounted for;
+P95 was 37,951.59 ms. This mixed-build capture is ineligible as a baseline.
+It also exposed a false amount failure for the correct `2,500 SGD` format,
+another withheld Spending response, and a withheld missing-input clarification.
+The amount oracle now accepts the ISO currency suffix with strict numeric and
+currency boundaries. The Spending lookup contract reaches both synthesis and
+Compliance. Budget clarification now asks for take-home income and unknown
+confirmed commitments in the requested language, without implying budget creation.
+A local synthetic Luna review accepted that corrected clarification. Captures
+now report a specific content-free code such as `QUALITY_DEPLOYED_BUILD_CHANGED`
+instead of hiding identity failures behind a generic evidence code. Complete
+deployment before recapturing; quality, safety, usage and human-calibration gates
+still apply. These repairs do not authorize an automatic baseline approval.
+
 The implementation is published on `main`, with successful [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38044974592)
 and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38045210894)
 for `0c314010720baf47af537949da4ec2ad838cfe61`. The `demo` environment is
@@ -72,6 +88,11 @@ include `新加坡元` and `新币`, with negative tests for wrong currencies, a
 and numeric substrings. This diagnostic and the parser correction do not establish
 a repeated, human-reviewed baseline; the earlier run's exact stop trigger remains
 unconfirmed and scheduling remains disabled.
+Replaying the held Chinese answer passes the corrected currency oracle. The
+[repair CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38054470151)
+passed for commit `3732e89`; the content-free
+[repair evidence](evaluation-evidence/model-drift-repair-2026-10-10.json) records
+the diagnostic and changes.
 
 The Budget prompts and rubrics now consistently ask for the amount left after the
 known monthly rent, with the same SGD 2500 arithmetic requirement in both languages.
@@ -275,4 +296,5 @@ approval, confirmation, critical/absolute failures, malformed evidence, configur
 changes, unknown usage and spending limits, aggregate queries, notifications, and
 capture-to-comparison integration with mocked endpoints. AI observation tests verify
 bounded metadata and absence of content. These tests require no provider or AWS calls;
-current-model baseline acceptance and end-to-end SNS delivery remain deployment work.
+current-model baseline acceptance remains deployment work. End-to-end SNS delivery
+verification applies only if optional email reporting is enabled.

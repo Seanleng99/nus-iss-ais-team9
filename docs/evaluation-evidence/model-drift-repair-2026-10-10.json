@@ -6,6 +6,29 @@
   "deployed_build": "8fcd3fdd92403bf0f53935b5dce5924d050b7e98",
   "original_capture_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049061224",
   "original_usage_stop_trigger": "unconfirmed; the original capture omitted per-case execution diagnostics",
+  "repair_commit": "3732e89",
+  "ci_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38054470151",
+  "ci_status": "success",
+  "release_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38054697922",
+  "release_status": "success",
+  "followup_capture": {
+    "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38055863270",
+    "complete": false,
+    "attempted_samples": 11,
+    "requested_samples": 36,
+    "scored_samples": 10,
+    "generation_usage_complete": true,
+    "stop_trigger": "a concurrent deployment changed the observed build from 3732e89 to 50f94b5",
+    "p95_ms": 37951.59,
+    "remaining_quality_findings": ["budget-zh ISO currency suffix false failure", "spending-en withheld", "education-zh citation-support flag false", "missing-input-en withheld"]
+  },
+  "followup_fixes": [
+    "Accept ISO currency suffixes while rejecting wrong currency codes and numeric substrings.",
+    "Provide the Spending query contract to both synthesis and Compliance without overriding review decisions.",
+    "Ask for take-home income and unknown confirmed commitments in the user's language, without implying budget creation.",
+    "Report specific content-free corpus, generator identity, build and role policy failure codes."
+  ],
+  "corrected_missing_input_local_luna_review_blocked": false,
   "diagnostic_generation_usage_complete": true,
   "diagnostic_estimated_generation_cost_usd": 0.007855,
   "cases": [
@@ -28,6 +51,7 @@
       "structural_pass_before_oracle_correction": false,
       "failed_check": "answer_amounts",
       "confirmed_defect": "the SGD oracle recognized only one Chinese currency label",
+      "held_answer_amount_check_after_correction": true,
       "cleanup_succeeded": true
     }
   ],
@@ -42,6 +66,8 @@
   "validation": {
     "focused_infrastructure_tests_passed": 153,
     "focused_ai_tests_passed": 30,
+    "followup_focused_infrastructure_tests_passed": 164,
+    "followup_ai_tests_passed": 112,
     "live_diagnostic_case_count": 3,
     "live_diagnostic_case_cleanup_count": 3
   },

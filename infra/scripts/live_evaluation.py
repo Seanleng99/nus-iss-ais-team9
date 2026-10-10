@@ -390,10 +390,13 @@ def _answer_has_amount(answer: str, currency: str, amount: Any) -> bool:
         r"(?:\.\d{1,2})?)(?!\d|[,.]\d)", re.IGNORECASE,
     )
     matches = list(pattern.finditer(answer))
+    numeric = r"([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?!\d|[,.]\d)"
+    matches.extend(re.finditer(
+        rf"(?<![A-Za-z0-9_.,+-]){numeric}\s*{re.escape(currency)}(?![A-Za-z0-9_])", answer, re.IGNORECASE,
+    ))
     aliases_path = Path(__file__).resolve().parents[2] / "apps/shared/coach_i18n/data/currency_aliases.json"
     aliases = json.loads(aliases_path.read_text(encoding="utf-8"))
     for alias in aliases.get(currency, []):
-        numeric = r"([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?!\d|[,.]\d)"
         for localized in (rf"{re.escape(alias)}\s*{numeric}", rf"(?<![\d.,]){numeric}\s*{re.escape(alias)}"):
             matches.extend(re.finditer(localized, answer))
     return any(_same_decimal(match.group(1).replace(",", ""), amount) for match in matches)

@@ -1,4 +1,7 @@
 {
+  "budget.input.take_home_income": "What is your monthly take-home income in SGD?",
+  "budget.input.income_and_commitments": "What is your monthly take-home income in SGD, and what confirmed monthly expenses or commitments should this assessment include?",
+  "workflow.missing_input_summary": "I need a few details before I can answer this question.",
   "education.investment_outcomes": "Investment outcomes vary and losses are possible.",
   "education.allowlisted_grounding": "The response is grounded in the supplied, allowlisted tool output.",
   "ui.text.choose_needs_or_wants_for_categories": "Choose Needs or Wants for: {categories}.",

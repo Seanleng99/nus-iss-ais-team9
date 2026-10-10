@@ -1072,7 +1072,7 @@ class AgentOrchestrator:
                 task.status = AgentTaskStatus.NEEDS_INPUT
                 task_results[task.task_id] = AgentResult(
                     agent=task.agent,
-                    summary="Additional information is needed before this specialist can continue.",
+                    summary=translate("workflow.missing_input_summary", request_locale(state["request"])),
                     rationale=[outcome.reason_code],
                     confidence=1.0,
                     data={"needs_input": True, "questions": outcome.questions,
@@ -1789,6 +1789,7 @@ class AgentOrchestrator:
                 {"agent": result.agent.value, "data": review_evidence(result, (
                     "contexts", "sources", "subquestion_coverage", "coverage_assessment", "general_knowledge",
                     "fallback_topics", "excluded_topics", "uncertainties", "evidence_status",
+                    "spending_draft",
                 ))} for result in state["agent_results"]
             ],
         }
@@ -1818,6 +1819,10 @@ class AgentOrchestrator:
             "\nfollow_up identifies the subject of the original current question, not "
             "financial evidence, an operation or consent. Focus the answer on that subject "
             "using specialist evidence; omit unrelated dependency analyses."
+            "\nA spending_draft with action=query is a read-only backend handoff, not a result. "
+            "Describe the pending lookup in the requested language without inventing a total, "
+            "claiming that it has completed, or asking for write confirmation. The backend "
+            "calculates the owned records and separately composes and reviews the final result."
         )
         synthesis_prompt += citation_contract(sources)
         if plan_only:

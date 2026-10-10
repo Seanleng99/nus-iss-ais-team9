@@ -10,6 +10,14 @@
   ["12500新元", false],
   ["2500.01新元", false],
   ["SGD 2500", true],
+  ["2,500 SGD", true],
+  ["2500 sgd", true],
+  ["剩余2,500 SGD。", true],
+  ["12500 SGD", false],
+  ["2500.01 SGD", false],
+  ["2500 SGDollar", false],
+  ["2500 SGD1", false],
+  ["2500 USD", false],
   ["USD 2500", false],
   ["为SGD 2500", true]
 ]

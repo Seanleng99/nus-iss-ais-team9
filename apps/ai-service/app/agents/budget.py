@@ -216,8 +216,14 @@ class BudgetAgent(BaseAgent):
         if not task.context_features.get("has_monthly_income"):
             if not self._requires_income(task):
                 return []
-            return ["What is your monthly income before creating this budget?"]
+            return [self._income_question(task)]
         return []
+
+    @staticmethod
+    def _income_question(task: AgentTask) -> str:
+        key = ("budget.input.take_home_income" if task.input_data.get("recurring_expenses")
+               else "budget.input.income_and_commitments")
+        return translate(key, task.context_features.get("response_locale", "en"))
 
     def _missing_input_fields(self, task):
         if task.input_data.get("planning_context", {}).get("scope_unclear"):
@@ -277,7 +283,7 @@ class BudgetAgent(BaseAgent):
                     "capacity_source": "confirmed_plan"}
         if not task.input_data.get("monthly_income"):
             unavailable = {"source": "unavailable", "period_start": saved.get("period_start"),
-                "estimated_savings_capacity": None, "reason": "What is your monthly income before creating this budget?",
+                "estimated_savings_capacity": None, "reason": self._income_question(task),
                 "calculation_method": "Capacity requires income or a confirmed saved savings allocation."}
             return {"capacity": unavailable, "capacity_source": "unavailable", "questions": [unavailable["reason"]]}
         baseline = call_tool(self.name, "budget_calculator", UserFinancialSnapshot.model_validate(task.input_data))

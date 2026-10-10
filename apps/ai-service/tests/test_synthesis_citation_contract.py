@@ -304,7 +304,7 @@ def test_citation_repair_does_not_bypass_financial_safety():
     assert "UNVALIDATED-SYNTHESIS" not in response.model_dump_json()
 
 
-INCOME_QUESTION = "What is your monthly income before creating this budget?"
+INCOME_QUESTION = "What is your monthly take-home income in SGD, and what confirmed monthly expenses or commitments should this assessment include?"
 GOAL_QUESTION = "What goal amount and target date would you like to plan for?"
 
 
@@ -402,6 +402,22 @@ def test_all_missing_input_deduplicates_exact_questions_in_order():
     assert answer.count(INCOME_QUESTION) == answer.count(GOAL_QUESTION) == 1
     assert " ".join(answer.split()) == f"{first.summary} {INCOME_QUESTION} {GOAL_QUESTION}"
     assert first.data["questions"] == [INCOME_QUESTION, INCOME_QUESTION]
+
+
+def test_read_only_spending_synthesis_receives_handoff_contract():
+    answer = "I will look up the recorded spending for the requested month."
+    gateway = RecordingSynthesisGateway([answer])
+    state = synthesis_state()
+    draft = {"action": "query", "query_start": "2026-10-01", "query_end": "2026-10-31",
+             "transactions": []}
+    state["agent_results"] = [AgentResult(agent="spending",
+        summary="A read-only lookup was requested.", data={"spending_draft": draft})]
+    state["spending_capture"] = True
+    result = workflow(gateway)._synthesize(state)
+    assert result["draft_answer"] == answer
+    payload = json.loads(gateway.synthesis_calls[0]["user_prompt"])
+    assert payload["verified_grounding"][0]["data"]["spending_draft"] == draft
+    assert "not a result" in gateway.synthesis_calls[0]["system_prompt"]
 
 
 def test_mixed_ready_and_missing_input_still_synthesizes_with_exact_questions():

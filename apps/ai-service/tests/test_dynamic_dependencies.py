@@ -507,7 +507,7 @@ def test_missing_budget_input_returns_typed_needs_input_result() -> None:
     budget = next(result for result in response.agent_results if result.agent == "budget")
     assert budget.data["needs_input"] is True
     assert budget.data["questions"] == [
-        "What is your monthly income before creating this budget?"
+        "What is your monthly take-home income in SGD, and what confirmed monthly expenses or commitments should this assessment include?"
     ]
     assert "task.needs_input" in {
         event["event_type"] for event in response.audit["events"]

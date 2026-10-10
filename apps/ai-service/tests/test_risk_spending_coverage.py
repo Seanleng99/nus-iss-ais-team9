@@ -103,3 +103,24 @@ def test_dated_spending_coverage_reaches_independent_review_without_overriding_v
     ):
         assert private_value not in gateway.calls[0]["user_prompt"]
     assert result.blocked is veto
+
+
+@pytest.mark.parametrize("veto", [False, True])
+def test_read_only_spending_handoff_reaches_review_and_preserves_veto(veto):
+    request = CoachRequest(user_id="private-user", session_id="private-session",
+        message="Calculate my recorded spending for October 2026.")
+    draft = {
+        "is_spending_request": True, "action": "query", "transactions": [],
+        "query_start": "2026-10-01", "query_end": "2026-10-31",
+    }
+    gateway = CoverageReviewGateway(veto=veto)
+    reviewer = RiskComplianceAgent(gateway=gateway, prompts=PromptCatalog(),
+        temperature=0.1, max_tokens=800, policy_retriever=LocalPolicyRetriever())
+    summary = "A read-only lookup was requested; the backend will calculate the recorded amounts."
+    result = reviewer.validate(request, [AgentResult(agent="spending", summary=summary,
+        rationale=[], confidence=1, data={"spending_draft": draft,
+            "unrelated_private_note": "PRIVATE-UNRELATED-NOTE"})], summary)
+    payload = json.loads(gateway.calls[0]["user_prompt"])
+    assert payload["agent_results"][0]["data"]["spending_draft"] == draft
+    assert "PRIVATE-UNRELATED-NOTE" not in gateway.calls[0]["user_prompt"]
+    assert result.blocked is veto

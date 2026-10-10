@@ -180,6 +180,42 @@ def test_reference_corpus_is_verified_and_available():
     assert len(sources) >= 9 and set(versions) == {"education", "policy"}
 
 
+@pytest.mark.parametrize("problem,diagnostic", [
+    ("build", "QUALITY_DEPLOYED_BUILD_CHANGED"),
+    ("role", "QUALITY_ROLE_POLICY_CHANGED"),
+    ("identity", "QUALITY_GENERATOR_IDENTITY_MISMATCH"),
+])
+def test_remote_identity_change_stops_with_specific_content_free_diagnostic(monkeypatch, problem, diagnostic):
+    from app.core.prompts import CURRENT_PROMPT_VERSION
+
+    first, second = response(), response()
+    if problem == "build":
+        second["audit"]["build_commit"] = "new-build"
+    elif problem == "role":
+        second["audit"]["model_calls"][0]["max_output_tokens"] = 2000
+    else:
+        second["audit"]["prompt_content_hash"] = "different-prompt"
+    answers = iter([first, second])
+    monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (next(answers), "correlation"))
+    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args: {})
+    monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
+    monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
+    client, calls = client_factory()
+    captured = drift_quality.capture_quality(judge=judge(client), cases=[case()], repeats=3,
+        dataset_hash="dataset-hash", corpus_versions={"education": "education-v1", "policy": "policy-v1"},
+        run_kwargs={"url": "https://example.test/api/coach", "api_key": "PRIVATE-KEY", "timeout_seconds": 1,
+            "expected_model_provider": "openai", "expected_model_id": "generator",
+            "expected_prompt_version": CURRENT_PROMPT_VERSION,
+            "input_cost_per_million": 1, "output_cost_per_million": 1, "commit_sha": "test",
+            "maximum_estimated_cost_usd": 0.05})
+    assert not captured["complete"] and len(captured["samples"]) == 2
+    assert captured["samples"][-1]["error_code"] == diagnostic
+    assert captured["samples"][-1]["scores"] is None
+    assert not captured["generator_execution"]["usage_unknown"]
+    assert len(calls) == 2  # Preflight plus the first sample; no judge call for mixed identity.
+    assert "PRIVATE" not in json.dumps(captured)
+
+
 def test_fixture_failure_is_retained_without_claiming_unknown_generation_spend(monkeypatch):
     client, _ = client_factory()
     def fail_seed(*args):

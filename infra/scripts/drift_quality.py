@@ -209,21 +209,26 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
         sample = {"sample_id": f"{case['id']}:{repeat}", "case_id": case["id"],
                   "specialist": case["specialist"], "language": case["language"], "intent": case["intent"],
                   "structural_pass": structural_pass, "scores": None, "trace_id": _safe_uuid(audit.get("trace_id"))}
+        evidence_failure_code = "QUALITY_EVIDENCE_UNAVAILABLE"
         try:
             for citation in response.get("sources", []):
                 if citation.get("corpus_version") != corpus_versions["education"]:
+                    evidence_failure_code = "QUALITY_EDUCATION_CORPUS_MISMATCH"
                     raise ValueError("Education corpus pin differs from evaluator reference")
             for citation in audit.get("policy_sources", []):
                 if citation.get("corpus_version") != corpus_versions["policy"]:
+                    evidence_failure_code = "QUALITY_POLICY_CORPUS_MISMATCH"
                     raise ValueError("Policy corpus pin differs from evaluator reference")
             if audit.get("model_call_count"):
                 identity = {key: audit.get(key) for key in ("model_provider", "model_id", "prompt_set_version", "prompt_content_hash")}
                 if identity != {"model_provider": run_kwargs["expected_model_provider"],
                                 "model_id": run_kwargs["expected_model_id"], "prompt_set_version": CURRENT_PROMPT_VERSION,
                                 "prompt_content_hash": PromptCatalog().content_hash}:
+                    evidence_failure_code = "QUALITY_GENERATOR_IDENTITY_MISMATCH"
                     raise ValueError("Remote model/prompt identity differs from packaged benchmark")
                 build_commit = code(audit.get("build_commit"))
                 if observed and observed[0]["build_commit"] != build_commit:
+                    evidence_failure_code = "QUALITY_DEPLOYED_BUILD_CHANGED"
                     raise ValueError("Deployed build changed during capture")
                 observed.append({**identity, "build_commit": build_commit})
                 for call in audit.get("model_calls", []):
@@ -231,18 +236,23 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
                     role = {key: call.get(key) for key in ("model_id", "reasoning_effort", "max_output_tokens")}
                     role["provider_model_id"] = code(call.get("provider_model_id"))
                     if component in roles and roles[component] != role:
+                        evidence_failure_code = "QUALITY_ROLE_POLICY_CHANGED"
                         raise ValueError("Role policy changed during capture")
                     if any(value is None for value in role.values()):
+                        evidence_failure_code = "QUALITY_ROLE_POLICY_MISSING"
                         raise ValueError("Missing role policy")
                     if (role["model_id"] == judge.model) != (evaluation_mode == "same_model"):
+                        evidence_failure_code = "QUALITY_ROLE_MODEL_MISMATCH"
                         raise ValueError("Role model differs from the configured evaluator mode")
                     roles[component] = role
             sample["scores"] = judge.score(case, request, response)
             if any((role["provider_model_id"] == judge.provider_model) != (evaluation_mode == "same_model")
                    for role in roles.values()):
                 sample["scores"] = None
+                evidence_failure_code = "QUALITY_RESOLVED_MODEL_MISMATCH"
                 raise ValueError("Resolved models differ from the configured evaluator mode")
             if review_sink:
+                evidence_failure_code = "QUALITY_REVIEW_PACKET_WRITE_FAILED"
                 review_sink({"sample_id": sample["sample_id"], "question": request["message"],
                              "synthetic_facts": request.get("snapshot", {}), "expected": case["expected"],
                              "rubric": case["rubric"], "answer": response.get("answer"),
@@ -250,7 +260,7 @@ def capture_quality(*, judge, cases, repeats, dataset_hash, run_kwargs, corpus_v
                              "scores": {metric: None for metric in case["quality_metrics"]}})
         except Exception:  # noqa: BLE001 - reduce all review failures to a fixed content-free code.
             judge.stopped = True
-            sample["error_code"] = "QUALITY_EVIDENCE_UNAVAILABLE"
+            sample["error_code"] = judge.failure_code or evidence_failure_code
         samples.append(sample)
         print(f"Quality sample {len(samples)}/{len(expected)}: {sample['sample_id']}; "
               f"scored={sample['scores'] is not None}; structural_pass={structural_pass}", flush=True)
@@ -375,6 +385,9 @@ def main():
         print(f"Evaluator check: {judge.failure_code}")
     for failure in result["operational_failures"]:
         print(f"Capture gate: {failure}")
+    for sample in result["samples"]:
+        if sample.get("error_code"):
+            print(f"Quality evidence diagnostic: {sample['sample_id']}; {sample['error_code']}")
     for record in result["generator_execution"]["records"]:
         if not record["passed"] or not record["token_usage_complete"]:
             print("Generator diagnostic: " + json.dumps(record, sort_keys=True))
