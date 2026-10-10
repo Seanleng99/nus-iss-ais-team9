@@ -78,12 +78,14 @@ class CompositionGateway:
     """Give each reviewed stage a transport window within one total deadline."""
 
     def __init__(self, delegate, settings, *, risk_read_timeout):
+        log_event("VV entering ", "app.core.action_composition.CompositionGateway", "__init__")
         self.delegate = delegate
         self.settings = settings
         self.risk_read_timeout = risk_read_timeout
         self.deadline = perf_counter() + 25.0
 
     def generate(self, **kwargs):
+        log_event("VV entering ", "app.core.action_composition.CompositionGateway", "generate")
         component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID:").strip()
         remaining = self.deadline - perf_counter()
         connect = min(1.0, self.settings.model_connect_timeout_seconds)
@@ -112,6 +114,7 @@ class CompositionGateway:
                 close()
 
     def count_input_tokens(self, **kwargs):
+        log_event("VV entering ", "app.core.action_composition.CompositionGateway", "count_input_tokens")
         remaining = self.deadline - perf_counter()
         if remaining <= 0:
             raise ModelGatewayError("Composition deadline exhausted.", code="ACTION_COMPOSITION_DEADLINE")
@@ -124,6 +127,7 @@ class CompositionGateway:
 
 
 def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResponse:
+    log_event("VV entering ", "app.core.action_composition", "compose_action")
     log_event("composition.started", phase="post_action")
     payload = payload.model_copy(update={"request": sanitized_request(payload.request)})
     response = payload.response.model_copy(deep=True)

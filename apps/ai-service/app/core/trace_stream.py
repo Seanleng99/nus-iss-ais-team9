@@ -18,6 +18,7 @@ class TraceStreamClosed(RuntimeError):
 
 
 async def stream_run(orchestrator, request, trace_id: str, *, operation="coach", timeout_seconds=None):
+    log_event("VV entering ", "app.core.trace_stream", "stream_run")
     if not _workers.acquire(blocking=False):
         yield json.dumps({"type": "error", "code": "WORKFLOW_CAPACITY"}) + "\n"
         return
@@ -25,6 +26,7 @@ async def stream_run(orchestrator, request, trace_id: str, *, operation="coach",
     closed = Event()
 
     def send(item):
+        log_event("VV entering ", "app.core.trace_stream", "stream_run.send")
         while not closed.is_set():
             try:
                 queue.put(item, timeout=0.1)
@@ -34,6 +36,7 @@ async def stream_run(orchestrator, request, trace_id: str, *, operation="coach",
         raise TraceStreamClosed("Trace stream closed")
 
     def work():
+        log_event("VV entering ", "app.core.trace_stream", "stream_run.work")
         trace_token = workflow_id.set(trace_id)
         sink_token = event_sink.set(lambda event: send({"type": "event", "event": event}))
         try:

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.prompts import CURRENT_PROMPT_VERSION
+from app.core.telemetry import log_event
 
 
 class ModelRolePolicy(BaseModel):
@@ -20,6 +21,7 @@ class ModelRolePolicy(BaseModel):
 
 
 def default_model_role_policies() -> dict[str, ModelRolePolicy]:
+    log_event("VV entering ", "app.core.config", "default_model_role_policies")
     path = Path(__file__).with_name("model-role-policy.json")
     return {name: ModelRolePolicy.model_validate(policy)
             for name, policy in json.loads(path.read_text(encoding="utf-8")).items()}
@@ -150,6 +152,7 @@ class Settings(BaseSettings):
     api_key: str = Field(default="change-me-locally", alias="AI_SERVICE_API_KEY")
 
     def model_policy(self, component: str, max_tokens: int) -> ModelRolePolicy:
+        log_event("VV entering ", "app.core.config.Settings", "model_policy")
         override = self.model_role_overrides.get(component, ModelRolePolicy())
         return ModelRolePolicy(
             model_id=override.model_id or self.model_id,
@@ -160,6 +163,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def require_deployment_api_key(self) -> Self:
         # Optional deployment assertion, never a selector for historical behavior.
+        log_event("VV entering ", "app.core.config.Settings", "require_deployment_api_key")
         if self.prompt_set_version != CURRENT_PROMPT_VERSION:
             raise ValueError(f"The packaged application requires PROMPT_SET_VERSION={CURRENT_PROMPT_VERSION}")
         roles = {

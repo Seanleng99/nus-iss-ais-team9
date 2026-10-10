@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.telemetry import log_event
+
 
 class StrictGovernanceModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -57,6 +59,7 @@ class GovernedSource(StrictGovernanceModel):
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> "GovernedSource":
+        log_event("VV entering ", "app.rag.ingestion.GovernedSource", "validate_lifecycle")
         if self.s3_metadata_key != f"{self.s3_document_key}.metadata.json":
             raise ValueError("metadata key must be the document key plus .metadata.json")
         if self.review_due_at < self.last_verified_at:
@@ -91,6 +94,7 @@ class SourceManifest(StrictGovernanceModel):
 
     @model_validator(mode="after")
     def validate_collection(self) -> "SourceManifest":
+        log_event("VV entering ", "app.rag.ingestion.SourceManifest", "validate_collection")
         source_ids = [source.source_id for source in self.sources]
         if len(source_ids) != len(set(source_ids)):
             raise ValueError("source IDs must be unique")
@@ -109,10 +113,12 @@ class SourceManifest(StrictGovernanceModel):
 
 
 def load_source_manifest(path: Path) -> SourceManifest:
+    log_event("VV entering ", "app.rag.ingestion", "load_source_manifest")
     return SourceManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def active_sources(manifest: SourceManifest) -> list[GovernedSource]:
+    log_event("VV entering ", "app.rag.ingestion", "active_sources")
     return [source for source in manifest.sources if source.ingestion_approved]
 
 
@@ -121,6 +127,7 @@ def governance_issues(
     *,
     as_of: date | None = None,
 ) -> list[dict[str, str]]:
+    log_event("VV entering ", "app.rag.ingestion", "governance_issues")
     checked_on = as_of or datetime.now(UTC).date()
     issues: list[dict[str, str]] = []
     if manifest.manifest_status != "approved_for_ingestion":
@@ -149,6 +156,7 @@ def governance_issues(
 
 
 def manifest_digest(manifest: SourceManifest) -> str:
+    log_event("VV entering ", "app.rag.ingestion", "manifest_digest")
     canonical = json.dumps(
         manifest.model_dump(mode="json"),
         ensure_ascii=True,
@@ -164,6 +172,7 @@ def metadata_for_source(
     *,
     ingested_at: datetime,
 ) -> ApprovedDocumentMetadata:
+    log_event("VV entering ", "app.rag.ingestion", "metadata_for_source")
     return ApprovedDocumentMetadata(
         source_id=source.source_id,
         title=source.title,
@@ -184,4 +193,5 @@ def metadata_for_source(
 
 
 def build_metadata_sidecar(document: ApprovedDocumentMetadata) -> dict:
+    log_event("VV entering ", "app.rag.ingestion", "build_metadata_sidecar")
     return {"metadataAttributes": document.model_dump(mode="json", exclude_none=True)}

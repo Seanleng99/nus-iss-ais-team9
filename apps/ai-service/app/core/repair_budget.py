@@ -3,6 +3,8 @@
 import json
 from math import ceil
 
+from app.core.telemetry import log_event
+
 
 def repair_time_estimate(calls: list[dict], required: set[str], *, attempts: int = 2) -> float:
     """Forecast passes without changing the gateway's enforced resource limits.
@@ -13,6 +15,7 @@ def repair_time_estimate(calls: list[dict], required: set[str], *, attempts: int
     Local replacements reserve one pass; optional writer retries must fit before
     reserved review time. Legacy full regeneration retains two-pass forecasting.
     """
+    log_event("VV entering ", "app.core.repair_budget", "repair_time_estimate")
     durations = {}
     for call in calls:
         duration = call.get("duration_ms")
@@ -24,6 +27,7 @@ def repair_time_estimate(calls: list[dict], required: set[str], *, attempts: int
 
 
 def financial_repair_estimates(calls: list[dict], required: set[str], feedback: object, *, planned_calls=None) -> list[dict]:
+    log_event("VV entering ", "app.core.repair_budget", "financial_repair_estimates")
     latest = {}
     for call in reversed(calls):
         if call.get("status") == "completed" and call.get("component") in required:

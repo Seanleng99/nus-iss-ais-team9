@@ -7,6 +7,7 @@ from coach_i18n import input_pattern, translate
 from coach_i18n import response_language as request_language
 
 from app.core.schemas import AgentName, AgentResult, CoachRequest
+from app.core.telemetry import log_event
 
 NUMBER = r"(?:\d{1,12}|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?"
 MONEY = rf"(?:SGD\s*|S?\$\s*)?(?P<amount>{NUMBER})(?:\s*SGD)?"
@@ -47,6 +48,7 @@ RECALL = re.compile(
 
 def income_memory_reply(request: CoachRequest) -> AgentResult | None:
     """Whole-message matching excludes mixed advice, calculations and record writes."""
+    log_event("VV entering ", "app.core.income_memory", "income_memory_reply")
     if request.requested_agents and set(request.requested_agents) != {AgentName.BUDGET}:
         return None
     context = request.session_context
@@ -132,6 +134,7 @@ def verified_income_memory_reply(
     routing_rationale: list[str] | None,
 ) -> bool:
     """Recompute the entire controlled reply; a marker alone is never authority."""
+    log_event("VV entering ", "app.core.income_memory", "verified_income_memory_reply")
     expected = income_memory_reply(request)
     return bool(
         expected is not None

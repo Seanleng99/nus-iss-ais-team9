@@ -3,15 +3,19 @@
 import streamlit as st
 from coach_i18n import normalize_locale, translate
 
+from ui.telemetry import log_event
+
 QUERY_KEY = "coach_language"
 
 
 def selection_key(user_id: str) -> str:
     # A workspace setting, independent of the active financial profile.
+    log_event("VV entering ", "ui.coach_language", "selection_key")
     return "workspace-language"
 
 
 def current_selection(user_id: str = "") -> str:
+    log_event("VV entering ", "ui.coach_language", "current_selection")
     key = selection_key(user_id)
     if key not in st.session_state:
         # A URL can select an allowlisted output locale, never supply profile data.
@@ -23,6 +27,7 @@ def current_selection(user_id: str = "") -> str:
 
 
 def save_selection(user_id: str, widget_key: str) -> None:
+    log_event("VV entering ", "ui.coach_language", "save_selection")
     value = normalize_locale(st.session_state.get(widget_key))
     st.session_state[selection_key(user_id)] = value or "en"
     st.session_state["workspace-language-explicit"] = True
@@ -30,11 +35,13 @@ def save_selection(user_id: str, widget_key: str) -> None:
 
 
 def explicit_selection(user_id: str = "") -> str | None:
+    log_event("VV entering ", "ui.coach_language", "explicit_selection")
     value = current_selection(user_id)
     return value if st.session_state.get("workspace-language-explicit") else None
 
 
 def sync_response_locale(user_id: str, locale: str) -> None:
+    log_event("VV entering ", "ui.coach_language", "sync_response_locale")
     value = normalize_locale(locale)
     if value:
         st.session_state[selection_key(user_id)] = value
@@ -44,6 +51,7 @@ def sync_response_locale(user_id: str, locale: str) -> None:
 
 def apply_profile_default(user_id: str, locale: str) -> bool:
     """Align controls with a profile default until the user makes a choice."""
+    log_event("VV entering ", "ui.coach_language", "apply_profile_default")
     value = normalize_locale(locale)
     if value and explicit_selection(user_id) is None and current_selection(user_id) != value:
         st.session_state[selection_key(user_id)] = value
@@ -52,6 +60,7 @@ def apply_profile_default(user_id: str, locale: str) -> bool:
 
 
 def _sync_url(value: str | None) -> None:
+    log_event("VV entering ", "ui.coach_language", "_sync_url")
     if value:
         st.query_params[QUERY_KEY] = value
     elif QUERY_KEY in st.query_params:
@@ -61,6 +70,7 @@ def _sync_url(value: str | None) -> None:
 def language_selector(user_id: str, ui_locale: str, *, compact: bool = False) -> str:
     # Changing the display language changes the formatted options. Give that
     # presentation its own widget identity, backed by the canonical selection.
+    log_event("VV entering ", "ui.coach_language", "language_selector")
     widget_key = f"{selection_key(user_id)}-widget-{ui_locale}"
     st.session_state[widget_key] = current_selection(user_id)
     selected = st.selectbox(
@@ -81,6 +91,7 @@ def language_selector(user_id: str, ui_locale: str, *, compact: bool = False) ->
 
 
 def render_language_header(user_id: str) -> None:
+    log_event("VV entering ", "ui.coach_language", "render_language_header")
     locale = current_selection(user_id)
     with st.container(key="workspace-language-header"), st.popover(
         translate("ui.language", locale), icon=":material/language:",

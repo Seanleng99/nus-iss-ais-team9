@@ -43,6 +43,7 @@ class BaseAgent(ABC):
         temperature: float,
         max_tokens: int,
     ) -> None:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "__init__")
         self.gateway = gateway
         self.prompts = prompts
         self.temperature = temperature
@@ -54,6 +55,7 @@ class BaseAgent(ABC):
     def run_task(
         self, task: AgentTask
     ) -> CompletedInvocation | NeedsDependencyInvocation | NeedsInputInvocation:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "run_task")
         decision = inspect_prompt(task.sanitized_message)
         log_event(
             "agent.guardrail.evaluated", agent=self.name.value,
@@ -265,6 +267,7 @@ class BaseAgent(ABC):
                 )
 
         def validate_narrative(narrative: AgentNarrative) -> AgentNarrative:
+            log_event("VV entering ", "app.agents.base.BaseAgent", "run_task.validate_narrative")
             if isinstance(task._financial_grounding_snapshot, FinancialGroundingSnapshot):
                 original = task.context_features.get("original_summary", "")
                 ranges = specialist_correction_ranges(task.context_features.get("review_corrections", []), original)
@@ -369,23 +372,28 @@ class BaseAgent(ABC):
         )
 
     def _format_summary(self, narrative: AgentNarrative, grounding: dict) -> str:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_format_summary")
         return narrative.summary
 
     def _dependency_requests(self, task: AgentTask) -> Sequence[DependencyRequest]:
         """Return dependency requests required by deterministic specialist policy."""
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_dependency_requests")
         del task
         return ()
 
     def _dependency_options(self, task: AgentTask) -> Sequence[DependencyRequestDraft]:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_dependency_options")
         del task
         return ()
 
     def _missing_input_questions(self, task: AgentTask) -> Sequence[str]:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_missing_input_questions")
         del task
         return ()
 
     def _missing_input_fields(self, task: AgentTask) -> Sequence[str]:
         """Machine fields are independent of the wording or language of questions."""
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_missing_input_fields")
         del task
         return ()
 
@@ -395,6 +403,7 @@ class BaseAgent(ABC):
         task: AgentTask,
         sanitized_message: str,
     ) -> NeedsDependencyInvocation | NeedsInputInvocation | None:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_preflight")
         if not self.dependency_planning_enabled:
             return None
 
@@ -478,9 +487,11 @@ class BaseAgent(ABC):
 
     def _dependency_input_context(self, task: AgentTask) -> dict:
         """Expose owned input availability, not private records, to the planner."""
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_dependency_input_context")
         return {}
 
     def _validate_dependency_plan(self, task, plan):
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_validate_dependency_plan")
         return plan
 
     def _capabilities(
@@ -489,6 +500,7 @@ class BaseAgent(ABC):
         grounding: dict,
         result: AgentResult,
     ) -> list[CapabilityResult]:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_capabilities")
         del task, grounding, result
         return []
 
@@ -497,6 +509,7 @@ class BaseAgent(ABC):
         narrative: AgentNarrative,
         grounding: dict,
     ) -> AgentNarrative:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_validate_narrative")
         del grounding
         return narrative
 
@@ -506,11 +519,13 @@ class BaseAgent(ABC):
         sanitized_message: str,
         grounding: dict,
     ) -> str:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_model_message")
         del task, grounding
         return sanitized_message
 
     @trace_method
     def _evidence_gap_result(self, grounding: dict) -> AgentResult:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_evidence_gap_result")
         return AgentResult(
             agent=self.name,
             summary=education_gap_message(grounding),
@@ -523,4 +538,5 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
+        log_event("VV entering ", "app.agents.base.BaseAgent", "_ground")
         raise NotImplementedError

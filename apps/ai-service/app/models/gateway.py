@@ -28,6 +28,7 @@ class ModelGatewayError(RuntimeError):
         component: str | None = None,
         validation_reason: str | None = None,
     ) -> None:
+        log_event("VV entering ", "app.models.gateway.ModelGatewayError", "__init__")
         super().__init__(message)
         self.code = (
             code
@@ -47,6 +48,7 @@ class ModelGatewayError(RuntimeError):
 
 
 def _bedrock_error_code(exc: Exception) -> str:
+    log_event("VV entering ", "app.models.gateway", "_bedrock_error_code")
     response = getattr(exc, "response", None)
     if isinstance(response, Mapping):
         error = response.get("Error", {})
@@ -68,6 +70,7 @@ class ModelGeneration(str):
         usage: Mapping[str, int] | None = None,
         provider_metrics: Mapping[str, Any] | None = None,
     ):
+        log_event("VV entering ", "app.models.gateway.ModelGeneration", "__new__")
         instance = super().__new__(cls, text)
         instance.usage = dict(usage or {})
         instance.provider_metrics = dict(provider_metrics or {})
@@ -76,6 +79,7 @@ class ModelGeneration(str):
 
 def _openai_error_code(exc: Exception) -> str:
     """Classify SDK metadata without reading messages, payloads or headers."""
+    log_event("VV entering ", "app.models.gateway", "_openai_error_code")
     supplied_status = getattr(exc, "status_code", None)
     status = supplied_status if type(supplied_status) is int else None
     error_class = type(exc).__name__
@@ -119,6 +123,7 @@ class ModelGateway(Protocol):
 
 class BedrockModelGateway:
     def __init__(self, settings: Settings, client: Any | None = None, *, total_max_attempts: int = 4) -> None:
+        log_event("VV entering ", "app.models.gateway.BedrockModelGateway", "__init__")
         self.settings = settings
         self.model_id = settings.model_id
         self.aws_region = settings.aws_region
@@ -128,6 +133,7 @@ class BedrockModelGateway:
 
     @property
     def client(self) -> Any:
+        log_event("VV entering ", "app.models.gateway.BedrockModelGateway", "client")
         if self._client is None:
             import boto3
             from botocore.config import Config
@@ -152,6 +158,7 @@ class BedrockModelGateway:
         temperature: float,
         max_tokens: int,
     ) -> str:
+        log_event("VV entering ", "app.models.gateway.BedrockModelGateway", "generate")
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         policy = self.settings.model_policy(component, max_tokens)
         try:
@@ -200,12 +207,14 @@ class OpenAIModelGateway:
     """Text-only Responses API adapter for the existing typed agent contract."""
 
     def __init__(self, settings: Settings, client: Any | None = None) -> None:
+        log_event("VV entering ", "app.models.gateway.OpenAIModelGateway", "__init__")
         self.settings = settings
         self.model_id = settings.model_id
         self._client = client
 
     @property
     def client(self) -> Any:
+        log_event("VV entering ", "app.models.gateway.OpenAIModelGateway", "client")
         if self._client is None:
             from httpx import Timeout
             from openai import OpenAI
@@ -229,6 +238,7 @@ class OpenAIModelGateway:
 
     @trace_method
     def count_input_tokens(self, *, system_prompt, user_prompt, max_tokens, timeout_seconds=8.0):
+        log_event("VV entering ", "app.models.gateway.OpenAIModelGateway", "count_input_tokens")
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         policy = self.settings.model_policy(component, max_tokens)
         count_deadline = perf_counter() + timeout_seconds
@@ -285,6 +295,7 @@ class OpenAIModelGateway:
     ) -> str:
         # GPT-6 reasoning requests do not accept temperature. Keep the argument
         # for the existing agent interface, but do not forward it to OpenAI.
+        log_event("VV entering ", "app.models.gateway.OpenAIModelGateway", "generate")
         del temperature
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         policy = self.settings.model_policy(component, max_tokens)
@@ -376,6 +387,7 @@ class LocalFixtureModelGateway:
         temperature: float,
         max_tokens: int,
     ) -> str:
+        log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "generate")
         del temperature, max_tokens
         payload = json.loads(user_prompt)
         prompt_id = system_prompt.splitlines()[0].strip()
@@ -469,6 +481,7 @@ class LocalFixtureModelGateway:
 
     @staticmethod
     def _dependency_plan(payload: Mapping[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_dependency_plan")
         missing_questions = list(payload.get("missing_input_questions", []))
         if missing_questions:
             return {
@@ -510,6 +523,7 @@ class LocalFixtureModelGateway:
 
     @staticmethod
     def _route(payload: Mapping[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_route")
         requested = payload.get("requested_agents")
         context = payload.get("session_context", {})
         if requested:
@@ -634,6 +648,7 @@ class LocalFixtureModelGateway:
 
     @staticmethod
     def _spending_summary(payload: Mapping[str, Any], grounding: Mapping[str, Any]) -> str:
+        log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary")
         try:
             inner = json.loads(str(payload.get("message", "")))
             question = str(inner.get("user_request", "")) if isinstance(inner, dict) else ""
@@ -645,13 +660,16 @@ class LocalFixtureModelGateway:
         trends = list(grounding.get("category_trends", []))
 
         def label(category: str) -> str:
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.label")
             return str(category).replace("_", " ").strip()
 
         def mentioned(category: str) -> bool:
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.mentioned")
             word = label(category).lower()
             return bool(word) and word in asked
 
         def anomaly_line(anomaly: Mapping[str, Any]) -> str:
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.anomaly_line")
             category = label(anomaly.get("category", "other"))
             if anomaly.get("aggregation") == "category_month_total":
                 return (
@@ -667,6 +685,7 @@ class LocalFixtureModelGateway:
             )
 
         def trend_line(trend: Mapping[str, Any]) -> str:
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.trend_line")
             category = label(trend.get("category", "other"))
             total = (
                 f" Your {category} total is SGD {float(totals[category]):.2f}."
@@ -682,9 +701,11 @@ class LocalFixtureModelGateway:
             )
 
         def total_line(category: str) -> str:
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.total_line")
             return f"Your {label(category)} total is SGD {float(totals[category]):.2f}."
 
         def reduction_note() -> str:
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.reduction_note")
             return (
                 "To reduce surprises like this, check whether it was a one-off booking or a "
                 "new recurring cost, and set a category budget so future spikes get flagged early."
@@ -693,6 +714,7 @@ class LocalFixtureModelGateway:
         def quoted_anomaly() -> tuple[str, str, str] | None:
             # Insight cards embed the numbers, e.g. "A 5698.50 food expense is
             # 1601% higher than your historical average of 335.00".
+            log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_spending_summary.quoted_anomaly")
             match = re.search(
                 r"([\d,]+(?:\.\d{1,2})?)\s+([a-z][a-z _-]{1,30}?)\s+expense is\s*"
                 r"(\d+(?:\.\d+)?)%\s+higher than your historical average of\s*([\d,]+(?:\.\d{1,2})?)",
@@ -780,6 +802,7 @@ class LocalFixtureModelGateway:
 
     @staticmethod
     def _specialist(prompt_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "app.models.gateway.LocalFixtureModelGateway", "_specialist")
         grounding = payload.get("grounding", {})
         if prompt_id.endswith("spending"):
             if grounding.get("recurring_forecast"):
@@ -889,6 +912,7 @@ class LocalFixtureModelGateway:
 
 
 def create_model_gateway(settings: Settings) -> ModelGateway:
+    log_event("VV entering ", "app.models.gateway", "create_model_gateway")
     provider = settings.model_provider.lower()
     if provider == "openai":
         return OpenAIModelGateway(settings)
@@ -904,25 +928,30 @@ class TracingModelGateway:
     """Collects privacy-safe model telemetry while preserving the gateway contract."""
 
     def __init__(self, delegate: ModelGateway, settings: Settings) -> None:
+        log_event("VV entering ", "app.models.gateway.TracingModelGateway", "__init__")
         self.delegate = delegate
         self.settings = settings
         self._lock = threading.Lock()
         self._calls: dict[str, list[dict[str, Any]]] = {}
 
     def bind_trace(self, trace_id: str) -> Token:
+        log_event("VV entering ", "app.models.gateway.TracingModelGateway", "bind_trace")
         with self._lock:
             self._calls[trace_id] = []
         return _model_trace_id.set(trace_id)
 
     @staticmethod
     def reset_trace(token: Token) -> None:
+        log_event("VV entering ", "app.models.gateway.TracingModelGateway", "reset_trace")
         _model_trace_id.reset(token)
 
     def snapshot(self, trace_id: str) -> list[dict[str, Any]]:
+        log_event("VV entering ", "app.models.gateway.TracingModelGateway", "snapshot")
         with self._lock:
             return [dict(item) for item in self._calls.get(trace_id, [])]
 
     def clear(self, trace_id: str) -> None:
+        log_event("VV entering ", "app.models.gateway.TracingModelGateway", "clear")
         with self._lock:
             self._calls.pop(trace_id, None)
 
@@ -935,6 +964,7 @@ class TracingModelGateway:
         temperature: float,
         max_tokens: int,
     ) -> str:
+        log_event("VV entering ", "app.models.gateway.TracingModelGateway", "generate")
         trace_id = _model_trace_id.get()
         call_id = str(uuid4())
         last_model_call.set(call_id)

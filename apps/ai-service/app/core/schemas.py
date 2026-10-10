@@ -9,6 +9,8 @@ from coach_i18n import SupportedLocale, normalize_locale
 from coach_math.budget_scope import BudgetScope
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
+from app.core.telemetry import log_event
+
 
 class AgentName(StrEnum):
     SPENDING = "spending"
@@ -126,6 +128,7 @@ class OlderConversationSummary(StrictContractModel):
 
     @model_validator(mode="after")
     def validate_sources(self):
+        log_event("VV entering ", "app.core.schemas.OlderConversationSummary", "validate_sources")
         previous = 0
         for note in self.notes:
             if not previous < note.source_position < note.assistant_position <= self.through_position:
@@ -172,6 +175,7 @@ class SessionContext(StrictContractModel):
 
     @model_validator(mode="after")
     def validate_fact_values(self):
+        log_event("VV entering ", "app.core.schemas.SessionContext", "validate_fact_values")
         for field, fact in self.facts.items():
             if field in {"monthly_income", "monthly_expenses", "goal_target_amount", "goal_current_amount"}:
                 if not re.fullmatch(r"\d{1,12}(?:\.\d{1,2})?", fact.value) or Decimal(fact.value) > Decimal("999999999999.99"):
@@ -205,6 +209,7 @@ class CoachRequest(BaseModel):
     @field_validator("response_locale", mode="before")
     @classmethod
     def validate_response_locale(cls, value):
+        log_event("VV entering ", "app.core.schemas.CoachRequest", "validate_response_locale")
         if value is None:
             return None
         locale = normalize_locale(value)
@@ -215,6 +220,7 @@ class CoachRequest(BaseModel):
     @field_validator("message")
     @classmethod
     def strip_message(cls, value: str) -> str:
+        log_event("VV entering ", "app.core.schemas.CoachRequest", "strip_message")
         return value.strip()
 
 
@@ -287,6 +293,7 @@ class AgentTask(StrictContractModel):
 
     @model_validator(mode="after")
     def validate_role_scope(self):
+        log_event("VV entering ", "app.core.schemas.AgentTask", "validate_role_scope")
         allowed_fields = {
             AgentName.SPENDING: {"recent_transactions", "historical_transactions", "recurring_expenses", "period_start", "transaction_context"},
             AgentName.BUDGET: {"monthly_income", "recurring_expenses", "period_start", "planning_context", "saved_budget_capacity"},
@@ -362,6 +369,7 @@ class DependencyPlanningDecision(StrictContractModel):
 
     @model_validator(mode="after")
     def validate_status_payload(self):
+        log_event("VV entering ", "app.core.schemas.DependencyPlanningDecision", "validate_status_payload")
         if self.status == "ready" and (self.requests or self.questions):
             raise ValueError("ready dependency decisions cannot include requests or questions")
         if self.status == "needs_dependency" and not self.requests:
@@ -440,6 +448,7 @@ class TaskAssignment(StrictContractModel):
 
     @model_validator(mode="after")
     def validate_operation_scope(self):
+        log_event("VV entering ", "app.core.schemas.TaskAssignment", "validate_operation_scope")
         operations = {
             AgentName.SPENDING: {"analysis", "forecast", "record_read", "record_change"},
             AgentName.BUDGET: {"analysis", "reconciliation", "record_read", "planning", "record_change"},
@@ -488,6 +497,7 @@ class RouterDecision(BaseModel):
     @field_validator("selected_agents")
     @classmethod
     def validate_selected_agents(cls, value: list[AgentName]) -> list[AgentName]:
+        log_event("VV entering ", "app.core.schemas.RouterDecision", "validate_selected_agents")
         if AgentName.RISK_COMPLIANCE in value:
             raise ValueError("risk_compliance is a mandatory post-routing agent")
         return list(dict.fromkeys(value))
@@ -495,6 +505,7 @@ class RouterDecision(BaseModel):
     @field_validator("budget_status_period_start", "spending_analysis_period")
     @classmethod
     def validate_status_period(cls, value):
+        log_event("VV entering ", "app.core.schemas.RouterDecision", "validate_status_period")
         if value is not None and value.day != 1:
             raise ValueError("Budget status period must start on the first day")
         return value
@@ -532,6 +543,7 @@ class HybridEducationNarrative(GroundedEducationNarrative):
 
     @model_validator(mode="after")
     def bound_combined_answer(self) -> "HybridEducationNarrative":
+        log_event("VV entering ", "app.core.schemas.HybridEducationNarrative", "bound_combined_answer")
         if (
             len(self.summary) + sum(len(section.text) for section in self.general_knowledge)
             + sum(len(option.sourced_text) + len(option.model_text) for option in self.ordered_options)
@@ -562,6 +574,7 @@ class ComplianceDecision(BaseModel):
 
     @model_validator(mode="after")
     def explain_verdict(self):
+        log_event("VV entering ", "app.core.schemas.ComplianceDecision", "explain_verdict")
         if self.blocked and (not self.block_categories or not any(note.strip() for note in self.policy_notes)):
             raise ValueError("A blocking verdict requires block_categories and a brief policy note")
         if not self.blocked and not isinstance(self, ScopedEducationComplianceDecision) and self.block_categories:
@@ -582,6 +595,7 @@ class EducationReviewIssue(StrictContractModel):
     @field_validator("requirement")
     @classmethod
     def nonempty_requirement(cls, value: str) -> str:
+        log_event("VV entering ", "app.core.schemas.EducationReviewIssue", "nonempty_requirement")
         if not value.strip():
             raise ValueError("Correction requirements must be nonempty")
         return value
@@ -600,10 +614,12 @@ class ScopedEducationComplianceDecision(ComplianceDecision):
 
     @property
     def repairable(self) -> bool:
+        log_event("VV entering ", "app.core.schemas.ScopedEducationComplianceDecision", "repairable")
         return self._repairable
 
     @model_validator(mode="after")
     def validate_scoped_verdict(self):
+        log_event("VV entering ", "app.core.schemas.ScopedEducationComplianceDecision", "validate_scoped_verdict")
         veto = self.blocked or not self.request_allowed
         if veto and (not self.block_categories or not self.policy_notes or not self.blocking_issues):
             raise ValueError("A blocking verdict requires categories, a policy note and section-specific requirements")

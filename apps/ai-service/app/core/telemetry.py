@@ -11,7 +11,7 @@ from functools import wraps
 from time import perf_counter
 from uuid import uuid4
 
-from coach_trace import SCHEMA_VERSION, is_durable_event, safe_details
+from coach_trace import ENTRY_EVENT, SCHEMA_VERSION, is_durable_event, log_event_name, safe_details
 from coach_trace import code as _safe_code
 
 from app.core.run_trace import emit, task_context, workflow_id
@@ -47,8 +47,14 @@ def context_fields() -> dict:
     }
 
 
-def log_event(event: str, *, level: int = logging.INFO, **fields) -> None:
-    safe = safe_details(fields)
+def log_event(
+    event: str, classname: str | None = None, methodname: str | None = None,
+    *, level: int = logging.INFO, **fields,
+) -> None:
+    """Log static entry identifiers or allowlisted metadata; never inspect arguments."""
+    if event == ENTRY_EVENT and not logger.isEnabledFor(level):
+        return
+    safe = safe_details({**fields, "classname": classname, "methodname": methodname})
     durable = is_durable_event(event)
     timestamp = datetime.now(UTC).isoformat()
     if durable:
@@ -59,7 +65,7 @@ def log_event(event: str, *, level: int = logging.INFO, **fields) -> None:
             {
                 "timestamp": timestamp,
                 "service": SERVICE_NAME,
-                "event": _safe_code(event) or "telemetry.event",
+                "event": log_event_name(event),
                 **context_fields(),
                 **safe,
             },

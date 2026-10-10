@@ -9,6 +9,8 @@ from copy import deepcopy
 
 from coach_i18n import input_pattern
 
+from app.core.telemetry import log_event
+
 MAX_NOTES = 6
 BACKFILL_MESSAGES = 128
 TOPICS = {
@@ -27,6 +29,7 @@ OBJECTIVE = re.compile(
 
 
 def roll_summary(previous, messages, position, facts, observations=None):
+    log_event("VV entering ", "app.services.conversation_summary", "roll_summary")
     from app.services.session_context import CORRECTION, UNSAFE, advance_state
 
     # The eight most recent messages stay verbatim; only whole older pairs roll
@@ -139,6 +142,7 @@ def roll_summary(previous, messages, position, facts, observations=None):
 
 
 def _excerpt(text, limit, *, salient=False):
+    log_event("VV entering ", "app.services.conversation_summary", "_excerpt")
     if len(text) <= limit:
         return text
     if salient:

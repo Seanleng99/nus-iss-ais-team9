@@ -84,6 +84,7 @@ class EducationAnswerability(BaseModel):
 
 
 def is_fixture_gateway(gateway: ModelGateway) -> bool:
+    log_event("VV entering ", "app.rag.answerability", "is_fixture_gateway")
     while isinstance(gateway, TracingModelGateway):
         if gateway.settings.model_provider == "local_fixture":
             return True
@@ -92,6 +93,7 @@ def is_fixture_gateway(gateway: ModelGateway) -> bool:
 
 
 def _validate_plan(plan: EducationQueryPlan) -> EducationQueryPlan:
+    log_event("VV entering ", "app.rag.answerability", "_validate_plan")
     ids = [question.question_id for question in plan.subquestions]
     if len(ids) != len(set(ids)):
         raise ModelGatewayError("Subquestion IDs must be unique.", code="INVALID_EDUCATION_PROVENANCE",
@@ -130,6 +132,7 @@ def _validate_plan(plan: EducationQueryPlan) -> EducationQueryPlan:
 
 
 def fixture_query_plan(topics: list[str]) -> EducationQueryPlan:
+    log_event("VV entering ", "app.rag.answerability", "fixture_query_plan")
     return EducationQueryPlan(subquestions=[
         EducationSubquestion(
             question_id=f"q{index}", topic=topic,
@@ -143,6 +146,7 @@ def build_query_plan(
     gateway: ModelGateway, message: str, topics: list[str], excluded_topics: list[str],
     *, temperature: float, max_tokens: int, reference_context: list[dict] | None = None,
 ) -> EducationQueryPlan:
+    log_event("VV entering ", "app.rag.answerability", "build_query_plan")
     if is_fixture_gateway(gateway):
         return fixture_query_plan(topics)
     return generate_structured_response(
@@ -194,6 +198,7 @@ def validate_answerability(
     decision: EducationAnswerability, plan: EducationQueryPlan, contexts: list[dict],
     sources: list[dict] | None = None,
 ) -> EducationAnswerability:
+    log_event("VV entering ", "app.rag.answerability", "validate_answerability")
     passages = {item["passage_id"]: item for item in evidence_passages(contexts, sources)}
     expected = [question.question_id for question in plan.subquestions]
     if [item.question_id for item in decision.coverage] != expected:
@@ -244,9 +249,11 @@ def validate_answerability(
 
 def evidence_passages(contexts: list[dict], sources: list[dict] | None = None) -> list[dict]:
     """Exact server-owned spans; choosing an ID never changes quotation text."""
+    log_event("VV entering ", "app.rag.answerability", "evidence_passages")
     passages = []
     seen = set()
     def append(source_id, quote, evidence_field="text", context_index=None):
+        log_event("VV entering ", "app.rag.answerability", "evidence_passages.append")
         identity = (source_id, evidence_field, quote)
         if 0 < len(quote) <= 1200 and (evidence_field == "text" or identity not in seen):
             seen.add(identity)
@@ -276,6 +283,7 @@ def evidence_passages(contexts: list[dict], sources: list[dict] | None = None) -
 def unassessed_answerability(plan: EducationQueryPlan, contexts: list[dict]) -> EducationAnswerability:
     # A lexical match cannot prove that the passage answers a question. Offline
     # evidence reaches the writer/review contracts but is never promoted here.
+    log_event("VV entering ", "app.rag.answerability", "unassessed_answerability")
     return EducationAnswerability(coverage=[
         QuestionCoverage(
             question_id=question.question_id, status="unsupported", supporting_passages=[],
@@ -287,6 +295,7 @@ def unassessed_answerability(plan: EducationQueryPlan, contexts: list[dict]) -> 
 
 def unverified_answerability(plan: EducationQueryPlan) -> EducationAnswerability:
     """An exhausted model contract is an unverified gap, never evidence of support."""
+    log_event("VV entering ", "app.rag.answerability", "unverified_answerability")
     return EducationAnswerability(coverage=[
         QuestionCoverage(
             question_id=question.question_id, status="unsupported", supporting_passages=[],
@@ -299,6 +308,7 @@ def assess_answerability(
     gateway: ModelGateway, plan: EducationQueryPlan, contexts: list[dict],
     *, temperature: float, max_tokens: int, sources: list[dict] | None = None,
 ) -> EducationAnswerability:
+    log_event("VV entering ", "app.rag.answerability", "assess_answerability")
     if not plan.subquestions:
         return EducationAnswerability(coverage=[])
     if is_fixture_gateway(gateway) or not contexts:

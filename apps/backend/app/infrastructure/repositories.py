@@ -16,7 +16,7 @@ from app.core.data_lifecycle import (
     DURABLE_MEMORY_CONSENT_VERSION,
     DURABLE_MEMORY_PURPOSE,
 )
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 from app.domain.schemas import (
     SAFE_REFUSAL_TEMPLATES,
     FinancialGoal,
@@ -49,6 +49,7 @@ FAIRNESS_CONSENT_VERSION = "1.0"
 
 @trace_method
 def _lock_user_lifecycle(session: Session, user_id: str) -> None:
+    log_event("VV entering ", "app.infrastructure.repositories", "_lock_user_lifecycle")
     if session.get_bind().dialect.name != "postgresql":
         return
     # Serialize creation and deletion even when the user row does not exist yet.
@@ -60,6 +61,7 @@ def _lock_user_lifecycle(session: Session, user_id: str) -> None:
 
 @trace_method
 def _ensure_user(session: Session, user_id: str) -> UserRecord:
+    log_event("VV entering ", "app.infrastructure.repositories", "_ensure_user")
     _lock_user_lifecycle(session, user_id)
     user = session.get(UserRecord, user_id)
     if user is None:
@@ -72,12 +74,14 @@ def _ensure_user(session: Session, user_id: str) -> UserRecord:
 
 @trace_method
 def _touch_user(session: Session, user_id: str) -> None:
+    log_event("VV entering ", "app.infrastructure.repositories", "_touch_user")
     user = session.get(UserRecord, user_id)
     if user is not None:
         user.last_activity_at = datetime.now(UTC)
 
 
 def next_month(period_start: date) -> date:
+    log_event("VV entering ", "app.infrastructure.repositories", "next_month")
     if period_start.month == 12:
         return date(period_start.year + 1, 1, 1)
     return date(period_start.year, period_start.month + 1, 1)
@@ -85,13 +89,16 @@ def next_month(period_start: date) -> date:
 
 class SQLAlchemyUserRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "__init__")
         self.session = session
 
     @trace_method
     def get_profile(self, user_id: str) -> FinancialProfileRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "get_profile")
         return self.session.get(FinancialProfileRecord, user_id)
 
     def list_profiles(self) -> list[FinancialProfileRecord]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "list_profiles")
         query = select(FinancialProfileRecord).order_by(
             FinancialProfileRecord.updated_at.desc(),
             FinancialProfileRecord.user_id,
@@ -101,6 +108,7 @@ class SQLAlchemyUserRepository:
     def list_profiles_for_owner(
         self, owner_issuer: str, owner_subject: str
     ) -> list[FinancialProfileRecord]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "list_profiles_for_owner")
         query = (
             select(FinancialProfileRecord)
             .join(UserRecord, UserRecord.id == FinancialProfileRecord.user_id)
@@ -116,6 +124,7 @@ class SQLAlchemyUserRepository:
         return list(self.session.scalars(query))
 
     def exists(self, user_id: str) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "exists")
         return self.session.get(UserRecord, user_id) is not None
 
     def create_profile(
@@ -126,6 +135,7 @@ class SQLAlchemyUserRepository:
         owner_issuer: str | None = None,
         owner_subject: str | None = None,
     ) -> FinancialProfileRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "create_profile")
         _lock_user_lifecycle(self.session, user_id)
         if self.session.get(UserRecord, user_id) is not None:
             raise ValueError("Profile already exists")
@@ -142,6 +152,7 @@ class SQLAlchemyUserRepository:
         return self.upsert_profile(user_id, profile)
 
     def upsert_profile(self, user_id: str, profile: ProfileUpsert) -> FinancialProfileRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "upsert_profile")
         _ensure_user(self.session, user_id)
         record = self.get_profile(user_id)
         if record is None:
@@ -167,6 +178,7 @@ class SQLAlchemyUserRepository:
         return record
 
     def delete_profile(self, user_id: str) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "delete_profile")
         _lock_user_lifecycle(self.session, user_id)
         user = self.session.get(UserRecord, user_id)
         if user is None or self.get_profile(user_id) is None:
@@ -176,6 +188,7 @@ class SQLAlchemyUserRepository:
         return True
 
     def export_user_data(self, user_id: str) -> dict[str, Any] | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "export_user_data")
         user = self.session.get(UserRecord, user_id)
         if user is None:
             return None
@@ -406,12 +419,14 @@ class SQLAlchemyUserRepository:
         }
 
     def delete_user_data(self, user_id: str) -> dict[str, int] | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "delete_user_data")
         _lock_user_lifecycle(self.session, user_id)
         user = self.session.get(UserRecord, user_id)
         if user is None:
             return None
 
         def count(model: type[Any]) -> int:
+            log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "delete_user_data.count")
             return int(
                 self.session.scalar(
                     select(func.count()).select_from(model).where(model.user_id == user_id)
@@ -460,6 +475,7 @@ class SQLAlchemyUserRepository:
         return counts
 
     def delete_if_empty(self, user_id: str) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "delete_if_empty")
         _lock_user_lifecycle(self.session, user_id)
         user = self.session.get(UserRecord, user_id)
         if user is None:
@@ -488,6 +504,7 @@ class SQLAlchemyUserRepository:
 
     @trace_method
     def get_financial_snapshot(self, user_id: str, period_start: date | None = None) -> UserFinancialSnapshot | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyUserRepository", "get_financial_snapshot")
         if self.session.get(UserRecord, user_id) is None:
             return None
 
@@ -573,18 +590,22 @@ class SQLAlchemyUserRepository:
 
 class SQLAlchemyFairnessProfileRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyFairnessProfileRepository", "__init__")
         self.session = session
 
     def get_demographics(self, user_id: str) -> ProfileDemographicRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyFairnessProfileRepository", "get_demographics")
         return self.session.get(ProfileDemographicRecord, user_id)
 
     def get_consent(self, user_id: str) -> ProfileConsentRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyFairnessProfileRepository", "get_consent")
         return self.session.get(
             ProfileConsentRecord,
             (user_id, FAIRNESS_EVALUATION_PURPOSE),
         )
 
     def set_consent(self, user_id: str, granted: bool) -> ProfileConsentRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyFairnessProfileRepository", "set_consent")
         _ensure_user(self.session, user_id)
         record = self.get_consent(user_id)
         now = datetime.now(UTC)
@@ -609,6 +630,7 @@ class SQLAlchemyFairnessProfileRepository:
     def upsert_demographics(
         self, user_id: str, demographics: DemographicUpsert
     ) -> ProfileDemographicRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyFairnessProfileRepository", "upsert_demographics")
         consent = self.get_consent(user_id)
         if consent is None or not consent.granted:
             raise PermissionError("Fairness evaluation consent is required")
@@ -625,14 +647,17 @@ class SQLAlchemyFairnessProfileRepository:
 
 class SQLAlchemyConsentRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyConsentRepository", "__init__")
         self.session = session
 
     def get(self, user_id: str, purpose: str) -> ProfileConsentRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyConsentRepository", "get")
         return self.session.get(ProfileConsentRecord, (user_id, purpose))
 
     def set_durable_memory_consent(
         self, user_id: str, granted: bool
     ) -> ProfileConsentRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyConsentRepository", "set_durable_memory_consent")
         _ensure_user(self.session, user_id)
         record = self.get(user_id, DURABLE_MEMORY_PURPOSE)
         now = datetime.now(UTC)
@@ -653,6 +678,7 @@ class SQLAlchemyConsentRepository:
 
 class SQLAlchemyTransactionRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "__init__")
         self.session = session
 
     @staticmethod
@@ -660,6 +686,7 @@ class SQLAlchemyTransactionRepository:
     def _query(
         user_id: str, period_start: date | None = None
     ) -> Select[tuple[TransactionRecord]]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "_query")
         query = (
             select(TransactionRecord)
             .where(TransactionRecord.user_id == user_id)
@@ -676,10 +703,12 @@ class SQLAlchemyTransactionRepository:
     def list_records(
         self, user_id: str, *, period_start: date | None = None, limit: int = 500
     ) -> list[TransactionRecord]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "list_records")
         return list(self.session.scalars(self._query(user_id, period_start).limit(limit)))
 
     @staticmethod
     def to_transaction(record: TransactionRecord) -> Transaction:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "to_transaction")
         return Transaction(
             description=record.description, category=record.category,
             amount=MoneyAmount(currency=record.currency, amount=float(record.amount)),
@@ -695,6 +724,7 @@ class SQLAlchemyTransactionRepository:
         group_by: str | None = None, limit: int = 50,
     ) -> tuple[list[TransactionRecord], int, float, dict[str, float]]:
         """Return bounded details with exact totals over the entire owned range."""
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "search_expenses")
         filters = [TransactionRecord.user_id == user_id,
                    TransactionRecord.transaction_type == "expense",
                    TransactionRecord.currency == "SGD"]
@@ -730,10 +760,12 @@ class SQLAlchemyTransactionRepository:
 
     @trace_method
     def list_for_user(self, user_id: str) -> list[Transaction]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "list_for_user")
         return [self.to_transaction(record) for record in self.list_records(user_id)
                 if record.transaction_type == "expense"]
 
     def _obligation_id(self, user_id: str, transaction: TransactionCreate, existing_id=None):
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "_obligation_id")
         if transaction.recurrence is None:
             return None
         wanted = transaction.obligation_id or existing_id
@@ -758,6 +790,7 @@ class SQLAlchemyTransactionRepository:
         return wanted
 
     def create(self, user_id: str, transaction: TransactionCreate) -> TransactionRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "create")
         _ensure_user(self.session, user_id)
         record = TransactionRecord(
             user_id=user_id,
@@ -778,6 +811,7 @@ class SQLAlchemyTransactionRepository:
     def update(
         self, user_id: str, transaction_id: UUID, transaction: TransactionCreate
     ) -> TransactionRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "update")
         from app.services.budget_reconciliation import guard_transaction
         guard_transaction(self.session, user_id, transaction_id)
         record = self.session.scalar(
@@ -808,6 +842,7 @@ class SQLAlchemyTransactionRepository:
         return record
 
     def delete(self, user_id: str, transaction_id: object) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyTransactionRepository", "delete")
         from app.services.budget_reconciliation import guard_transaction
         guard_transaction(self.session, user_id, transaction_id)
         record = self.session.scalar(
@@ -826,10 +861,12 @@ class SQLAlchemyTransactionRepository:
 
 class SQLAlchemyGoalRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyGoalRepository", "__init__")
         self.session = session
 
     @trace_method
     def list_records(self, user_id: str) -> list[FinancialGoalRecord]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyGoalRepository", "list_records")
         query = (
             select(FinancialGoalRecord)
             .where(FinancialGoalRecord.user_id == user_id)
@@ -839,6 +876,7 @@ class SQLAlchemyGoalRepository:
 
     @trace_method
     def list_for_user(self, user_id: str) -> list[FinancialGoal]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyGoalRepository", "list_for_user")
         return [
             FinancialGoal(
                 name=record.name,
@@ -854,6 +892,7 @@ class SQLAlchemyGoalRepository:
         ]
 
     def create(self, user_id: str, goal: GoalCreate) -> FinancialGoalRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyGoalRepository", "create")
         _ensure_user(self.session, user_id)
         if goal.current_amount.currency != goal.target_amount.currency:
             raise ValueError("Goal amounts must use the same currency")
@@ -872,6 +911,7 @@ class SQLAlchemyGoalRepository:
     def update(
         self, user_id: str, goal_id: UUID, goal: GoalCreate
     ) -> FinancialGoalRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyGoalRepository", "update")
         record = self.session.scalar(
             select(FinancialGoalRecord).where(
                 FinancialGoalRecord.id == goal_id,
@@ -892,6 +932,7 @@ class SQLAlchemyGoalRepository:
         return record
 
     def delete(self, user_id: str, goal_id: object) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyGoalRepository", "delete")
         record = self.session.scalar(
             select(FinancialGoalRecord).where(
                 FinancialGoalRecord.id == goal_id,
@@ -908,11 +949,13 @@ class SQLAlchemyGoalRepository:
 
 class SQLAlchemyBudgetRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "__init__")
         self.session = session
 
     def get(
         self, user_id: str, period_start: date, *, for_update: bool = False
     ) -> MonthlyBudgetRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "get")
         if for_update:
             # Serialize absent-row creation as well as edits with the same lock as upsert.
             _lock_user_lifecycle(self.session, user_id)
@@ -929,6 +972,7 @@ class SQLAlchemyBudgetRepository:
         return self.session.scalar(query)
 
     def upsert(self, user_id: str, budget: BudgetUpsert) -> MonthlyBudgetRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "upsert")
         from app.services.budget_constraints import constraint_questions
         questions = constraint_questions(self.session, user_id, budget.period_start,
             {item.category: item.limit_amount for item in budget.categories}, budget.planning)
@@ -974,6 +1018,7 @@ class SQLAlchemyBudgetRepository:
         return record
 
     def spending_by_category(self, user_id: str, period_start: date, *, currency: str | None = None) -> dict[str, float]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "spending_by_category")
         query = (
             select(TransactionRecord.category, func.sum(TransactionRecord.amount))
             .where(
@@ -995,6 +1040,7 @@ class SQLAlchemyBudgetRepository:
 
     def review_spending(self, user_id: str, period_start: date, through: date) -> list[dict]:
         """Owned SGD aggregates through a fixed cutoff; no transaction descriptions leave storage."""
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "review_spending")
         query = select(
             TransactionRecord.category, TransactionRecord.recurring,
             func.sum(TransactionRecord.amount), func.count(TransactionRecord.id),
@@ -1016,6 +1062,7 @@ class SQLAlchemyBudgetRepository:
         return rows
 
     def transaction_count(self, user_id: str, period_start: date, *, currency: str | None = None) -> int:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "transaction_count")
         query = select(func.count(TransactionRecord.id)).where(
             TransactionRecord.user_id == user_id,
             TransactionRecord.occurred_on >= period_start,
@@ -1030,6 +1077,7 @@ class SQLAlchemyBudgetRepository:
         self, user_id: str, start_date: date, end_date: date, *, currency: str | None = None
     ) -> list[TransactionRecord]:
         """Get all transactions for a user in a date range."""
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyBudgetRepository", "get_transactions_in_range")
         query = select(TransactionRecord).where(
             TransactionRecord.user_id == user_id,
             TransactionRecord.occurred_on >= start_date,
@@ -1043,10 +1091,12 @@ class SQLAlchemyBudgetRepository:
 
 class SQLAlchemyChatRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "__init__")
         self.session = session
 
     @trace_method
     def context_snapshot(self, user_id: str, session_id: str) -> tuple[bool, int, list[dict]]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "context_snapshot")
         owner = self.session.scalar(
             select(ChatSessionRecord.user_id).where(ChatSessionRecord.id == session_id)
         )
@@ -1079,6 +1129,7 @@ class SQLAlchemyChatRepository:
 
     @trace_method
     def list_for_user(self, user_id: str) -> list[ChatSessionRecord]:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "list_for_user")
         query = (
             select(ChatSessionRecord)
             .options(selectinload(ChatSessionRecord.messages))
@@ -1089,6 +1140,7 @@ class SQLAlchemyChatRepository:
 
     @trace_method
     def get(self, user_id: str, session_id: str) -> ChatSessionRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "get")
         query = (
             select(ChatSessionRecord)
             .options(
@@ -1108,6 +1160,7 @@ class SQLAlchemyChatRepository:
         self, user_id: str, session_id: str
     ) -> ChatSessionRecord | None:
         # Keep lock order consistent with budget writes and profile deletion.
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "get_for_update")
         _lock_user_lifecycle(self.session, user_id)
         query = (
             select(ChatSessionRecord)
@@ -1122,10 +1175,12 @@ class SQLAlchemyChatRepository:
 
     @trace_method
     def id_exists(self, session_id: str) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "id_exists")
         return self.session.get(ChatSessionRecord, session_id) is not None
 
     @trace_method
     def create(self, user_id: str, session_id: str, title: str) -> ChatSessionRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "create")
         _ensure_user(self.session, user_id)
         record = ChatSessionRecord(id=session_id, user_id=user_id, title=title)
         self.session.add(record)
@@ -1135,6 +1190,7 @@ class SQLAlchemyChatRepository:
     def rename(
         self, user_id: str, session_id: str, title: str
     ) -> ChatSessionRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "rename")
         record = self.get(user_id, session_id)
         if record is None:
             return None
@@ -1144,6 +1200,7 @@ class SQLAlchemyChatRepository:
         return record
 
     def delete(self, user_id: str, session_id: str) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "delete")
         record = self.get(user_id, session_id)
         if record is None:
             return False
@@ -1161,6 +1218,7 @@ class SQLAlchemyChatRepository:
         content: str,
         sources: list[dict[str, Any]] | None = None,
     ) -> ChatMessageRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyChatRepository", "append_message")
         message = ChatMessageRecord(
             chat_session=chat_session,
             role=role,
@@ -1177,6 +1235,7 @@ class SQLAlchemyChatRepository:
 
 class SQLAlchemyOrchestrationTraceRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "__init__")
         self.session = session
 
     @trace_method
@@ -1191,6 +1250,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         audit: dict[str, Any],
         blocked: bool,
     ) -> OrchestrationTraceRecord:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "create")
         record = OrchestrationTraceRecord(
             trace_id=trace_id,
             session_id=session_id,
@@ -1209,6 +1269,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         return record
 
     def list_for_user(self, user_id: str, *, status: str | None, limit: int, offset: int):
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "list_for_user")
         query = (
             select(OrchestrationTraceRecord, ChatSessionRecord.title)
             .join(ChatSessionRecord, ChatSessionRecord.id == OrchestrationTraceRecord.session_id)
@@ -1231,6 +1292,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         user_id: str,
         trace_id: str,
     ) -> OrchestrationTraceRecord | None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "get_for_user")
         query = (
             select(OrchestrationTraceRecord)
             .join(
@@ -1245,6 +1307,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         return self.session.scalar(query)
 
     def delete_for_user(self, user_id: str, trace_id: str) -> bool:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "delete_for_user")
         record = self.get_for_user(user_id, trace_id)
         if record is None:
             return False
@@ -1255,6 +1318,7 @@ class SQLAlchemyOrchestrationTraceRepository:
 
     def mark_abandoned(self, now: datetime, *, user_id: str | None = None) -> int:
         """Deadline exceeds the bounded HTTP call, including persistence grace time."""
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "mark_abandoned")
         query = update(OrchestrationTraceRecord).where(
             OrchestrationTraceRecord.status == "running",
             OrchestrationTraceRecord.deadline_at < now,
@@ -1270,6 +1334,7 @@ class SQLAlchemyOrchestrationTraceRepository:
         return int(result.rowcount or 0)
 
     def delete_expired(self, cutoff: datetime) -> int:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "delete_expired")
         self.mark_abandoned(datetime.now(UTC))
         expired = OrchestrationTraceRecord.created_at < cutoff
         language = OrchestrationTraceRecord.audit["response_language"].as_string()
@@ -1307,6 +1372,7 @@ class SQLAlchemyOrchestrationTraceRepository:
     def _sanitize_blocked_assistant_message(
         self, record: OrchestrationTraceRecord
     ) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyOrchestrationTraceRepository", "_sanitize_blocked_assistant_message")
         message = record.assistant_message
         if record.blocked and message is not None and message.role == "assistant":
             message.content = blocked_response_answer(
@@ -1318,9 +1384,11 @@ class SQLAlchemyOrchestrationTraceRepository:
 
 class SQLAlchemyDataLifecycleRepository:
     def __init__(self, session: Session) -> None:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyDataLifecycleRepository", "__init__")
         self.session = session
 
     def delete_expired_chat_sessions(self, cutoff: datetime) -> int:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyDataLifecycleRepository", "delete_expired_chat_sessions")
         records = list(
             self.session.scalars(
                 select(ChatSessionRecord).where(ChatSessionRecord.updated_at < cutoff)
@@ -1334,6 +1402,7 @@ class SQLAlchemyDataLifecycleRepository:
     def delete_expired_synthetic_users(
         self, cutoff: datetime, prefixes: tuple[str, ...]
     ) -> int:
+        log_event("VV entering ", "app.infrastructure.repositories.SQLAlchemyDataLifecycleRepository", "delete_expired_synthetic_users")
         if not prefixes:
             return 0
         records = list(

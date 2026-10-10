@@ -5,6 +5,7 @@ from collections import Counter
 from math import log
 
 from app.core.guardrails import normalize_for_security_inspection
+from app.core.telemetry import log_event
 
 STOP_WORDS = frozenset(
     [
@@ -36,6 +37,7 @@ STOP_WORDS = frozenset(
 
 
 def terms(text: str) -> list[str]:
+    log_event("VV entering ", "app.rag.ranking", "terms")
     text = normalize_for_security_inspection(text).casefold()
     text = text.replace("%", " percent ")
     for phrase, abbreviation in (
@@ -70,6 +72,7 @@ def terms(text: str) -> list[str]:
 
 
 def passage_scores(query: str, passages: list[str]) -> list[float]:
+    log_event("VV entering ", "app.rag.ranking", "passage_scores")
     if not passages:
         return []
     query = re.sub(r"^General investment education about\s+", "", query, flags=re.IGNORECASE)

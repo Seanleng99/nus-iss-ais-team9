@@ -7,7 +7,7 @@ from coach_i18n import SupportedLocale, normalize_locale, translate
 from coach_trace.review import review_metadata
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 from app.domain.currency import ApplicationCurrency
 from app.domain.recurrence import LedgerRecurrence
 
@@ -72,6 +72,7 @@ class CoachRequest(BaseModel):
     @field_validator("budget_period_start")
     @classmethod
     def validate_budget_period(cls, value):
+        log_event("VV entering ", "app.domain.schemas.CoachRequest", "validate_budget_period")
         if value is not None and value.day != 1:
             raise ValueError("Budget period must be the first day of a month")
         return value
@@ -79,6 +80,7 @@ class CoachRequest(BaseModel):
     @field_validator("response_locale", mode="before")
     @classmethod
     def validate_response_locale(cls, value):
+        log_event("VV entering ", "app.domain.schemas.CoachRequest", "validate_response_locale")
         if value is None:
             return None
         locale = normalize_locale(value)
@@ -89,6 +91,7 @@ class CoachRequest(BaseModel):
     @field_validator("message")
     @classmethod
     def strip_message(cls, value: str) -> str:
+        log_event("VV entering ", "app.domain.schemas.CoachRequest", "strip_message")
         return value.strip()
 
 
@@ -160,6 +163,7 @@ SAFE_POLICY_EVIDENCE_CODE = "policy_evidence:insufficient"
 def normalize_response_language(value: Any) -> Literal["English", "Chinese"]:
     # Historical audit values are untrusted; preserve the strict read boundary.
     # Request aliases are normalized separately by the request contract.
+    log_event("VV entering ", "app.domain.schemas", "normalize_response_language")
     return "Chinese" if value == "Chinese" else "English"
 
 
@@ -167,6 +171,7 @@ def blocked_response_answer(
     *, response_language: str = "English", answer: str | None = None
 ) -> str:
     # Only exact, reviewed templates may survive a blocked response. Never pass through model text.
+    log_event("VV entering ", "app.domain.schemas", "blocked_response_answer")
     response_language = normalize_response_language(response_language)
     for key in SAFE_REFUSAL_KEYS:
         if answer in (translate(key, "en"), translate(key, "zh-Hans")):
@@ -175,11 +180,13 @@ def blocked_response_answer(
 
 
 def blocked_agent_rationale(*, response_language: str = "English") -> str:
+    log_event("VV entering ", "app.domain.schemas", "blocked_agent_rationale")
     response_language = normalize_response_language(response_language)
     return translate("safety.withheld_rationale", response_language)
 
 
 def _safe_policy_notes(notes: list[str]) -> list[str]:
+    log_event("VV entering ", "app.domain.schemas", "_safe_policy_notes")
     safe_notes = [
         note
         for note in notes
@@ -200,6 +207,7 @@ def blocked_agent_result(
     *,
     response_language: str = "English",
 ) -> dict[str, Any]:
+    log_event("VV entering ", "app.domain.schemas", "blocked_agent_result")
     response_language = normalize_response_language(response_language)
     return {
         "agent": agent.value if isinstance(agent, AgentName) else agent,
@@ -215,6 +223,7 @@ def blocked_agent_result(
 def sanitize_blocked_agent_results(
     agent_results: list[Any], *, response_language: str = "English"
 ) -> list[dict[str, Any]]:
+    log_event("VV entering ", "app.domain.schemas", "sanitize_blocked_agent_results")
     sanitized: list[dict[str, Any]] = []
     for item in agent_results:
         agent = (
@@ -239,6 +248,7 @@ def sanitize_blocked_agent_results(
 
 
 def sanitize_blocked_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    log_event("VV entering ", "app.domain.schemas", "sanitize_blocked_audit")
     sanitized = dict(audit)
     response_language = normalize_response_language(audit.get("response_language"))
     sanitized["response_language"] = response_language
@@ -277,6 +287,7 @@ class CoachResponse(BaseModel):
     @model_validator(mode="after")
     @trace_method
     def sanitize_blocked_response(self) -> "CoachResponse":
+        log_event("VV entering ", "app.domain.schemas.CoachResponse", "sanitize_blocked_response")
         if self.blocked:
             self.audit = sanitize_blocked_audit(self.audit)
             response_language = self.audit["response_language"]
@@ -335,6 +346,7 @@ class OrchestrationTraceResponse(BaseModel):
 
     @model_validator(mode="after")
     def sanitize_blocked_trace(self) -> "OrchestrationTraceResponse":
+        log_event("VV entering ", "app.domain.schemas.OrchestrationTraceResponse", "sanitize_blocked_trace")
         if self.blocked:
             self.audit = sanitize_blocked_audit(self.audit)
             self.agent_results = [

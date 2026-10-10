@@ -150,14 +150,17 @@ AGENT_LABELS = {"spending", "budget", "goal_strategy", "investment_education", "
 
 
 def _option_index(options: list[str], value: str | None) -> int | None:
+    log_event("VV entering ", "ui.pages", "_option_index")
     return options.index(value) if value in options else None
 
 
 def _category_label(category: str) -> str:
+    log_event("VV entering ", "ui.pages", "_category_label")
     return option_label(category)
 
 
 def _confidence_band(value: float, locale="en") -> str:
+    log_event("VV entering ", "ui.pages", "_confidence_band")
     if value < 0.5:
         return translate("coach.confidence_low", locale)
     if value < 0.8:
@@ -166,6 +169,7 @@ def _confidence_band(value: float, locale="en") -> str:
 
 
 def _agent_label(agent: str, locale) -> str:
+    log_event("VV entering ", "ui.pages", "_agent_label")
     return (
         translate(f"coach.agent_{agent}", locale)
         if agent in AGENT_LABELS else agent.replace("_", " ").title()
@@ -173,6 +177,7 @@ def _agent_label(agent: str, locale) -> str:
 
 
 def _coach_reference(explanation, locale) -> str:
+    log_event("VV entering ", "ui.pages", "_coach_reference")
     parts = []
     if explanation.get("trace_id"):
         parts.append(translate("coach.reference", locale, trace_id=explanation["trace_id"]))
@@ -182,6 +187,7 @@ def _coach_reference(explanation, locale) -> str:
 
 
 def _render_coach_explanation(explanation: dict | None, locale="en") -> None:
+    log_event("VV entering ", "ui.pages", "_render_coach_explanation")
     with (
         call_span(f"{__name__}._render_coach_explanation")
         if context_fields().get("correlation_id") else nullcontext()
@@ -243,6 +249,7 @@ def _transaction_payload(
     recurring: bool,
     recurrence: dict | None = None,
 ) -> dict:
+    log_event("VV entering ", "ui.pages", "_transaction_payload")
     return {
         "description": description.strip(),
         "category": category,
@@ -254,6 +261,7 @@ def _transaction_payload(
 
 
 def _recurrence_fields(key, existing=None):
+    log_event("VV entering ", "ui.pages", "_recurrence_fields")
     existing = existing or {}
     options = ["unknown", "once", "weekly", "fortnightly", "monthly", "yearly"]
     with st.expander(ui_text("Recurring schedule (optional)")):
@@ -289,6 +297,7 @@ def _create_pie_chart(categories: list[str], amounts: list[float], currency: str
     Create a pie chart for spending category distribution.
     Returns None if plotly is not available.
     """
+    log_event("VV entering ", "ui.pages", "_create_pie_chart")
     try:
         import plotly.graph_objects as go
     except ImportError:
@@ -330,6 +339,7 @@ def _create_pie_chart(categories: list[str], amounts: list[float], currency: str
 
 
 def dashboard_page() -> None:
+    log_event("VV entering ", "ui.pages", "dashboard_page")
     client = get_client()
     user_id = get_user_id()
     period_start = get_period_start()
@@ -514,6 +524,7 @@ def dashboard_page() -> None:
 
 
 def _render_budget_plan_summary(budget: dict) -> None:
+    log_event("VV entering ", "ui.pages", "_render_budget_plan_summary")
     planning = budget.get("planning")
     if not planning:
         return
@@ -530,6 +541,7 @@ def _render_budget_plan_summary(budget: dict) -> None:
 
 
 def _render_overview_budget(budget: dict | None, currency: str) -> None:
+    log_event("VV entering ", "ui.pages", "_render_overview_budget")
     st.subheader(":material/account_balance_wallet: " + ui_text("Budget"), anchor=False)
     st.caption(
         ui_text('Your monthly plan and the categories that need attention. Edit your plan in Budget. Ask Coach for spending reviews or pace illustrations.')
@@ -619,6 +631,7 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
                 st.caption(ui_text('Highest usage first · up to 5 categories'))
 
                 def usage_rank(item):
+                    log_event("VV entering ", "ui.pages", "_render_overview_budget.usage_rank")
                     limit = float(item["limit_amount"])
                     actual = float(item["spent_amount"])
                     return actual / limit if limit > 0 else (float("inf") if actual > 0 else 0)
@@ -653,6 +666,7 @@ def _render_overview_budget(budget: dict | None, currency: str) -> None:
 
 
 def transactions_page() -> None:
+    log_event("VV entering ", "ui.pages", "transactions_page")
     client = get_client()
     user_id = get_user_id()
     period_start = get_period_start()
@@ -899,12 +913,14 @@ def transactions_page() -> None:
 
 
 def budget_page() -> None:
+    log_event("VV entering ", "ui.pages", "budget_page")
     render_budget_page(
         get_client(), get_user_id(), get_period_start(), CATEGORIES, _create_pie_chart,
     )
 
 
 def goals_page() -> None:
+    log_event("VV entering ", "ui.pages", "goals_page")
     client = get_client()
     user_id = get_user_id()
     page_header(ui_text('Goals'), ui_text('Savings targets'))
@@ -1033,10 +1049,12 @@ def goals_page() -> None:
 
 def _user_message_markdown(content: str) -> str:
     # Markdown renders a single newline as a space; keep the user's typed line breaks.
+    log_event("VV entering ", "ui.pages", "_user_message_markdown")
     return "  \n".join(currency_safe_markdown(content).replace("\r\n", "\n").split("\n"))
 
 
 def _render_coach_message(message: dict, locale="en") -> None:
+    log_event("VV entering ", "ui.pages", "_render_coach_message")
     with (
         call_span(f"{__name__}._render_coach_message")
         if context_fields().get("correlation_id") else nullcontext()
@@ -1087,22 +1105,26 @@ def _render_coach_message(message: dict, locale="en") -> None:
 
 
 def _escape_markdown_text(value: str) -> str:
+    log_event("VV entering ", "ui.pages", "_escape_markdown_text")
     value = html.escape(" ".join(value.split()), quote=False)
     return re.sub(r"([\\`*_{}\[\]()#+!|>$])", r"\\\1", value)
 
 
 def _open_coach_rename(session_id: str, title: str) -> None:
+    log_event("VV entering ", "ui.pages", "_open_coach_rename")
     st.session_state.coach_rename_open = session_id
     st.session_state[f"coach-rename-title-{session_id}"] = title
     st.session_state.pop("coach_delete_open", None)
 
 
 def _open_coach_delete(session_id: str) -> None:
+    log_event("VV entering ", "ui.pages", "_open_coach_delete")
     st.session_state.coach_delete_open = session_id
     st.session_state.pop("coach_rename_open", None)
 
 
 def _render_coach_conversations(client, user_id, sessions, active_session_id, label) -> None:
+    log_event("VV entering ", "ui.pages", "_render_coach_conversations")
     with st.container(key="coach-conversation-list", gap=None):
         for chat_session in sessions:
             session_id = chat_session["id"]
@@ -1203,6 +1225,7 @@ def _render_coach_conversations(client, user_id, sessions, active_session_id, la
 
 
 def coach_page() -> None:
+    log_event("VV entering ", "ui.pages", "coach_page")
     client = get_client()
     user_id = get_user_id()
     selection = current_selection(user_id)
@@ -1214,6 +1237,7 @@ def coach_page() -> None:
     ui_locale = selection
 
     def label(key, **values):
+        log_event("VV entering ", "ui.pages", "coach_page.label")
         return translate(key, ui_locale, **values)
     
     # Check if there's a pending question from insight cards with navigation flag
@@ -1394,6 +1418,7 @@ def coach_page() -> None:
 
 
 def profile_page() -> None:
+    log_event("VV entering ", "ui.pages", "profile_page")
     client = get_client()
     user_id = get_user_id()
     page_header(ui_text('Profile settings'), ui_text('Financial baseline'))
@@ -1741,6 +1766,7 @@ def profile_page() -> None:
 
 
 def create_profile_page() -> None:
+    log_event("VV entering ", "ui.pages", "create_profile_page")
     client = get_client()
     page_header(ui_text('Create profile'), ui_text('New financial workspace'))
     created_notice = st.session_state.pop("profile_created_notice", None)

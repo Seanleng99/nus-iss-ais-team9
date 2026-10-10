@@ -15,19 +15,23 @@ class _RequestState:
 
 class RequestScopedEducationRetriever:
     def __init__(self, delegate: EducationRetriever) -> None:
+        log_event("VV entering ", "app.rag.request_cache.RequestScopedEducationRetriever", "__init__")
         self.delegate = delegate
         self._state: ContextVar[_RequestState | None] = ContextVar(
             f"education_request_state_{id(self)}", default=None
         )
 
     def begin_request(self) -> Token[_RequestState | None]:
+        log_event("VV entering ", "app.rag.request_cache.RequestScopedEducationRetriever", "begin_request")
         return self._state.set(_RequestState())
 
     def end_request(self, token: Token[_RequestState | None]) -> None:
+        log_event("VV entering ", "app.rag.request_cache.RequestScopedEducationRetriever", "end_request")
         self._state.reset(token)
 
     @property
     def expected_corpus_version(self) -> str | None:
+        log_event("VV entering ", "app.rag.request_cache.RequestScopedEducationRetriever", "expected_corpus_version")
         return getattr(
             self.delegate,
             "expected_corpus_version",
@@ -36,6 +40,7 @@ class RequestScopedEducationRetriever:
 
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.request_cache.RequestScopedEducationRetriever", "retrieve")
         state = self._state.get()
         if state is None:
             log_event("rag.cache.lookup", cache_hit=False, reason_code="NO_REQUEST_SCOPE")

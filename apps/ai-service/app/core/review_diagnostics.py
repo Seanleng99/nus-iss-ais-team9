@@ -13,6 +13,7 @@ from app.core.telemetry import log_event
 
 
 def save_review_diagnostic(directory, draft, sections, verdict, facts):
+    log_event("VV entering ", "app.core.review_diagnostics", "save_review_diagnostic")
     if not directory or not (verdict.blocked or getattr(verdict, "complete", True) is False):
         return
     try:

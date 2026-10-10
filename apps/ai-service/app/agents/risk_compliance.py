@@ -253,6 +253,7 @@ def cross_user_data_findings(text: str) -> list[str]:
     boundary enforced here is that the coach never *attempts* to surface a
     third party's data in the first place.
     """
+    log_event("VV entering ", "app.agents.risk_compliance", "cross_user_data_findings")
     normalized = " ".join(normalize_for_security_inspection(text).casefold().split())
     return list(
         dict.fromkeys(
@@ -276,6 +277,7 @@ SAFE_POLICY_NOTES = (
 
 def requires_financial_language_review(text: str, finding: str) -> bool:
     """Ambiguous term references need an explicit verdict, never automatic approval."""
+    log_event("VV entering ", "app.agents.risk_compliance", "requires_financial_language_review")
     if finding not in {"regulated_advice:guaranteed return", "regulated_advice:personalized_product"}:
         return False
     normalized = " ".join(normalize_for_security_inspection(text).casefold().split())
@@ -301,6 +303,7 @@ def requires_financial_language_review(text: str, finding: str) -> bool:
 
 
 def contains_return_guarantee(text: str) -> bool:
+    log_event("VV entering ", "app.agents.risk_compliance", "contains_return_guarantee")
     epistemic_prefix = re.compile(
         r"\b(?:do not|don't|never|cannot|can't)\s+"
         r"(?:assume|say|claim|conclude|confirm|establish)\s+"
@@ -407,6 +410,7 @@ def contains_return_guarantee(text: str) -> bool:
 
 
 def financial_advice_findings(text: str, *, is_request: bool = False) -> list[str]:
+    log_event("VV entering ", "app.agents.risk_compliance", "financial_advice_findings")
     normalized = " ".join(normalize_for_security_inspection(text).casefold().split()).replace("’", "'")
     # These whole-question forms ask about a claim or our boundary, not for a
     # transaction. A trailing action or second clause never receives an exemption.
@@ -485,6 +489,7 @@ def financial_advice_findings(text: str, *, is_request: bool = False) -> list[st
 
 def is_budgeting_allocation(text: str) -> bool:
     """A savings/expense budget is distinct from an investment allocation."""
+    log_event("VV entering ", "app.agents.risk_compliance", "is_budgeting_allocation")
     clause = re.split(r"[.!?;\n]", text, maxsplit=1)[0]
     without_reserve = re.sub(r"\bemergency funds?\b|\bsavings accounts?\b", "savings", clause)
     if re.search(r"\b(?:invest\w*|stocks?|shares?|bonds?|etfs?|funds?|reits?|products?|portfolio)\b", without_reserve):
@@ -493,6 +498,7 @@ def is_budgeting_allocation(text: str) -> bool:
 
 
 def is_neutral_financial_question(text: str) -> bool:
+    log_event("VV entering ", "app.agents.risk_compliance", "is_neutral_financial_question")
     text = text.rstrip(input_pattern("ai.agents.risk_compliance.question_punctuation"))
     return bool(re.fullmatch(
         input_pattern("ai.agents.risk_compliance.neutral_financial_question"),
@@ -503,6 +509,7 @@ def is_neutral_financial_question(text: str) -> bool:
 def is_educational_recommendation(text: str) -> bool:
     # Matches end at the LAST action in the sentence. An educational prefix
     # cannot exempt a later action ("learn before investing, then buy this ETF").
+    log_event("VV entering ", "app.agents.risk_compliance", "is_educational_recommendation")
     return bool(re.fullmatch(
         r"(?:(?:i|we)\s+(?:recommend|suggest|advise)\s+"
         r"(?:that\s+)?(?:(?:you|investors)\s+)?|you should\s+)"
@@ -519,6 +526,7 @@ def is_educational_recommendation(text: str) -> bool:
 
 
 def is_reported_guarantee_verification(text: str) -> bool:
+    log_event("VV entering ", "app.agents.risk_compliance", "is_reported_guarantee_verification")
     claim = re.match(
         r"(?:my (?:friend|broker|adviser|advisor)|"
         r"(?:the|this) (?:provider|company|advertisement|advert|website))\s+"
@@ -549,6 +557,7 @@ def contains_buy_sell_instruction(text: str) -> bool:
     # An action request/instruction is different from a definition of trading.
     # Descriptions (order types, commissions, execution limits) still undergo
     # the independent semantic review; mentioning the verb pair is not advice.
+    log_event("VV entering ", "app.agents.risk_compliance", "contains_buy_sell_instruction")
     for sentence in re.split(r"[.!?;\n]", text):
         for match in re.finditer(r"\bbuy or sell\b", sentence):
             before = sentence[:match.start()]
@@ -570,6 +579,7 @@ def contains_buy_sell_instruction(text: str) -> bool:
 def withhold_agent_result(
     result: AgentResult, *, response_language: str = "English"
 ) -> AgentResult:
+    log_event("VV entering ", "app.agents.risk_compliance", "withhold_agent_result")
     return AgentResult(
         agent=result.agent,
         summary=(" ".join(translate(key, response_language) for key in reason_keys(result.data))
@@ -600,6 +610,7 @@ class RiskComplianceAgent:
         max_tokens: int,
         policy_retriever: PolicyRetriever,
     ) -> None:
+        log_event("VV entering ", "app.agents.risk_compliance.RiskComplianceAgent", "__init__")
         self.gateway = gateway
         self.prompts = prompts
         self.temperature = temperature
@@ -607,6 +618,7 @@ class RiskComplianceAgent:
         self.policy_retriever = policy_retriever
 
     def _review(self, **kwargs):
+        log_event("VV entering ", "app.agents.risk_compliance.RiskComplianceAgent", "_review")
         try:
             return generate_structured_response(self.gateway, **kwargs), None
         except ModelGatewayError as exc:
@@ -628,6 +640,7 @@ class RiskComplianceAgent:
         routing_rationale: list[str] | None = None,
         follow_up: dict | None = None,
     ) -> AgentResult:
+        log_event("VV entering ", "app.agents.risk_compliance.RiskComplianceAgent", "validate")
         education_review = any(
             result.agent == AgentName.INVESTMENT_EDUCATION for result in results
         )
@@ -816,6 +829,7 @@ class RiskComplianceAgent:
         grounded_draft = bool(results) and all(result.agent.value in grounded_owners for result in results)
 
         def validate_review(review: ComplianceDecision) -> ComplianceDecision:
+            log_event("VV entering ", "app.agents.risk_compliance.RiskComplianceAgent", "validate.validate_review")
             for text in (review.summary, *review.rationale, *review.policy_notes):
                 validate_citations(text, review_sources)
             if isinstance(review, ScopedEducationComplianceDecision):

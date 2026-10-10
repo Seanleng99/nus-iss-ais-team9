@@ -22,11 +22,13 @@ class AuthenticatedPrincipal:
 
     @property
     def is_automation(self) -> bool:
+        log_event("VV entering ", "app.core.security.AuthenticatedPrincipal", "is_automation")
         return self.authentication_method == "automation_api_key"
 
 
 class OidcTokenVerifier:
     def __init__(self, configured_settings: Settings) -> None:
+        log_event("VV entering ", "app.core.security.OidcTokenVerifier", "__init__")
         self.issuer = (configured_settings.oidc_issuer_url or "").rstrip("/")
         self.audience = configured_settings.oidc_client_id or ""
         self.legacy_issuer = (
@@ -46,6 +48,7 @@ class OidcTokenVerifier:
 
     @trace_method
     def verify(self, token: str) -> AuthenticatedPrincipal:
+        log_event("VV entering ", "app.core.security.OidcTokenVerifier", "verify")
         try:
             if not self._jwks_client or not self.issuer or not self.audience:
                 raise ValueError("OIDC verification is not configured")
@@ -94,10 +97,12 @@ class OidcTokenVerifier:
 
 @lru_cache(maxsize=1)
 def get_oidc_token_verifier() -> OidcTokenVerifier:
+    log_event("VV entering ", "app.core.security", "get_oidc_token_verifier")
     return OidcTokenVerifier(settings)
 
 
 def _unauthorized(reason_code: str = "authentication_required") -> HTTPException:
+    log_event("VV entering ", "app.core.security", "_unauthorized")
     log_event("auth.denied", reason_code=reason_code, authenticated=False, status_code=401)
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -111,6 +116,7 @@ def require_principal(
     authorization: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
 ) -> AuthenticatedPrincipal:
+    log_event("VV entering ", "app.core.security", "require_principal")
     if authorization is not None:
         if not settings.oidc_auth_enabled:
             raise _unauthorized("oidc_disabled")
@@ -142,6 +148,7 @@ def enforce_user_access(
     session: Session,
     user_id: str,
 ) -> None:
+    log_event("VV entering ", "app.core.security", "enforce_user_access")
     if principal.is_automation:
         enforce_automation_user_scope(principal, user_id)
         log_event("auth.access.accepted", allowed=True, reason_code="automation_scope")
@@ -161,6 +168,7 @@ def enforce_user_access(
 
 
 def automation_user_id_reserved(user_id: str) -> bool:
+    log_event("VV entering ", "app.core.security", "automation_user_id_reserved")
     return any(
         user_id.startswith(prefix)
         for prefix in settings.automation_user_id_prefix_list
@@ -168,6 +176,7 @@ def automation_user_id_reserved(user_id: str) -> bool:
 
 
 def automation_user_id_allowed(user_id: str) -> bool:
+    log_event("VV entering ", "app.core.security", "automation_user_id_allowed")
     return (
         settings.app_env.casefold() == "local"
         or automation_user_id_reserved(user_id)
@@ -179,6 +188,7 @@ def enforce_automation_user_scope(
     principal: AuthenticatedPrincipal,
     user_id: str,
 ) -> None:
+    log_event("VV entering ", "app.core.security", "enforce_automation_user_scope")
     if principal.is_automation and not automation_user_id_allowed(user_id):
         log_event("auth.scope.denied", allowed=False, reason_code="automation_scope")
         raise HTTPException(
@@ -194,6 +204,7 @@ def require_owned_path_user(
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
     session: Annotated[Session, Depends(get_db_session)],
 ) -> AuthenticatedPrincipal:
+    log_event("VV entering ", "app.core.security", "require_owned_path_user")
     user_id = request.path_params.get("user_id")
     if user_id is not None:
         enforce_user_access(principal, session, str(user_id))

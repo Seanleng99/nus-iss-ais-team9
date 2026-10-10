@@ -109,6 +109,8 @@ def test_real_ai_request_traces_pipeline_and_failure_without_contents(caplog, sc
         gateway=FailingGateway() if scenario == "failure" else LocalFixtureModelGateway(),
     )
     app.dependency_overrides[get_orchestrator] = lambda: orchestrator
+    # Constructor entry logs precede the request and have no request identifiers.
+    caplog.clear()
     correlation = str(uuid4())
     parent_span = "c" * 16
     question = "Explain ETF diversification to private@example.com"
@@ -154,6 +156,20 @@ def test_real_ai_request_traces_pipeline_and_failure_without_contents(caplog, sc
             "app.agents.risk_compliance.RiskComplianceAgent.validate",
             "app.orchestrator.AgentOrchestrator._finalize",
         } <= methods
+        entry_methods = {
+            item["classname"] + "." + item["methodname"]
+            for item in records if item["event"] == "VV entering "
+        }
+        assert {
+            "app.orchestrator.AgentOrchestrator.handle",
+            "app.agents.base.BaseAgent.run_task",
+            "app.agents.investment_education.InvestmentEducationAgent._ground",
+            "app.agents.investment_education.InvestmentEducationAgent._validate_narrative",
+            "app.rag.answerability.build_query_plan",
+            "app.rag.retriever.build_education_context",
+            "app.models.structured.parse_structured_response",
+            "app.agents.risk_compliance.RiskComplianceAgent.validate",
+        } <= entry_methods
         ready = next(item for item in records if item["event"] == "coach.response.ready")
         assert ready["trace_id"] == response.json()["audit"]["trace_id"]
         assert ready["output_characters"] == len(response.json()["answer"])

@@ -6,9 +6,11 @@ from coach_i18n import localize_backend_text, request_locale, response_language
 
 from app.clients.ai_service import AIServiceUnavailableError
 from app.core.run_trace import active_run, record_event
+from app.core.telemetry import log_event
 
 
 def action_outcome(operation, response):
+    log_event("VV entering ", "app.services.response_composition", "action_outcome")
     status = response.audit.get("action_status", response.audit.get(f"{operation}_capture"))
     return {
         "operation": operation,
@@ -19,6 +21,7 @@ def action_outcome(operation, response):
 
 
 async def compose_backend_response(client, request, response, outcomes=None):
+    log_event("VV entering ", "app.services.response_composition", "compose_backend_response")
     if response.blocked:
         return response
     run = active_run.get()

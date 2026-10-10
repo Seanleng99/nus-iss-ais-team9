@@ -1,0 +1,387 @@
+{
+  "description": "Application modules on the investment login/chat/retrieval/review/history path. Every implemented Python function in these files begins with a static entry log, after its docstring. Shared modules also emit for other callers.",
+  "exclusions": {
+    "telemetry_and_trace_contract": "The three telemetry implementations, shared coach_trace contract, request middleware and low-level run_trace sinks are logging plumbing; self-instrumentation can recurse. Their existing boundary events remain.",
+    "health": "Successful health endpoints do not log.",
+    "protocols": "Protocol declarations have no executed implementation; concrete implementations are covered.",
+    "outside_scope": "Tests, evaluation/deployment scripts, migrations, third-party frameworks, shared localization/arithmetic library internals, and specialist-only budget/goal/spending modules are outside the investment application method inventory."
+  },
+  "files": [
+    {
+      "path": "apps/ai-service/app/agents/base.py",
+      "method_count": 16,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/agents/education_access.py",
+      "method_count": 15,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/agents/investment_education.py",
+      "method_count": 9,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/agents/risk_compliance.py",
+      "method_count": 14,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/capabilities/registry.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/action_composition.py",
+      "method_count": 4,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/citations.py",
+      "method_count": 6,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/claim_corrections.py",
+      "method_count": 7,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/config.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/deadline.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/drift.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/education_grounding.py",
+      "method_count": 8,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/financial_grounding.py",
+      "method_count": 4,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/follow_up.py",
+      "method_count": 12,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/guardrails.py",
+      "method_count": 7,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/income_memory.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/narrative_corrections.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/prompts.py",
+      "method_count": 4,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/repair_budget.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/review_diagnostics.py",
+      "method_count": 1,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/review_evidence.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/review_sections.py",
+      "method_count": 1,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/schemas.py",
+      "method_count": 14,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/session_context.py",
+      "method_count": 7,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/core/trace_stream.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/main.py",
+      "method_count": 7,
+      "excluded_methods": [
+        {
+          "method": "app.main.health",
+          "reason": "health"
+        }
+      ]
+    },
+    {
+      "path": "apps/ai-service/app/models/contracts.py",
+      "method_count": 4,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/models/gateway.py",
+      "method_count": 30,
+      "excluded_methods": [
+        {
+          "method": "app.models.gateway.ModelGateway.generate",
+          "reason": "protocol"
+        }
+      ]
+    },
+    {
+      "path": "apps/ai-service/app/models/structured.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/orchestrator.py",
+      "method_count": 42,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/answerability.py",
+      "method_count": 10,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/ingestion.py",
+      "method_count": 8,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/local_documents.py",
+      "method_count": 4,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/local_policy.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/policy.py",
+      "method_count": 7,
+      "excluded_methods": [
+        {
+          "method": "app.rag.policy.PolicyRetriever.retrieve",
+          "reason": "protocol"
+        }
+      ]
+    },
+    {
+      "path": "apps/ai-service/app/rag/ranking.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/request_cache.py",
+      "method_count": 5,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/ai-service/app/rag/retriever.py",
+      "method_count": 10,
+      "excluded_methods": [
+        {
+          "method": "app.rag.retriever.EducationRetriever.retrieve",
+          "reason": "protocol"
+        }
+      ]
+    },
+    {
+      "path": "apps/ai-service/app/tools/registry.py",
+      "method_count": 5,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/api/financial.py",
+      "method_count": 60,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/api/oidc.py",
+      "method_count": 3,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/api/routes.py",
+      "method_count": 16,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/clients/ai_service.py",
+      "method_count": 5,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/core/config.py",
+      "method_count": 5,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/core/security.py",
+      "method_count": 11,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/domain/ports.py",
+      "method_count": 0,
+      "excluded_methods": [
+        {
+          "method": "app.domain.ports.UserRepository.get_financial_snapshot",
+          "reason": "protocol"
+        },
+        {
+          "method": "app.domain.ports.TransactionRepository.list_for_user",
+          "reason": "protocol"
+        },
+        {
+          "method": "app.domain.ports.GoalRepository.list_for_user",
+          "reason": "protocol"
+        },
+        {
+          "method": "app.domain.ports.BudgetRepository.spending_by_category",
+          "reason": "protocol"
+        },
+        {
+          "method": "app.domain.ports.BudgetRepository.get",
+          "reason": "protocol"
+        }
+      ]
+    },
+    {
+      "path": "apps/backend/app/domain/schemas.py",
+      "method_count": 12,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/domain/turn_queries.py",
+      "method_count": 1,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/infrastructure/database.py",
+      "method_count": 4,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/infrastructure/repositories.py",
+      "method_count": 69,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/infrastructure/run_trace.py",
+      "method_count": 9,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/services/coach_action_state.py",
+      "method_count": 12,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/services/coach_quota.py",
+      "method_count": 7,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/services/conversation_summary.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/services/privacy_guard.py",
+      "method_count": 8,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/services/response_composition.py",
+      "method_count": 2,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/backend/app/services/session_context.py",
+      "method_count": 14,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/client.py",
+      "method_count": 62,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/auth.py",
+      "method_count": 7,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/coach_language.py",
+      "method_count": 9,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/components.py",
+      "method_count": 6,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/currency_markdown.py",
+      "method_count": 1,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/i18n.py",
+      "method_count": 10,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/pages.py",
+      "method_count": 26,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/response_metadata.py",
+      "method_count": 1,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/state.py",
+      "method_count": 6,
+      "excluded_methods": []
+    },
+    {
+      "path": "apps/frontend/ui/trace_viewer.py",
+      "method_count": 17,
+      "excluded_methods": []
+    }
+  ]
+}

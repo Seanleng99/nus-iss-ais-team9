@@ -26,10 +26,12 @@ def test_observations_retain_only_bounded_buckets(message, language):
 
 def test_capture_intent_and_long_length_use_fixed_buckets(monkeypatch):
     events = []
-    monkeypatch.setattr(drift, "log_event", lambda event, **fields: events.append((event, fields)))
+    monkeypatch.setattr(drift, "log_event", lambda event, *names, **fields: events.append((event, names, fields)))
     drift.log_observation(SimpleNamespace(message="x" * 501),
         SimpleNamespace(selected_agents=[], blocked=True, agent_results=[], audit={"goal_capture": True}))
-    assert events[0][0] == "coach.drift.observation"
-    assert events[0][1]["intent_bucket"] == "capture_goal"
-    assert events[0][1]["input_length_band"] == "long"
-    assert events[0][1]["agent_mix"] == "none"
+    assert events[0] == ("VV entering ", ("app.core.drift", "log_observation"), {})
+    observations = [fields for event, _, fields in events if event == "coach.drift.observation"]
+    assert len(observations) == 1
+    assert observations[0]["intent_bucket"] == "capture_goal"
+    assert observations[0]["input_length_band"] == "long"
+    assert observations[0]["agent_mix"] == "none"

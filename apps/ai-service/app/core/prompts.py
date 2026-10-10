@@ -2,7 +2,7 @@ import json
 from hashlib import sha256
 from pathlib import Path
 
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 
 CURRENCY_POLICY = (
     "Application currency policy: Personal financial amounts in this Singapore app use SGD. "
@@ -24,6 +24,7 @@ class PromptCatalog:
     """The single packaged prompt contract; version is provenance, not selection."""
 
     def __init__(self, *, root: Path | None = None) -> None:
+        log_event("VV entering ", "app.core.prompts.PromptCatalog", "__init__")
         prompt_root = root or PROMPT_ROOT
         path = prompt_root / "prompts.json"
         with path.open(encoding="utf-8") as handle:
@@ -35,6 +36,7 @@ class PromptCatalog:
     @property
     def content_hash(self) -> str:
         # Hash effective instructions, including the shared policy appended by get().
+        log_event("VV entering ", "app.core.prompts.PromptCatalog", "content_hash")
         content = {key: value + "\n\n" + CURRENCY_POLICY for key, value in self._prompts.items()}
         return sha256(
             json.dumps(
@@ -43,6 +45,7 @@ class PromptCatalog:
         ).hexdigest()
 
     def identity(self, build_commit: str) -> dict[str, str]:
+        log_event("VV entering ", "app.core.prompts.PromptCatalog", "identity")
         return {
             "prompt_set_version": self.version,
             "prompt_content_hash": self.content_hash,
@@ -51,6 +54,7 @@ class PromptCatalog:
 
     @trace_method
     def get(self, prompt_id: str) -> str:
+        log_event("VV entering ", "app.core.prompts.PromptCatalog", "get")
         try:
             return self._prompts[prompt_id] + "\n\n" + CURRENCY_POLICY
         except KeyError as exc:

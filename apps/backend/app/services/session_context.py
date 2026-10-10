@@ -12,6 +12,7 @@ from decimal import Decimal
 from coach_i18n import input_pattern, request_locale, translate
 from pydantic import ValidationError
 
+from app.core.telemetry import log_event
 from app.domain.schemas import CoachResponse
 from app.services.conversation_summary import roll_summary
 
@@ -94,6 +95,7 @@ CORRECTION = re.compile(
 
 
 def empty_state():
+    log_event("VV entering ", "app.services.session_context", "empty_state")
     return {
         "version": 1,
         "facts": {},
@@ -108,6 +110,7 @@ def empty_state():
 
 
 def _amount(value):
+    log_event("VV entering ", "app.services.session_context", "_amount")
     value = value.replace(",", "")
     amount = Decimal(value[:-1]) * 1000 if value[-1:].lower() == "k" else Decimal(value)
     return format(amount, "f") if 0 <= amount <= Decimal("999999999999.99") else None
@@ -115,6 +118,7 @@ def _amount(value):
 
 def statement_clauses(message):
     """Keep currency commas and decimals intact when reading compound statements."""
+    log_event("VV entering ", "app.services.session_context", "statement_clauses")
     return [
         clause.strip()
         for clause in re.split(
@@ -125,6 +129,7 @@ def statement_clauses(message):
 
 
 def _reported_clause(clause):
+    log_event("VV entering ", "app.services.session_context", "_reported_clause")
     if re.match(r"\s*(?:[\"`]|(?:how|what|is|are|could|would|should|can)\b)", clause, re.IGNORECASE):
         return False
     if any(mark in clause for mark in ('"', '`', '\u201c', '\u201d')) or re.search(r"(?<!\w)'[^']+'", clause):
@@ -136,6 +141,7 @@ def _reported_clause(clause):
 
 
 def advance_state(previous, message, position):
+    log_event("VV entering ", "app.services.session_context", "advance_state")
     state = deepcopy(previous or empty_state())
     if UNSAFE.search(message) or re.match(
         r"\s*(?:if|suppose|assuming|imagine|hypothetically|for example)\b", message, re.IGNORECASE
@@ -242,6 +248,7 @@ def advance_state(previous, message, position):
 
 
 def build_session_context(chat, message, position):
+    log_event("VV entering ", "app.services.session_context", "build_session_context")
     state = chat.conversation_state if chat else None
     if state is None and chat:
         # Backfill supported facts in old chats, without treating assistant prose
@@ -262,6 +269,7 @@ def build_session_context(chat, message, position):
 
 
 def _owned_quote(item, message, position):
+    log_event("VV entering ", "app.services.session_context", "_owned_quote")
     quote = item.source_quote
     return (item.source_position == position and quote in message
             and message.count(quote) == 1 and not UNSAFE.search(quote))
@@ -269,6 +277,7 @@ def _owned_quote(item, message, position):
 
 def _attributable_quote(message, quote):
     """Check the excerpt's own clause and quotation scope, not unrelated clauses."""
+    log_event("VV entering ", "app.services.session_context", "_attributable_quote")
     if not _reported_clause(quote):
         return False
     start = message.find(quote)
@@ -293,6 +302,7 @@ def _attributable_quote(message, quote):
 
 def _observation_value(item, message):
     """Interpretation may choose a field; the backend verifies the actual amount."""
+    log_event("VV entering ", "app.services.session_context", "_observation_value")
     field, value, quote = item.field, item.value, item.source_quote
     if item.kind != "fact" or field not in FIELDS or value is None or item.attribution != "self":
         return None
@@ -338,6 +348,7 @@ def _observation_value(item, message):
 
 
 def apply_observations(state, turn, message, position, answer=""):
+    log_event("VV entering ", "app.services.session_context", "apply_observations")
     from app.domain.conversation_context import AttributedObservation, ConversationReferent
 
     if message is None or position is None or UNSAFE.search(message):
@@ -399,6 +410,7 @@ def apply_observations(state, turn, message, position, answer=""):
 
 
 def complete_state(state, response, message=None, position=None):
+    log_event("VV entering ", "app.services.session_context", "complete_state")
     state = deepcopy(state)
     if response.blocked:
         return None
@@ -453,6 +465,7 @@ def complete_state(state, response, message=None, position=None):
 
 
 def budget_query_period(request):
+    log_event("VV entering ", "app.services.session_context", "budget_query_period")
     if request.budget_period_start:
         return request.budget_period_start
     periods = {date(int(match["year"]), MONTHS[match["month"].lower()], 1)
@@ -471,6 +484,7 @@ def budget_query_period(request):
 
 
 def budget_status_follow_up(request):
+    log_event("VV entering ", "app.services.session_context", "budget_status_follow_up")
     state = request.session_context
     return (
         state.get("pending_action") == "budget_status"
@@ -480,6 +494,7 @@ def budget_status_follow_up(request):
 
 def session_fact_reply(request, *, semantic=False, fields=None):
     """Recall requests use user facts, never an inferred balance or record write."""
+    log_event("VV entering ", "app.services.session_context", "session_fact_reply")
     if not semantic and not re.fullmatch(
         input_pattern("backend.services.session_context.recall_question"),
         request.message,

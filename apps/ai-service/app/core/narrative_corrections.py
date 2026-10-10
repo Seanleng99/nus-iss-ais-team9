@@ -2,10 +2,12 @@
 
 from difflib import SequenceMatcher
 
+from app.core.telemetry import log_event
 from app.models.gateway import ModelGatewayError
 
 
 def validate_text_corrections(original: str, corrected: str, ranges: list[tuple[int, int]]) -> None:
+    log_event("VV entering ", "app.core.narrative_corrections", "validate_text_corrections")
     if not ranges:
         return
     for tag, start, end, _, _ in SequenceMatcher(None, original, corrected, autojunk=False).get_opcodes():
@@ -18,6 +20,7 @@ def validate_text_corrections(original: str, corrected: str, ranges: list[tuple[
 
 
 def specialist_correction_ranges(corrections: list[dict], summary: str) -> list[tuple[int, int]]:
+    log_event("VV entering ", "app.core.narrative_corrections", "specialist_correction_ranges")
     ranges = []
     for issue in corrections:
         start, end = issue.get("summary_claim_start"), issue.get("summary_claim_end")

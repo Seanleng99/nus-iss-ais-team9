@@ -5,10 +5,12 @@ from copy import deepcopy
 from app.core.citations import compact_evidence
 from app.core.education_grounding import EducationGroundingSnapshot
 from app.core.financial_grounding import FinancialGroundingSnapshot, fingerprint
+from app.core.telemetry import log_event
 from app.models.gateway import ModelGatewayError
 
 
 def financial_review_evidence(result):
+    log_event("VV entering ", "app.core.review_evidence", "financial_review_evidence")
     snapshot = result._financial_grounding_snapshot
     if not isinstance(snapshot, FinancialGroundingSnapshot):
         return None
@@ -19,6 +21,7 @@ def financial_review_evidence(result):
 
 
 def review_evidence(result, presentation_fields):
+    log_event("VV entering ", "app.core.review_evidence", "review_evidence")
     if isinstance(result._education_grounding_snapshot, EducationGroundingSnapshot):
         result._education_grounding_snapshot.for_review(result.data)
     financial = financial_review_evidence(result)
@@ -31,6 +34,7 @@ def review_evidence(result, presentation_fields):
 
 
 def grounding_evidence_refs(results):
+    log_event("VV entering ", "app.core.review_evidence", "grounding_evidence_refs")
     refs = {
         f"{result.agent.value}.{key}": result.agent.value
         for result in results

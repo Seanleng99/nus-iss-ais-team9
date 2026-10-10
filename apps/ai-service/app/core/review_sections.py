@@ -1,9 +1,11 @@
 """Server-owned character ranges for independent review; never duplicate prose."""
 
 from app.core.schemas import AgentName, AgentResult
+from app.core.telemetry import log_event
 
 
 def draft_review_sections(draft: str, message: str, results: list[AgentResult]) -> list[dict]:
+    log_event("VV entering ", "app.core.review_sections", "draft_review_sections")
     sections = [
         {"section_id": "draft", "agent": None, "field": "draft_answer",
          "start": 0, "end": len(draft), "provenance": "combined"},

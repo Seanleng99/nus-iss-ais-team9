@@ -41,6 +41,7 @@ _POLICY_KEYWORDS = {
 def _fixture_policy_documents():
     # Fixtures use the same policy meaning as the packaged corpus. Their synthetic
     # lifecycle remains separate so historical/offline tests do not expire.
+    log_event("VV entering ", "app.rag.policy", "_fixture_policy_documents")
     root = _KNOWLEDGE_ROOT / "policy_controls"
     manifest = json.loads((root / "source_manifest.json").read_text(encoding="utf-8"))
     return [
@@ -61,6 +62,7 @@ class LocalPolicyRetriever:
 
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.policy.LocalPolicyRetriever", "retrieve")
         query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
         scored = [
             (len(query_terms.intersection(document["keywords"])), document)
@@ -104,6 +106,7 @@ class BedrockPolicyRetriever:
         client: Any | None = None,
         required_sources: tuple[GovernedSource, ...] = (),
     ) -> None:
+        log_event("VV entering ", "app.rag.policy.BedrockPolicyRetriever", "__init__")
         self.knowledge_base_id = knowledge_base_id
         self.aws_region = aws_region
         self.expected_corpus_version = expected_corpus_version
@@ -113,6 +116,7 @@ class BedrockPolicyRetriever:
 
     @property
     def client(self) -> Any:
+        log_event("VV entering ", "app.rag.policy.BedrockPolicyRetriever", "client")
         if self._client is None:
             import boto3
             from botocore.config import Config
@@ -129,6 +133,7 @@ class BedrockPolicyRetriever:
 
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.policy.BedrockPolicyRetriever", "retrieve")
         try:
             return self._retrieve(query, top_k)
         except Exception as exc:
@@ -141,6 +146,7 @@ class BedrockPolicyRetriever:
     def _retrieve(
         self, query: str, top_k: int, *, source_id: str | None = None,
     ) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.policy.BedrockPolicyRetriever", "_retrieve")
         if self.required_sources and source_id is None:
             # Every review needs every policy family. Public policy titles replace
             # personal draft text; per-source queries prevent one policy's chunks
@@ -245,6 +251,7 @@ class BedrockPolicyRetriever:
 
 
 def create_policy_retriever(settings: Settings) -> PolicyRetriever:
+    log_event("VV entering ", "app.rag.policy", "create_policy_retriever")
     provider = settings.policy_rag_provider.lower()
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalPolicyRetriever()

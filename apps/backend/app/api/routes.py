@@ -72,6 +72,7 @@ router = APIRouter()
 
 
 def _previous_query_was_simple_day(chat):
+    log_event("VV entering ", "app.api.routes", "_previous_query_was_simple_day")
     if chat is None:
         return False
     latest = next((item for item in reversed(chat.messages) if item.role == "assistant"), None)
@@ -97,6 +98,7 @@ def _previous_query_was_simple_day(chat):
 
 def _reviewed_specialist_text(result, sources):
     """Render approved evidence references before appending reviewed prose."""
+    log_event("VV entering ", "app.api.routes", "_reviewed_specialist_text")
     marker = re.compile(r"\[source:([a-z0-9][a-z0-9-]{2,127})\]")
     text = result.summary.strip()
     approved = {source.source_id: source for source in sources}
@@ -110,6 +112,7 @@ def _reviewed_specialist_text(result, sources):
         return None
 
     def reference(match):
+        log_event("VV entering ", "app.api.routes", "_reviewed_specialist_text.reference")
         source = approved[match[1]]
         if not source.canonical_url.startswith("https://"):
             return ""
@@ -120,6 +123,7 @@ def _reviewed_specialist_text(result, sources):
 
 
 def is_workspace_request(message):
+    log_event("VV entering ", "app.api.routes", "is_workspace_request")
     return bool(re.search(
         r"\b(schedule\w*|payday|cash.?flow|commitment\w*|protect.{0,20}categor\w*|goal contribution\w*|reconcil\w*|match.{0,30}(payment|refund|bill)|opening balance|carry.forward|rollover)\b",
         message, re.IGNORECASE,
@@ -127,10 +131,12 @@ def is_workspace_request(message):
 
 
 def _current_period_start():  # pragma: no cover - trivial
+    log_event("VV entering ", "app.api.routes", "_current_period_start")
     return financial_today().replace(day=1)
 
 
 def _budget_alert_reply(session: Session, request: CoachRequest, *, period_missing: bool = False) -> CoachResponse:
+    log_event("VV entering ", "app.api.routes", "_budget_alert_reply")
     try:
         if period_missing:
             raise ValueError("Which single month and year should I check?")
@@ -154,6 +160,7 @@ def _budget_alert_reply(session: Session, request: CoachRequest, *, period_missi
 
 
 def get_ai_service_client() -> AIServiceClient:
+    log_event("VV entering ", "app.api.routes", "get_ai_service_client")
     return AIServiceClient(settings)
 
 
@@ -171,6 +178,7 @@ async def coach(
     x_synthetic_log: Annotated[str | None, Header(alias="X-Synthetic-Log")] = None,
 ) -> CoachResponse:
     # Authorize both profile and conversation before creating any audit record.
+    log_event("VV entering ", "app.api.routes", "coach")
     enforce_user_access(principal, session, request.user_id)
     repository = SQLAlchemyChatRepository(session)
     try:
@@ -191,6 +199,7 @@ async def coach(
 
 
 async def _execute_coach(request, http_response, ai_service, session, principal, x_synthetic_log, context_snapshot):
+    log_event("VV entering ", "app.api.routes", "_execute_coach")
     repository = SQLAlchemyChatRepository(session)
     existed, revision, context = context_snapshot
     chat = repository.get_for_update(request.user_id, request.session_id)
@@ -227,6 +236,7 @@ async def _execute_coach(request, http_response, ai_service, session, principal,
 
 
 async def _coach(request, http_response, ai_service, session, principal, x_synthetic_log, context_snapshot):
+    log_event("VV entering ", "app.api.routes", "_coach")
     chat_repository = SQLAlchemyChatRepository(session)
     conversation_existed, revision, context = context_snapshot
     user_repository = SQLAlchemyUserRepository(session)
@@ -480,6 +490,7 @@ async def _coach(request, http_response, ai_service, session, principal, x_synth
 def _persist_local_coach(
     session: Session, request: CoachRequest, response: CoachResponse
 ) -> CoachResponse:
+    log_event("VV entering ", "app.api.routes", "_persist_local_coach")
     locale = request_locale(request)
     response.audit.update(response_locale=locale, response_language=request_language(request))
     record_event("backend.action.outcome", phase="pending_commit", handler=str(response.audit.get("source", "local_handler")),
@@ -501,6 +512,7 @@ def _persist_local_coach(
 def _persist_coach_exchange(
     session: Session, request: CoachRequest, response: CoachResponse
 ) -> None:
+    log_event("VV entering ", "app.api.routes", "_persist_coach_exchange")
     chat_repository = SQLAlchemyChatRepository(session)
     chat_session = chat_repository.get_for_update(request.user_id, request.session_id)
     if chat_session is None:
@@ -545,6 +557,7 @@ def _persist_coach_exchange(
 
 @trace_method
 def _finalize_coach_response(response: CoachResponse) -> CoachResponse:
+    log_event("VV entering ", "app.api.routes", "_finalize_coach_response")
     trace_id = response.audit.get("trace_id")
     log_event(
         "coach.response.ready",
@@ -572,6 +585,7 @@ def list_orchestration_traces(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> OrchestrationRunPage:
+    log_event("VV entering ", "app.api.routes", "list_orchestration_traces")
     enforce_user_access(principal, session, user_id)
     repository = SQLAlchemyOrchestrationTraceRepository(session)
     repository.mark_abandoned(datetime.now(UTC), user_id=user_id)
@@ -605,6 +619,7 @@ def get_orchestration_trace(
     session: Annotated[Session, Depends(get_db_session)],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> OrchestrationTraceResponse:
+    log_event("VV entering ", "app.api.routes", "get_orchestration_trace")
     enforce_user_access(principal, session, user_id)
     record = SQLAlchemyOrchestrationTraceRepository(session).get_for_user(
         user_id,
@@ -658,6 +673,7 @@ def delete_orchestration_trace(
     session: Annotated[Session, Depends(get_db_session)],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> Response:
+    log_event("VV entering ", "app.api.routes", "delete_orchestration_trace")
     enforce_user_access(principal, session, user_id)
     if not SQLAlchemyOrchestrationTraceRepository(session).delete_for_user(user_id, trace_id):
         raise HTTPException(

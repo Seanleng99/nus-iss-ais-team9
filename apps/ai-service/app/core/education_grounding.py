@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 
 from app.core.schemas import AgentName, AgentTask
+from app.core.telemetry import log_event
 from app.models.gateway import ModelGatewayError
 
 _AUTHORITY_FIELDS = (
@@ -19,10 +20,12 @@ _AUTHORITY_FIELDS = (
 
 
 def _fingerprint(value: dict) -> str:
+    log_event("VV entering ", "app.core.education_grounding", "_fingerprint")
     return sha256(json.dumps(value, sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
 
 
 def _task_fingerprint(task: AgentTask) -> str:
+    log_event("VV entering ", "app.core.education_grounding", "_task_fingerprint")
     data = task.model_dump(mode="json", exclude={"status", "attempt"})
     # The sole permitted context addition is independently reviewed correction
     # feedback. Request, task, dependencies, language and subject remain fixed.
@@ -33,6 +36,7 @@ def _task_fingerprint(task: AgentTask) -> str:
 
 
 def _authority_fingerprint(grounding: dict) -> str:
+    log_event("VV entering ", "app.core.education_grounding", "_authority_fingerprint")
     return _fingerprint({key: grounding.get(key) for key in _AUTHORITY_FIELDS})
 
 
@@ -51,6 +55,7 @@ class EducationGroundingSnapshot:
 
     @classmethod
     def capture(cls, task: AgentTask, grounding: dict, *, sanitized_message: str, prompt_version: str, prompt_content_hash: str, expected_corpus_version: str | None):
+        log_event("VV entering ", "app.core.education_grounding.EducationGroundingSnapshot", "capture")
         snapshot = deepcopy(grounding)
         return cls(
             grounding=snapshot, task_fingerprint=_task_fingerprint(task),
@@ -62,6 +67,7 @@ class EducationGroundingSnapshot:
         )
 
     def _validate(self, task: AgentTask) -> None:
+        log_event("VV entering ", "app.core.education_grounding.EducationGroundingSnapshot", "_validate")
         if (
             task.agent != AgentName.INVESTMENT_EDUCATION
             or _task_fingerprint(task) != self.task_fingerprint
@@ -73,6 +79,7 @@ class EducationGroundingSnapshot:
             )
 
     def authorize_result(self, task: AgentTask, original_data: dict) -> None:
+        log_event("VV entering ", "app.core.education_grounding.EducationGroundingSnapshot", "authorize_result")
         self._validate(task)
         if _authority_fingerprint(original_data) != self.authority_fingerprint:
             raise ModelGatewayError(
@@ -81,6 +88,7 @@ class EducationGroundingSnapshot:
             )
 
     def for_review(self, original_data: dict) -> dict:
+        log_event("VV entering ", "app.core.education_grounding.EducationGroundingSnapshot", "for_review")
         if (_fingerprint(self.grounding) != self.grounding_fingerprint
                 or _authority_fingerprint(original_data) != self.authority_fingerprint):
             raise ModelGatewayError("Education review authority changed.",
@@ -88,6 +96,7 @@ class EducationGroundingSnapshot:
         return deepcopy(self.grounding)
 
     def for_repair(self, task: AgentTask, *, sanitized_message: str, prompt_version: str, prompt_content_hash: str, expected_corpus_version: str | None) -> dict:
+        log_event("VV entering ", "app.core.education_grounding.EducationGroundingSnapshot", "for_repair")
         self._validate(task)
         if (
             prompt_version != self.prompt_version

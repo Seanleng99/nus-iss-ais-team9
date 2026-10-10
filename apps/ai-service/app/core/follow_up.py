@@ -13,6 +13,7 @@ from app.agents.education_access import (
     education_topics,
 )
 from app.core.schemas import AgentName, CoachRequest, FollowUpResolution
+from app.core.telemetry import log_event
 
 ORDINAL = re.compile(
     input_pattern("ai.core.follow_up.ordinal"),
@@ -45,6 +46,7 @@ GOAL_REFERENCE = re.compile(
 
 
 def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
+    log_event("VV entering ", "app.core.follow_up", "resolve_follow_up")
     resolution = _resolve_follow_up(request)
     if resolution.status == "ambiguous":
         resolution.question = translate("conversation.choose_subject", request_locale(request))
@@ -52,6 +54,7 @@ def resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
 
 
 def _resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
+    log_event("VV entering ", "app.core.follow_up", "_resolve_follow_up")
     message = request.message.strip()
     ordinal = ORDINAL.search(message)
     if ACTION.search(message) or SWITCH.search(message):
@@ -171,6 +174,7 @@ def _resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
 
 
 def _is_reference(text, request):
+    log_event("VV entering ", "app.core.follow_up", "_is_reference")
     if _subject(text, request) and not re.search(
         input_pattern("ai.core.follow_up.is_reference"),
         text,
@@ -183,6 +187,7 @@ def _is_reference(text, request):
 def _subject(text, request):
     # Unsupported scope does not erase explicitly named, supported subjects.
     # Answerability belongs to the specialist after reference resolution.
+    log_event("VV entering ", "app.core.follow_up", "_subject")
     topics = education_topics(text)
     if len(topics) > 12:
         return None
@@ -210,6 +215,7 @@ def _subject(text, request):
 
 
 def _ordinal(request, match):
+    log_event("VV entering ", "app.core.follow_up", "_ordinal")
     message = request.message
     value = next(value for value in match.groups() if value)
     value = value.casefold().removeprefix("the ")
@@ -238,6 +244,7 @@ def _ordinal(request, match):
             source_position=item.source_position, reason_code="ATTRIBUTED_ORDERED_OPTION",
         )
     def normalize(text):
+        log_event("VV entering ", "app.core.follow_up", "_ordinal.normalize")
         return " ".join(text.casefold().split()).rstrip(
             input_pattern("ai.core.follow_up.sentence_punctuation")
         )
@@ -299,6 +306,7 @@ def _ordinal(request, match):
 
 
 def _goal(request):
+    log_event("VV entering ", "app.core.follow_up", "_goal")
     context = request.session_context
     fact = context.facts.get("goal_name")
     if "goal_name" in context.uncertain_fields:
@@ -363,6 +371,7 @@ def _goal(request):
 
 
 def _reported_goal(request, fact):
+    log_event("VV entering ", "app.core.follow_up", "_reported_goal")
     if sum(goal.name.casefold() == fact.value.casefold() for goal in request.snapshot.goals) > 1:
         return _ambiguous(request.message, "DUPLICATE_GOAL_NAMES")
     return FollowUpResolution(
@@ -376,6 +385,7 @@ def _reported_goal(request, fact):
 
 
 def _generic(agent, source, message):
+    log_event("VV entering ", "app.core.follow_up", "_generic")
     if agent == AgentName.INVESTMENT_EDUCATION:
         return _ambiguous(message, "MISSING_EDUCATION_SUBJECT")
     return FollowUpResolution(
@@ -388,6 +398,7 @@ def _generic(agent, source, message):
 
 
 def _goal_names(text, request):
+    log_event("VV entering ", "app.core.follow_up", "_goal_names")
     names = []
     for goal in request.snapshot.goals:
         if not goal.name.strip():
@@ -403,6 +414,7 @@ def _goal_names(text, request):
 
 
 def specialist_follow_up(resolution, agent):
+    log_event("VV entering ", "app.core.follow_up", "specialist_follow_up")
     if resolution.status == "standalone" or (resolution.agent and resolution.agent != agent):
         return {}
     data = resolution.model_dump(exclude_none=True)
@@ -412,6 +424,7 @@ def specialist_follow_up(resolution, agent):
 
 
 def _ambiguous(message, reason):
+    log_event("VV entering ", "app.core.follow_up", "_ambiguous")
     return FollowUpResolution(
         status="ambiguous",
         reason_code=reason,

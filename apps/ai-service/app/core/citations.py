@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from urllib.parse import quote
 
 from app.core.schemas import SourceCitation
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 from app.models.gateway import ModelGatewayError
 
 SOURCE_MARKER = re.compile(r"\[source:([a-z0-9][a-z0-9-]{2,127})\]")
@@ -12,6 +12,7 @@ MODEL_LINK = re.compile(r"://|\bwww\.|\]\s*\(|<\s*a\b|\b(?:href|src)\s*=", re.IG
 
 
 def citation_contract(sources: Sequence[SourceCitation]) -> str:
+    log_event("VV entering ", "app.core.citations", "citation_contract")
     if sources:
         return (
             "\nCitation contract for THIS request: the only approved source IDs are "
@@ -29,6 +30,7 @@ def citation_contract(sources: Sequence[SourceCitation]) -> str:
 
 @trace_method
 def validate_citations(text: str, sources: Sequence[SourceCitation]) -> None:
+    log_event("VV entering ", "app.core.citations", "validate_citations")
     approved = {source.source_id for source in sources}
     markers = SOURCE_MARKER.findall(text)
     remaining = SOURCE_MARKER.sub("", text)
@@ -48,6 +50,7 @@ def normalize_citation_markers(text: str, sources: Sequence[SourceCitation]) -> 
     An ordinary bracket such as [food-budget] is not a citation declaration.
     Explicit [source:...] tokens remain strict even when the ID is unknown.
     """
+    log_event("VV entering ", "app.core.citations", "normalize_citation_markers")
     for source in sources:
         text = text.replace(f"[{source.source_id}]", f"[source:{source.source_id}]")
     return text
@@ -55,11 +58,13 @@ def normalize_citation_markers(text: str, sources: Sequence[SourceCitation]) -> 
 
 @trace_method
 def render_citations(text: str, sources: Sequence[SourceCitation], locale: object = "en") -> str:
+    log_event("VV entering ", "app.core.citations", "render_citations")
     text = normalize_citation_markers(text, sources)
     validate_citations(text, sources)
     approved = {source.source_id: source for source in sources}
 
     def reference(match: re.Match) -> str:
+        log_event("VV entering ", "app.core.citations", "render_citations.reference")
         source = approved[match[1]]
         label = re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", " ".join(source.title.split()))
         reference = f"[{label}]({quote(source.canonical_url, safe=':/?#=&%')})"
@@ -75,6 +80,7 @@ def render_citations(text: str, sources: Sequence[SourceCitation], locale: objec
 
 def compact_evidence(data: dict) -> dict:
     """Keep full cited passages in review input; audit keeps all retrieval evidence."""
+    log_event("VV entering ", "app.core.citations", "compact_evidence")
     result = dict(data)
     for field, keys in (
         ("contexts", ("source_id", "text")),

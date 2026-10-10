@@ -1,6 +1,46 @@
 # Investment Agent call-chain logging
 
-The application writes key method entry, completion and failure events as JSON to the three services' existing CloudWatch log groups. No additional AWS roles, logging services or database tables are required. The default level is `INFO`; successful health checks do not produce logs. General string processing, attribute access and third-party library internals are not logged line by line.
+The application writes method entry logs and existing boundary completion/failure events as JSON to the three services' existing CloudWatch log groups. No additional AWS roles, logging services or database tables are required. The default level is `INFO`; successful health checks do not produce logs. General string processing, attribute access and third-party library internals are not logged line by line.
+
+## Explicit method entry logs
+
+The investment application inventory covers **67 Python modules, with entry logs in all 676 implemented functions/methods across 66 of them**, including shared frontend login/chat, backend authentication and request/history packaging, orchestration, Investment Education, RAG, model calls and Risk & Compliance. Each implementation starts with this call as its first executable statement (after any Python docstring):
+
+```python
+def _ground(self, task, sanitized_message):
+    log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_ground")
+    # Existing implementation follows unchanged.
+```
+
+All three producers accept `log_event(event, classname=None, methodname=None, *, level=INFO, **fields)`:
+
+- AI service: `apps/ai-service/app/core/telemetry.py`
+- Backend: `apps/backend/app/core/telemetry.py`
+- Frontend: `apps/frontend/ui/telemetry.py`
+
+The shared contract in `apps/shared/coach_trace/__init__.py` permits **only the exact `"VV entering "` marker**, including its trailing space. The general code/event validator still rejects spaces. `classname` and `methodname` accept bounded, dotted Python identifiers; invalid names and unknown payload fields are dropped. Calls use literal source-code names, never user input, arguments, `self`, model answers or credentials. For module-level functions, `classname` is the module name. For nested functions, `methodname` includes its containing function name. Class names identify the defining class, including when inherited methods execute.
+
+Example JSON fields (timestamps and existing tracing IDs are also emitted):
+
+```json
+{"service":"ai-service","event":"VV entering ","classname":"app.agents.investment_education.InvestmentEducationAgent","methodname":"_ground"}
+```
+
+No new AWS configuration is needed: the services already send INFO application logs to stdout/stderr and ECS collects them in CloudWatch. `LOG_LEVEL=INFO` must remain enabled for these INFO logs. Startup calls before logging configuration may not be emitted, and constructor calls outside a request have no request correlation ID.
+
+```text
+fields @timestamp, service, classname, methodname, correlation_id, trace_id, span_id
+| filter event = "VV entering "
+| filter correlation_id = "replace-with-request-id"
+| sort @timestamp asc
+| limit 10000
+```
+
+These events reuse the current request and instrumented span context. The `classname`/`methodname` pair identifies the entered implementation; the existing `method`/`caller_method` fields still identify the surrounding instrumented span. Entry logs do not create a new span or prove successful completion. For async/generator functions they fire when the body starts executing; cached function bodies fire only on a cache miss. Shared files also emit entries when used by other agents or pages.
+
+Entry logs go to application/CloudWatch logs, **not** the durable semantic decision-event stream or model prompts. This prevents hundreds of additional audit database writes per answer. Logging internals, request telemetry middleware, low-level trace sinks, health endpoints and unimplemented Protocol declarations are excluded. Test/evaluation/deployment scripts, migrations, third-party frameworks, shared localization/arithmetic library internals and specialist-only budget/goal/spending modules are outside this application-method scope.
+
+See the [complete per-file inventory and exclusions](investment-entry-logging.json). `apps/shared/tests/test_entry_logging.py` checks every inventoried implementation's first statement, literal class/method identity, all three logger APIs and privacy filtering. Existing pipeline/privacy tests also exercise successful education, injected input, provider failures, streaming and saved history.
 
 ## Follow one question in CloudWatch
 
@@ -101,7 +141,7 @@ fields @timestamp, service, correlation_id, method, caller_method, exception_typ
 | limit 100
 ```
 
-Errors record types and bounded codes, not raw exception text. Each key method usually generates two log entries plus stage events; parallel execution and retries increase the count. CloudWatch uses the existing log-group retention settings. Log access also permits access to synthetic question-and-answer text. Global HTTP/SDK DEBUG logging is disabled, and passwords, cookies, Authorization headers and Cognito callback parameters are not captured. Containers disable duplicate raw Uvicorn access logs; application access logs use route templates without user-specific path parameters.
+Errors record types and bounded codes, not raw exception text. An offline fixture run of “What are stocks, bonds, mutual funds, and ETFs?” emitted 6,199 entry records (about 3.1 MB) across 142 distinct executed methods. This is a measured local example, not an AWS/live-model volume estimate. Each inventoried implementation adds one entry log per body execution. Existing instrumented boundaries also generate start/completion or failure events. Helpers used per retrieved passage, parallel execution and retries can produce many entries, increasing CloudWatch volume; no per-call parameters are included. CloudWatch uses the existing log-group retention settings. Log access also permits access to synthetic question-and-answer text. Global HTTP/SDK DEBUG logging is disabled, and passwords, cookies, Authorization headers and Cognito callback parameters are not captured. Containers disable duplicate raw Uvicorn access logs; application access logs use route templates without user-specific path parameters.
 
 These logs explain program execution and support troubleshooting. They are not hidden model reasoning and do not prove that financial answers meet a 99% quality target.
 

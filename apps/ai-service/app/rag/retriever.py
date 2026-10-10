@@ -48,6 +48,7 @@ class RetrievalError(RuntimeError):
     code = "RETRIEVAL_ERROR"
 
     def __init__(self, message: str, *, component: str = "education_retriever") -> None:
+        log_event("VV entering ", "app.rag.retriever.RetrievalError", "__init__")
         super().__init__(message)
         self.component = component
 
@@ -68,6 +69,7 @@ SOURCE_METADATA_FIELDS = (
 
 
 def _is_trusted_education_url(url: str) -> bool:
+    log_event("VV entering ", "app.rag.retriever", "_is_trusted_education_url")
     hostname = (urlparse(url).hostname or "").casefold()
     return any(
         hostname == domain or hostname.endswith(f".{domain}")
@@ -85,6 +87,7 @@ def build_education_context(
     search_terms: list[str] | tuple[str, ...] = (),
     subquestion_queries: list[tuple[str, str]] | tuple[tuple[str, str], ...] = (),
 ) -> dict[str, Any]:
+    log_event("VV entering ", "app.rag.retriever", "build_education_context")
     contexts = []
     rejected_chunk_count = 0
     security_findings: list[str] = []
@@ -229,6 +232,7 @@ def build_education_context(
 
 
 def _bounded_topic_excerpt(text: str, topics: set[str], allowance: int) -> str:
+    log_event("VV entering ", "app.rag.retriever", "_bounded_topic_excerpt")
     from app.rag.ranking import passage_scores
 
     paragraphs = [part for part in re.split(r"\n\s*\n", text) if part.strip()]
@@ -481,6 +485,7 @@ class LocalEducationRetriever:
 
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.retriever.LocalEducationRetriever", "retrieve")
         topic_query = re.sub(
             r"^general investment education about\s+",
             "",
@@ -529,6 +534,7 @@ class BedrockEducationRetriever:
         minimum_score: float = 0.0,
         client: Any | None = None,
     ) -> None:
+        log_event("VV entering ", "app.rag.retriever.BedrockEducationRetriever", "__init__")
         self.knowledge_base_id = knowledge_base_id
         self.aws_region = aws_region
         self.expected_corpus_version = expected_corpus_version
@@ -537,6 +543,7 @@ class BedrockEducationRetriever:
 
     @property
     def client(self) -> Any:
+        log_event("VV entering ", "app.rag.retriever.BedrockEducationRetriever", "client")
         if self._client is None:
             import boto3
             from botocore.config import Config
@@ -553,6 +560,7 @@ class BedrockEducationRetriever:
 
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.retriever.BedrockEducationRetriever", "retrieve")
         if not 1 <= top_k <= 20:
             raise ValueError("top_k must be between 1 and 20")
         try:
@@ -564,6 +572,7 @@ class BedrockEducationRetriever:
 
     @trace_method
     def _retrieve(self, query: str, top_k: int) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.retriever.BedrockEducationRetriever", "_retrieve")
         log_event(
             "bedrock.retrieve.request", component="education_retriever",
             knowledge_base_id=self.knowledge_base_id, corpus_version=self.expected_corpus_version,
@@ -655,6 +664,7 @@ class BedrockEducationRetriever:
 
 
 def create_education_retriever(settings: Settings) -> EducationRetriever:
+    log_event("VV entering ", "app.rag.retriever", "create_education_retriever")
     provider = settings.rag_provider.lower()
     if provider == "local_fixture" and settings.app_env.lower() in {"local", "test"}:
         return LocalEducationRetriever()

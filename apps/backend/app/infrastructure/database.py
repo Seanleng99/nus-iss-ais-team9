@@ -8,6 +8,7 @@ from sqlalchemy.engine import URL, Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import Settings, settings
+from app.core.telemetry import log_event
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
@@ -23,6 +24,7 @@ class Base(DeclarativeBase):
 
 
 def render_alembic_database_url(database_url: URL | str) -> str:
+    log_event("VV entering ", "app.infrastructure.database", "render_alembic_database_url")
     rendered = (
         database_url.render_as_string(hide_password=False)
         if isinstance(database_url, URL)
@@ -33,6 +35,7 @@ def render_alembic_database_url(database_url: URL | str) -> str:
 
 
 def configure_database_credentials(engine: Engine, configured: Settings) -> None:
+    log_event("VV entering ", "app.infrastructure.database", "configure_database_credentials")
     if configured.postgres_secret_arn is None:
         return
 
@@ -40,6 +43,7 @@ def configure_database_credentials(engine: Engine, configured: Settings) -> None
 
     @event.listens_for(engine, "do_connect")
     def connect_with_current_credentials(dialect, _connection_record, cargs, cparams):
+        log_event("VV entering ", "app.infrastructure.database", "configure_database_credentials.connect_with_current_credentials")
         nonlocal client
         try:
             if client is None:
@@ -85,5 +89,6 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def get_db_session() -> Generator[Session, None, None]:
+    log_event("VV entering ", "app.infrastructure.database", "get_db_session")
     with SessionLocal() as session:
         yield session

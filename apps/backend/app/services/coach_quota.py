@@ -20,6 +20,7 @@ from app.infrastructure.models import CoachQuotaLease, CoachQuotaRecord
 def principal_key(principal):
     # Every profile/conversation belonging to the same identity shares a bucket.
     # Automation requests share the credential's bucket, never a caller user ID.
+    log_event("VV entering ", "app.services.coach_quota", "principal_key")
     identity = ("automation",) if principal.is_automation else (
         principal.authentication_method, principal.issuer, principal.subject,
     )
@@ -28,9 +29,11 @@ def principal_key(principal):
 
 class CoachQuota:
     def __init__(self, engine, config):
+        log_event("VV entering ", "app.services.coach_quota.CoachQuota", "__init__")
         self.engine, self.config = engine, config
 
     def acquire(self, principal, *, now=None):
+        log_event("VV entering ", "app.services.coach_quota.CoachQuota", "acquire")
         owner = principal_key(principal)
         lease_id = str(uuid4())
         try:
@@ -84,6 +87,7 @@ class CoachQuota:
                                 headers={"Retry-After": "5"}) from None
 
     def finish(self, lease_id, response=None):
+        log_event("VV entering ", "app.services.coach_quota.CoachQuota", "finish")
         actual = known_tokens(response)
         if not completed_calls(response):
             # A timed-out/cancelled transport can leave AI calls running. Keep
@@ -111,6 +115,7 @@ class CoachQuota:
 
 
 def completed_calls(response):
+    log_event("VV entering ", "app.services.coach_quota", "completed_calls")
     if response is None or response.audit.get("composition_usage_complete") is False:
         return False
     calls = response.audit.get("model_calls", [])
@@ -120,6 +125,7 @@ def completed_calls(response):
 
 
 def known_tokens(response):
+    log_event("VV entering ", "app.services.coach_quota", "known_tokens")
     if not completed_calls(response):
         return None
     calls = response.audit.get("model_calls", [])
@@ -134,6 +140,7 @@ def known_tokens(response):
 
 def purge_quota_records(session, now):
     """Drop idle pseudonymous ledgers after two days in the retention job."""
+    log_event("VV entering ", "app.services.coach_quota", "purge_quota_records")
     cutoff_hour = int((now - timedelta(hours=48)).timestamp()) // 3600
     records = session.scalars(select(CoachQuotaRecord).where(
         CoachQuotaRecord.hour_window < cutoff_hour).with_for_update(skip_locked=True)).all()

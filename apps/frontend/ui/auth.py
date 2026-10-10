@@ -10,6 +10,7 @@ from ui.telemetry import call_span, context_fields, log_event, trace_context
 
 
 def _clear_authenticated_session() -> None:
+    log_event("VV entering ", "ui.auth", "_clear_authenticated_session")
     for key in list(st.session_state):
         if key.startswith("coach_") or key in {
             "journey_id", "auth_identity", "auth_status", "backend_client",
@@ -19,6 +20,7 @@ def _clear_authenticated_session() -> None:
 
 
 def logout(reason_code: str = "user_requested") -> None:
+    log_event("VV entering ", "ui.auth", "logout")
     with (
         nullcontext() if context_fields().get("correlation_id")
         else trace_context(journey_id=st.session_state.get("journey_id"))
@@ -33,6 +35,7 @@ def logout(reason_code: str = "user_requested") -> None:
 
 
 def authentication_required() -> bool:
+    log_event("VV entering ", "ui.auth", "authentication_required")
     configured = os.getenv("FRONTEND_AUTH_REQUIRED")
     if configured is None:
         return False
@@ -40,10 +43,12 @@ def authentication_required() -> bool:
 
 
 def _is_logged_in() -> bool:
+    log_event("VV entering ", "ui.auth", "_is_logged_in")
     return bool(getattr(st.user, "is_logged_in", False))
 
 
 def current_identity_token() -> str | None:
+    log_event("VV entering ", "ui.auth", "current_identity_token")
     if not authentication_required():
         return None
     if not _is_logged_in():
@@ -53,6 +58,7 @@ def current_identity_token() -> str | None:
 
 
 def require_authenticated_user() -> None:
+    log_event("VV entering ", "ui.auth", "require_authenticated_user")
     if not authentication_required():
         return
     if not _is_logged_in():
@@ -123,6 +129,7 @@ def require_authenticated_user() -> None:
 
 
 def signed_in_label() -> str | None:
+    log_event("VV entering ", "ui.auth", "signed_in_label")
     if not authentication_required() or not _is_logged_in():
         return None
     for claim in ("name", "email", "preferred_username", "sub"):

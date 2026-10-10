@@ -8,7 +8,7 @@ from math import log
 from pathlib import Path
 
 from app.core.guardrails import sanitize_rag_document
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 from app.rag.ingestion import active_sources, governance_issues, load_source_manifest
 from app.rag.ranking import terms
 from app.rag.retriever import RetrievalError, RetrievedChunk, _is_trusted_education_url
@@ -26,6 +26,7 @@ def load_documents(
     as_of: date | None = None,
     allowed_url=_is_trusted_education_url,
 ):
+    log_event("VV entering ", "app.rag.local_documents", "load_documents")
     manifest = load_source_manifest(manifest_path)
     if governance_issues(manifest, as_of=as_of):
         raise RetrievalError("The local corpus is not currently approved.")
@@ -60,6 +61,7 @@ def load_documents(
 def document_chunks(text: str) -> list[str]:
     # Preserve complete paragraphs and their following context. This also keeps
     # list headings with their values without reproducing whole documents per hit.
+    log_event("VV entering ", "app.rag.local_documents", "document_chunks")
     paragraphs = [
         "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in p.strip().splitlines())
         for p in re.split(r"\n\s*\n", text) if p.strip()
@@ -88,6 +90,7 @@ class LocalDocumentEducationRetriever:
         manifest_path: Path = DEFAULT_CORPUS_ROOT / "source_manifest.json",
         documents_dir: Path = DEFAULT_CORPUS_ROOT / "documents",
     ) -> None:
+        log_event("VV entering ", "app.rag.local_documents.LocalDocumentEducationRetriever", "__init__")
         self.manifest, documents = load_documents(manifest_path, documents_dir)
         self.expected_corpus_version = self.manifest.corpus_version
         self._chunks = [
@@ -100,6 +103,7 @@ class LocalDocumentEducationRetriever:
 
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.local_documents.LocalDocumentEducationRetriever", "retrieve")
         if not 1 <= top_k <= 20:
             raise ValueError("top_k must be between 1 and 20")
         if governance_issues(self.manifest, as_of=datetime.now(UTC).date()):

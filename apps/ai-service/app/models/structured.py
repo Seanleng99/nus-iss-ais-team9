@@ -15,6 +15,7 @@ StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
 @trace_method
 def parse_structured_response(raw: str, response_type: type[StructuredModel]) -> StructuredModel:
+    log_event("VV entering ", "app.models.structured", "parse_structured_response")
     candidate = raw.strip()
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", candidate, flags=re.DOTALL)
     if fenced:
@@ -61,7 +62,9 @@ def generate_structured_response(
     validate_response: Callable[[StructuredModel], StructuredModel] | None = None,
 ) -> StructuredModel:
     """Generate a typed response with one explicit, bounded correction attempt."""
+    log_event("VV entering ", "app.models.structured", "generate_structured_response")
     def accept(raw):
+        log_event("VV entering ", "app.models.structured", "generate_structured_response.accept")
         try:
             parsed = parse_structured_response(raw, response_type)
             result = validate_response(parsed) if validate_response else parsed

@@ -5,11 +5,12 @@ from coach_math.budget_baseline import recurring_month_total
 
 from app.core.guardrails import validate_tool_permission
 from app.core.schemas import AgentName, UserFinancialSnapshot
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 
 
 @trace_method
 def summarize_transactions(snapshot: UserFinancialSnapshot) -> dict[str, float]:
+    log_event("VV entering ", "app.tools.registry", "summarize_transactions")
     totals: dict[str, float] = {}
     for transaction in snapshot.recent_transactions:
         totals[transaction.category] = totals.get(transaction.category, 0.0) + transaction.amount.amount
@@ -18,6 +19,7 @@ def summarize_transactions(snapshot: UserFinancialSnapshot) -> dict[str, float]:
 
 @trace_method
 def calculate_budget(snapshot: UserFinancialSnapshot) -> dict:
+    log_event("VV entering ", "app.tools.registry", "calculate_budget")
     income = snapshot.monthly_income.amount if snapshot.monthly_income else 0.0
     evidence = recurring_month_total(snapshot.recurring_expenses, snapshot.period_start)
     recurring = evidence["monthly_amount"]
@@ -46,6 +48,7 @@ def calculate_budget(snapshot: UserFinancialSnapshot) -> dict:
 
 @trace_method
 def project_goals(snapshot: UserFinancialSnapshot) -> list[dict[str, float | str]]:
+    log_event("VV entering ", "app.tools.registry", "project_goals")
     projections: list[dict[str, float | str]] = []
     for goal in snapshot.goals:
         remaining = max(goal.target_amount.amount - goal.current_amount.amount, 0.0)
@@ -66,6 +69,7 @@ def project_goals(snapshot: UserFinancialSnapshot) -> list[dict[str, float | str
 def summarize_emergency_fund(snapshot: UserFinancialSnapshot) -> dict:
     # Logged rows are not evidence of a complete month's essential expenses.
     # Recurring rows may also occur in recent_transactions; never add both lists.
+    log_event("VV entering ", "app.tools.registry", "summarize_emergency_fund")
     totals: dict[tuple[str, str], Decimal] = {}
     invalid_dates = 0
     for transaction in snapshot.recent_transactions:
@@ -95,6 +99,7 @@ def summarize_emergency_fund(snapshot: UserFinancialSnapshot) -> dict:
 
 @trace_method
 def call_tool(agent: AgentName, tool_name: str, snapshot: UserFinancialSnapshot):
+    log_event("VV entering ", "app.tools.registry", "call_tool")
     validate_tool_permission(agent, tool_name)
     if tool_name == "transaction_summarizer":
         return summarize_transactions(snapshot)

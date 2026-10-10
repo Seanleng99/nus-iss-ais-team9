@@ -6,6 +6,7 @@ from app.core.schemas import (
     CapabilityName,
     CapabilityProviderType,
 )
+from app.core.telemetry import log_event
 
 
 class CapabilityRegistryError(ValueError):
@@ -61,6 +62,7 @@ DEFAULT_CAPABILITIES = (
 
 class CapabilityRegistry:
     def __init__(self, definitions: Iterable[CapabilityDefinition] | None = None) -> None:
+        log_event("VV entering ", "app.capabilities.registry.CapabilityRegistry", "__init__")
         items = tuple(definitions) if definitions is not None else DEFAULT_CAPABILITIES
         self._definitions = {item.capability: item for item in items}
         if len(self._definitions) != len(items):
@@ -71,6 +73,7 @@ class CapabilityRegistry:
         requester: AgentName,
         capability: CapabilityName,
     ) -> CapabilityDefinition:
+        log_event("VV entering ", "app.capabilities.registry.CapabilityRegistry", "authorize")
         try:
             definition = self._definitions[capability]
         except KeyError as exc:
@@ -82,6 +85,7 @@ class CapabilityRegistry:
         return definition
 
     def get(self, capability: CapabilityName) -> CapabilityDefinition:
+        log_event("VV entering ", "app.capabilities.registry.CapabilityRegistry", "get")
         try:
             return self._definitions[capability]
         except KeyError as exc:

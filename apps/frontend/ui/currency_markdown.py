@@ -2,6 +2,8 @@
 
 import re
 
+from ui.telemetry import log_event
+
 PROTECTED = re.compile(
     r"(?P<code>(?P<ticks>`+).*?(?P=ticks)|~~~.*?~~~)|"
     r"(?P<link>\]\([^\n)]*\))|(?P<display>\$\$.*?\$\$)",
@@ -10,6 +12,7 @@ PROTECTED = re.compile(
 
 
 def currency_safe_markdown(text: str) -> str:
+    log_event("VV entering ", "ui.currency_markdown", "currency_safe_markdown")
     protected = [(match.start(), match.end()) for match in PROTECTED.finditer(text)]
     # Scan maths only in prose gaps, so a currency delimiter cannot swallow
     # a following code span or URL and prevent its protection.

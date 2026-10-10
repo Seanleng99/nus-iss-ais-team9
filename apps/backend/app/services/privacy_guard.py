@@ -3,6 +3,7 @@ from typing import Any
 
 from coach_i18n import input_pattern, translate
 
+from app.core.telemetry import log_event
 from app.domain.schemas import CoachResponse
 
 OTHER_USER_TOKEN_PATTERN = re.compile(
@@ -108,14 +109,17 @@ NON_PERSON_NAMES = frozenset(
 
 
 def _normalize(message: str) -> str:
+    log_event("VV entering ", "app.services.privacy_guard", "_normalize")
     return " ".join(message.replace("’", "'").replace("‘", "'").split())
 
 
 def _own_name_tokens(user_id: str) -> set[str]:
+    log_event("VV entering ", "app.services.privacy_guard", "_own_name_tokens")
     return {part for part in re.split(r"[-_]", user_id.strip().lower()) if part}
 
 
 def _other_username(message: str, own: set[str]) -> str | None:
+    log_event("VV entering ", "app.services.privacy_guard", "_other_username")
     if not DATA_INTENT_PATTERN.search(message):
         return None
     for match in OTHER_USER_TOKEN_PATTERN.finditer(message):
@@ -146,7 +150,9 @@ HOUSEHOLD_FACT = re.compile(
 
 
 def _without_supplied_household_facts(message):
+    log_event("VV entering ", "app.services.privacy_guard", "_without_supplied_household_facts")
     def supplied(match):
+        log_event("VV entering ", "app.services.privacy_guard", "_without_supplied_household_facts.supplied")
         prefix = message[max(0, match.start() - 80):match.start()]
         prefix = re.split(r"[.?!;\n]", prefix)[-1]
         # An explicit lookup stays guarded even if an amount appears later.
@@ -157,6 +163,7 @@ def _without_supplied_household_facts(message):
 
 
 def _named_person(message: str, own: set[str]) -> str | None:
+    log_event("VV entering ", "app.services.privacy_guard", "_named_person")
     for pattern in (NAMED_DATA_PATTERN, NAMED_ACTIVITY_PATTERN):
         for match in pattern.finditer(message):
             name = match.group("name").lower()
@@ -171,6 +178,7 @@ def find_other_user_reference(message: str, user_id: str) -> str | None:
     The backend only ever loads the signed-in user's own records; this stops the
     coach from answering as though it could see someone else's.
     """
+    log_event("VV entering ", "app.services.privacy_guard", "find_other_user_reference")
     text = _without_supplied_household_facts(_normalize(message))
     own = _own_name_tokens(user_id)
     username = _other_username(text, own)
@@ -183,6 +191,7 @@ def find_other_user_reference(message: str, user_id: str) -> str | None:
 
 
 def other_user_data_reply(session_id: str) -> CoachResponse:
+    log_event("VV entering ", "app.services.privacy_guard", "other_user_data_reply")
     audit: dict[str, Any] = {"source": "privacy_guard"}
     return CoachResponse(
         session_id=session_id,

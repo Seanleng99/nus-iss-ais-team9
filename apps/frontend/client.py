@@ -22,10 +22,12 @@ from ui.telemetry import (
 
 
 def _trace_operation(function):
+    log_event("VV entering ", "client", "_trace_operation")
     traced = trace_method(function)
 
     @wraps(function)
     def wrapped(self, *args, **kwargs):
+        log_event("VV entering ", "client", "_trace_operation.wrapped")
         current = context_fields()
         context = (
             nullcontext()
@@ -43,6 +45,7 @@ def _trace_operation(function):
 
 
 def _route_template(path: str) -> str:
+    log_event("VV entering ", "client", "_route_template")
     if path in {"/api/profiles", "/api/coach", "/api/coach/traces"}:
         return path
     if re.fullmatch(r"/api/coach/traces/[^/?#]+", path):
@@ -72,6 +75,7 @@ class BackendClient:
         synthetic_log: bool = False,
         coach_timeout_seconds: float | None = None,
     ) -> None:
+        log_event("VV entering ", "client.BackendClient", "__init__")
         self.base_url = (
             base_url or os.getenv("BACKEND_BASE_URL", "http://localhost:8080")
         ).rstrip("/")
@@ -97,6 +101,7 @@ class BackendClient:
             raise ValueError("COACH_TIMEOUT_SECONDS must be positive and at most 600 seconds")
 
     def _authentication_headers(self) -> dict[str, str]:
+        log_event("VV entering ", "client.BackendClient", "_authentication_headers")
         if self.id_token:
             return {"Authorization": f"Bearer {self.id_token}"}
         if self.automation_api_key:
@@ -114,6 +119,7 @@ class BackendClient:
         allow_not_found: bool = False,
         timeout: float = 20.0,
     ) -> Any:
+        log_event("VV entering ", "client.BackendClient", "_request")
         metadata = {"http_method": method, "route": _route_template(path)}
         log_event("http.request_started", **metadata)
         headers = {**self._authentication_headers(), **outbound_headers()}
@@ -148,31 +154,38 @@ class BackendClient:
 
     @_trace_operation
     def get_profile(self, user_id: str) -> dict[str, Any] | None:
+        log_event("VV entering ", "client.BackendClient", "get_profile")
         return self._request("GET", f"/api/users/{user_id}/profile", allow_not_found=True)
 
     @_trace_operation
     def list_profiles(self) -> list[dict[str, Any]]:
+        log_event("VV entering ", "client.BackendClient", "list_profiles")
         return self._request("GET", "/api/profiles")
 
     @_trace_operation
     def create_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "create_profile")
         return self._request("POST", "/api/profiles", json=payload)
 
     @_trace_operation
     def save_profile(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "save_profile")
         return self._request("PUT", f"/api/users/{user_id}/profile", json=payload)
 
     @_trace_operation
     def delete_profile(self, user_id: str) -> bool:
+        log_event("VV entering ", "client.BackendClient", "delete_profile")
         self._request("DELETE", f"/api/users/{user_id}/profile")
         return True
 
     @_trace_operation
     def get_data_lifecycle(self, user_id: str) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "get_data_lifecycle")
         return self._request("GET", f"/api/users/{user_id}/data-lifecycle")
 
     @_trace_operation
     def save_memory_consent(self, user_id: str, granted: bool) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "save_memory_consent")
         return self._request(
             "PUT",
             f"/api/users/{user_id}/memory-consent",
@@ -181,10 +194,12 @@ class BackendClient:
 
     @_trace_operation
     def export_user_data(self, user_id: str) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "export_user_data")
         return self._request("GET", f"/api/users/{user_id}/data-export")
 
     @_trace_operation
     def delete_user_data(self, user_id: str, policy_version: str) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "delete_user_data")
         return self._request(
             "DELETE",
             f"/api/users/{user_id}/data",
@@ -196,10 +211,12 @@ class BackendClient:
 
     @_trace_operation
     def get_fairness_profile(self, user_id: str) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "get_fairness_profile")
         return self._request("GET", f"/api/users/{user_id}/fairness-profile")
 
     @_trace_operation
     def save_fairness_consent(self, user_id: str, granted: bool) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "save_fairness_consent")
         return self._request(
             "PUT",
             f"/api/users/{user_id}/fairness-consent",
@@ -208,12 +225,14 @@ class BackendClient:
 
     @_trace_operation
     def save_demographics(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "save_demographics")
         return self._request("PUT", f"/api/users/{user_id}/demographics", json=payload)
 
     @_trace_operation
     def list_transactions(
         self, user_id: str, period_start: date | None = None
     ) -> list[dict[str, Any]]:
+        log_event("VV entering ", "client.BackendClient", "list_transactions")
         params = {"period_start": period_start.isoformat()} if period_start else None
         return self._request(
             "GET",
@@ -223,40 +242,48 @@ class BackendClient:
 
     @_trace_operation
     def create_transaction(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "create_transaction")
         return self._request("POST", f"/api/users/{user_id}/transactions", json=payload)
 
     @_trace_operation
     def update_transaction(
         self, user_id: str, transaction_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "update_transaction")
         return self._request(
             "PUT", f"/api/users/{user_id}/transactions/{transaction_id}", json=payload
         )
 
     @_trace_operation
     def delete_transaction(self, user_id: str, transaction_id: str) -> None:
+        log_event("VV entering ", "client.BackendClient", "delete_transaction")
         self._request("DELETE", f"/api/users/{user_id}/transactions/{transaction_id}")
 
     @_trace_operation
     def list_goals(self, user_id: str) -> list[dict[str, Any]]:
+        log_event("VV entering ", "client.BackendClient", "list_goals")
         return self._request("GET", f"/api/users/{user_id}/goals")
 
     @_trace_operation
     def create_goal(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "create_goal")
         return self._request("POST", f"/api/users/{user_id}/goals", json=payload)
 
     @_trace_operation
     def update_goal(
         self, user_id: str, goal_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "update_goal")
         return self._request("PUT", f"/api/users/{user_id}/goals/{goal_id}", json=payload)
 
     @_trace_operation
     def delete_goal(self, user_id: str, goal_id: str) -> None:
+        log_event("VV entering ", "client.BackendClient", "delete_goal")
         self._request("DELETE", f"/api/users/{user_id}/goals/{goal_id}")
 
     @_trace_operation
     def get_budget(self, user_id: str, period_start: date) -> dict[str, Any] | None:
+        log_event("VV entering ", "client.BackendClient", "get_budget")
         return self._request(
             "GET",
             f"/api/users/{user_id}/budget",
@@ -266,85 +293,110 @@ class BackendClient:
 
     @_trace_operation
     def preview_budget_months(self, user_id, payload):
+        log_event("VV entering ", "client.BackendClient", "preview_budget_months")
         return self._request("POST", f"/api/users/{user_id}/budget/continuity/preview", json=payload)
 
     def confirm_budget_months(self, user_id, preview_id):
+        log_event("VV entering ", "client.BackendClient", "confirm_budget_months")
         return self._request("POST", f"/api/users/{user_id}/budget/continuity/confirm", json={"preview_id": preview_id, "confirmed": True})
 
     def get_review_preferences(self, user_id):
+        log_event("VV entering ", "client.BackendClient", "get_review_preferences")
         return self._request("GET", f"/api/users/{user_id}/budget/reviews/preferences")
 
     def save_review_preferences(self, user_id, payload):
+        log_event("VV entering ", "client.BackendClient", "save_review_preferences")
         return self._request("PUT", f"/api/users/{user_id}/budget/reviews/preferences", json=payload)
 
     def get_due_review(self, user_id):
+        log_event("VV entering ", "client.BackendClient", "get_due_review")
         return self._request("GET", f"/api/users/{user_id}/budget/reviews/due")
 
     def acknowledge_budget_review(self, user_id, evidence):
+        log_event("VV entering ", "client.BackendClient", "acknowledge_budget_review")
         return self._request("POST", f"/api/users/{user_id}/budget/reviews/acknowledge", json={"evidence": evidence, "confirmed": True})
 
     def get_budget_commitments(self, user_id, period):
+        log_event("VV entering ", "client.BackendClient", "get_budget_commitments")
         return self._request("GET", f"/api/users/{user_id}/budget/commitments", params={"period_start": period.isoformat()})
 
     def save_budget_commitments(self, user_id, payload):
+        log_event("VV entering ", "client.BackendClient", "save_budget_commitments")
         return self._request("PUT", f"/api/users/{user_id}/budget/commitments", json=payload)
 
     def budget_alternatives(self, user_id, payload):
+        log_event("VV entering ", "client.BackendClient", "budget_alternatives")
         return self._request("POST", f"/api/users/{user_id}/budget/alternatives", json=payload)
 
     def get_budget_history(self, user_id, period):
+        log_event("VV entering ", "client.BackendClient", "get_budget_history")
         return self._request("GET", f"/api/users/{user_id}/budget/history", params={"period_start": str(period)})
 
     def adaptive_budget_review(self, user_id, period, lookback):
+        log_event("VV entering ", "client.BackendClient", "adaptive_budget_review")
         return self._request("POST", f"/api/users/{user_id}/budget/adaptive-review", json={"period_start":str(period),"lookback_months":lookback})
 
     def compare_income_cases(self, user_id, payload):
+        log_event("VV entering ", "client.BackendClient", "compare_income_cases")
         return self._request("POST", f"/api/users/{user_id}/budget/income-scenarios", json=payload)
 
     def get_budget_timing(self, user_id, period):
+        log_event("VV entering ", "client.BackendClient", "get_budget_timing")
         return self._request("GET", f"/api/users/{user_id}/budget/timing", params={"period_start": period.isoformat()})
 
     def get_budget_workspace(self, user_id, *, search="", offset=0):
+        log_event("VV entering ", "client.BackendClient", "get_budget_workspace")
         return self._request("GET", f"/api/users/{user_id}/budget/workspace", params={"search":search,"offset":offset})
 
     def get_match_candidates(self, user_id, transaction_id):
+        log_event("VV entering ", "client.BackendClient", "get_match_candidates")
         return self._request("GET", f"/api/users/{user_id}/cashflow/match-candidates", params={"transaction_id":transaction_id})
 
     def preview_workspace_change(self, user_id, operation, payload):
+        log_event("VV entering ", "client.BackendClient", "preview_workspace_change")
         import json
         return self._request("POST", f"/api/users/{user_id}/budget/workspace/preview",
                              json={"operation": operation, "payload_json": json.dumps(payload)})
 
     def confirm_workspace_change(self, user_id, preview_id):
+        log_event("VV entering ", "client.BackendClient", "confirm_workspace_change")
         return self._request("POST", f"/api/users/{user_id}/budget/workspace/confirm",
                              json={"preview_id": preview_id, "confirmed": True})
 
     def get_cashflow_settings(self, user_id):
+        log_event("VV entering ", "client.BackendClient", "get_cashflow_settings")
         return self._request("GET", f"/api/users/{user_id}/cashflow/settings")
 
     def save_cashflow_settings(self, user_id, payload):
+        log_event("VV entering ", "client.BackendClient", "save_cashflow_settings")
         return self._request("PUT", f"/api/users/{user_id}/cashflow/settings", json=payload)
 
     def get_cashflow(self, user_id, through):
+        log_event("VV entering ", "client.BackendClient", "get_cashflow")
         return self._request("GET", f"/api/users/{user_id}/cashflow", params={"through": through.isoformat()})
 
     def settle_cashflow(self, user_id, schedule_id, due_on, *, settled=True):
+        log_event("VV entering ", "client.BackendClient", "settle_cashflow")
         return self._request("POST", f"/api/users/{user_id}/cashflow/settle", params={"schedule_id": schedule_id, "due_on": due_on.isoformat(), "settled": settled})
 
     @_trace_operation
     def review_budget(self, user_id: str, period_start: date) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "review_budget")
         return self._request("GET", f"/api/users/{user_id}/budget/review", params={"period_start": period_start.isoformat()})
 
     @_trace_operation
     def compare_budget(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "compare_budget")
         return self._request("POST", f"/api/users/{user_id}/budget/compare", json=payload)
 
     @_trace_operation
     def save_budget(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "save_budget")
         return self._request("PUT", f"/api/users/{user_id}/budget", json=payload)
 
     @_trace_operation
     def get_dashboard(self, user_id: str, period_start: date) -> dict[str, Any] | None:
+        log_event("VV entering ", "client.BackendClient", "get_dashboard")
         return self._request(
             "GET",
             f"/api/users/{user_id}/dashboard",
@@ -354,10 +406,12 @@ class BackendClient:
 
     @_trace_operation
     def ask_coach(self, payload: dict[str, Any]) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "ask_coach")
         return self._request("POST", "/api/coach", json=payload, timeout=self.coach_timeout_seconds)
 
     @_trace_operation
     def list_traces(self, user_id: str, *, status: str | None = None, offset: int = 0) -> dict:
+        log_event("VV entering ", "client.BackendClient", "list_traces")
         params = {"user_id": user_id, "offset": offset, "limit": 25}
         if status is not None:
             params["status"] = status
@@ -365,17 +419,20 @@ class BackendClient:
 
     @_trace_operation
     def get_trace(self, user_id: str, trace_id: str) -> dict | None:
+        log_event("VV entering ", "client.BackendClient", "get_trace")
         return self._request("GET", f"/api/coach/traces/{quote(trace_id, safe='')}",
                              params={"user_id": user_id}, allow_not_found=True)
 
     @_trace_operation
     def list_chat_sessions(self, user_id: str) -> list[dict[str, Any]]:
+        log_event("VV entering ", "client.BackendClient", "list_chat_sessions")
         return self._request("GET", f"/api/users/{user_id}/chat-sessions")
 
     @_trace_operation
     def create_chat_session(
         self, user_id: str, title: str, session_id: str | None = None
     ) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "create_chat_session")
         return self._request(
             "POST",
             f"/api/users/{user_id}/chat-sessions",
@@ -384,6 +441,7 @@ class BackendClient:
 
     @_trace_operation
     def get_chat_session(self, user_id: str, session_id: str) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "get_chat_session")
         return self._request(
             "GET", f"/api/users/{user_id}/chat-sessions/{session_id}"
         )
@@ -392,6 +450,7 @@ class BackendClient:
     def rename_chat_session(
         self, user_id: str, session_id: str, title: str
     ) -> dict[str, Any]:
+        log_event("VV entering ", "client.BackendClient", "rename_chat_session")
         return self._request(
             "PATCH",
             f"/api/users/{user_id}/chat-sessions/{session_id}",
@@ -400,6 +459,7 @@ class BackendClient:
 
     @_trace_operation
     def delete_chat_session(self, user_id: str, session_id: str) -> None:
+        log_event("VV entering ", "client.BackendClient", "delete_chat_session")
         self._request("DELETE", f"/api/users/{user_id}/chat-sessions/{session_id}")
 
 
@@ -408,6 +468,7 @@ def build_request(
     user_id: str, message: str, session_id: str | None = None,
     *, response_locale: str | None = None,
 ) -> dict[str, Any]:
+    log_event("VV entering ", "client", "build_request")
     return {
         "user_id": user_id.strip() or "demo-user",
         "session_id": session_id or str(uuid4()),
@@ -418,4 +479,5 @@ def build_request(
 
 @trace_method
 def ask_coach(payload: dict[str, Any]) -> dict[str, Any]:
+    log_event("VV entering ", "client", "ask_coach")
     return BackendClient().ask_coach(payload)

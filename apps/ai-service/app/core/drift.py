@@ -10,6 +10,7 @@ AGENTS = {"budget", "spending", "goal_strategy", "investment_education", "risk_c
 
 
 def observation(request, response) -> dict:
+    log_event("VV entering ", "app.core.drift", "observation")
     text = request.message
     chinese = bool(re.search(load_data("scripts")["han_inventory"], text))
     latin = any(char.isascii() and char.isalpha() for char in text)
@@ -34,4 +35,5 @@ def observation(request, response) -> dict:
 
 
 def log_observation(request, response) -> None:
+    log_event("VV entering ", "app.core.drift", "log_observation")
     log_event("coach.drift.observation", **observation(request, response))

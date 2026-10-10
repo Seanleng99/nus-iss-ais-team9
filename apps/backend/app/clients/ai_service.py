@@ -14,6 +14,7 @@ class AIServiceUnavailableError(RuntimeError):
     """Raised when the private AI service cannot produce a valid response."""
 
     def __init__(self, *, timed_out=False, timeout_origin=None):
+        log_event("VV entering ", "app.clients.ai_service.AIServiceUnavailableError", "__init__")
         super().__init__("AI service unavailable")
         self.timed_out = timed_out
         self.timeout_origin = timeout_origin
@@ -21,6 +22,7 @@ class AIServiceUnavailableError(RuntimeError):
 
 class AIServiceClient:
     def __init__(self, settings: Settings) -> None:
+        log_event("VV entering ", "app.clients.ai_service.AIServiceClient", "__init__")
         self._base_url = settings.ai_service_base_url.rstrip("/")
         self._api_key = settings.ai_service_api_key
         self._timeout = settings.ai_service_timeout_seconds
@@ -30,6 +32,7 @@ class AIServiceClient:
     async def compose(self, request: CoachRequest, response: CoachResponse, outcomes: list[dict]) -> CoachResponse:
         # During action composition DurableRun buffers stream events. Financial
         # writes and final trace completion therefore share one atomic commit.
+        log_event("VV entering ", "app.clients.ai_service.AIServiceClient", "compose")
         try:
             async with asyncio.timeout(self._composition_timeout):
                 async with httpx.AsyncClient(timeout=self._composition_timeout) as client:
@@ -56,6 +59,7 @@ class AIServiceClient:
 
     @trace_method
     async def coach(self, request: CoachRequest) -> CoachResponse:
+        log_event("VV entering ", "app.clients.ai_service.AIServiceClient", "coach")
         record_event("backend.ai.deadline", timeout_seconds=self._timeout, component="ai_transport")
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
@@ -102,6 +106,7 @@ class AIServiceClient:
             ) from error
 
     async def _stream(self, client, request, headers, run, *, path="/coach/stream", payload=None):
+        log_event("VV entering ", "app.clients.ai_service.AIServiceClient", "_stream")
         async with client.stream(
             "POST",
             f"{self._base_url}{path}",

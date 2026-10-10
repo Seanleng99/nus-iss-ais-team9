@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 from sqlalchemy import URL
 
 from app.core.data_lifecycle import DATA_LIFECYCLE_POLICY
+from app.core.telemetry import log_event
 
 
 class Settings(BaseSettings):
@@ -57,6 +58,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_coach_token_budget(self) -> Self:
+        log_event("VV entering ", "app.core.config.Settings", "validate_coach_token_budget")
         if self.coach_tokens_per_hour < self.max_model_tokens_per_run:
             raise ValueError("COACH_TOKENS_PER_HOUR must cover MAX_MODEL_TOKENS_PER_RUN")
         return self
@@ -84,6 +86,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_host_for_postgres_secret(self) -> Self:
+        log_event("VV entering ", "app.core.config.Settings", "require_host_for_postgres_secret")
         if self.postgres_secret_arn is not None:
             if not self.postgres_secret_arn.strip():
                 raise ValueError("POSTGRES_SECRET_ARN must not be blank")
@@ -93,6 +96,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> URL | str:
+        log_event("VV entering ", "app.core.config.Settings", "database_url")
         if self.postgres_host:
             return URL.create(
                 "postgresql+psycopg",
@@ -113,6 +117,7 @@ class Settings(BaseSettings):
 
     @property
     def automation_user_id_prefix_list(self) -> tuple[str, ...]:
+        log_event("VV entering ", "app.core.config.Settings", "automation_user_id_prefix_list")
         return tuple(
             prefix.strip()
             for prefix in self.automation_user_id_prefixes.split(",")
@@ -121,6 +126,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_deployment_secrets(self) -> Self:
+        log_event("VV entering ", "app.core.config.Settings", "require_deployment_secrets")
         policy_retention = DATA_LIFECYCLE_POLICY["retention"]
         configured_retention = {
             "TRACE_RETENTION_DAYS": (

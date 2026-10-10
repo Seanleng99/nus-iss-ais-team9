@@ -103,6 +103,7 @@ UserId = Annotated[str, Path(min_length=1, max_length=128)]
 
 
 def _validate_period_start(period_start: date) -> None:
+    log_event("VV entering ", "app.api.financial", "_validate_period_start")
     if period_start.day != 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -111,6 +112,7 @@ def _validate_period_start(period_start: date) -> None:
 
 
 def _profile_response(record: FinancialProfileRecord) -> ProfileResponse:
+    log_event("VV entering ", "app.api.financial", "_profile_response")
     income = (
         MoneyAmount(currency=record.currency, amount=float(record.monthly_income))
         if record.monthly_income is not None
@@ -135,6 +137,7 @@ def _profile_response(record: FinancialProfileRecord) -> ProfileResponse:
 
 
 def _profile_summary(record: FinancialProfileRecord) -> ProfileSummary:
+    log_event("VV entering ", "app.api.financial", "_profile_summary")
     display_name = record.preferences.get("display_name")
     if not isinstance(display_name, str) or not display_name.strip():
         display_name = record.user_id
@@ -152,6 +155,7 @@ def _profile_summary(record: FinancialProfileRecord) -> ProfileSummary:
 
 
 def _transaction_response(record: TransactionRecord) -> TransactionResponse:
+    log_event("VV entering ", "app.api.financial", "_transaction_response")
     return TransactionResponse(
         id=record.id,
         description=record.description,
@@ -166,6 +170,7 @@ def _transaction_response(record: TransactionRecord) -> TransactionResponse:
 
 
 def _goal_response(record: FinancialGoalRecord) -> GoalResponse:
+    log_event("VV entering ", "app.api.financial", "_goal_response")
     return GoalResponse(
         id=record.id,
         name=record.name,
@@ -178,6 +183,7 @@ def _goal_response(record: FinancialGoalRecord) -> GoalResponse:
 def _budget_response(
     record: MonthlyBudgetRecord, spending: dict[str, float]
 ) -> BudgetResponse:
+    log_event("VV entering ", "app.api.financial", "_budget_response")
     categories = [
         BudgetCategoryResponse(
             category=item.category,
@@ -202,6 +208,7 @@ def _budget_response(
 
 @trace_method
 def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse | None:
+    log_event("VV entering ", "app.api.financial", "_message_explanation")
     trace = message.orchestration_trace
     if trace is None:
         return None
@@ -228,6 +235,7 @@ def _message_explanation(message: ChatMessageRecord) -> ChatExplanationResponse 
 def _chat_session_response(
     record: ChatSessionRecord, *, include_messages: bool
 ) -> ChatSessionSummary | ChatSessionResponse:
+    log_event("VV entering ", "app.api.financial", "_chat_session_response")
     values = {
         "id": record.id,
         "user_id": record.user_id,
@@ -259,6 +267,7 @@ def list_profiles(
     session: Annotated[Session, Depends(get_db_session)],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> list[ProfileSummary]:
+    log_event("VV entering ", "app.api.financial", "list_profiles")
     repository = SQLAlchemyUserRepository(session)
     if principal.is_automation:
         records = repository.list_profiles()
@@ -283,6 +292,7 @@ def create_profile(
     session: Annotated[Session, Depends(get_db_session)],
     principal: Annotated[AuthenticatedPrincipal, Depends(require_principal)],
 ) -> ProfileResponse:
+    log_event("VV entering ", "app.api.financial", "create_profile")
     repository = SQLAlchemyUserRepository(session)
     enforce_automation_user_scope(principal, profile.user_id)
     if not principal.is_automation and automation_user_id_reserved(profile.user_id):
@@ -313,6 +323,7 @@ def create_profile(
 
 @router.get("/users/{user_id}/profile", response_model=ProfileResponse)
 def get_profile(user_id: UserId, session: Annotated[Session, Depends(get_db_session)]) -> ProfileResponse:
+    log_event("VV entering ", "app.api.financial", "get_profile")
     record = SQLAlchemyUserRepository(session).get_profile(user_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
@@ -325,6 +336,7 @@ def put_profile(
     profile: ProfileUpsert,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> ProfileResponse:
+    log_event("VV entering ", "app.api.financial", "put_profile")
     record = SQLAlchemyUserRepository(session).upsert_profile(user_id, profile)
     session.commit()
     return _profile_response(record)
@@ -335,6 +347,7 @@ def delete_profile(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> Response:
+    log_event("VV entering ", "app.api.financial", "delete_profile")
     if not SQLAlchemyUserRepository(session).delete_profile(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
     session.commit()
@@ -350,6 +363,7 @@ def list_chat_sessions(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> list[ChatSessionSummary]:
+    log_event("VV entering ", "app.api.financial", "list_chat_sessions")
     records = SQLAlchemyChatRepository(session).list_for_user(user_id)
     return [
         _chat_session_response(record, include_messages=False) for record in records
@@ -367,6 +381,7 @@ def create_chat_session(
     chat: ChatSessionCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> ChatSessionResponse:
+    log_event("VV entering ", "app.api.financial", "create_chat_session")
     user_repository = SQLAlchemyUserRepository(session)
     if not user_repository.exists(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -391,6 +406,7 @@ def get_chat_session(
     chat_session_id: str,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> ChatSessionResponse:
+    log_event("VV entering ", "app.api.financial", "get_chat_session")
     record = SQLAlchemyChatRepository(session).get(user_id, chat_session_id)
     if record is None:
         raise HTTPException(
@@ -410,6 +426,7 @@ def update_chat_session(
     update: ChatSessionUpdate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> ChatSessionResponse:
+    log_event("VV entering ", "app.api.financial", "update_chat_session")
     record = SQLAlchemyChatRepository(session).rename(
         user_id, chat_session_id, update.title
     )
@@ -430,6 +447,7 @@ def delete_chat_session(
     chat_session_id: str,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> Response:
+    log_event("VV entering ", "app.api.financial", "delete_chat_session")
     if not SQLAlchemyChatRepository(session).delete(user_id, chat_session_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -442,6 +460,7 @@ def delete_chat_session(
 def _fairness_consent_response(
     record: ProfileConsentRecord | None,
 ) -> FairnessConsentResponse:
+    log_event("VV entering ", "app.api.financial", "_fairness_consent_response")
     if record is None:
         return FairnessConsentResponse(
             purpose="fairness_evaluation",
@@ -462,6 +481,7 @@ def _fairness_consent_response(
 def _durable_memory_consent_response(
     record: ProfileConsentRecord | None,
 ) -> DataConsentResponse:
+    log_event("VV entering ", "app.api.financial", "_durable_memory_consent_response")
     policy_feature_enabled = bool(
         DATA_LIFECYCLE_POLICY["consent"][DURABLE_MEMORY_PURPOSE]["feature_enabled"]
     )
@@ -493,6 +513,7 @@ def _durable_memory_consent_response(
 def _data_lifecycle_response(
     consent: ProfileConsentRecord | None,
 ) -> DataLifecycleResponse:
+    log_event("VV entering ", "app.api.financial", "_data_lifecycle_response")
     return DataLifecycleResponse(
         policy_version=DATA_LIFECYCLE_POLICY_VERSION,
         effective_on=date.fromisoformat(DATA_LIFECYCLE_POLICY["effective_on"]),
@@ -503,6 +524,7 @@ def _data_lifecycle_response(
 
 
 def _effective_retention() -> dict[str, int | str]:
+    log_event("VV entering ", "app.api.financial", "_effective_retention")
     return {
         "authenticated_financial_workspace": "until_owner_deletion",
         "orchestration_traces_days": settings.trace_retention_days,
@@ -519,6 +541,7 @@ def get_data_lifecycle(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> DataLifecycleResponse:
+    log_event("VV entering ", "app.api.financial", "get_data_lifecycle")
     if not SQLAlchemyUserRepository(session).exists(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     consent = SQLAlchemyConsentRepository(session).get(
@@ -536,6 +559,7 @@ def put_memory_consent(
     update: DataConsentUpdate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> DataConsentResponse:
+    log_event("VV entering ", "app.api.financial", "put_memory_consent")
     if not SQLAlchemyUserRepository(session).exists(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     record = SQLAlchemyConsentRepository(session).set_durable_memory_consent(
@@ -553,6 +577,7 @@ def export_user_data(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> UserDataExportResponse:
+    log_event("VV entering ", "app.api.financial", "export_user_data")
     repository = SQLAlchemyUserRepository(session)
     data = repository.export_user_data(user_id)
     if data is None:
@@ -578,6 +603,7 @@ def delete_user_data(
     request: UserDataDeletionRequest,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> UserDataDeletionReceipt:
+    log_event("VV entering ", "app.api.financial", "delete_user_data")
     if request.confirm_user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -602,6 +628,7 @@ def delete_user_data(
 
 
 def _demographic_response(record: ProfileDemographicRecord) -> DemographicResponse:
+    log_event("VV entering ", "app.api.financial", "_demographic_response")
     return DemographicResponse(
         user_id=record.user_id,
         age_band=record.age_band,
@@ -622,6 +649,7 @@ def get_fairness_profile(
     user_id: UserId,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> FairnessProfileResponse:
+    log_event("VV entering ", "app.api.financial", "get_fairness_profile")
     if not SQLAlchemyUserRepository(session).exists(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     repository = SQLAlchemyFairnessProfileRepository(session)
@@ -643,6 +671,7 @@ def put_fairness_consent(
     update: FairnessConsentUpdate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> FairnessConsentResponse:
+    log_event("VV entering ", "app.api.financial", "put_fairness_consent")
     if not SQLAlchemyUserRepository(session).exists(user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     record = SQLAlchemyFairnessProfileRepository(session).set_consent(
@@ -661,6 +690,7 @@ def put_demographics(
     demographics: DemographicUpsert,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> DemographicResponse:
+    log_event("VV entering ", "app.api.financial", "put_demographics")
     try:
         record = SQLAlchemyFairnessProfileRepository(session).upsert_demographics(
             user_id, demographics
@@ -677,6 +707,7 @@ def list_transactions(
     session: Annotated[Session, Depends(get_db_session)],
     period_start: Annotated[date | None, Query()] = None,
 ) -> list[TransactionResponse]:
+    log_event("VV entering ", "app.api.financial", "list_transactions")
     if period_start is not None:
         _validate_period_start(period_start)
     records = SQLAlchemyTransactionRepository(session).list_records(
@@ -695,6 +726,7 @@ def create_transaction(
     transaction: TransactionCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> TransactionResponse:
+    log_event("VV entering ", "app.api.financial", "create_transaction")
     try:
         record = SQLAlchemyTransactionRepository(session).create(user_id, transaction)
     except ValueError as error:
@@ -717,6 +749,7 @@ def update_transaction(
     transaction: TransactionCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> TransactionResponse:
+    log_event("VV entering ", "app.api.financial", "update_transaction")
     try:
         record = SQLAlchemyTransactionRepository(session).update(
             user_id, transaction_id, transaction
@@ -735,6 +768,7 @@ def delete_transaction(
     transaction_id: UUID,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> Response:
+    log_event("VV entering ", "app.api.financial", "delete_transaction")
     try:
         deleted = SQLAlchemyTransactionRepository(session).delete(user_id, transaction_id)
     except ValueError as error:
@@ -749,6 +783,7 @@ def delete_transaction(
 def list_goals(
     user_id: UserId, session: Annotated[Session, Depends(get_db_session)]
 ) -> list[GoalResponse]:
+    log_event("VV entering ", "app.api.financial", "list_goals")
     records = SQLAlchemyGoalRepository(session).list_records(user_id)
     return [_goal_response(record) for record in records]
 
@@ -763,6 +798,7 @@ def create_goal(
     goal: GoalCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> GoalResponse:
+    log_event("VV entering ", "app.api.financial", "create_goal")
     try:
         record = SQLAlchemyGoalRepository(session).create(user_id, goal)
     except ValueError as error:
@@ -778,6 +814,7 @@ def update_goal(
     goal: GoalCreate,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> GoalResponse:
+    log_event("VV entering ", "app.api.financial", "update_goal")
     try:
         record = SQLAlchemyGoalRepository(session).update(user_id, goal_id, goal)
     except ValueError as error:
@@ -794,6 +831,7 @@ def delete_goal(
     goal_id: UUID,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> Response:
+    log_event("VV entering ", "app.api.financial", "delete_goal")
     if not SQLAlchemyGoalRepository(session).delete(user_id, goal_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
     session.commit()
@@ -804,6 +842,7 @@ def delete_goal(
 def get_snapshot(
     user_id: UserId, session: Annotated[Session, Depends(get_db_session)]
 ) -> SnapshotResponse:
+    log_event("VV entering ", "app.api.financial", "get_snapshot")
     snapshot = SQLAlchemyUserRepository(session).get_financial_snapshot(user_id)
     if snapshot is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -816,6 +855,7 @@ def get_budget(
     period_start: Annotated[date, Query()],
     session: Annotated[Session, Depends(get_db_session)],
 ) -> BudgetResponse:
+    log_event("VV entering ", "app.api.financial", "get_budget")
     _validate_period_start(period_start)
     repository = SQLAlchemyBudgetRepository(session)
     record = repository.get(user_id, period_start)
@@ -827,6 +867,7 @@ def get_budget(
 @router.get("/users/{user_id}/budget/review")
 def review_budget(user_id: UserId, period_start: Annotated[date, Query()],
                   session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "review_budget")
     _validate_period_start(period_start)
     return build_budget_review(session, user_id, period_start)
 
@@ -834,6 +875,7 @@ def review_budget(user_id: UserId, period_start: Annotated[date, Query()],
 @router.get("/users/{user_id}/budgets")
 def list_budgets(user_id: UserId, session: Annotated[Session, Depends(get_db_session)],
                  start: date | None = None, end: date | None = None):
+    log_event("VV entering ", "app.api.financial", "list_budgets")
     from coach_math.budget_scope import BudgetScope
 
     from app.services.budget_records import build_record_change
@@ -849,6 +891,7 @@ def list_budgets(user_id: UserId, session: Annotated[Session, Depends(get_db_ses
 def compare_budget(user_id: UserId, draft: BudgetDraft, session: Annotated[Session, Depends(get_db_session)]):
     # The caller supplies an exploratory plan. Ownership is checked by the router;
     # no saved budget, profile or conversation state is written here.
+    log_event("VV entering ", "app.api.financial", "compare_budget")
     return apply_saved_constraints(session, user_id, compare_draft(draft))
 
 
@@ -858,6 +901,7 @@ def put_budget(
     budget: BudgetUpsert,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> BudgetResponse:
+    log_event("VV entering ", "app.api.financial", "put_budget")
     repository = SQLAlchemyBudgetRepository(session)
     if budget.review_evidence and build_budget_review(session, user_id, budget.period_start)["evidence_fingerprint"] != budget.review_evidence:
         raise HTTPException(status_code=409, detail="Budget or spending records changed. Refresh the review before saving its adjustment.")
@@ -877,6 +921,7 @@ def get_dashboard(
     period_start: Annotated[date, Query()],
     session: Annotated[Session, Depends(get_db_session)],
 ) -> DashboardResponse:
+    log_event("VV entering ", "app.api.financial", "get_dashboard")
     _validate_period_start(period_start)
     user_repository = SQLAlchemyUserRepository(session)
     if not user_repository.exists(user_id):
@@ -983,11 +1028,13 @@ def get_dashboard(
 
 @router.get("/users/{user_id}/cashflow/settings")
 def get_cashflow_settings(user_id: UserId, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "get_cashflow_settings")
     return read_section(session, user_id, "cashflow")
 
 
 @router.put("/users/{user_id}/cashflow/settings")
 def put_cashflow_settings(user_id: UserId, payload: CashflowSettings, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "put_cashflow_settings")
     try:
         result = save_settings(session, user_id, payload)
     except ValueError as error:
@@ -998,6 +1045,7 @@ def put_cashflow_settings(user_id: UserId, payload: CashflowSettings, session: A
 
 @router.get("/users/{user_id}/cashflow")
 def get_cashflow(user_id: UserId, through: date, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "get_cashflow")
     try:
         return project_cashflow(session, user_id, through)
     except ValueError as error:
@@ -1006,6 +1054,7 @@ def get_cashflow(user_id: UserId, through: date, session: Annotated[Session, Dep
 
 @router.post("/users/{user_id}/cashflow/settle")
 def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, session: Annotated[Session, Depends(get_db_session)], settled: bool = True):
+    log_event("VV entering ", "app.api.financial", "settle_cashflow_occurrence")
     lock_workspace(session, user_id)
     raw = read_section(session, user_id, "cashflow")
     if raw is None:
@@ -1029,11 +1078,13 @@ def settle_cashflow_occurrence(user_id: UserId, schedule_id: str, due_on: date, 
 
 @router.get("/users/{user_id}/budget/commitments")
 def get_commitments(user_id: UserId, period_start: date, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "get_commitments")
     _validate_period_start(period_start)
     return read_section(session, user_id, "constraints:" + period_start.isoformat()) or {}
 
 @router.put("/users/{user_id}/budget/commitments")
 def put_commitments(user_id: UserId, policy: AllocationPolicy, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "put_commitments")
     try:
         result = save_policy(session, user_id, policy)
     except ValueError as error:
@@ -1043,6 +1094,7 @@ def put_commitments(user_id: UserId, policy: AllocationPolicy, session: Annotate
 
 @router.post("/users/{user_id}/budget/alternatives")
 def funded_alternatives(user_id: UserId, request: AlternativesRequest, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "funded_alternatives")
     _validate_period_start(request.period_start)
     try:
         return build_alternatives(session, user_id, request)
@@ -1052,11 +1104,13 @@ def funded_alternatives(user_id: UserId, request: AlternativesRequest, session: 
 
 @router.get("/users/{user_id}/budget/workspace")
 def get_planning_workspace(user_id: UserId, session: Annotated[Session, Depends(get_db_session)], search: str = Query(default="", max_length=100), offset: int = Query(default=0, ge=0)):
+    log_event("VV entering ", "app.api.financial", "get_planning_workspace")
     return context(session, user_id, search=search, offset=offset)
 
 
 @router.post("/users/{user_id}/budget/workspace/preview")
 def preview_planning_change(user_id: UserId, payload: WorkspaceChange, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "preview_planning_change")
     try:
         preview = preview_change(session, user_id, payload)
         write_section(session, user_id, "pending_workspace", preview)
@@ -1068,6 +1122,7 @@ def preview_planning_change(user_id: UserId, payload: WorkspaceChange, session: 
 
 @router.post("/users/{user_id}/budget/workspace/confirm")
 def confirm_planning_change(user_id: UserId, payload: BatchConfirmation, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "confirm_planning_change")
     lock_workspace(session, user_id)
     pending = read_section(session, user_id, "pending_workspace")
     if not pending or pending["preview_id"] != payload.preview_id:
@@ -1083,6 +1138,7 @@ def confirm_planning_change(user_id: UserId, payload: BatchConfirmation, session
 
 @router.get("/users/{user_id}/budget/timing")
 def get_budget_timing(user_id: UserId, period_start: date, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "get_budget_timing")
     from app.services.budget_timing import saved_timing
     _validate_period_start(period_start)
     return saved_timing(session, user_id, period_start)
@@ -1090,6 +1146,7 @@ def get_budget_timing(user_id: UserId, period_start: date, session: Annotated[Se
 
 @router.post("/users/{user_id}/budget/income-scenarios")
 def income_scenarios(user_id: UserId, payload: IncomeScenarios, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "income_scenarios")
     try:
         return compare_income(session, user_id, payload)
     except ValueError as error:
@@ -1098,12 +1155,14 @@ def income_scenarios(user_id: UserId, payload: IncomeScenarios, session: Annotat
 
 @router.get("/users/{user_id}/budget/history")
 def budget_history(user_id: UserId, period_start: date, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "budget_history")
     _validate_period_start(period_start)
     return history(session, user_id, period_start)
 
 
 @router.post("/users/{user_id}/budget/adaptive-review")
 def adaptive_budget_review(user_id: UserId, payload: AdaptiveRequest, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "adaptive_budget_review")
     try:
         return adaptive_review(session, user_id, payload)
     except ValueError as error:
@@ -1112,6 +1171,7 @@ def adaptive_budget_review(user_id: UserId, payload: AdaptiveRequest, session: A
 
 @router.get("/users/{user_id}/cashflow/match-candidates")
 def cashflow_match_candidates(user_id: UserId, transaction_id: UUID, session: Annotated[Session, Depends(get_db_session)]):
+    log_event("VV entering ", "app.api.financial", "cashflow_match_candidates")
     from app.services.budget_reconciliation import match_candidates
     try:
         return match_candidates(session, user_id, transaction_id)

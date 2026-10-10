@@ -6,6 +6,7 @@ from itertools import pairwise
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.schemas import AgentName
+from app.core.telemetry import log_event
 from app.models.gateway import ModelGatewayError
 
 
@@ -22,6 +23,7 @@ class ClaimCorrections(BaseModel):
 
 def located_issues(draft, issues):
     """Only independently located, nonoverlapping local defects use this path."""
+    log_event("VV entering ", "app.core.claim_corrections", "located_issues")
     located = []
     for index, issue in enumerate(issues, 1):
         start, end = issue.get("claim_start"), issue.get("claim_end")
@@ -37,6 +39,7 @@ def located_issues(draft, issues):
 
 
 def correction_edits(decision, issues):
+    log_event("VV entering ", "app.core.claim_corrections", "correction_edits")
     values = {item.issue_id: item.replacement for item in decision.replacements}
     if len(values) != len(decision.replacements) or set(values) != {i["issue_id"] for i in issues}:
         raise ModelGatewayError("Return each supplied issue_id exactly once.", code="INVALID_STRUCTURED_RESPONSE",
@@ -53,6 +56,7 @@ def correction_edits(decision, issues):
 
 
 def apply_edits(text, edits, *, allow_empty=False):
+    log_event("VV entering ", "app.core.claim_corrections", "apply_edits")
     cursor, parts = 0, []
     for start, end, replacement in sorted(edits):
         if not cursor <= start < end <= len(text):
@@ -71,6 +75,7 @@ def apply_edits(text, edits, *, allow_empty=False):
 
 
 def _offset(point, edits, *, end=False):
+    log_event("VV entering ", "app.core.claim_corrections", "_offset")
     delta = 0
     for left, right, replacement in edits:
         if point <= left:
@@ -83,6 +88,7 @@ def _offset(point, edits, *, end=False):
 
 def _presentation_edits(start, length, edits):
     """Clip paragraph removals to owned prose; never split a replacement."""
+    log_event("VV entering ", "app.core.claim_corrections", "_presentation_edits")
     end = start + length
     local = []
     for left, right, text in edits:
@@ -95,6 +101,7 @@ def _presentation_edits(start, length, edits):
 
 def corrected_results(results, draft, edits):
     """Update presentation only; all sealed financial/source authority stays fixed."""
+    log_event("VV entering ", "app.core.claim_corrections", "corrected_results")
     updated = []
     for result in results:
         copy = result.model_copy(deep=True)
@@ -114,6 +121,7 @@ def corrected_results(results, draft, edits):
                     # Generated presentation may also be stored separately. Do
                     # not retain its rejected form or change source authority.
                     def repair_text(text, original=original, local=local):
+                        log_event("VV entering ", "app.core.claim_corrections", "corrected_results.repair_text")
                         if not isinstance(text, str) or not text or original.count(text) != 1:
                             return text
                         offset = original.index(text)

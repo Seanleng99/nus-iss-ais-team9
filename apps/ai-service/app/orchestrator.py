@@ -126,6 +126,7 @@ def _write_workflow_log(
     level: int = logging.INFO,
     event_id: str | None = None,
 ) -> None:
+    log_event("VV entering ", "app.orchestrator", "_write_workflow_log")
     safe_details = trace_details(details or {})
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -196,6 +197,7 @@ class AgentOrchestrator:
         agents: Mapping[AgentName, BaseAgent] | None = None,
         capability_registry: CapabilityRegistry | None = None,
     ) -> None:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "__init__")
         self.config = config or runtime_settings
         raw_gateway = gateway or create_model_gateway(self.config)
         self.gateway = (
@@ -235,6 +237,7 @@ class AgentOrchestrator:
         self.graph = self._build_graph()
 
     def _build_graph(self):
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_build_graph")
         workflow = StateGraph(OrchestratorState)
         workflow.add_node("guard_input", self._guard_input)
         workflow.add_node("resolve_follow_up", self._resolve_follow_up)
@@ -267,6 +270,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _guard_input(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_guard_input")
         request = state["request"]
         decision = inspect_prompt(request.message, is_request=True)
         event = self._event(
@@ -336,6 +340,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _resolve_follow_up(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_resolve_follow_up")
         resolution = (
             FollowUpResolution() if income_memory_reply(state["request"]) is not None else
             resolve_follow_up(state["request"].model_copy(update={"message": state["sanitized_message"]}))
@@ -367,6 +372,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _route(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_route")
         request = state["request"]
         resolution = state.get("follow_up", FollowUpResolution())
         response_language = request_language(state["request"])
@@ -380,11 +386,13 @@ class AgentOrchestrator:
         routing_events = []
 
         def snapshot():
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_route.snapshot")
             return trace_details({**decision.model_dump(mode="json"),
                                   "query_topics": decision.education_topics,
                                   "routing_mode": routing_mode}, decision=True)
 
         def checkpoint(rule_id, source="deterministic_rule", reason_code=None):
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_route.checkpoint")
             nonlocal previous, decision_id
             current = snapshot()
             if current != previous:
@@ -429,6 +437,7 @@ class AgentOrchestrator:
             }
 
             def validate_router(value: RouterDecision) -> RouterDecision:
+                log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_route.validate_router")
                 if value.reference_scope == "current_message" and any(
                     not quote or not quote.strip() or quote not in state["sanitized_message"]
                     for quote in (value.reference_quote, value.reference_subject_quote)
@@ -896,6 +905,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _initialize_tasks(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_initialize_tasks")
         tasks: dict[str, AgentTask] = {}
         events = list(state.get("audit_events", []))
         for agent in state["selected_agents"]:
@@ -951,6 +961,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _run_ready_tasks(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_run_ready_tasks")
         tasks = {task_id: task.model_copy(deep=True) for task_id, task in state["tasks"].items()}
         task_results = dict(state.get("task_results", {}))
         capabilities = dict(state.get("resolved_capabilities", {}))
@@ -1156,6 +1167,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _task_outcomes(futures, tasks, executor, timeout):
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_task_outcomes")
         pending = set(futures)
         try:
             completed = as_completed(futures, timeout=timeout)
@@ -1175,6 +1187,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _execute_task(self, task: AgentTask, agent: BaseAgent, submitted_at=None, trace_id=None):
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_execute_task")
         log_event("agent.invocation", agent=task.agent.value, task_id=task.task_id)
         started = perf_counter()
         execution_events = []
@@ -1187,11 +1200,13 @@ class AgentOrchestrator:
                 "queue_duration_ms": round(max(0, started - (submitted_at or started)) * 1000, 2)}))
 
         def attempt_event(event_type, **details):
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_execute_task.attempt_event")
             event = self._event(trace_state, event_type, task.agent.value, task_id=task.task_id,
                 details={"attempt": final_attempt, "execution_id": execution_id, **details})
             execution_events.append(event)
 
         def backoff(error_code):
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_execute_task.backoff")
             nonlocal backoff_ms
             attempt_event("task.retry_scheduled", attempt=final_attempt + 1, error_code=error_code,
                           backoff_duration_ms=self.config.retry_backoff_seconds * 2 ** (final_attempt - 1) * 1000)
@@ -1265,6 +1280,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _task_failure_is_required(state: OrchestratorState, task: AgentTask) -> bool:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_task_failure_is_required")
         if task.requested_by is None:
             return True
         provider_edges = [
@@ -1284,6 +1300,7 @@ class AgentOrchestrator:
         return not requests or any(request.required for request in requests)
 
     def _stage_after_tasks(self, state: OrchestratorState) -> str:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_stage_after_tasks")
         if state.get("pending_dependencies"):
             return "resolve"
         statuses = {task.status for task in state["tasks"].values()}
@@ -1299,6 +1316,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _resolve_dependencies(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_resolve_dependencies")
         dependency_round = state.get("dependency_round", 0) + 1
         if dependency_round > self.config.max_dependency_rounds:
             raise ModelGatewayError("The workflow exceeded the dependency resolution limit.")
@@ -1765,6 +1783,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _synthesize(self, state: OrchestratorState, *, plan_only=False) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_synthesize")
         sources = self._collect_source_citations(state["agent_results"])
         events = list(state.get("audit_events", []))
         if not plan_only:
@@ -1850,6 +1869,7 @@ class AgentOrchestrator:
                     "max_output_tokens": policy.max_tokens}}
 
         def validate_synthesis(synthesis: SynthesisDecision) -> SynthesisDecision:
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_synthesize.validate_synthesis")
             validate_text_corrections(state.get("draft_answer", ""), synthesis.answer,
                                      state.get("draft_correction_ranges", []))
             validate_citations(synthesis.answer, sources)
@@ -1962,6 +1982,7 @@ class AgentOrchestrator:
                 "audit_events": events}
 
     def _can_preserve_specialist_answers(self, state: OrchestratorState) -> bool:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_can_preserve_specialist_answers")
         results = state["agent_results"]
         allowed = {AgentName.SPENDING, AgentName.BUDGET, AgentName.GOAL_STRATEGY, AgentName.INVESTMENT_EDUCATION}
         return (
@@ -1974,6 +1995,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _review_compliance(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_review_compliance")
         events = [
             *state.get("audit_events", []),
             self._event(state, "compliance.started", AgentName.RISK_COMPLIANCE.value, details={"review_round": 1}),
@@ -1986,6 +2008,7 @@ class AgentOrchestrator:
             follow_up=state.get("follow_up", FollowUpResolution()).model_dump(exclude_none=True),
         )
         def review_event(review, round_number):
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_review_compliance.review_event")
             return self._event(state, "compliance.completed", AgentName.RISK_COMPLIANCE.value,
                 details={"review_round": round_number, "blocked": review.blocked,
                     "block_reasons": review.data.get("block_reasons", []),
@@ -2164,6 +2187,7 @@ class AgentOrchestrator:
 
     def _repair_located_claims(self, state, review, events, review_event):
         """One replacement pass over reviewed claims, then a fresh full review."""
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_repair_located_claims")
         issues = located_issues(state["draft_answer"], review.data.get("blocking_issues", []))
         if not issues or review.data.get("repairable") is not True:
             return None
@@ -2224,6 +2248,7 @@ class AgentOrchestrator:
         current_review = review
         if not blockers:
             def validate_correction(decision):
+                log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_repair_located_claims.validate_correction")
                 edits = correction_edits(decision, issues)
                 replacements = {item.issue_id: item.replacement for item in decision.replacements}
                 for issue in issues:
@@ -2287,6 +2312,7 @@ class AgentOrchestrator:
 
     def _review_partial_answer(self, state, review, events, review_event):
         """A reduced candidate is releasable only after its own independent review."""
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_review_partial_answer")
         issues = located_issues(state["draft_answer"], review.data.get("blocking_issues", []))
         if not issues or review.data.get("request_allowed") is not True or review.data.get("repairable") is not True:
             return None
@@ -2346,6 +2372,7 @@ class AgentOrchestrator:
             return None
 
     def _repair_financial_answer(self, state, review, events):
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_repair_financial_answer")
         issues = review.data.get("blocking_issues", [])
         targets = {issue.get("owner") or issue["section_id"] for issue in issues}
         financial = {"spending", "budget", "goal_strategy"}
@@ -2359,6 +2386,7 @@ class AgentOrchestrator:
         specialist_targets = targets & (financial | {education})
         authority_targets = specialist_targets | (set(owners) if "draft" in targets else set())
         def has_authority(owner):
+            log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_repair_financial_answer.has_authority")
             result = owners.get(owner)
             return result is not None and (
                 owner in financial and isinstance(result._financial_grounding_snapshot, FinancialGroundingSnapshot)
@@ -2479,6 +2507,7 @@ class AgentOrchestrator:
 
     @trace_method
     def _finalize(self, state: OrchestratorState) -> OrchestratorState:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_finalize")
         compliance = state["compliance_result"]
         response_language = request_language(state["request"])
         answer = state["draft_answer"]
@@ -2668,6 +2697,7 @@ class AgentOrchestrator:
         requested_by: AgentName | None = None,
         provider_question: str | None = None,
     ) -> AgentTask:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_create_task")
         agent = AgentName(agent)
         assignment = next((item for item in state.get("task_assignments", [])
                            if item["agent"] == agent.value), None)
@@ -2793,6 +2823,7 @@ class AgentOrchestrator:
         tasks: dict[str, AgentTask],
         agent: AgentName,
     ) -> AgentTask | None:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_find_task_by_agent")
         return next((task for task in tasks.values() if task.agent == agent), None)
 
     @staticmethod
@@ -2801,6 +2832,7 @@ class AgentOrchestrator:
         tasks: dict[str, AgentTask],
         task_results: dict[str, AgentResult],
     ) -> list[AgentResult]:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_ordered_results")
         results: list[AgentResult] = []
         for agent in selected_agents:
             task = next((item for item in tasks.values() if item.agent == agent), None)
@@ -2813,6 +2845,7 @@ class AgentOrchestrator:
         request: DependencyRequest,
         result: CapabilityResult,
     ) -> None:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_validate_dependency_fields")
         missing = [field for field in request.required_output_fields if field not in result.data]
         if missing:
             raise ModelGatewayError("A capability result omitted required output fields.")
@@ -2822,6 +2855,7 @@ class AgentOrchestrator:
         task: AgentTask,
         result: CapabilityResult,
     ) -> CapabilityDefinition:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_validate_produced_capability")
         try:
             definition = self.capability_registry.get(result.capability)
         except CapabilityRegistryError as exc:
@@ -2842,6 +2876,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _capability_key(capability: CapabilityName, fingerprint: str) -> str:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_capability_key")
         return f"{capability.value}:{fingerprint}"
 
     @staticmethod
@@ -2850,6 +2885,7 @@ class AgentOrchestrator:
         definition: CapabilityDefinition,
         task: AgentTask | None = None,
     ) -> str:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_capability_input_fingerprint")
         snapshot = state["request"].snapshot.model_dump(mode="json")
         if definition.capability == CapabilityName.TRANSACTION_CATEGORY_TOTALS and task is not None:
             snapshot.update(task.input_data)
@@ -2881,6 +2917,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _creates_cycle(existing: list[DependencyEdge], proposed: DependencyEdge) -> bool:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_creates_cycle")
         if proposed.requester_task_id == proposed.provider_task_id:
             return True
         adjacency: dict[str, set[str]] = {}
@@ -2910,6 +2947,7 @@ class AgentOrchestrator:
         parent_task_id: str | None = None,
         details: dict | None = None,
     ) -> AuditEvent:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_event")
         details = dict(details or {})
         if event_type.startswith("dependency.") and task_id and parent_task_id:
             details.update(requester_task_id=task_id, provider_task_id=parent_task_id)
@@ -2935,6 +2973,7 @@ class AgentOrchestrator:
     @staticmethod
     @trace_method
     def _collect_source_citations(results: list[AgentResult]) -> list[SourceCitation]:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_collect_source_citations")
         sources: list[SourceCitation] = []
         seen: set[str] = set()
         for result in results:
@@ -2956,6 +2995,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _collect_retrieval_evidence(results: list[AgentResult]) -> list[dict[str, str]]:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_collect_retrieval_evidence")
         evidence = []
         seen = set()
         for result in results:
@@ -2977,6 +3017,7 @@ class AgentOrchestrator:
 
     @staticmethod
     def _collect_policy_evidence(result: AgentResult) -> list[dict[str, str]]:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "_collect_policy_evidence")
         evidence = []
         seen = set()
         for item in result.data.get("policy_sources", []):
@@ -3003,6 +3044,7 @@ class AgentOrchestrator:
 
     @trace_method
     def handle(self, request: CoachRequest, *, timeout_seconds: float | None = None) -> CoachResponse:
+        log_event("VV entering ", "app.orchestrator.AgentOrchestrator", "handle")
         request = request.model_copy(update={"response_locale": request_locale(request)})
         trace_id = workflow_id.get() or str(uuid4())
         log_event(

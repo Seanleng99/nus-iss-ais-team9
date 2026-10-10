@@ -3,6 +3,7 @@ from datetime import date
 from coach_math.budget_scope import BudgetScope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.telemetry import log_event
 from app.domain.conversation_context import SessionField
 
 
@@ -21,6 +22,7 @@ class TurnQueries(BaseModel):
     @field_validator("budget_status_period_start")
     @classmethod
     def first_of_month(cls, value):
+        log_event("VV entering ", "app.domain.turn_queries.TurnQueries", "first_of_month")
         if value is not None and value.day != 1:
             raise ValueError("Budget query periods must start on the first day")
         return value

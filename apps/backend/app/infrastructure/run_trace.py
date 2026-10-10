@@ -14,6 +14,7 @@ from app.infrastructure.repositories import SQLAlchemyOrchestrationTraceReposito
 
 class DurableRun:
     def __init__(self, session, session_id, timeout_seconds):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "__init__")
         self.session = session
         self.trace_id = str(uuid4())
         self.buffered = False
@@ -45,10 +46,12 @@ class DurableRun:
             raise
 
     def commit(self):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "commit")
         with call_span("sqlalchemy.orm.session.Session.commit"):
             self.session.commit()
 
     def record_event(self, event_type, **details):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "record_event")
         event = make_event(
             event_type,
             self.trace_id,
@@ -64,6 +67,7 @@ class DurableRun:
         self.append(event)
 
     def _save_event(self, event):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "_save_event")
         events = self.record.audit.get("durable_events", [])
         if any(item["event_id"] == event["event_id"] for item in events):
             return
@@ -78,6 +82,7 @@ class DurableRun:
             self.record.selected_agents = event["details"].get("selected_agents", [])
 
     def append(self, event):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "append")
         if self.closed:
             raise ValueError("Trace run has closed")
         event = safe_event(event, self.trace_id)
@@ -93,11 +98,13 @@ class DurableRun:
             self.commit()
 
     def _drain(self):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "_drain")
         for event in self.pending:
             self._save_event(event)
 
     def flush(self):
         """Explicit pre-AI checkpoint; never called while an action is pending."""
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "flush")
         self._drain()
         self.commit()
         self.pending.clear()
@@ -105,6 +112,7 @@ class DurableRun:
 
     def fail(self, status, code):
         # Roll back pending chat writes; earlier event commits remain durable.
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "fail")
         self.session.rollback()
         try:
             record = self.session.get(OrchestrationTraceRecord, self.trace_id)
@@ -128,6 +136,7 @@ class DurableRun:
         log_event("trace.run.finished", trace_id=self.trace_id, status=status, error_code=code)
 
     def complete(self, response, assistant_message_id):
+        log_event("VV entering ", "app.infrastructure.run_trace.DurableRun", "complete")
         self.buffered = True
         self.record_event("backend.persistence.started")
         self._drain()

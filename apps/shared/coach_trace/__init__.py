@@ -13,6 +13,8 @@ from coach_trace.review import POLICY_CLAUSES, VALIDATION_REASONS, review_metada
 
 SCHEMA_VERSION = 1
 CODE = re.compile(r"^[A-Za-z0-9_./:@{}<>-]{1,180}$")
+ENTRY_EVENT = "VV entering "
+PYTHON_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
 COUNTS = {
     "duration_ms",
     "status_code",
@@ -179,6 +181,11 @@ def code(value):
     return value if isinstance(value, str) and CODE.fullmatch(value) else None
 
 
+def log_event_name(value):
+    """Allow the exact entry marker without relaxing ordinary event/code validation."""
+    return ENTRY_EVENT if value == ENTRY_EVENT else code(value) or "telemetry.event"
+
+
 def topic_ids(values):
     # Only governed public topic names may cross the incremental boundary.
     from coach_i18n import load_data
@@ -203,6 +210,10 @@ def safe_details(details, *, decision=False):
     result = {}
     for key, value in details.items():
         if decision and key not in DECISION_FIELDS:
+            continue
+        if key in {"classname", "methodname"}:
+            if isinstance(value, str) and len(value) <= 180 and PYTHON_NAME.fullmatch(value):
+                result[key] = value
             continue
         if key in {"block_reasons", "review_block_categories"}:
             if isinstance(value, (list, tuple)):

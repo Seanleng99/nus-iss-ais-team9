@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from app.core.telemetry import log_event
 from app.rag.ingestion import governance_issues
 from app.rag.local_documents import _KNOWLEDGE_ROOT, load_documents
 from app.rag.retriever import RetrievalError, RetrievedChunk
@@ -12,6 +13,7 @@ DEFAULT_POLICY_ROOT = _KNOWLEDGE_ROOT / "policy_controls"
 
 
 def _is_trusted_policy_url(url: str) -> bool:
+    log_event("VV entering ", "app.rag.local_policy", "_is_trusted_policy_url")
     parsed = urlparse(url)
     return (
         parsed.scheme == "https"
@@ -28,12 +30,14 @@ class LocalDocumentPolicyRetriever:
         manifest_path: Path = DEFAULT_POLICY_ROOT / "source_manifest.json",
         documents_dir: Path = DEFAULT_POLICY_ROOT / "documents",
     ) -> None:
+        log_event("VV entering ", "app.rag.local_policy.LocalDocumentPolicyRetriever", "__init__")
         self.manifest, self.documents = load_documents(
             manifest_path, documents_dir, allowed_url=_is_trusted_policy_url
         )
         self.expected_corpus_version = self.manifest.corpus_version
 
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
+        log_event("VV entering ", "app.rag.local_policy.LocalDocumentPolicyRetriever", "retrieve")
         del query
         if not 1 <= top_k <= 3:
             raise ValueError("top_k must be between 1 and 3")

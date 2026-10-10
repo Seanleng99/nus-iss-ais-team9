@@ -2,6 +2,8 @@
 
 import re
 
+from ui.telemetry import log_event
+
 _RESPONSE_FIELDS = (
     "session_id",
     "selected_agents",
@@ -20,6 +22,7 @@ _AGENTS = {"spending", "budget", "goal_strategy", "investment_education", "risk_
 
 
 def response_metadata(response: object) -> dict:
+    log_event("VV entering ", "ui.response_metadata", "response_metadata")
     if not isinstance(response, dict):
         return {}
     explanation = response.get("explanation") or response.get("audit") or {}

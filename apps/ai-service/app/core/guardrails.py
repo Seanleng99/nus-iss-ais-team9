@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from coach_i18n import input_pattern, translate
 
 from app.core.schemas import AgentName
-from app.core.telemetry import trace_method
+from app.core.telemetry import log_event, trace_method
 
 PII_PATTERNS = {
     "email": re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
@@ -135,6 +135,7 @@ _GENERIC_PASSWORD_HYGIENE = re.compile(
 
 
 def _has_injection_match(pattern: re.Pattern[str], text: str) -> bool:
+    log_event("VV entering ", "app.core.guardrails", "_has_injection_match")
     if "credential_action" not in pattern.groupindex:
         return pattern.search(text) is not None
     for match in pattern.finditer(text):
@@ -174,6 +175,7 @@ class GuardrailDecision:
 def redact_sensitive_text(text: str) -> tuple[str, list[str]]:
     # Inspect compatibility characters and invisible separators before PII
     # removal too; otherwise an obfuscated address survives the privacy boundary.
+    log_event("VV entering ", "app.core.guardrails", "redact_sensitive_text")
     normalized = normalize_for_security_inspection(text)
     redacted = normalized if any(pattern.search(normalized) for pattern in PII_PATTERNS.values()) else text
     findings: list[str] = []
@@ -194,6 +196,7 @@ def redact_sensitive_text(text: str) -> tuple[str, list[str]]:
 
 
 def normalize_for_security_inspection(text: str) -> str:
+    log_event("VV entering ", "app.core.guardrails", "normalize_for_security_inspection")
     normalized = unicodedata.normalize("NFKC", text)
     return "".join(
         character
@@ -204,6 +207,7 @@ def normalize_for_security_inspection(text: str) -> str:
 
 @trace_method
 def inspect_prompt(text: str, *, is_request: bool = False) -> GuardrailDecision:
+    log_event("VV entering ", "app.core.guardrails", "inspect_prompt")
     sanitized, pii_findings = redact_sensitive_text(text)
     inspected = normalize_for_security_inspection(sanitized)
     injection_findings = [
@@ -227,6 +231,7 @@ def inspect_prompt(text: str, *, is_request: bool = False) -> GuardrailDecision:
 
 @trace_method
 def sanitize_rag_document(text: str) -> GuardrailDecision:
+    log_event("VV entering ", "app.core.guardrails", "sanitize_rag_document")
     sanitized, pii_findings = redact_sensitive_text(text)
     findings = list(pii_findings)
     inspected = normalize_for_security_inspection(sanitized)
@@ -251,12 +256,14 @@ TOOL_ALLOWLIST: dict[AgentName, set[str]] = {
 
 @trace_method
 def validate_tool_permission(agent: AgentName, tool_name: str) -> None:
+    log_event("VV entering ", "app.core.guardrails", "validate_tool_permission")
     allowed = TOOL_ALLOWLIST.get(agent, set())
     if tool_name not in allowed:
         raise PermissionError(f"{agent.value} cannot call tool {tool_name}")
 
 
 def require_explanation(result_rationale: Iterable[str]) -> list[str]:
+    log_event("VV entering ", "app.core.guardrails", "require_explanation")
     rationale = [item for item in result_rationale if item.strip()]
     if rationale:
         return rationale

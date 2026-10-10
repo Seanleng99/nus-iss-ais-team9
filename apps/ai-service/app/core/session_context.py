@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.agents.education_access import education_model_question
 from app.core.guardrails import inspect_prompt
 from app.core.schemas import AgentName, SessionContext
+from app.core.telemetry import log_event
 
 COACHING_PREFERENCE_KEYS = {
     "financial_literacy", "accessibility_preferences", "income_frequency", "income_stability",
@@ -17,6 +18,7 @@ COACHING_PREFERENCE_KEYS = {
 
 def coaching_preferences(preferences: dict) -> dict:
     """One bounded allowlist shared by routing, specialists and synthesis."""
+    log_event("VV entering ", "app.core.session_context", "coaching_preferences")
     result = {}
     for key, value in preferences.items():
         if key not in COACHING_PREFERENCE_KEYS:
@@ -50,6 +52,7 @@ def sanitized_context(value):
     benign current question unusable. Identity fields are kept outside this
     function by sanitized_request; they are not model instructions.
     """
+    log_event("VV entering ", "app.core.session_context", "sanitized_context")
     if isinstance(value, Enum):
         return value
     if isinstance(value, str):
@@ -89,6 +92,7 @@ def sanitized_context(value):
 
 def sanitized_request(request):
     """One privacy boundary for both coaching and post-action composition."""
+    log_event("VV entering ", "app.core.session_context", "sanitized_request")
     context = sanitized_context(request.session_context)
     # Only SessionContext's validated numeric/date facts may bypass text
     # redaction. Observations and arbitrary dictionaries do not get this waiver.
@@ -112,6 +116,7 @@ def sanitized_request(request):
 
 def attributed_turn_context(decision, request, message):
     """Drop model memory lacking an exact current user source before publishing it."""
+    log_event("VV entering ", "app.core.session_context", "attributed_turn_context")
     position = request.message_position or 1
     observations = []
     for item in decision.session_observations:
@@ -144,6 +149,7 @@ ROLE_FIELDS = {
 
 
 def specialist_context(context: SessionContext, agent: AgentName) -> dict:
+    log_event("VV entering ", "app.core.session_context", "specialist_context")
     allowed = ROLE_FIELDS[agent]
     data = context.model_dump(exclude_none=True)
     data["facts"] = {key: value for key, value in data["facts"].items() if key in allowed}
@@ -185,6 +191,7 @@ def specialist_context(context: SessionContext, agent: AgentName) -> dict:
 
 
 def sanitized_summary(summary):
+    log_event("VV entering ", "app.core.session_context", "sanitized_summary")
     if summary is None:
         return None
     notes = []
@@ -204,6 +211,7 @@ def sanitized_summary(summary):
 
 
 def reported_value(task, field):
+    log_event("VV entering ", "app.core.session_context", "reported_value")
     context = task.context_features.get("session_context", {})
     if field in context.get("uncertain_fields", []):
         return None

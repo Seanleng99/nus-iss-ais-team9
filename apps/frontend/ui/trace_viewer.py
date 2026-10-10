@@ -14,6 +14,7 @@ from ui.coach_language import current_selection
 from ui.components import backend_call, page_header
 from ui.i18n import display_frame, text_formatter, ui_text
 from ui.state import get_client, get_user_id
+from ui.telemetry import log_event
 
 STATUSES = {
     "running": "Running",
@@ -26,10 +27,12 @@ STATUSES = {
 
 
 def label(value):
+    log_event("VV entering ", "ui.trace_viewer", "label")
     return str(value or "Unknown").replace("_", " ").replace(".", " · ").capitalize()
 
 
 def timestamp(value):
+    log_event("VV entering ", "ui.trace_viewer", "timestamp")
     try:
         parsed = datetime.fromisoformat(str(value))
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
@@ -38,6 +41,7 @@ def timestamp(value):
 
 
 def local_time(value):
+    log_event("VV entering ", "ui.trace_viewer", "local_time")
     parsed = timestamp(value)
     return (
         parsed.astimezone(ZoneInfo("Asia/Singapore")).strftime("%d %b %Y, %H:%M:%S SGT")
@@ -47,6 +51,7 @@ def local_time(value):
 
 
 def events_for(trace):
+    log_event("VV entering ", "ui.trace_viewer", "events_for")
     audit = trace.get("audit", {})
     events = audit.get("durable_events")
     if events is None:
@@ -55,6 +60,7 @@ def events_for(trace):
 
 
 def event_rows(events):
+    log_event("VV entering ", "ui.trace_viewer", "event_rows")
     times = [timestamp(e.get("timestamp") or e.get("occurred_at")) for e in events]
     origin = min((value for value in times if value is not None), default=None)
     rows = []
@@ -79,6 +85,7 @@ def event_rows(events):
 
 def model_calls_for(trace):
     """Merge start/finish events so failed and still-running calls are visible."""
+    log_event("VV entering ", "ui.trace_viewer", "model_calls_for")
     calls = {}
     for index, call in enumerate(trace.get("audit", {}).get("model_calls", [])):
         calls[call.get("call_id") or f"legacy-{index + 1}"] = dict(call)
@@ -114,6 +121,7 @@ def model_calls_for(trace):
 
 
 def dependency_edges(trace):
+    log_event("VV entering ", "ui.trace_viewer", "dependency_edges")
     edges = []
     seen = set()
     recorded = list(trace.get("audit", {}).get("dependency_edges", []))
@@ -139,6 +147,7 @@ def dependency_edges(trace):
 
 
 def decision_rows(trace):
+    log_event("VV entering ", "ui.trace_viewer", "decision_rows")
     rows = []
     for event in events_for(trace):
         kind = event.get("event_type", "")
@@ -175,6 +184,7 @@ def decision_rows(trace):
 
 
 def task_rows(trace):
+    log_event("VV entering ", "ui.trace_viewer", "task_rows")
     tasks = {}
     for event in events_for(trace):
         task_id = event.get("task_id")
@@ -224,6 +234,7 @@ def task_rows(trace):
 
 
 def review_rows(trace):
+    log_event("VV entering ", "ui.trace_viewer", "review_rows")
     return [
         {"Decision": label(event["event_type"]), **safe_details(event.get("details"))}
         for event in events_for(trace)
@@ -242,6 +253,7 @@ def review_rows(trace):
 
 def coverage_rows(trace):
     # Only final reviewed prose is displayed; unfinished/blocked runs use code-only events.
+    log_event("VV entering ", "ui.trace_viewer", "coverage_rows")
     rows = []
     if not trace.get("blocked") and trace.get("status", "completed") == "completed":
         for result in trace.get("agent_results", []):
@@ -280,6 +292,7 @@ def coverage_rows(trace):
 
 
 def dependency_resolutions(trace):
+    log_event("VV entering ", "ui.trace_viewer", "dependency_resolutions")
     requirements = {
         safe_details(e.get("details")).get("request_id"): safe_details(e.get("details")).get(
             "required"
@@ -318,6 +331,7 @@ def dependency_resolutions(trace):
 
 
 def render_trace(trace):
+    log_event("VV entering ", "ui.trace_viewer", "render_trace")
     trace_id = trace["trace_id"]
     audit = trace.get("audit", {})
     status = "blocked" if trace.get("blocked") else trace.get("status", "completed")
@@ -609,6 +623,7 @@ def render_trace(trace):
 
 
 def trace_link(trace_id, locale="en"):
+    log_event("VV entering ", "ui.trace_viewer", "trace_link")
     if trace_id and st.button(
         translate("coach.trace", locale),
         key=f"coach-open-trace-{trace_id}",
@@ -620,6 +635,7 @@ def trace_link(trace_id, locale="en"):
 
 
 def trace_page():
+    log_event("VV entering ", "ui.trace_viewer", "trace_page")
     client, user_id = get_client(), get_user_id()
     page_header(
         ui_text("Decision traces"),
@@ -632,6 +648,7 @@ def trace_page():
         st.session_state[open_key] = target["trace_id"]
 
     def reset_list():
+        log_event("VV entering ", "ui.trace_viewer", "trace_page.reset_list")
         st.session_state[offset_key] = 0
         st.session_state.pop(open_key, None)
 
@@ -664,6 +681,7 @@ def trace_page():
         options = {item["trace_id"]: item for item in items}
 
         def choose():
+            log_event("VV entering ", "ui.trace_viewer", "trace_page.choose")
             st.session_state[open_key] = st.session_state[picker_key]
 
         picker_key = f"{prefix}_picker_{status}_{offset}"

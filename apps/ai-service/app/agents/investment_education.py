@@ -55,6 +55,7 @@ class InvestmentEducationAgent(BaseAgent):
         *,
         semantic_grounding: bool = True,
     ) -> None:
+        log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "__init__")
         super().__init__(gateway, prompts, temperature, max_tokens)
         self.education_retriever = education_retriever
         self.semantic_grounding = semantic_grounding
@@ -62,6 +63,7 @@ class InvestmentEducationAgent(BaseAgent):
 
     @trace_method
     def _ground(self, task: AgentTask, sanitized_message: str) -> dict:
+        log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_ground")
         validate_tool_permission(self.name, "education_retriever")
         snapshot = task._education_grounding_snapshot
         if isinstance(snapshot, EducationGroundingSnapshot):
@@ -239,6 +241,7 @@ class InvestmentEducationAgent(BaseAgent):
         return self._capture_grounding(task, grounding, sanitized_message)
 
     def _capture_grounding(self, task: AgentTask, grounding: dict, sanitized_message: str) -> dict:
+        log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_capture_grounding")
         task._education_grounding_snapshot = EducationGroundingSnapshot.capture(
             task, grounding, sanitized_message=sanitized_message, prompt_version=self.prompts.version, prompt_content_hash=self.prompts.content_hash,
             expected_corpus_version=getattr(
@@ -254,12 +257,14 @@ class InvestmentEducationAgent(BaseAgent):
         narrative: AgentNarrative,
         grounding: dict,
     ) -> AgentNarrative:
+        log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_validate_narrative")
         if not isinstance(narrative, GroundedEducationNarrative):
             return narrative
         original_narrative = narrative
         carried_sources = [SourceCitation.model_validate(source) for source in grounding["sources"]]
 
         def validate_field_citations(text: str, sources: list[SourceCitation], field: str) -> None:
+            log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_validate_narrative.validate_field_citations")
             try:
                 validate_citations(text, sources)
             except ModelGatewayError as exc:
@@ -431,10 +436,12 @@ class InvestmentEducationAgent(BaseAgent):
 
     @trace_method
     def _format_summary(self, narrative: AgentNarrative, grounding: dict) -> str:
+        log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_format_summary")
         parts = []
         review_sections = []
 
         def add_section(text, provenance, topic=None):
+            log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_format_summary.add_section")
             if not text.strip():
                 return
             start = sum(len(part) for part in parts) + 2 * len(parts)
@@ -446,6 +453,7 @@ class InvestmentEducationAgent(BaseAgent):
             })
 
         def finish():
+            log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_format_summary.finish")
             grounding["review_sections"] = review_sections
             return "\n\n".join(parts)
 
@@ -520,6 +528,7 @@ class InvestmentEducationAgent(BaseAgent):
         sanitized_message: str,
         grounding: dict,
     ) -> str:
+        log_event("VV entering ", "app.agents.investment_education.InvestmentEducationAgent", "_model_message")
         question = education_model_question(sanitized_message)
         separate_financial_part = task.context_features.get("financial_assessment_handled_separately")
         if separate_financial_part and grounding.get("subquestions"):

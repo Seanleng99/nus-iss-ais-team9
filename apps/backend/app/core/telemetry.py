@@ -11,8 +11,8 @@ from functools import wraps
 from time import perf_counter
 from uuid import uuid4
 
+from coach_trace import ENTRY_EVENT, log_event_name, safe_details
 from coach_trace import code as _safe_code
-from coach_trace import safe_details
 
 from app.core.run_trace import active_run
 
@@ -47,15 +47,21 @@ def context_fields() -> dict:
     }
 
 
-def log_event(event: str, *, level: int = logging.INFO, **fields) -> None:
-    safe = safe_details(fields)
+def log_event(
+    event: str, classname: str | None = None, methodname: str | None = None,
+    *, level: int = logging.INFO, **fields,
+) -> None:
+    """Log static entry identifiers or allowlisted metadata; never inspect arguments."""
+    if event == ENTRY_EVENT and not logger.isEnabledFor(level):
+        return
+    safe = safe_details({**fields, "classname": classname, "methodname": methodname})
     logger.log(
         level,
         json.dumps(
             {
                 "timestamp": datetime.now(UTC).isoformat(),
                 "service": SERVICE_NAME,
-                "event": _safe_code(event) or "telemetry.event",
+                "event": log_event_name(event),
                 **context_fields(),
                 **safe,
             },

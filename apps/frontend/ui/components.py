@@ -5,9 +5,11 @@ import httpx
 import streamlit as st
 
 from ui.i18n import ui_text
+from ui.telemetry import log_event
 
 
 def apply_styles() -> None:
+    log_event("VV entering ", "ui.components", "apply_styles")
     st.markdown(
         """
         <style>
@@ -179,24 +181,29 @@ def apply_styles() -> None:
 
 
 def page_header(title: str, subtitle: str, marker_class: str | None = None) -> None:
+    log_event("VV entering ", "ui.components", "page_header")
     heading_class = f"page-heading {marker_class}" if marker_class else "page-heading"
     st.markdown(f'<h1 class="{heading_class}">{title}</h1>', unsafe_allow_html=True)
     st.markdown(f'<p class="page-subheading">{subtitle}</p>', unsafe_allow_html=True)
 
 
 def money(amount: float, currency: str = "SGD") -> str:
+    log_event("VV entering ", "ui.components", "money")
     return f"{currency} {amount:,.2f}"
 
 
 def percent(value: float) -> str:
+    log_event("VV entering ", "ui.components", "percent")
     return f"{value:.1f}%"
 
 
 def clamp_progress(value: float) -> float:
+    log_event("VV entering ", "ui.components", "clamp_progress")
     return max(0.0, min(value, 1.0))
 
 
 def backend_call(operation: Callable[[], Any]) -> Any:
+    log_event("VV entering ", "ui.components", "backend_call")
     try:
         return operation()
     except httpx.HTTPStatusError as error:

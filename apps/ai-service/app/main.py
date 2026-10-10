@@ -26,6 +26,7 @@ logger = logging.getLogger("service.ai")
 
 
 def _log_generation_failure(exc: ModelGatewayError | RetrievalError) -> None:
+    log_event("VV entering ", "app.main", "_log_generation_failure")
     is_retrieval_error = isinstance(exc, RetrievalError)
     logger.error(
         json.dumps(
@@ -53,11 +54,13 @@ def _log_generation_failure(exc: ModelGatewayError | RetrievalError) -> None:
 
 
 def get_orchestrator() -> AgentOrchestrator:
+    log_event("VV entering ", "app.main", "get_orchestrator")
     return orchestrator
 
 
 @trace_method
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    log_event("VV entering ", "app.main", "require_api_key")
     if not x_api_key or not secrets.compare_digest(x_api_key, settings.api_key):
         log_event("authentication.rejected", authentication_method="service_api_key")
         raise HTTPException(
@@ -78,6 +81,7 @@ def coach(
     request: CoachRequest,
     agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
 ) -> CoachResponse:
+    log_event("VV entering ", "app.main", "coach")
     try:
         log_event("coach.request.accepted", input_characters=len(request.message))
         response = agent_orchestrator.handle(request)
@@ -110,6 +114,7 @@ async def coach_stream(
     x_workflow_timeout_seconds: Annotated[float | None, Header(ge=1, le=115)] = None,
 ) -> StreamingResponse:
     """Private transport: validated metadata events followed by one final response."""
+    log_event("VV entering ", "app.main", "coach_stream")
     return StreamingResponse(
         stream_run(agent_orchestrator, request, str(x_workflow_id),
                    timeout_seconds=x_workflow_timeout_seconds),
@@ -124,6 +129,7 @@ def coach_compose(
     agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
 ) -> CoachResponse:
     """Private, non-streaming composition after backend validation; no writes."""
+    log_event("VV entering ", "app.main", "coach_compose")
     try:
         return compose_action(payload, agent_orchestrator)
     except (ModelGatewayError, RetrievalError) as error:
@@ -137,6 +143,7 @@ async def coach_compose_stream(
     agent_orchestrator: Annotated[AgentOrchestrator, Depends(get_orchestrator)],
     x_workflow_id: Annotated[UUID, Header()],
 ) -> StreamingResponse:
+    log_event("VV entering ", "app.main", "coach_compose_stream")
     trace_id = str(x_workflow_id)
     if payload.response.audit.get("trace_id") != trace_id or payload.response.session_id != payload.request.session_id:
         raise HTTPException(status_code=422, detail="Invalid composition identity")
