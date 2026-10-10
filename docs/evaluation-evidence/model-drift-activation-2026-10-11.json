@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "measurement": "drift_activation_readiness",
+  "date": "2026-10-11",
+  "status": "human_reviewed_baseline_accepted_live_comparison_pending",
+  "deployed_build": "49843e3ccebb5b9115e2d4f2ef36b0c2746e44e6",
+  "ci": {
+    "status": "success",
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38073037247"
+  },
+  "release": {
+    "status": "success",
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38073255911"
+  },
+  "candidate": {
+    "url": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38074471495",
+    "status": "success",
+    "case_count": 12,
+    "repeats_per_case": 1,
+    "sample_count": 12,
+    "structural_pass_count": 12,
+    "all_required_metric_scores_pass": true,
+    "all_scored_subgroup_gates_pass": true,
+    "generator_usage_complete": true,
+    "evaluator_usage_complete": true,
+    "cleanup_count": 12,
+    "p95_ms": 30571.84,
+    "generation_cost_usd": 0.023428,
+    "evaluator_cost_usd": 0.0035016
+  },
+  "baseline": {
+    "path": "infra/llmsecops/model-drift-baseline.json",
+    "baseline_id": "baseline-8608648e6e38f46b",
+    "approval_reference": "team9-human-reviewed-38074471495-20261011",
+    "approved_at": "2026-10-10T18:25:15.534611+00:00",
+    "policy_sha256": "8c8d13daa8d994997eff9cde08c9a5205c63bad38ee36c2e7162fd599ac49558",
+    "human_review_sha256": "50543f08b0a347ced2103245fd2046f208a8eca84b66416fb9e0ba77d6fd70cb",
+    "human_review_receipt": "docs/evaluation-evidence/model-drift-human-review-2026-10-11.json",
+    "human_reviewed_sample_count": 12,
+    "calibration_agreement": {
+      "financial_correct": 1.0,
+      "grounded": 1.0,
+      "safe": 1.0,
+      "helpful": 1.0,
+      "language_correct": 1.0,
+      "refusal_correct": 1.0,
+      "citations_supported": 1.0
+    },
+    "approval_command_passed": true,
+    "source_capture_sha256": "d1ed36dedd938fad8fe0a35d07d5e44952363390950fdf341681fbf2f7b246bf"
+  },
+  "configuration": {
+    "reporting": "github_actions_only",
+    "model": "gpt-6-luna",
+    "evaluator_model": "gpt-6-luna",
+    "evaluation_mode": "same_model",
+    "repository_schedule_enabled": false,
+    "demo_schedule_enabled": false,
+    "email_alerts_enabled": false,
+    "input_monitor_enabled": false,
+    "schedule_singapore": "Sunday 10:15",
+    "schedule_utc": "Sunday 02:15",
+    "repeats_per_case": 1,
+    "expected_samples": 12,
+    "minimum_scored_subgroup_samples": 1
+  },
+  "live_comparison": {
+    "status": "pending",
+    "passed": false
+  },
+  "remaining_activation_work": [
+    "Publish the accepted baseline.",
+    "Verify a fresh live comparison against the same deployed build.",
+    "Enable and verify repository and demo schedule switches."
+  ]
+}

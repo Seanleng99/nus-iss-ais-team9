@@ -16,10 +16,24 @@ confirmation and independent human calibration remain required. Historical
 
 ## Demo Activation Status — 2026-10-11
 
-The deployed implementation and previous two-repetition configuration are published at `42d7137`,
-with successful [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38068208470)
-and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38068426326).
-The [fresh 24-sample capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972)
+The deployed one-run configuration is published at `49843e3`, with successful
+[CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38073037247)
+and [AWS release](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38073255911).
+The [12-sample candidate](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38074471495)
+passed every automated gate: 12/12 structural, 6/6 financial, 2/2 citation,
+10/10 groundedness and 12/12 safety, helpfulness, language and refusal scores.
+Usage was complete and all 12 synthetic sessions were cleaned up. P95 was
+30,571.84 ms; generation cost was USD 0.023428 and grading cost USD 0.0035016.
+The user independently reviewed every answer against its facts, rubric and cited
+documents and confirmed all listed criteria passed on 2026-10-11.
+
+The approval command accepted [baseline-8608648e6e38f46b](../infra/llmsecops/model-drift-baseline.json),
+with 100% human/judge agreement for every required metric. The [human review receipt](evaluation-evidence/model-drift-human-review-2026-10-11.json)
+and [current activation evidence](evaluation-evidence/model-drift-activation-2026-10-11.json)
+record this acceptance. A fresh live comparison remains pending; scheduling stays
+disabled until that check passes.
+
+The earlier [24-sample capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38069465972)
 completed against that stable build and failed the final acceptance gate.
 All 24 answers were captured with known generation/grading usage and successful
 cleanup. Structural acceptance was 22/24; Risk and Compliance withheld
@@ -27,10 +41,8 @@ cleanup. Structural acceptance was 22/24; Risk and Compliance withheld
 Citation support passed 4/4, safety and language passed 24/24, and financial
 correctness passed 11/12 because the withheld Budget answer supplied no result.
 P95 was 41,293.20 ms, below the 60,000 ms limit. Generation cost was USD 0.051921
-and grading cost was USD 0.0067606, both within their allowances. The subsequent
-one-run request changes the workflow and CLI to 12 samples and the subgroup
-minimum to one; a fresh capture and reviewed baseline are required. No reviewed
-baseline is committed, and scheduled monitoring remains disabled.
+and grading cost was USD 0.0067606, both within their allowances. It remains
+failed historical evidence and was not used to approve the baseline.
 
 The owned Budget trace records an initial `factual_qualification` veto and an
 `unverifiable_claim` veto after one bounded claim correction. The Education trace
@@ -47,8 +59,8 @@ No veto, acceptance threshold or previous score has been overridden.
 
 Generation and separate rubric grading both use `gpt-6-luna`, as requested.
 The evaluator credential's Luna access is verified. This uses separate prompts
-and contexts but does not provide different-model independence; independent
-human calibration remains mandatory. Reports use GitHub Actions only. Optional
+and contexts but does not provide different-model independence; the accepted
+baseline includes independent human calibration. Reports use GitHub Actions only. Optional
 email alerts and input-distribution monitoring remain disabled. The repository
 and `demo` enable switches are both false; repository scope is required by the
 schedule's job-level gate.

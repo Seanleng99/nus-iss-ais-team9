@@ -123,71 +123,31 @@ Route deployment failures through EventBridge and operational alerts through SNS
 
 ## Drift Detection
 
-Drift observation is partially implemented. Weekly CI reruns fixed datasets against
-versioned offline fixture baselines; acceptance fails on an absolute threshold
-breach or excessive regression. This detects application regressions, not changes
-in live model semantics. AWS Operational Validation runs weekly on Sunday at 10:00
-Singapore time and on demand, using repeated synthetic sessions against the deployed
-model, prompts, orchestrator and retrieval. Its structural, latency and estimated-cost
-gates do not replace calibrated answer-quality scoring. Dedicated quality capture,
-baseline comparison, aggregate input queries and SNS reporting now have executable
-scripts and an opt-in Sunday 10:15 Singapore workflow. Deployment and an accepted
-baseline remain activation gates; optional email reporting additionally requires
-notification verification. GitHub-only monitoring retains summaries and artifacts.
-Existing CloudWatch
-generation-failure alarms remain separate operational signals. See
-[Model drift monitoring](model-drift-monitoring.md) for setup and commands.
+The live model-drift workflow uses `gpt-6-luna` for generation and separate rubric
+grading, with independent human baseline calibration. Each of the 12 bilingual
+synthetic cases runs once; scored subgroups require at least one sample. Quality
+percentages, critical safety/financial gates and two-run regression confirmation
+remain enforced. Reports use GitHub Actions summaries and retained artifacts;
+optional email alerts and production input-distribution monitoring are disabled.
 
-The 2026-10-10 [activation evidence](evaluation-evidence/model-drift-activation-2026-10-10.json)
-records a successful code release and provider-model metadata verification, with
-GitHub-only reporting configured. The evaluator secret has since been added, and
-drift policy version 3 uses a provisional 60-second complete-answer P95 based on
-recorded GPT-6 Luna timings. The original smoke evidence retains its historical
-10-second threshold. Scheduling remains disabled until the new credential succeeds
-and a complete passing capture is independently reviewed and accepted. The new
-secret's earlier GPT-6 Sol preflight returned HTTP 403 before any app requests.
-Current configuration uses GPT-6 Luna for generation and separate rubric grading,
-with mandatory independent human calibration. See
-[candidate activation evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json).
-Luna grading access is now verified. The corrected capture remains incomplete and
-failed quality/usage acceptance; a separate Education diagnostic returned no
-approved citations. These failures keep scheduling disabled and cannot establish
-confirmed relative drift without an accepted baseline.
-The capture now retains per-case failure stages, bounded HTTP/usage diagnostics
-and cleanup results, distinguishes fixture failures from unknown model spend,
-and validates aggregate usage for both cost and token budgets. Read-only Spending
-handoffs describe queries correctly, and localized amount checks accept standard
-Chinese SGD labels. The Budget benchmark consistently tests the remainder after
-known rent and permits honest qualifications; its changed dataset identity requires
-fresh calibration. A later three-case diagnostic completed with known usage and
-cleanup; Education retrieved approved citations, and a correct Chinese Spending
-amount exposed the now-fixed currency-label oracle defect. Scheduling stays
-disabled pending a complete, independently reviewed capture.
-The next repair capture stopped at 11/36 attempts when a concurrent deployment
-changed the build ID. Its generation usage was fully accounted for and P95 was
-37.95 seconds. Complete deployment before recapturing; mixed-build evidence cannot
-be accepted. Specific content-free identity codes now expose this stop reason.
-ISO currency suffix parsing, Spending query evidence handoff and localized
-take-home-income/commitment clarification were corrected without relaxing gates.
-The subsequent stable-build run completed 36/36 samples with full usage, 36 cleanups,
-P95 32.03 seconds, 18/18 financial-correctness scores and 36/36 safety scores. Two
-English Education responses still asked an unnecessary clarification and had no
-citations. Current-sentence subject resolution was corrected; translated citation
-attribution and appropriate-refusal grading were clarified. These changes require
-fresh capture and human calibration; the original failed evidence is preserved.
-The next stable-build capture completed 36/36 with full usage, 36 cleanups and
-P95 34.65 seconds; Education checks passed. Two Goal answers omitted currency,
-leaving structural acceptance at 34/36. Goal projections/progress now retain owned
-currency, with a bounded correction for unlabeled monetary narrative. Unsaved
-Goal drafts also reach synthesis and Risk review as proposals requiring backend
-validation, preview and separate confirmation. These fixes apply to general
-requests, without benchmark-ID or exact-question exceptions. Evaluation contract
-changes require new evidence and human calibration; scheduling remains disabled.
-Drift captures now run each of the 12 cases once, producing 12 samples. The CLI
-default and workflow agree; scored subgroups require at least one sample. Quality
-pass percentages, critical gates, two-run confirmation and independent human
-calibration are unchanged. This sampling change requires fresh baseline evidence;
-historical two- and three-repeat captures retain their original results.
+On 2026-10-11, [the candidate capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38074471495)
+passed all 12 structural checks and every required quality metric against deployed
+build `49843e3`. Generation/grading usage was complete and all 12 sessions were
+cleaned up. P95 was 30.57 seconds against the provisional 60-second limit. The
+user independently reviewed all answers, facts, rubrics and cited documents and
+confirmed every listed criterion passed. The approval command accepted
+[baseline-8608648e6e38f46b](../infra/llmsecops/model-drift-baseline.json), with 100%
+human/judge agreement for every metric. A fresh live comparison and schedule
+activation are pending; both enable switches remain false.
+
+The [current activation record](evaluation-evidence/model-drift-activation-2026-10-11.json)
+and [human review receipt](evaluation-evidence/model-drift-human-review-2026-10-11.json)
+retain this evidence. Earlier two- and three-repeat failures remain in
+[repair evidence](evaluation-evidence/model-drift-repair-2026-10-10.json) and were
+not used for baseline acceptance. See [Model drift monitoring](model-drift-monitoring.md)
+for setup, thresholds, commands and historical diagnostics. CloudWatch generation
+failure alarms and the general structural evaluation workflow remain separate
+operational signals.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for
@@ -198,7 +158,7 @@ changes but do not establish retrieval relevance or generated-answer groundednes
 
 | Signal | Measurements | Interpretation and current status |
 |---|---|---|
-| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Same-model boolean scoring with independent human calibration and overall/specialist/language/intent baseline comparison are implemented; first reviewed baseline and scheduled activation remain pending. |
+| Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Same-model boolean scoring with independent human calibration and overall/specialist/language/intent baseline comparison are implemented; the current-model baseline is independently reviewed and accepted; fresh comparison and scheduled activation remain pending. |
 | Input distribution | Capture/analysis intent, selected-agent shares, language, missing-input rate and message-length bands | Regular and streamed completed requests emit bounded buckets; optional server-side aggregate queries and marginal distribution comparison are implemented. Production activation remains subject to data review. |
 | Retrieval | Relevant-source recall, evidence gaps, source frequency/age, corpus versions and provenance | Offline retrieval gates, runtime diagnostics and corpus audits exist; the new judge checks citation support against approved reference documents. Exact retrieved-passage replay and recurring live retrieval recall remain separate work. |
 | Execution | Provider errors/retries, review/repair failures, P95 latency, model-call/token use and estimated cost per request | Telemetry and selected alarms/live limits exist. Compare within similar tasks and configurations before attributing a change to the model. |
