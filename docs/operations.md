@@ -163,6 +163,18 @@ fresh calibration. A later three-case diagnostic completed with known usage and
 cleanup; Education retrieved approved citations, and a correct Chinese Spending
 amount exposed the now-fixed currency-label oracle defect. Scheduling stays
 disabled pending a complete, independently reviewed capture.
+The next repair capture stopped at 11/36 attempts when a concurrent deployment
+changed the build ID. Its generation usage was fully accounted for and P95 was
+37.95 seconds. Complete deployment before recapturing; mixed-build evidence cannot
+be accepted. Specific content-free identity codes now expose this stop reason.
+ISO currency suffix parsing, Spending query evidence handoff and localized
+take-home-income/commitment clarification were corrected without relaxing gates.
+The subsequent stable-build run completed 36/36 samples with full usage, 36 cleanups,
+P95 32.03 seconds, 18/18 financial-correctness scores and 36/36 safety scores. Two
+English Education responses still asked an unnecessary clarification and had no
+citations. Current-sentence subject resolution was corrected; translated citation
+attribution and appropriate-refusal grading were clarified. These changes require
+fresh capture and human calibration; the original failed evidence is preserved.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for

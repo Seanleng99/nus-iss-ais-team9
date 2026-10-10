@@ -1,4 +1,5 @@
 {
+  "ai.core.follow_up.multiple_subject_clause": "\\b(?:and|versus|vs|compare|between)\\b|(?:和|与|及)",
   "ai.agents.education_access.generic_education_question": "(?:\\b(?:please|explain|teach|tell|me|i|am|im|i['’]m|new|want|would|like|to|learn|understand|what|is|are|how|can|should|do|you|where|get|getting|started|begin|start|with|the|a|an|of|in|for|about|basic|basics|beginner|beginners|general|simple|terms|introduction|education|completely|financial|investment|investments|investing|invest|chinese|mandarin|english|simplified|answer|respond|reply|using)\\b|请问|请|用|简单|中文|英文|解释|介绍|一下|什么|是|如何|开始|了解|学习|投资|入门|基础|知识|我|想|要|[\\s,.?!，。？！、])+",
   "ai.agents.education_access.capital_gains_tax": "\\bcapital gains? tax(?:ation)?\\b|资本(?:利得|收益)税",
   "ai.agents.education_access.numbered_options": "(?<!\\w)(\\d{1,2})[.)、]\\s*",

@@ -20,7 +20,12 @@
     "generation_usage_complete": true,
     "stop_trigger": "a concurrent deployment changed the observed build from 3732e89 to 50f94b5",
     "p95_ms": 37951.59,
-    "remaining_quality_findings": ["budget-zh ISO currency suffix false failure", "spending-en withheld", "education-zh citation-support flag false", "missing-input-en withheld"]
+    "remaining_quality_findings": [
+      "budget-zh ISO currency suffix false failure",
+      "spending-en withheld",
+      "education-zh citation-support flag false",
+      "missing-input-en withheld"
+    ]
   },
   "followup_fixes": [
     "Accept ISO currency suffixes while rejecting wrong currency codes and numeric substrings.",
@@ -69,11 +74,59 @@
     "followup_focused_infrastructure_tests_passed": 164,
     "followup_ai_tests_passed": 112,
     "live_diagnostic_case_count": 3,
-    "live_diagnostic_case_cleanup_count": 3
+    "live_diagnostic_case_cleanup_count": 3,
+    "followup_resolution_tests_passed": 97,
+    "followup_context_review_tests_passed": 54
   },
   "remaining_activation_work": [
     "Verify the updated deployment and complete a fresh 36-sample Luna-only capture.",
     "Independently review and calibrate every sample, then approve and commit the aggregate baseline.",
     "Verify a passing comparison before enabling scheduled GitHub Actions monitoring."
-  ]
+  ],
+  "followup_repair_commit": "c3a2331e7c44a50f176a65353ccc440435f9748a",
+  "followup_ci_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38057259255",
+  "followup_ci_status": "success",
+  "followup_release_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38057440727",
+  "followup_release_status": "success",
+  "corrected_missing_input_local_zh_luna_review_blocked": false,
+  "full_capture": {
+    "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38058466228",
+    "complete": true,
+    "operational_pass": false,
+    "sample_count": 36,
+    "structural_pass_count": 34,
+    "generation_usage_complete": true,
+    "cleanup_count": 36,
+    "p95_ms": 32032.45,
+    "generation_cost_usd": 0.068952,
+    "evaluator_cost_usd": 0.0089508,
+    "financial_correct": "18/18",
+    "safe": "36/36",
+    "language_correct": "36/36",
+    "missing_citations_samples": [
+      "education-en:1",
+      "education-en:3"
+    ],
+    "confirmed_missing_citation_cause": "A self-contained concept question with a later possessive was treated as an ambiguous follow-up."
+  },
+  "final_fixes": [
+    "Resolve a single education subject named in a complete current sentence before its possessive; preserve ambiguity and prior-context rules.",
+    "Clarify grader attribution boundaries, faithful translation, and appropriate safety refusal without changing thresholds or replacing failed scores."
+  ],
+  "held_answer_grader_trial": {
+    "measurement": "held_answer_grader_calibration_only",
+    "is_baseline_evidence": false,
+    "human_calibration_complete": false,
+    "completed": true,
+    "sample_count": 36,
+    "usage_complete": true,
+    "estimated_cost_usd": 0.0060611,
+    "judge_prompt_sha256": "eee9e0626f30bc858b072c8452e3a1f12ff9c8f66db0b4d7221fe91b2aa4e945",
+    "remaining_failed_samples": [
+      "education-en:1",
+      "education-en:3",
+      "budget-en:3"
+    ],
+    "finding": "The two inappropriate clarifications remain rejected; one noncritical groundedness flag differed. Chinese citation and safety-refusal flags passed the clarified contract."
+  }
 }

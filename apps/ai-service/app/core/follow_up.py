@@ -71,6 +71,23 @@ def _resolve_follow_up(request: CoachRequest) -> FollowUpResolution:
     )
     if not ordinal and _subject(message, request) and not strong_reference:
         return FollowUpResolution()
+    if not ordinal and strong_reference:
+        # A complete current sentence can establish the subject of a later
+        # possessive in the same message. It must name exactly one education
+        # concept; comparisons against an unresolved earlier subject still
+        # use the normal history/ambiguity rules below.
+        prefix = message[:strong_reference.start()]
+        punctuation = input_pattern("ai.core.follow_up.sentence_punctuation")
+        boundary = re.search("[" + re.escape(punctuation) + "]", prefix)
+        current = _subject(prefix[:boundary.end()], request) if boundary else None
+        references = list(re.finditer(input_pattern("ai.core.follow_up.strong_reference"), message, re.IGNORECASE))
+        if (current and current.agent == AgentName.INVESTMENT_EDUCATION
+                and len(current.education_topics) == 1
+                and not re.search(input_pattern("ai.core.follow_up.multiple_subject_clause"),
+                                  prefix[:boundary.end()], re.IGNORECASE)
+                and all(re.fullmatch(input_pattern("ai.core.follow_up.possessive_reference"),
+                                     match.group(), re.IGNORECASE) for match in references)):
+            return FollowUpResolution(reason_code="CURRENT_MESSAGE_EDUCATION_SUBJECT")
     if ordinal:
         return _ordinal(request, ordinal)
     if GOAL_REFERENCE.search(message):

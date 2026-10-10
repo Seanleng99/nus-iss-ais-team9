@@ -43,6 +43,25 @@ def request(message="Explain that more simply.", previous=None, **kwargs):
     )
 
 
+@pytest.mark.parametrize("message", [
+    "Explain diversification to a beginner using approved education sources. Explain its limitations without recommending a personal investment.",
+    "Explain diversification. Explain its risks.",
+])
+def test_named_current_sentence_owns_its_possessive_reference(message):
+    resolved = resolve_follow_up(request(message, previous="Explain exchange-traded funds."))
+    assert resolved.status == "standalone"
+    assert resolved.reason_code == "CURRENT_MESSAGE_EDUCATION_SUBJECT"
+
+
+@pytest.mark.parametrize("message", [
+    "Explain its risks compared with bonds.",
+    "Explain bonds and shares. Explain its risks.",
+    "Explain bonds. Compare their risks with that earlier option.",
+])
+def test_unresolved_or_multiple_subjects_still_need_reference_resolution(message):
+    assert resolve_follow_up(request(message)).status == "ambiguous"
+
+
 @pytest.mark.parametrize(
     "previous,agent,topics",
     [

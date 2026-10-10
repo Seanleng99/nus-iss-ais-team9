@@ -10,6 +10,24 @@ requires a completed, independently reviewed capture and the configuration below
 
 ## Demo Activation Status — 2026-10-10
 
+The [stable-build capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38058466228)
+completed all 36 samples with full generation/grader usage and 36 successful cleanups.
+P95 was 32,032.45 ms. All 18 financial-correctness scores, all 36 safety scores and
+all 36 language scores passed. Budget, Spending and missing-input structural checks
+passed, but two English Education responses asked an unnecessary concept clarification
+and returned no citations. The current-sentence reference rule now recognizes a
+single named education subject before its later possessive while preserving unresolved
+and multiple-subject clarification. The original capture remains failed evidence.
+
+Citation grading also proved sensitive to faithful translation and separately labeled
+model knowledge. A separate Luna diagnostic found the cited Chinese claims supported
+by the approved reference. The grader now checks actual source attribution, evaluates
+other material claims under groundedness, and grades appropriate refusal against the
+safe expected outcome. This changes evaluator prompt identity and requires a fresh
+capture and independent human calibration; it does not replace old flags or relax
+absolute/subgroup thresholds. A held-answer calibration trial remains separate from
+eligible baseline evidence.
+
 The latest [repair capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38055863270)
 stopped after 11 of 36 attempts because a concurrent deployment changed the build
 from `3732e89` to `50f94b5`. All attempted generation usage was accounted for;
@@ -240,6 +258,24 @@ process. Model, effective prompt, deployed build, role, corpus, dataset, evaluat
 or policy changes require fresh acceptance and a reviewed replacement baseline.
 
 ## Compare And Notify
+
+### Diagnose A Failed Capture
+
+Use the aggregate artifact's `generator_execution.records`, sample `error_code`
+and CLI diagnostic lines before rerunning. Do not use failed or incomplete evidence
+as a replacement baseline.
+
+| Diagnostic | Response |
+| --- | --- |
+| `QUALITY_DEPLOYED_BUILD_CHANGED` | Finish the active deployment, discard mixed-build evidence, and recapture against one stable build. |
+| `QUALITY_GENERATOR_IDENTITY_MISMATCH`, `QUALITY_ROLE_POLICY_CHANGED`, or corpus mismatch | Align deployed model/prompt/role/corpus identity with the packaged benchmark, then capture fresh evidence. |
+| Fixture setup failure with an HTTP status | Fix the test record/session API failure. Known zero generation usage is retained when generation never started. |
+| `MODEL_USAGE_INCONSISTENT` or other usage diagnostic | Restore complete per-call and aggregate accounting. Keep generation stopped while spend is unknown. |
+| Failed structural checks or rubric flags | Inspect the private synthetic packet, reproduce the specific case, and correct app behavior or a confirmed oracle defect. Keep quality and safety thresholds unchanged during this repair. |
+
+The workflow's completion result is insufficient for baseline acceptance: the
+approval command also enforces absolute quality, subgroup coverage and independent
+human calibration.
 
 For an existing capture, the comparison is reproducible without provider calls:
 
