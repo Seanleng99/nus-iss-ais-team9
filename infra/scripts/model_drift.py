@@ -195,7 +195,7 @@ def _validate_execution(capture, inventory):
     fields = {"case_id", "repeat", "passed", "cleanup_succeeded", "token_usage_complete",
               "input_tokens", "output_tokens", "model_call_count", "usage_failure_codes", "failed_checks",
               "trace_id", "correlation_id"}
-    optional = {"failure_stage", "error_type", "http_status", "composition_fallback_code"}
+    optional = {"failure_stage", "error_type", "http_status", "composition_fallback_code", "error_code", "error_codes"}
     usage_codes = {"COMPOSITION_USAGE_UNAVAILABLE", "MODEL_USAGE_TOTALS_MISSING", "MODEL_CALL_USAGE_MISSING",
                    "MODEL_USAGE_INCONSISTENT", "GENERATION_USAGE_UNRECOVERED"}
     seen = set()
@@ -230,6 +230,14 @@ def _validate_execution(capture, inventory):
             raise ValueError("Invalid generator HTTP status")
         if record.get("composition_fallback_code") is not None:
             code(record["composition_fallback_code"])
+        if "error_code" in record and (not isinstance(record["error_code"], str)
+                or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", record["error_code"])):
+            raise ValueError("Invalid generator error code")
+        if "error_codes" in record and (not isinstance(record["error_codes"], list)
+                or len(record["error_codes"]) > 20
+                or any(not isinstance(value, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value)
+                       for value in record["error_codes"])):
+            raise ValueError("Invalid generator error codes")
     if capture.get("operational_pass") is True and (
             execution["usage_unknown"] or execution["fixture_stopped"] or not execution["completed_requested_runs"]
             or len(seen) != len(inventory) or any(not all(record[key] for key in (

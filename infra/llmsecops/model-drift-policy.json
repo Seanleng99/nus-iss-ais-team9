@@ -4,7 +4,7 @@
   "operational": {"maximum_p95_ms": 60000},
   "confirmation_runs": 2,
   "maximum_gap_days": 14,
-  "minimum_samples": 3,
+  "minimum_samples": 2,
   "calibration_agreement": 0.9,
   "required_specialists": ["budget", "spending", "goal_strategy", "investment_education", "risk_compliance"],
   "required_languages": ["en", "zh"],

@@ -58,13 +58,15 @@ def test_matching_live_quality_passes_without_replacing_baseline(policy):
     assert reference == original
 
 
-@pytest.mark.parametrize("mutation", ["private_field", "unknown_stage", "unknown_usage", "count_mismatch"])
+@pytest.mark.parametrize("mutation", ["private_field", "unknown_stage", "unknown_usage", "count_mismatch",
+                                     "error_content", "codes_content", "codes_overflow", "codes_type"])
 def test_execution_diagnostics_reject_content_or_contradictory_acceptance(mutation):
     current = capture(count=1)
     current["samples"][0]["sample_id"] = current["expected_samples"][0]["sample_id"] = "case:1"
     record = {"case_id": "case", "repeat": 1, "passed": True, "cleanup_succeeded": True,
               "token_usage_complete": True, "input_tokens": 10, "output_tokens": 5, "model_call_count": 1,
-              "usage_failure_codes": [], "failed_checks": [], "trace_id": None, "correlation_id": None}
+              "usage_failure_codes": [], "failed_checks": [], "trace_id": None, "correlation_id": None,
+              "error_code": "INVALID_STRUCTURED_RESPONSE", "error_codes": ["AI_SERVICE_UNAVAILABLE"]}
     current["generator_execution"] = {"requested_runs": 1, "attempted_runs": 1,
         "completed_requested_runs": True, "usage_unknown": False, "fixture_stopped": False, "records": [record]}
     drift.validate_capture(seal(current))
@@ -74,6 +76,14 @@ def test_execution_diagnostics_reject_content_or_contradictory_acceptance(mutati
         record["failure_stage"] = "PRIVATE-CONTENT"
     elif mutation == "unknown_usage":
         current["generator_execution"]["usage_unknown"] = True
+    elif mutation == "error_content":
+        record["error_code"] = "PRIVATE-CONTENT"
+    elif mutation == "codes_content":
+        record["error_codes"] = ["PRIVATE message"]
+    elif mutation == "codes_overflow":
+        record["error_codes"] = ["CODE"] * 21
+    elif mutation == "codes_type":
+        record["error_codes"] = "CODE"
     else:
         current["generator_execution"]["attempted_runs"] = 0
     with pytest.raises(ValueError):

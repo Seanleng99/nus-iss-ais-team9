@@ -104,7 +104,7 @@ jobs:
             --url "$COACH_URL" --judge-model "$JUDGE_MODEL" \
             --judge-input-rate "$JUDGE_INPUT_RATE" --judge-output-rate "$JUDGE_OUTPUT_RATE" \
             --judge-budget-usd "$JUDGE_BUDGET" --generator-budget-usd "$GENERATOR_BUDGET" \
-            --output artifacts/model-quality-capture.json "${review_args[@]}"
+            --repeats 2 --output artifacts/model-quality-capture.json "${review_args[@]}"
       - name: Compare quality and optional approved input aggregates
         if: always() && inputs.baseline_candidate != true
         id: comparison

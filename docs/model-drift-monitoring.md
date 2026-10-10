@@ -7,8 +7,50 @@ and [a weekly/manual workflow](../.github/workflows/model-drift.yml). Its policy
 and [model-drift-cases.jsonl](../infra/llmsecops/model-drift-cases.jsonl). It does not
 ship a fabricated or automatically approved live baseline. Scheduled activation
 requires a completed, independently reviewed capture and the configuration below.
+Weekly/manual drift captures and the capture CLI default to two repetitions of
+each of the 12 cases, for 24 samples. The scored-subgroup minimum is two so the
+two citation samples per language can be eligible. Smaller groups have wider
+uncertainty; quality percentages, safety/financial gates, two-run regression
+confirmation and independent human calibration remain required. Historical
+36-sample captures below retain their original three-repetition evidence.
 
-## Demo Activation Status — 2026-10-10
+## Demo Activation Status — 2026-10-11
+
+The [currency-fix capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38065549966)
+ran against deployed build `ba27b07`. All five completed Goal answers passed the
+currency and quality checks. It attempted all 36 samples, accounted for every
+generation call and cleaned up all 36 sessions, but two HTTP 503 responses left
+only 34 answers. Structural acceptance was 33/34: one Spending answer was
+withheld by Risk for `factual_qualification`. P95 was 37,580.74 ms; generation
+cost was USD 0.072292 and grading cost USD 0.0096342. Two Education citation
+flags also failed. This capture is ineligible; scheduled monitoring stays disabled.
+
+Owned trace metadata confirmed one 503 followed two router semantic-contract
+rejections (`INVALID_STRUCTURED_RESPONSE`); the old logs did not retain the
+particular rule. A local replay observed overlapping reference/antecedent spans
+when a directly named saved goal was mistaken for a current-message reference.
+Its one correction succeeded. Router guidance now distinguishes direct subjects
+from reference expressions, and each rejected constraint has a fixed diagnostic
+reason. These checks still reject invented, repeated or overlapping provenance.
+
+The other 503 occurred before Risk inference: exact provider input-token counting
+failed after approximately three seconds (`MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE`).
+The old trace omitted the provider exception type, so timeout is an inference
+from timing, not a confirmed exception classification. Counting now permits at
+most two attempts for typed timeout/connection/server failures, with a local
+eight-second budget and the remaining workflow deadline. No generation starts
+without a valid exact count; invalid counts and permission failures do not retry.
+Inference retries remain disabled when spend could be unknown. Static cause
+codes and recovered workflow error codes are retained without prompt/error text.
+
+A separate held-answer diagnostic found the Chinese citations supported and
+returned a contradictory English flag: false while describing all attributed
+claims as supported. Grading guidance now explicitly accepts cautious faithful
+paraphrases and requires a false citation flag to correspond to an actual
+unsupported/distorted attribution. Original scores remain unchanged; the new
+grader identity requires fresh capture and independent human calibration.
+The Spending veto was not reproduced by a local diagnostic and remains a
+failure to investigate, rather than an exception or an overridden safety verdict.
 
 The [next stable-build capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38061657059)
 completed all 36 samples with full generation/grader usage and 36 cleanups. All
@@ -203,7 +245,7 @@ Ordinary relative regressions need two distinct consecutive eligible comparisons
 Missing samples, duplicate IDs, altered evidence hashes, stale history, a fixture
 provider, changed policy or changed runtime/evaluator identity cannot establish a
 passing comparison. The approved baseline is never reset by the monitor. The initial
-policy thresholds and minimum three samples per scored subgroup are demo defaults;
+policy thresholds and minimum two samples per scored subgroup are demo defaults;
 review measured variation and sampling needs before accepting that policy. Wilson
 intervals describe uncertainty and are not an automatic significance test.
 
@@ -223,7 +265,7 @@ role is used when enabling optional email alerts or input aggregate queries.
 | Variable `MODEL_DRIFT_JUDGE_MODEL` | Explicit evaluator supporting Responses Structured Outputs and low reasoning; current policy version 3 requires `gpt-6-luna`, matching every generation role. Separate-model grading is available only with a policy change and fresh baseline acceptance. |
 | Variables `MODEL_DRIFT_JUDGE_INPUT_RATE`, `MODEL_DRIFT_JUDGE_OUTPUT_RATE` | Reviewed USD-per-million-token assumptions for that evaluator; both must be positive. |
 | Variable `MODEL_DRIFT_JUDGE_BUDGET_USD` | Judge spending limit, default USD 0.45. |
-| Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.10 for the 36-sample capture. Changes require reviewed sampling-budget configuration and fresh baseline acceptance. |
+| Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.10 for the 24-sample capture. Changes require reviewed sampling-budget configuration and fresh baseline acceptance. |
 | Variable `MODEL_DRIFT_ENABLED` | Set to `true` after baseline acceptance to enable Sunday 10:15 Singapore scheduled monitoring. |
 | Optional variable `MODEL_DRIFT_EMAIL_ALERTS_ENABLED` | Default `false`; set to `true` to publish actionable failures to the existing `OPERATIONAL_ALERTS_TOPIC_ARN`. Requires updated IAM and a confirmed email subscription. |
 | Optional variable `MODEL_DRIFT_INPUT_LOG_GROUP` | Enables aggregate input comparison for an approved log group after data/retention review. |
@@ -287,6 +329,10 @@ or policy changes require fresh acceptance and a reviewed replacement baseline.
 Use the aggregate artifact's `generator_execution.records`, sample `error_code`
 and CLI diagnostic lines before rerunning. Do not use failed or incomplete evidence
 as a replacement baseline.
+Execution records preserve bounded `error_code`/`error_codes` recovered from owned
+failed traces. Router `validation_reason` and `openai.tokens.count_failed` cause
+codes distinguish semantic validation, transient counting failure and permission
+problems without logging generated text or SDK messages.
 
 | Diagnostic | Response |
 | --- | --- |

@@ -438,6 +438,7 @@ class AgentOrchestrator:
                         "as exact nonempty substrings of the current message, identifying the reference "
                         "and its explicit current-message antecedent.",
                         code="INVALID_STRUCTURED_RESPONSE", component="router",
+                        validation_reason="ROUTER_REFERENCE_QUOTE_INVALID",
                     )
                 if value.reference_scope == "current_message":
                     message = state["sanitized_message"]
@@ -447,7 +448,8 @@ class AgentOrchestrator:
                             or max(reference_start, subject_start) < min(
                                 reference_start + len(value.reference_quote), subject_start + len(value.reference_subject_quote))):
                         raise ModelGatewayError("Reference and antecedent quotes must identify distinct, unique current-message spans.",
-                                                code="INVALID_STRUCTURED_RESPONSE", component="router")
+                                                code="INVALID_STRUCTURED_RESPONSE", component="router",
+                                                validation_reason="ROUTER_REFERENCE_SPANS_INVALID")
                 if requested_agents:
                     expected_agents = set(requested_agents)
                     if value.goal_capture:
@@ -463,6 +465,7 @@ class AgentOrchestrator:
                             "Assign supported educational parts to the selected Budget/Goal consumer "
                             "so its planner can request education_context; do not discard those parts.",
                             code="INVALID_STRUCTURED_RESPONSE", component="router",
+                            validation_reason="ROUTER_SELECTION_MISMATCH",
                         )
                 if not value.task_assignments and len(value.selected_agents) == 1:
                     # A single specialist owns the complete question; no semantic split
@@ -480,15 +483,18 @@ class AgentOrchestrator:
                         "question and exact current-message source_quotes. Scope requires_spending "
                         "to Budget's own task, not another specialist's question.",
                         code="INVALID_STRUCTURED_RESPONSE", component="router",
+                        validation_reason="ROUTER_ASSIGNMENT_PROVENANCE_INVALID",
                     )
                 if any(topic not in CANONICAL_EDUCATION_TOPICS
                        for item in value.task_assignments for topic in item.education_topics):
                     raise ModelGatewayError("Task education_topics must use supplied canonical labels.",
-                                            code="UNAPPROVED_EDUCATION_TOPIC", component="router")
+                                            code="UNAPPROVED_EDUCATION_TOPIC", component="router",
+                                            validation_reason="ROUTER_TASK_TOPIC_INVALID")
                 for assignment in value.task_assignments:
                     if assignment.goal_mode == "emergency_reserve" and "emergency fund readiness" not in assignment.education_topics:
                         raise ModelGatewayError("An emergency_reserve task requires its emergency fund readiness "
-                            "education topic and recorded expense context.", code="INVALID_STRUCTURED_RESPONSE", component="router")
+                            "education topic and recorded expense context.", code="INVALID_STRUCTURED_RESPONSE", component="router",
+                            validation_reason="ROUTER_EMERGENCY_TOPIC_REQUIRED")
                 # Only exact governed aliases can turn a public account/scam
                 # concept into its corpus term. Unrecognized account wording
                 # retains the privacy screen; this never rewrites arbitrary
@@ -504,11 +510,13 @@ class AgentOrchestrator:
                         "public aliases. Omit personal values, account details and instructions; use [] "
                         "when no safe concept can be supplied.",
                         code="INVALID_EDUCATION_PROVENANCE", component="router",
+                        validation_reason="ROUTER_SEARCH_TERMS_INVALID",
                     )
                 if any(topic not in CANONICAL_EDUCATION_TOPICS for topic in value.education_topics):
                     raise ModelGatewayError(
                         "The router supplied an unapproved education topic.",
                         code="UNAPPROVED_EDUCATION_TOPIC", component="router",
+                        validation_reason="ROUTER_TOPIC_INVALID",
                     )
                 value.education_topics = list(dict.fromkeys(value.education_topics))
                 value.referents = [item for item in value.referents if all(
@@ -640,7 +648,10 @@ class AgentOrchestrator:
                     "A pronoun referring to an assessment, category totals or another subject defined "
                     "within this SAME message is current_message, even if a preliminary follow_up "
                     "heuristic says ambiguous or resolved. Supply reference_quote and "
-                    "reference_subject_quote as exact current-message substrings. Preserve every "
+                    "reference_subject_quote as distinct, unique, nonoverlapping exact current-message "
+                    "substrings identifying the reference expression and its antecedent. A directly "
+                    "named subject or saved record is reference_scope=none when it contains no "
+                    "unresolved reference expression; its own name is not a separate antecedent. Preserve every "
                     "requested specialist task and data flow for such references. For dialogue, use "
                     "only attributable supplied history/referents; no missing options may be invented. "
                     "available_capacity describes a saved source and its month, not proof that it "

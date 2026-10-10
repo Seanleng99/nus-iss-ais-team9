@@ -155,6 +155,85 @@
     "Retain each goal's currency in deterministic projections and progress, require currency labels and permit one bounded correction against unchanged grounding.",
     "Pass unsaved Goal drafts to synthesis and Risk review without granting saved-record, consent, execution or financial-repair authority."
   ],
+  "currency_repair_commit": "6f1d5162cdb4529196be46354581dfe2b210192f",
+  "currency_contract_test_commit": "ba27b077c0a2d9e310acbf59b98ec4ec69882ca9",
+  "currency_ci_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38064221245",
+  "currency_ci_status": "success",
+  "currency_release_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38064429735",
+  "currency_release_status": "success",
+  "fresh_currency_capture_run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38065549966",
+  "fresh_currency_capture_outcome": {
+    "build_commit": "ba27b077c0a2d9e310acbf59b98ec4ec69882ca9",
+    "complete": false,
+    "operational_pass": false,
+    "attempted_count": 36,
+    "sample_count": 34,
+    "structural_pass_count": 33,
+    "generation_usage_complete": true,
+    "evaluator_usage_complete": true,
+    "cleanup_count": 36,
+    "p95_ms": 37580.74,
+    "generation_cost_usd": 0.072292,
+    "evaluator_cost_usd": 0.0096342,
+    "answered_goal_samples": 5,
+    "answered_goal_checks_passed": true,
+    "failed_generations": [
+      {"sample_id": "goal-zh:1", "http_status": 503, "error_code": "INVALID_STRUCTURED_RESPONSE", "component": "router", "attempts": 2},
+      {"sample_id": "spending-zh:2", "http_status": 503, "error_code": "MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE", "component": "model_budget", "count_failure_duration_ms": 3006.68}
+    ],
+    "withheld_sample": {"sample_id": "spending-en:3", "review_block_categories": ["factual_qualification"], "local_diagnostic_reproduced": false},
+    "failed_citation_samples": ["education-en:2", "education-zh:3"],
+    "is_approved_baseline": false
+  },
+  "follow_up_diagnostics": {
+    "is_baseline_evidence": false,
+    "local_spending_risk_blocked": false,
+    "local_goal_risk_blocked": false,
+    "local_router_first_rejection": "Overlapping reference and antecedent spans for a directly named saved goal; the bounded correction succeeded.",
+    "original_router_constraint_unknown": true,
+    "original_counter_exception_type_unknown": true,
+    "counter_timeout_inferred_from_timing": true,
+    "held_citation_diagnostic": {
+      "chinese_citations_supported": true,
+      "english_flag": false,
+      "english_explanation_described_all_attributions_supported": true,
+      "original_scores_replaced": false
+    }
+  },
+  "follow_up_general_fixes": [
+    "Clarify direct named subjects versus distinct current-message reference expressions, while preserving exact, unique and nonoverlapping provenance validation.",
+    "Record each router semantic rejection with a static reason code.",
+    "Retry only non-generative exact token counting, at most twice after typed timeout/connection/server errors, bounded by local and workflow deadlines; do not infer counts or retry uncertain generation.",
+    "Retain bounded recovered workflow error codes in capture execution metadata without dialogue or provider exception text.",
+    "Require citation grading to accept cautious faithful paraphrases and align its flag with actual claim support; preserve previous failed evidence and require fresh human calibration."
+  ],
+  "follow_up_validation": {
+    "focused_tests_passed": 190,
+    "ruff_passed": true,
+    "language_resource_scan_passed": true,
+    "judge_prompt_sha256": "45e83dcf961f10366a60ae084e9b91fbd1861269131d01b2df8f31dd403e75d6",
+    "fixed_grader_controls": {
+      "is_baseline_evidence": false,
+      "human_calibration_complete": false,
+      "faithful_paraphrase_en_accepted": true,
+      "distorted_claim_en_rejected": true,
+      "faithful_paraphrase_zh_accepted": true,
+      "distorted_claim_zh_rejected": true,
+      "estimated_cost_usd": 0.0004243
+    }
+  },
+  "requested_sampling_change": {
+    "requested_at": "2026-10-11",
+    "repeats_per_case": 2,
+    "case_count": 12,
+    "expected_sample_count": 24,
+    "minimum_scored_subgroup_samples": 2,
+    "metric_pass_percentages_changed": false,
+    "critical_gates_changed": false,
+    "independent_human_calibration_required": true,
+    "historical_capture_results_changed": false,
+    "fresh_baseline_evidence_required": true
+  },
   "currency_and_draft_validation": {
     "focused_tests_passed": 162,
     "ruff_passed": true,

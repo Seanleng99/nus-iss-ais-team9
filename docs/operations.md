@@ -183,6 +183,11 @@ Goal drafts also reach synthesis and Risk review as proposals requiring backend
 validation, preview and separate confirmation. These fixes apply to general
 requests, without benchmark-ID or exact-question exceptions. Evaluation contract
 changes require new evidence and human calibration; scheduling remains disabled.
+Drift captures now run each of the 12 cases twice, producing 24 samples. The CLI
+default and workflow agree; scored subgroups require at least two samples. Quality
+pass percentages, critical gates, two-run confirmation and independent human
+calibration are unchanged. This sampling change requires fresh baseline evidence;
+historical three-repeat captures retain their original results.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for

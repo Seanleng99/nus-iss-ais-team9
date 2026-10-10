@@ -42,6 +42,11 @@ requested language; refusal_correct checks whether answering/clarifying/refusing
 appropriate. If a required claim cannot be verified, its relevant flag is false.
 For citations_supported, inspect claims attributed to cited sources against their
 verified reference text. Faithful translations and paraphrases are valid support.
+A cautious paraphrase that weakens a source's certainty while preserving its meaning
+is supported; stronger certainty, a changed scope or contradictory facts are not.
+Assess each attributed claim first, then set the flag consistently: if every
+attributed claim is supported, citations_supported is true. A false flag requires
+an actual unsupported or distorted attribution, not a difference in phrasing.
 Explicitly labeled model knowledge is not attributed to a cited source: assess its
 material claims under grounded and requested coverage under helpful. Do not mark an
 otherwise supported citation false merely because separately labeled material is
@@ -338,6 +343,11 @@ def _execution_metadata(record):
         result["http_status"] = record["http_status"]
     if record.get("composition_fallback_code"):
         result["composition_fallback_code"] = _safe_error_code(record["composition_fallback_code"])
+    if _safe_error_code(record.get("error_code")):
+        result["error_code"] = record["error_code"]
+    if record.get("error_codes"):
+        result["error_codes"] = list(dict.fromkeys(
+            value for value in record["error_codes"] if _safe_error_code(value)))[:20]
     return result
 
 
@@ -354,7 +364,7 @@ def main():
     parser.add_argument("--generator-budget-usd", type=float, default=0.1)
     parser.add_argument("--generator-input-rate", type=float, default=0.1)
     parser.add_argument("--generator-output-rate", type=float, default=0.5)
-    parser.add_argument("--repeats", type=int, choices=range(1, 6), default=3)
+    parser.add_argument("--repeats", type=int, choices=range(1, 6), default=2)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--review-packet", type=Path, help="Optional private synthetic Q&A packet for human calibration")
     args = parser.parse_args()

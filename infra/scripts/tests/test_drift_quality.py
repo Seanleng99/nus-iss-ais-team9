@@ -119,7 +119,8 @@ def test_failed_evaluator_preflight_stops_before_app_requests(monkeypatch):
 
 @pytest.mark.parametrize("p95,accepted", [(22707.77, True), (60000, True), (60000.01, False)])
 @pytest.mark.parametrize("evaluation_mode", ["separate_model", "same_model"])
-def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch, p95, accepted, evaluation_mode):
+@pytest.mark.parametrize("repeats", [2, 3])
+def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypatch, p95, accepted, evaluation_mode, repeats):
     from app.core.prompts import CURRENT_PROMPT_VERSION
 
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (response(), "correlation"))
@@ -137,7 +138,7 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
     if evaluation_mode == "same_model":
         evaluator.model = "generator"
     packets = []
-    captured = drift_quality.capture_quality(judge=evaluator, cases=[case()], repeats=3, evaluation_mode=evaluation_mode,
+    captured = drift_quality.capture_quality(judge=evaluator, cases=[case()], repeats=repeats, evaluation_mode=evaluation_mode,
         dataset_hash="dataset-hash", corpus_versions={"education": "education-v1", "policy": "policy-v1"},
         review_sink=packets.append, run_kwargs={"url": "https://example.test/api/coach", "api_key": "PRIVATE-KEY",
             "timeout_seconds": 1, "expected_model_provider": "openai", "expected_model_id": "generator",
@@ -146,9 +147,9 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
     assert captured["complete"] and captured["operational_pass"] is accepted
     assert captured["identity"]["maximum_p95_ms"] == 60000
     assert "PRIVATE" not in json.dumps(captured)
-    assert len(packets) == 3 and "PRIVATE-SYNTHETIC-ANSWER" in json.dumps(packets)
+    assert len(packets) == repeats and "PRIVATE-SYNTHETIC-ANSWER" in json.dumps(packets)
     execution = captured["generator_execution"]
-    assert execution["attempted_runs"] == 3 and not execution["usage_unknown"]
+    assert execution["attempted_runs"] == repeats and not execution["usage_unknown"]
     assert all(record["token_usage_complete"] and record["failed_checks"] == []
                for record in execution["records"])
     policy = model_drift.load_policy()
@@ -240,6 +241,23 @@ def test_fixture_failure_is_retained_without_claiming_unknown_generation_spend(m
     assert record["correlation_id"] is None and "PRIVATE" not in json.dumps(captured)
     assert "live evaluation fixture setup failed" in captured["operational_failures"]
     assert "live evaluation could not account for model usage" not in captured["operational_failures"]
+
+
+def test_execution_metadata_preserves_bounded_recovered_codes_without_error_content():
+    record = {"case_id": "synthetic", "repeat": 1, "passed": False, "cleanup_succeeded": True,
+        "token_usage_complete": True, "input_tokens": 100, "output_tokens": 50, "model_call_count": 2,
+        "checks": [], "error_code": "INVALID_STRUCTURED_RESPONSE",
+        "error_codes": ["AI_SERVICE_UNAVAILABLE", "INVALID_STRUCTURED_RESPONSE",
+                        "PRIVATE financial message", "INVALID_STRUCTURED_RESPONSE"],
+        "error": "PRIVATE error details"}
+    retained = drift_quality._execution_metadata(record)
+    assert retained["error_code"] == "INVALID_STRUCTURED_RESPONSE"
+    assert retained["error_codes"] == ["AI_SERVICE_UNAVAILABLE", "INVALID_STRUCTURED_RESPONSE"]
+    assert "PRIVATE" not in json.dumps(retained)
+    record["error_code"] = "PRIVATE message"
+    record["error_codes"] = ["CODE_" + str(index) for index in range(21)]
+    retained = drift_quality._execution_metadata(record)
+    assert "error_code" not in retained and len(retained["error_codes"]) == 20
 
 
 @pytest.mark.parametrize("problem", ["missing_call_tokens", "count_mismatch", "total_mismatch"])

@@ -74,6 +74,38 @@ class ModelGeneration(str):
         return instance
 
 
+def _openai_error_code(exc: Exception) -> str:
+    """Classify SDK metadata without reading messages, payloads or headers."""
+    supplied_status = getattr(exc, "status_code", None)
+    status = supplied_status if type(supplied_status) is int else None
+    error_class = type(exc).__name__
+    supplied_code = getattr(exc, "code", None)
+    safe_code = supplied_code if isinstance(supplied_code, str) else None
+    if status == 401 or error_class in {"AuthenticationError", "OAuthError"} or safe_code == "invalid_api_key":
+        return "OPENAI_AUTHENTICATION_FAILED"
+    if status == 403 or error_class == "PermissionDeniedError" or safe_code in {"permission_denied", "model_access_denied"}:
+        return "OPENAI_ACCESS_DENIED"
+    if status == 404 or error_class == "NotFoundError" or safe_code in {"model_not_found", "unsupported_model"}:
+        return "OPENAI_MODEL_UNAVAILABLE"
+    if safe_code in {"insufficient_quota", "billing_hard_limit_reached", "billing_not_active"}:
+        return "OPENAI_QUOTA_EXCEEDED"
+    if status == 429 or error_class == "RateLimitError":
+        return "OPENAI_RATE_LIMITED"
+    if status == 408 or error_class in {
+        "APITimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout", "WriteTimeout", "PoolTimeout",
+    }:
+        return "OPENAI_TIMEOUT"
+    if error_class in {
+        "APIConnectionError", "ConnectError", "NetworkError", "ReadError", "WriteError", "RemoteProtocolError", "ProxyError",
+    }:
+        return "OPENAI_CONNECTION_ERROR"
+    if (status is not None and 500 <= status <= 599) or error_class == "InternalServerError":
+        return "OPENAI_SERVER_ERROR"
+    if status in {400, 422} or error_class in {"BadRequestError", "UnprocessableEntityError"}:
+        return "OPENAI_INVALID_REQUEST"
+    return "OPENAI_INVOCATION_FAILED"
+
+
 class ModelGateway(Protocol):
     def generate(
         self,
@@ -196,28 +228,51 @@ class OpenAIModelGateway:
         return self._client
 
     @trace_method
-    def count_input_tokens(self, *, system_prompt, user_prompt, max_tokens, timeout_seconds=3.0):
+    def count_input_tokens(self, *, system_prompt, user_prompt, max_tokens, timeout_seconds=8.0):
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         policy = self.settings.model_policy(component, max_tokens)
-        remaining = check_deadline(component)
-        try:
-            count = self.client.responses.input_tokens.count(
-                model=policy.model_id, instructions=system_prompt,
-                input=[
-                    {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
-                    {"role": "user", "content": user_prompt},
-                ],
-                reasoning={"effort": policy.reasoning_effort},
-                text={"format": output_format()},
-                timeout=min(timeout_seconds, remaining) if remaining is not None else timeout_seconds,
-            ).input_tokens
-            if type(count) is not int or count < 0:
-                raise ValueError
-            log_event("openai.tokens.counted", input_tokens=count, component=component)
-            return count
-        except Exception as exc:
-            raise ModelGatewayError("Unable to establish the input-token budget.",
-                code="MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE", component="model_budget") from exc
+        count_deadline = perf_counter() + timeout_seconds
+        # Counting invokes no generation. Only this preflight may retry after
+        # a transient failure; inference still uses max_retries=0 because its
+        # failed/unknown spend cannot safely be repeated.
+        for attempt in (1, 2):
+            remaining = check_deadline(component)
+            available = count_deadline - perf_counter()
+            if remaining is not None:
+                available = min(available, remaining)
+            if available <= 0:
+                break
+            try:
+                count = self.client.responses.input_tokens.count(
+                    model=policy.model_id, instructions=system_prompt,
+                    input=[
+                        {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    reasoning={"effort": policy.reasoning_effort},
+                    text={"format": output_format()},
+                    timeout=min(3.0 if attempt == 1 else 5.0, available),
+                ).input_tokens
+                if type(count) is not int or count < 0:
+                    log_event("openai.tokens.count_failed", component=component, attempt=attempt,
+                              error_code="MODEL_INPUT_TOKEN_COUNT_INVALID")
+                    break
+                check_deadline(component)
+                log_event("openai.tokens.counted", input_tokens=count, component=component, attempt=attempt)
+                return count
+            except ModelGatewayError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - hide arbitrary SDK messages and payloads
+                error_code = _openai_error_code(exc)
+                retry = attempt == 1 and error_code in {
+                    "OPENAI_TIMEOUT", "OPENAI_CONNECTION_ERROR", "OPENAI_SERVER_ERROR",
+                }
+                log_event("openai.tokens.count_failed", component=component, attempt=attempt,
+                          error_code=error_code, retryable=retry)
+                if not retry:
+                    break
+        raise ModelGatewayError("Unable to establish the input-token budget.",
+            code="MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE", component="model_budget") from None
 
     @trace_method
     def generate(
@@ -302,42 +357,9 @@ class OpenAIModelGateway:
         except ModelGatewayError:
             raise
         except Exception as exc:  # noqa: BLE001 - adapter must hide even unexpected provider failures
-            # SDK exceptions expose typed status/code metadata. Never read or
-            # print their message, body, request headers, URL or API key.
-            supplied_status = getattr(exc, "status_code", None)
-            status = supplied_status if isinstance(supplied_status, int) else None
-            error_class = type(exc).__name__
-            supplied_code = getattr(exc, "code", None)
-            safe_code = supplied_code if isinstance(supplied_code, str) else None
-            if status == 401 or error_class in {"AuthenticationError", "OAuthError"} or safe_code == "invalid_api_key":
-                code = "OPENAI_AUTHENTICATION_FAILED"
-            elif status == 403 or error_class == "PermissionDeniedError" or safe_code in {"permission_denied", "model_access_denied"}:
-                code = "OPENAI_ACCESS_DENIED"
-            elif status == 404 or error_class == "NotFoundError" or safe_code in {"model_not_found", "unsupported_model"}:
-                code = "OPENAI_MODEL_UNAVAILABLE"
-            elif safe_code in {"insufficient_quota", "billing_hard_limit_reached", "billing_not_active"}:
-                code = "OPENAI_QUOTA_EXCEEDED"
-            elif status == 429 or error_class == "RateLimitError":
-                code = "OPENAI_RATE_LIMITED"
-            elif status == 408 or error_class in {
-                "APITimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout",
-                "WriteTimeout", "PoolTimeout",
-            }:
-                code = "OPENAI_TIMEOUT"
-            elif error_class in {
-                "APIConnectionError", "ConnectError", "NetworkError", "ReadError", "WriteError",
-                "RemoteProtocolError", "ProxyError",
-            }:
-                code = "OPENAI_CONNECTION_ERROR"
-            elif (isinstance(status, int) and 500 <= status <= 599) or error_class == "InternalServerError":
-                code = "OPENAI_SERVER_ERROR"
-            elif status in {400, 422} or error_class in {"BadRequestError", "UnprocessableEntityError"}:
-                code = "OPENAI_INVALID_REQUEST"
-            else:
-                code = "OPENAI_INVOCATION_FAILED"
             raise ModelGatewayError(
                 "The configured model could not produce a response.",
-                code=code,
+                code=_openai_error_code(exc),
                 component="openai",
             ) from None
 
