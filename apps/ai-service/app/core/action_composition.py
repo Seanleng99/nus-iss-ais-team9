@@ -17,7 +17,7 @@ from app.core.schemas import (
     CoachResponse,
     ConversationReferent,
 )
-from app.core.session_context import coaching_preferences
+from app.core.session_context import coaching_preferences, sanitized_context, sanitized_request
 from app.core.telemetry import log_event
 from app.models.gateway import (
     BedrockModelGateway,
@@ -111,9 +111,21 @@ class CompositionGateway:
             if close is not None:
                 close()
 
+    def count_input_tokens(self, **kwargs):
+        remaining = self.deadline - perf_counter()
+        if remaining <= 0:
+            raise ModelGatewayError("Composition deadline exhausted.", code="ACTION_COMPOSITION_DEADLINE")
+        if isinstance(self.delegate, OpenAIModelGateway):
+            return self.delegate.count_input_tokens(**kwargs, timeout_seconds=min(3.0, remaining))
+        # Legacy Bedrock transport is only used by offline adapter tests.
+        from app.models.contracts import output_format
+        return len((kwargs["system_prompt"] + kwargs["user_prompt"]).encode("utf-8")) + len(
+            json.dumps(output_format(), ensure_ascii=False).encode("utf-8")) + 1024
+
 
 def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResponse:
     log_event("composition.started", phase="post_action")
+    payload = payload.model_copy(update={"request": sanitized_request(payload.request)})
     response = payload.response.model_copy(deep=True)
     if response.blocked:
         raise ModelGatewayError("Blocked evidence cannot be composed.", code="ACTION_COMPOSITION_BLOCKED")
@@ -121,6 +133,13 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
                           model_id=orchestrator.config.model_id,
                           **orchestrator.prompts.identity(orchestrator.config.build_commit))
     prior_calls = list(response.audit.get("model_calls", []))
+    if orchestrator.config.model_provider.lower() != "local_fixture" and (
+            response.audit.get("composition_usage_complete") is False or any(
+                item.get("status") != "completed" or any(type(item.get(key)) is not int or item[key] < 0
+                    for key in ("input_tokens", "output_tokens", "total_tokens"))
+                or item["total_tokens"] != item["input_tokens"] + item["output_tokens"]
+                for item in prior_calls)):
+        raise ModelGatewayError("Prior model usage is incomplete.", code="MODEL_USAGE_UNKNOWN")
     remaining_calls = orchestrator.config.max_model_calls_per_run - len(prior_calls)
     remaining_tokens = orchestrator.config.max_model_tokens_per_run - sum(
         int(item.get("total_tokens") or 0) for item in prior_calls
@@ -143,8 +162,8 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
     response.audit["trace_id"] = trace_id
     token = gateway.bind_trace(trace_id)
     try:
-        reviewed = [item for item in response.agent_results
-                    if item.agent != AgentName.RISK_COMPLIANCE and not item.blocked]
+        reviewed = sanitized_context([item for item in response.agent_results
+                    if item.agent != AgentName.RISK_COMPLIANCE and not item.blocked])
         evidence = {
             "message": payload.request.message,
             "message_position": payload.request.message_position or 1,
@@ -152,14 +171,14 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
             "preferences": coaching_preferences(payload.request.snapshot.preferences),
             "conversation_context": [item.model_dump() for item in payload.request.conversation_context],
             "session_context": payload.request.session_context.model_dump(exclude_none=True),
-            "authoritative_outcomes": [item.model_dump() for item in payload.outcomes],
-            "reviewed_specialists": [item.model_dump() for item in reviewed],
-            "sources": [item.model_dump() for item in response.sources],
+            "authoritative_outcomes": sanitized_context([item.model_dump() for item in payload.outcomes]),
+            "reviewed_specialists": sanitized_context([item.model_dump() for item in reviewed]),
+            "sources": sanitized_context([item.model_dump() for item in response.sources]),
         }
         if isinstance(raw_gateway, LocalFixtureModelGateway):
             # Offline fixtures verify the transport, contract and review path.
             # They do not simulate semantic composition quality.
-            draft = response.answer
+            draft = sanitized_context(response.answer)
             response.audit["composition_validation_mode"] = "offline_fixture_contract"
         else:
             composed = generate_structured_response(
@@ -183,7 +202,7 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
                 raise ModelGatewayError("Composition failed its grounding review.", code="ACTION_COMPOSITION_UNGROUNDED")
             response.audit["composition_validation_mode"] = "live_independent_grounding_review"
         outcome_evidence = AgentResult(
-            agent=AgentName.BUDGET, summary="\n\n".join(item.text for item in payload.outcomes),
+            agent=AgentName.BUDGET, summary="\n\n".join(item["text"] for item in evidence["authoritative_outcomes"]),
             confidence=1, data={"authoritative_outcomes": evidence["authoritative_outcomes"]},
         )
         compliance = RiskComplianceAgent(

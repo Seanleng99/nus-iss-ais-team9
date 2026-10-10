@@ -196,6 +196,30 @@ class OpenAIModelGateway:
         return self._client
 
     @trace_method
+    def count_input_tokens(self, *, system_prompt, user_prompt, max_tokens, timeout_seconds=3.0):
+        component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
+        policy = self.settings.model_policy(component, max_tokens)
+        remaining = check_deadline(component)
+        try:
+            count = self.client.responses.input_tokens.count(
+                model=policy.model_id, instructions=system_prompt,
+                input=[
+                    {"role": "developer", "content": "Return one valid JSON object matching the required contract."},
+                    {"role": "user", "content": user_prompt},
+                ],
+                reasoning={"effort": policy.reasoning_effort},
+                text={"format": output_format()},
+                timeout=min(timeout_seconds, remaining) if remaining is not None else timeout_seconds,
+            ).input_tokens
+            if type(count) is not int or count < 0:
+                raise ValueError
+            log_event("openai.tokens.counted", input_tokens=count, component=component)
+            return count
+        except Exception as exc:
+            raise ModelGatewayError("Unable to establish the input-token budget.",
+                code="MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE", component="model_budget") from exc
+
+    @trace_method
     def generate(
         self,
         *,
@@ -895,6 +919,19 @@ class TracingModelGateway:
         component = system_prompt.splitlines()[0].removeprefix("PROMPT_ID:").strip()
         check_deadline(component)
         policy = self.settings.model_policy(component, max_tokens)
+        reservation = 0
+        if trace_id and self.settings.model_provider.lower() != "local_fixture":
+            count_input = getattr(self.delegate, "count_input_tokens", None)
+            if count_input is not None:
+                input_tokens = count_input(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=max_tokens)
+            else:
+                # Text-only fallback for test/custom/legacy adapters. Production
+                # OpenAI calls use the provider's count including the schema.
+                input_tokens = len((system_prompt + user_prompt).encode("utf-8")) + len(
+                    json.dumps(output_format(), ensure_ascii=False).encode("utf-8")) + 1024
+            if type(input_tokens) is not int or input_tokens < 0:
+                raise ModelGatewayError("Invalid input-token count.", code="MODEL_INPUT_TOKEN_COUNT_UNAVAILABLE")
+            reservation = input_tokens + policy.max_tokens
         if trace_id:
             with self._lock:
                 calls = self._calls.get(trace_id)
@@ -919,6 +956,11 @@ class TracingModelGateway:
                         "The workflow exceeded its model-token budget.",
                         code="MODEL_TOKEN_BUDGET_EXCEEDED", component="model_budget",
                     )
+                charged = sum(item["total_tokens"] if type(item.get("total_tokens")) is int
+                              else item.get("reserved_tokens", 0) for item in calls)
+                if charged + reservation > self.settings.max_model_tokens_per_run:
+                    raise ModelGatewayError("The next call exceeds the remaining model-token budget.",
+                        code="MODEL_TOKEN_BUDGET_EXCEEDED", component="model_budget")
                 call = {
                     "call_id": call_id,
                     "trace_id": trace_id,
@@ -928,6 +970,7 @@ class TracingModelGateway:
                     "model_id": policy.model_id,
                     "reasoning_effort": policy.reasoning_effort,
                     "max_output_tokens": policy.max_tokens,
+                    "reserved_tokens": reservation,
                     "temperature_supported": self.settings.model_provider.lower() == "bedrock",
                     "status": "running",
                     "duration_ms": 0.0,

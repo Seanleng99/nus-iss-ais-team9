@@ -125,6 +125,9 @@ def _row(result: dict[str, Any]) -> dict[str, str]:
         "status": status,
         "reason": _text(grading.get("reason")) or result_error or NO_REASON,
         "api_error": api_error,
+        "expected_behavior": _text(variables.get("expected_behavior")) or _text(metadata.get("expected_behavior")),
+        "language": _text(variables.get("response_locale")) or _text(metadata.get("language")) or "en",
+        "blocked": "true" if response_metadata.get("blocked") is True else "false",
     }
 
 
@@ -146,6 +149,24 @@ def _counts(rows: list[dict[str, str]]) -> dict[str, int]:
 def _summary(title: str, rows: list[dict[str, str]]) -> tuple[str, dict[str, int]]:
     counts = _counts(rows)
     lines = [f"## {_markdown_cell(title)}", "", _totals_line(counts), ""]
+    lines.extend(("### Safety and usefulness", "",
+        "| Cohort | Cases | Passed | Failed | Errors | False refusals |",
+        "|---|---:|---:|---:|---:|---:|"))
+    benign_behaviors = {"useful", "history_safe", "candidate_allowed"}
+    for label, cohort in (
+        ("Benign usefulness", [row for row in rows if row["expected_behavior"] in benign_behaviors]),
+        ("Adversarial safety", [row for row in rows if row["expected_behavior"] and row["expected_behavior"] not in benign_behaviors]),
+    ):
+        totals = _counts(cohort)
+        evaluable = [row for row in cohort if row["status"] != "ERROR"]
+        refused = sum(row["blocked"] == "true" for row in evaluable)
+        false_refusals = f"{refused}/{len(evaluable)}" if label == "Benign usefulness" else "n/a"
+        lines.append(f"| {label} | {len(cohort)} | {totals['PASSED']} | {totals['FAILED']} | {totals['ERROR']} | {false_refusals} |")
+    lines.extend(("", ("Errors remain failures of the gate and are excluded only from the false-refusal denominator. "
+        "Pass counts measure these bounded cases; they are not a population attack-success rate."), ""))
+    for language in sorted({row["language"] for row in rows}):
+        lines.append(f"Language {_markdown_cell(language)}: {_totals_line(_counts([row for row in rows if row['language'] == language]))}")
+    lines.append("")
     providers: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         providers.setdefault(row["provider"], []).append(row)
@@ -218,6 +239,13 @@ def summarize(json_path: Path, title: str, output: Path | None) -> int:
 
     rows = [_row(item) for item in results]
     report, counts = _summary(title, rows)
+    evaluation = payload.get("evaluation", {})
+    incomplete = isinstance(evaluation, dict) and evaluation.get("complete") is False
+    if isinstance(evaluation, dict) and evaluation:
+        state = "INCOMPLETE" if incomplete else "COMPLETE"
+        report = (f"Evaluation: **{state}**, {len(rows)}/{evaluation.get('planned_cases', 'unknown')} planned cases. "
+                  f"Trials: {evaluation.get('repeats', 'unknown')}. "
+                  f"Charged tokens: {evaluation.get('charged_tokens', 'not measured')}.\n\n" + report)
     _publish(report, output)
     for line in _console_line(title).splitlines() or [""]:
         print(f"Promptfoo summary: {line}")
@@ -238,7 +266,7 @@ def summarize(json_path: Path, title: str, output: Path | None) -> int:
             for line in _console_line(row[key]).splitlines() or [""]:
                 print(f"Promptfoo result {index} {label}: {line}")
     print(f"Promptfoo summary: {_totals_line(counts)}")
-    return 1 if counts["FAILED"] or counts["ERROR"] else 0
+    return 1 if incomplete or counts["FAILED"] or counts["ERROR"] else 0
 
 
 def main() -> int:

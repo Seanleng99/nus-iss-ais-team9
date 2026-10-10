@@ -24,6 +24,9 @@ CAPACITY = {"source": "confirmed_plan", "period_start": "2026-10-01", "currency"
 
 
 class RecordingGateway(LocalFixtureModelGateway):
+    def count_input_tokens(self, **kwargs):
+        return 0
+
     def __init__(self):
         self.calls = []
 

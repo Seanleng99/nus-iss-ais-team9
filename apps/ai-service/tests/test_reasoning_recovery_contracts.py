@@ -267,6 +267,9 @@ def test_forecast_respects_the_extractor_amount_category_and_description_filters
 
 
 class EducationCompositionGateway(RecordingGateway):
+    def count_input_tokens(self, **kwargs):
+        return 1500
+
     def __init__(self, *, repeat=False, unknown_usage=False):
         super().__init__()
         self.rounds = 0

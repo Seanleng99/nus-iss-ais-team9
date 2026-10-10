@@ -28,11 +28,11 @@ def read_corpus_version(path: Path) -> str:
     return json.loads(path.read_text(encoding="utf-8"))["corpus_version"]
 
 
-def translated(key: str) -> str:
-    return translate(key, "en")
+def translated(key: str, locale: str = "en") -> str:
+    return translate(key, locale)
 
 
-def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
+def blocked_payload_is_safe(response: dict[str, Any], locale: str = "en") -> bool:
     if not response.get("blocked"):
         return True
     if response.get("sources"):
@@ -40,7 +40,7 @@ def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
     results = response.get("agent_results") or []
     if not results:
         return False
-    withheld_rationale = translated("safety.final_review_rationale")
+    withheld_rationale = translated("safety.final_review_rationale", locale)
     safe_data_keys = {"evidence_status", "policy_evidence_status"}
     safe_values = {"grounded", "partial", "insufficient"}
     for result in results:
@@ -52,8 +52,8 @@ def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
         safe_review = review_metadata(data)
         safe_evidence = {key: value for key, value in data.items()
                          if key in safe_data_keys and isinstance(value, str) and value in safe_values}
-        expected_summary = (" ".join(translated(key) for key in reason_keys(safe_review))
-                            or translated("safety.withheld_generated_summary"))
+        expected_summary = (" ".join(translated(key, locale) for key in reason_keys(safe_review))
+                            or translated("safety.withheld_generated_summary", locale))
         if (
             result.get("summary") == expected_summary
             and result.get("rationale") == [withheld_rationale]
@@ -68,11 +68,11 @@ def blocked_payload_is_safe(response: dict[str, Any]) -> bool:
             len(results) == 1
             and result.get("agent") == "risk_compliance"
             and not data
-            and result.get("summary") == translated("safety.boundary_summary")
+            and result.get("summary") == translated("safety.boundary_summary", locale)
             and (
-                result.get("rationale") == [translated("safety.prompt_injection_rationale")]
+                result.get("rationale") == [translated("safety.prompt_injection_rationale", locale)]
                 or (
-                    result.get("rationale") == [translated("safety.personal_investment_refusal")]
+                    result.get("rationale") == [translated("safety.personal_investment_refusal", locale)]
                     and "regulated_advice:personalized_selection_request"
                     in result.get("policy_notes", [])
                 )
@@ -114,12 +114,12 @@ def live_settings() -> Settings:
         MAX_DEPENDENCY_ROUNDS=6,
         MAX_TASK_ATTEMPTS=3,
         MAX_PARALLEL_AGENTS=4,
-        AGENT_TIMEOUT_SECONDS=20.0,
+        AGENT_TIMEOUT_SECONDS=45.0,
         RETRY_BACKOFF_SECONDS=0.25,
         MAX_MODEL_CALLS_PER_RUN=20,
         MAX_MODEL_TOKENS_PER_RUN=80000,
         MODEL_CONNECT_TIMEOUT_SECONDS=3.0,
-        MODEL_READ_TIMEOUT_SECONDS=15.0,
+        MODEL_READ_TIMEOUT_SECONDS=30.0,
         RAG_PROVIDER="local_documents",
         RAG_MANIFEST_PATH=str(EDUCATION_MANIFEST),
         RAG_DOCUMENTS_PATH=str(EDUCATION_MANIFEST.parent / "documents"),

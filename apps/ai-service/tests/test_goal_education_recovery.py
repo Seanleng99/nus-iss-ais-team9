@@ -49,6 +49,13 @@ class GoalEducationGateway:
         return [call for call in self.calls
                 if call["system_prompt"].splitlines()[0] == "PROMPT_ID: " + component]
 
+    def count_input_tokens(self, **kwargs):
+        component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
+        return {"router": 3475, "education_query_planner": 5711,
+                "education_answerability": 5637, "agent_budget": 2400,
+                "agent_goal_strategy": 2400, "agent_investment_education": 5149,
+                "risk_compliance": 6900}.get(component, 100)
+
     def generate(self, **kwargs):
         self.calls.append(kwargs)
         component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
@@ -199,7 +206,7 @@ def test_goal_reference_preserves_new_education_intent_and_topics():
     assert writer["grounding"]["query_topics"] == TOPICS
 
 
-@pytest.mark.parametrize("limit", [50000, 100000])
+@pytest.mark.parametrize("limit", [55000, 100000])
 def test_combined_repair_preserves_calculations_and_evidence_within_configured_budget(limit, ):
     gateway = GoalEducationGateway()
     response = ask(gateway, MAX_MODEL_TOKENS_PER_RUN=limit)
@@ -238,6 +245,18 @@ def test_combined_repair_preserves_calculations_and_evidence_within_configured_b
                     if event["event_type"] == "education.completeness.repair_decision")
     assert decision["reason_code"] == "REPAIR_ELIGIBLE" and decision["repair_blockers"] == []
     assert decision["used_tokens"] + decision["estimated_repair_tokens"] < decision["token_limit"]
+
+
+def test_review_output_reservation_can_refuse_a_repair_whose_actual_usage_would_fit():
+    gateway = GoalEducationGateway()
+    response = ask(gateway, MAX_MODEL_TOKENS_PER_RUN=50000)
+    assert response.blocked
+    assert gateway.writers == 2 and gateway.reviews == 1
+    assert not response.sources and PASSAGE not in response.answer
+    assert sum(call["total_tokens"] for call in response.audit["model_calls"]) < 50000
+    failure = next(event["details"] for event in response.audit["events"]
+                   if event["event_type"] == "education.completeness.repair_unavailable")
+    assert failure["error_code"] == "MODEL_TOKEN_BUDGET_EXCEEDED"
 
 
 @pytest.mark.parametrize("outcome", ["writer_unavailable", "reviewer_unavailable", "rejected"])

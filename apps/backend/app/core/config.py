@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     ai_service_composition_timeout_seconds: float = Field(
         default=25.0, gt=0, le=120, alias="AI_SERVICE_COMPOSITION_TIMEOUT_SECONDS"
     )
+    coach_requests_per_minute: int = Field(default=30, ge=1, le=1000, alias="COACH_REQUESTS_PER_MINUTE")
+    coach_concurrent_requests: int = Field(default=2, ge=1, le=20, alias="COACH_CONCURRENT_REQUESTS")
+    coach_tokens_per_hour: int = Field(default=2000000, ge=1000, le=1000000000, alias="COACH_TOKENS_PER_HOUR")
+    max_model_tokens_per_run: int = Field(default=80000, ge=100, le=200000, alias="MAX_MODEL_TOKENS_PER_RUN")
+
+    @model_validator(mode="after")
+    def validate_coach_token_budget(self) -> Self:
+        if self.coach_tokens_per_hour < self.max_model_tokens_per_run:
+            raise ValueError("COACH_TOKENS_PER_HOUR must cover MAX_MODEL_TOKENS_PER_RUN")
+        return self
     trace_retention_days: int = Field(
         default=30, ge=1, le=365, alias="TRACE_RETENTION_DAYS"
     )

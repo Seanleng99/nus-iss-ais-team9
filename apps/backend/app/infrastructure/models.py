@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -21,6 +22,27 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.database import Base
+
+
+class CoachQuotaRecord(Base):
+    __tablename__ = "coach_quotas"
+
+    owner_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    minute_window: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    hour_window: Mapped[int] = mapped_column(Integer, nullable=False)
+    charged_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class CoachQuotaLease(Base):
+    __tablename__ = "coach_quota_leases"
+    __table_args__ = (Index("ix_coach_quota_leases_owner_expiry", "owner_key", "expires_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_key: Mapped[str] = mapped_column(ForeignKey("coach_quotas.owner_key"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hour_window: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class TimestampMixin:

@@ -56,6 +56,25 @@ def service(gateway):
     return AgentOrchestrator(config=Settings(MODEL_PROVIDER="local_fixture", _env_file=None), gateway=gateway)
 
 
+def test_post_action_model_calls_apply_the_same_privacy_boundary():
+    request = payload()
+    marker = "composition-private@example.com"
+    request.request.message += " Contact " + marker
+    request.request.snapshot.preferences["preferred_style"] = "Contact " + marker
+    request.outcomes[0].text += " Contact " + marker
+    request.response.agent_results[0].summary += " Contact " + marker
+    from app.core.schemas import SourceCitation
+    request.response.sources.append(SourceCitation(source_id="approved", title="Contact " + marker,
+        issuing_organization="Synthetic", canonical_url="https://example.com/education",
+        published_at="2026-10-10", document_version="1", checksum="sha256:" + "a" * 64,
+        corpus_version="test", review_due_at="2099-12-31"))
+    gateway = ComposerGateway()
+    result = compose_action(request, service(gateway))
+    assert result.audit["post_action_composed"]
+    assert len(gateway.requests) == 3
+    assert marker not in json.dumps(gateway.requests)
+
+
 def test_same_draft_bearing_specialist_and_sanitized_preferences_reach_composer():
     gateway = ComposerGateway()
     result = compose_action(payload(), service(gateway))

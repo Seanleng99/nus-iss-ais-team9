@@ -51,7 +51,7 @@ jobs:
           npm ci --prefix security/promptfoo
       - name: Verify provider, grader and report failure detection
         run: |
-          ruff check security/promptfoo/provider.py security/promptfoo/model_support.py security/promptfoo/tests/test_provider.py infra/scripts/summarize_promptfoo.py infra/scripts/tests/test_summarize_promptfoo.py
+          ruff check security/promptfoo/provider.py security/promptfoo/run_bounded.py security/promptfoo/model_support.py security/promptfoo/tests/test_provider.py infra/scripts/summarize_promptfoo.py infra/scripts/tests/test_summarize_promptfoo.py
           python -m pytest -v security/promptfoo/tests/test_provider.py
           node --test security/promptfoo/tests/assertions.test.cjs
           python -m unittest discover -s infra/scripts/tests -p 'test_summarize_promptfoo.py' -v
@@ -98,7 +98,7 @@ jobs:
     needs: [promptfoo, dispatch-guard]
     if: github.event_name == 'workflow_dispatch' && inputs.run_live == true && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       id-token: write
@@ -145,11 +145,8 @@ jobs:
           PROMPTFOO_CONFIG_DIR: ${{ runner.temp }}/promptfoo
         run: |
           mkdir -p artifacts
-          export PROMPTFOO_PYTHON="$(command -v python)"
-          security/promptfoo/node_modules/.bin/promptfoo eval \
-            -c security/promptfoo/promptfooconfig.yaml \
-            --no-cache --no-share --no-progress-bar --max-concurrency 1 \
-            -o artifacts/promptfoo-live.json -o artifacts/promptfoo-live.html \
+          python security/promptfoo/run_bounded.py --mode live --repeats 2 \
+            --max-model-tokens 1000000 --output artifacts/promptfoo-live.json \
             > artifacts/promptfoo-live-cli.log 2>&1
       - name: Show live methods, questions, responses and results
         if: always()

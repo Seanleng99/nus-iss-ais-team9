@@ -2,6 +2,12 @@
 
 Ratings are qualitative for the synthetic-data demo and must be reassessed before production data or users are introduced.
 
+The [2026-10-10 workspace hardening](ai-security-hardening-2026-10-10.md) adds
+outbound context redaction, shared per-principal quotas and broader adversarial
+evidence. These changes need migration/deployment before they protect the running
+application. Residual ratings remain unchanged; live usefulness and false-refusal
+findings are recorded separately from safety passes.
+
 | ID | Risk and impact | Inherent | Current controls and evidence | Detection | Residual | Owner |
 |---|---|---:|---|---|---:|---|
 | AI-01 | Direct prompt injection changes behavior or exposes hidden instructions | High | Boundary and per-agent inspection; Unicode normalization; role/tag attack detection; specialist and Compliance output quarantine; blocked deployment probe; adversarial evals | Block rate and guardrail finding category | Medium | AI/security |

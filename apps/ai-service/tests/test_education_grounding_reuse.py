@@ -27,6 +27,12 @@ class RepairGateway(ScriptedSemanticGateway):
         self.writers = 0
         self.reviews = 0
 
+    def count_input_tokens(self, **kwargs):
+        component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
+        return {"router": 4100, "education_query_planner": 5500,
+                "education_answerability": 2700, "agent_investment_education": 4200,
+                "risk_compliance": 6070}.get(component, 100)
+
     def generate(self, **kwargs):
         component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
         if component == "risk_compliance":
@@ -112,6 +118,19 @@ class SchemaThenPolicyRepairGateway(RepairGateway):
         self.prohibited_review = prohibited_review
         self.router_input_overhead = router_input_overhead
 
+    def count_input_tokens(self, **kwargs):
+        component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
+        counts = {"router": 3026 + self.router_input_overhead,
+                  "education_query_planner": 5598, "education_answerability": 2247,
+                  "risk_compliance": 3476,
+                  "agent_investment_education": 4324 if self.writers == 0 else 5392}
+        if self.small_initial:
+            counts.update(router=700 + self.router_input_overhead,
+                          education_query_planner=1500, education_answerability=1000)
+        # The overrun scenario deliberately reports inaccurate actual usage
+        # after inference to exercise the defensive post-call check.
+        return counts[component]
+
     def generate(self, **kwargs):
         component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID: ")
         generation = super().generate(**kwargs)
@@ -195,9 +214,11 @@ def test_unknown_real_provider_usage_cannot_admit_a_review_correction(unknown_co
                    for event in response.audit["events"])
 
 
-def test_explicit_20k_budget_refuses_correction_even_when_initial_review_fits():
+def test_explicit_22k_budget_refuses_correction_even_when_initial_review_fits():
     gateway = SchemaThenPolicyRepairGateway(small_initial=True)
-    response = run_schema_then_policy_repair(gateway, MAX_MODEL_TOKENS_PER_RUN=20000)
+    # Include the initial review's maximum output reservation, not just its
+    # eventual 633-token output, before testing correction admission.
+    response = run_schema_then_policy_repair(gateway, MAX_MODEL_TOKENS_PER_RUN=22000)
     assert sum(call["total_tokens"] for call in response.audit["model_calls"]) == 17987
     assert response.blocked
     assert gateway.writers == 2

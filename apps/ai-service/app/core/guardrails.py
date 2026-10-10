@@ -172,7 +172,10 @@ class GuardrailDecision:
 
 
 def redact_sensitive_text(text: str) -> tuple[str, list[str]]:
-    redacted = text
+    # Inspect compatibility characters and invisible separators before PII
+    # removal too; otherwise an obfuscated address survives the privacy boundary.
+    normalized = normalize_for_security_inspection(text)
+    redacted = normalized if any(pattern.search(normalized) for pattern in PII_PATTERNS.values()) else text
     findings: list[str] = []
     for label, pattern in PII_PATTERNS.items():
         matches = list(pattern.finditer(redacted))

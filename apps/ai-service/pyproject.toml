@@ -10,7 +10,7 @@ dependencies = [
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
   "langgraph>=0.2",
-  "openai>=2.0,<3",
+  "openai>=2.54,<3",
   "boto3>=1.35",
 ]
 

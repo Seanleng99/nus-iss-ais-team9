@@ -21,11 +21,17 @@ security cases run. This dependency pin does not change the attack cases or grad
 | Investment Education | Orchestrator with Investment Education selected | Education, citations and injected retrieval cases |
 | Risk & Compliance | Actual `RiskComplianceAgent.validate` with controlled candidate drafts | Independent refusal/approval decisions; the report includes the draft input |
 
-The Promptfoo report shows each test method, target, question, actual response, result, grading reason and OWASP mapping, with totals and separate target sections. Risk & Compliance returns a review decision rather than a chat answer. JSON, HTML and Markdown artifacts are retained for seven days. Download the Promptfoo artifact and open the HTML locally for the comparison table.
+The report shows each test method, target, question, actual response, result, grading reason and OWASP mapping, with totals and separate target sections. It also separates benign usefulness, false refusals, adversarial checks and runtime errors. Risk & Compliance returns a review decision rather than a chat answer. Offline Promptfoo produces JSON and HTML; the bounded live runner produces JSON and Markdown. CI artifacts are retained for seven days.
+
+The clean reviewer control uses the application's Education renderer to supply
+the required model-knowledge disclosure and section provenance. A neutral
+definition without either disclosure or carried Education evidence is an invalid
+allowed-answer control under the current policy. Frozen earlier results retain
+that fixture defect; see the [2026-10-10 hardening evidence](ai-security-hardening-2026-10-10.md).
 
 The workflow deliberately fails when a committed security expectation is unmet. Do not remove an attack, change its wording to a known blocked phrase, or weaken an assertion merely to make the scan green. Investigate the response and distinguish provider/fixture limitations, an incorrect expectation, and an application vulnerability.
 
-The suite has **27 case definitions and 75 provider evaluations** because shared attacks run against multiple providers. The integration retains the attack prompts and security assertions. The synthetic rent fixture now explicitly declares monthly recurrence and its obligation ID, as required by the current application. The router's conceptual budgeting control checks income, spending and savings rather than requiring a personal calculation of 3500; the separate disposable-income control still requires that exact calculation.
+The suite has **43 case definitions and 102 provider evaluations per trial** because shared attacks run against multiple providers. It covers English and Chinese requests, stored preferences, goal/category labels, poisoned retrieval variants, multi-turn context and actual outbound privacy canaries. List-valued privacy fixtures are nested under `privacy_check` so Promptfoo does not expand them into separate variable combinations. The synthetic rent fixture declares monthly recurrence and its obligation ID. Conceptual budgeting controls check concepts rather than requiring an unrequested calculation; the separate disposable-income control still requires its exact calculation. Chinese concepts accept equivalent English fixture terms and Chinese live terms; this is not a translation-quality benchmark.
 
 ## Coverage limits
 
@@ -82,9 +88,18 @@ Backend and frontend tests run in their separate service CI environments. They a
 
 After the workflow is merged to `main`, open **Actions → Project OWASP Security Scan → Run workflow**, select `main`, and enable `run_live`. The workflow first requires its offline scan to pass. A live request on another branch or from a reusable caller fails explicitly; normal CI cannot enable paid model calls.
 
-It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. AWS OIDC grants secret retrieval only in the gated live job. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, set `PROMPTFOO_MODEL_MODE=live`, `RUN_LIVE_INVESTMENT_TESTS=1` and `OPENAI_API_KEY` privately, then use the same eval command.
+It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. AWS OIDC grants secret retrieval only in the gated live job. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, supply `OPENAI_API_KEY` privately or select the project's credential file explicitly:
 
-Live mode uses GPT-6 Luna, the packaged current prompt contract, medium default reasoning and the runtime's role overrides, with 3200 default output tokens, at most 20 calls and 80000 tokens per application run. Explicit retrieval-poison scenarios still supply controlled synthetic retrieved material. Sequential execution and the job timeout limit work; these are not a monetary spending cap. Live requests can incur model charges. The initial verification of this integration is offline, so it makes no claim of a live-model pass rate.
+```sh
+python security/promptfoo/run_bounded.py --mode live --env-file .env \
+  --repeats 2 --max-model-tokens 1000000 --output artifacts/promptfoo-live.json
+python infra/scripts/summarize_promptfoo.py artifacts/promptfoo-live.json \
+  --output artifacts/promptfoo-live-summary.md
+```
+
+Omit `--env-file` to use the environment/Secrets Manager configuration. Only the API key is read from that file. Selecting `--mode live` explicitly authorizes model calls for this local command. `--mode offline` runs the same provider matrix and grader without model calls.
+
+Live mode uses GPT-6 Luna, the packaged current prompt contract, medium default reasoning and runtime role overrides, with 3200 default output tokens, at most 20 calls and 80000 tokens per application run. Read/agent deadlines match the current 30/45-second defaults. The workflow runs two trials, reserves a conservative bound before each provider call and caps aggregate model tokens at one million. Missing usage stops further calls and retains the reservation. A budget stop or incomplete trial fails the gate even if completed cases passed. Token limits are not a monetary spending cap. Explicit retrieval-poison scenarios supply controlled synthetic material; other live cases use governed local documents. These tests do not exercise deployed authentication, the Bedrock retrieval service or a real user session. Case and grader hashes identify future bounded runs, and changing a grader mid-run aborts evaluation.
 
 Only synthetic fixtures are committed. Telemetry, update checks, remote attack generation and sharing are disabled for the scan; these flags do not provide network isolation. No remote model grader is used. Live calls send the synthetic test inputs and configured grounding to the model provider.
 

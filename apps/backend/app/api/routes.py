@@ -48,6 +48,7 @@ from app.services.budget_alert import build_status_reply
 from app.services.budget_capacity import build_capacity_context
 from app.services.budget_capture import handle_budget_confirmation, stage_budget_draft
 from app.services.budget_planning import build_planning_context
+from app.services.coach_quota import CoachQuota
 from app.services.goal_capture import handle_goal_confirmation, stage_goal_draft
 from app.services.privacy_guard import find_other_user_reference, other_user_data_reply
 from app.services.response_composition import action_outcome, compose_backend_response
@@ -173,9 +174,25 @@ async def coach(
     enforce_user_access(principal, session, request.user_id)
     repository = SQLAlchemyChatRepository(session)
     try:
-        existed, revision, context = repository.context_snapshot(request.user_id, request.session_id)
+        context_snapshot = repository.context_snapshot(request.user_id, request.session_id)
     except PermissionError as error:
         raise HTTPException(status_code=404, detail="Conversation not found") from error
+    quota = CoachQuota(session.get_bind(), settings)
+    lease = quota.acquire(principal)
+    response = None
+    try:
+        response = await _execute_coach(request, http_response, ai_service, session, principal,
+                                        x_synthetic_log, context_snapshot)
+        return response
+    finally:
+        if response is None:
+            session.rollback()
+        quota.finish(lease, response)
+
+
+async def _execute_coach(request, http_response, ai_service, session, principal, x_synthetic_log, context_snapshot):
+    repository = SQLAlchemyChatRepository(session)
+    existed, revision, context = context_snapshot
     chat = repository.get_for_update(request.user_id, request.session_id)
     if chat is None:
         if existed or repository.id_exists(request.session_id):

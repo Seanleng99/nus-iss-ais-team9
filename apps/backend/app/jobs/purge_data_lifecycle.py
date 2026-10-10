@@ -11,6 +11,7 @@ from app.infrastructure.repositories import (
     SQLAlchemyDataLifecycleRepository,
     SQLAlchemyOrchestrationTraceRepository,
 )
+from app.services.coach_quota import purge_quota_records
 
 
 def purge_expired_data(
@@ -36,6 +37,7 @@ def purge_expired_data(
     synthetic_user_count = repository.delete_expired_synthetic_users(
         synthetic_user_cutoff, synthetic_user_prefixes
     )
+    purge_quota_records(session, evaluated_at)
     session.commit()
     return {
         "event": "data_lifecycle_retention_completed",

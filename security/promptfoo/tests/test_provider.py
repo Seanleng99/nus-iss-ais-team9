@@ -7,11 +7,66 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from provider import ProjectProvider, _live_support, _settings
+from provider import (
+    EvaluationBudget,
+    EvaluationBudgetError,
+    ProjectProvider,
+    _live_support,
+    _settings,
+)
 
 
 def context(**vars):
     return {"vars": vars}
+
+
+def test_evaluation_budget_reserves_parallel_calls_and_stops_on_unknown_usage():
+    budget = EvaluationBudget(10000)
+    first = budget.reserve("synthetic", 100)
+    second = budget.reserve("synthetic", 100)
+    with pytest.raises(EvaluationBudgetError):
+        budget.reserve("synthetic", 100)
+    budget.settle(first, 200)
+    budget.settle(second, None)
+    assert budget.reserved == 0
+    assert budget.used == 200 + second
+    assert budget.usage_unknown
+    with pytest.raises(EvaluationBudgetError):
+        budget.reserve("", 1)
+
+
+def test_preference_privacy_canary_is_checked_at_actual_model_egress(monkeypatch):
+    monkeypatch.setenv("PROMPTFOO_MODEL_MODE", "offline")
+    response = ProjectProvider("budget").call_api("Explain budgets", context=context(
+        question="Explain how a budget separates income, spending and savings.",
+        preferences={"accessibility_preferences": ["Contact private@example.com"]},
+        pii_canaries=["private@example.com"]))
+    assert not response.get("error")
+    assert response["metadata"]["outbound_pii_free"]
+    assert response["metadata"]["privacy_checks"] > 0
+
+
+def test_clean_education_control_supplies_real_model_knowledge_provenance(monkeypatch):
+    from app.agents.risk_compliance import RiskComplianceAgent
+    from coach_i18n import translate
+
+    original = RiskComplianceAgent.validate
+    captured = []
+
+    def validate(self, request, results, draft):
+        captured.append(results[0])
+        assert draft.startswith(translate("education.model_knowledge_label", "en"))
+        assert results[0].data["review_sections"][0]["provenance"] == "model_knowledge"
+        assert results[0].data["fallback_topics"] == ["diversification"]
+        return original(self, request, results, draft)
+
+    monkeypatch.setattr(RiskComplianceAgent, "validate", validate)
+    monkeypatch.setenv("PROMPTFOO_MODEL_MODE", "offline")
+    response = ProjectProvider("risk_compliance").call_api("What is diversification?", context=context(
+        question="What is diversification?", candidate_model_knowledge=True,
+        candidate_answer="Diversification spreads investments; it does not guarantee a profit."))
+    assert captured and not response.get("error")
+    assert not response["metadata"]["blocked"]
 
 
 def test_offline_and_live_setup_use_current_packaged_prompts(monkeypatch):

@@ -91,7 +91,7 @@ from app.core.schemas import (
 from app.core.session_context import (
     attributed_turn_context,
     coaching_preferences,
-    sanitized_summary,
+    sanitized_request,
     specialist_context,
 )
 from app.core.telemetry import context_fields, log_event, trace_method
@@ -269,23 +269,6 @@ class AgentOrchestrator:
     def _guard_input(self, state: OrchestratorState) -> OrchestratorState:
         request = state["request"]
         decision = inspect_prompt(request.message, is_request=True)
-        history = []
-        for message in request.conversation_context:
-            inspected = inspect_prompt(message.content)
-            history.append(message.model_copy(update={
-                "content": inspected.sanitized_text if inspected.allowed else
-                "Previous content omitted because it failed safety checks.",
-            }))
-        facts = {}
-        for field, fact in request.session_context.facts.items():
-            if field != "goal_name":
-                # Numeric/date values are schema-validated, typed financial
-                # values. Phone/card text redaction would corrupt large amounts.
-                facts[field] = fact
-                continue
-            inspected = inspect_prompt(fact.value)
-            if inspected.allowed:
-                facts[field] = fact.model_copy(update={"value": inspected.sanitized_text})
         event = self._event(
             state,
             "guardrail.evaluated",
@@ -294,13 +277,7 @@ class AgentOrchestrator:
         )
         events = [*state.get("audit_events", []), event]
         update: OrchestratorState = {
-            "request": request.model_copy(update={
-                "conversation_context": history,
-                "session_context": request.session_context.model_copy(update={
-                    "facts": facts,
-                    "older_summary": sanitized_summary(request.session_context.older_summary),
-                }),
-            }),
+            "request": sanitized_request(request),
             "sanitized_message": decision.sanitized_text,
             "guardrail_findings": decision.findings,
             "audit_events": events,

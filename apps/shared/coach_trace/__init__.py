@@ -55,6 +55,7 @@ COUNTS = {
     "remaining_duration_ms",
     "token_limit",
     "remaining_tokens",
+    "reserved_tokens",
     "source_quote_count",
 }
 FLAGS = {
@@ -76,6 +77,7 @@ FLAGS = {
     "request_allowed",
     "financial_language_safe",
     "composition_usage_complete",
+    "usage_complete",
     "requires_spending",
     "requires_income",
     "requires_capacity",

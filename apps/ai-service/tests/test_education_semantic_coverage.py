@@ -46,6 +46,10 @@ class ScriptedSemanticGateway:
         self.support = coverage() if support is None else support
         self.calls = []
 
+    def count_input_tokens(self, **kwargs):
+        # No provider request occurs in this unmetered offline double.
+        return 0
+
     def generate(self, **kwargs):
         self.calls.append(kwargs)
         component = kwargs["system_prompt"].splitlines()[0]

@@ -272,6 +272,12 @@ class MeteredGateway(PreciseGateway):
         super().__init__()
         self.unknown_usage, self.overrun = unknown_usage, overrun
 
+    def count_input_tokens(self, **kwargs):
+        role = kwargs["system_prompt"].splitlines()[0]
+        return {"PROMPT_ID: router": 36000, "PROMPT_ID: agent_spending": 6000,
+                "PROMPT_ID: answer_correction": 7000,
+                "PROMPT_ID: risk_compliance": 8000 if self.rounds == 0 else 8500}.get(role, 100)
+
     def generate(self, **kwargs):
         value = super().generate(**kwargs)
         role = kwargs["system_prompt"].splitlines()[0]

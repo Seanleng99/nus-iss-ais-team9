@@ -12,6 +12,18 @@ SCRIPT = Path(__file__).resolve().parents[1] / "summarize_promptfoo.py"
 
 
 class PromptfooSummaryTests(unittest.TestCase):
+    def test_incomplete_bounded_evaluation_cannot_be_reported_as_success(self):
+        row = {"testCase": {"description": "benign", "vars": {"expected_behavior": "useful"}},
+               "response": {"output": "Useful answer", "metadata": {"blocked": False}},
+               "gradingResult": {"pass": True}, "success": True}
+        result, output, _ = self.run_report(json.dumps({"evaluation": {"complete": False,
+            "planned_cases": 10, "repeats": 2}, "results": {"results": [row]}}))
+        self.assertEqual(result.returncode, 1)
+        report = output.read_text(encoding="utf-8")
+        self.assertIn("INCOMPLETE", report)
+        self.assertIn("1/10 planned cases", report)
+        self.assertIn("Benign usefulness | 1 | 1 | 0 | 0 | 0/1", report)
+
     def run_report(self, payload: str | None, *, missing: bool = False):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

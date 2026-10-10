@@ -47,3 +47,25 @@ def test_existing_deployment_paths_supply_origin_restriction_contract() -> None:
         assert "com.amazonaws.global.cloudfront.origin-facing" in script
         assert "CloudFrontOriginPrefixListId=" in script
         assert "CloudFrontOriginSecretArn=" in script
+
+
+def test_backend_reservations_match_ai_budget_and_expose_quota_monitoring():
+    import yaml
+
+    class Loader(yaml.SafeLoader):
+        pass
+
+    Loader.add_multi_constructor("!", lambda loader, tag, node: loader.construct_scalar(node)
+                                 if isinstance(node, yaml.ScalarNode) else
+                                 loader.construct_sequence(node) if isinstance(node, yaml.SequenceNode)
+                                 else loader.construct_mapping(node))
+    resources = yaml.load(APPLICATION_TEMPLATE.read_text(encoding="utf-8"), Loader=Loader)["Resources"]
+    environments = {}
+    for name in ("BackendTaskDefinition", "AiTaskDefinition"):
+        container = resources[name]["Properties"]["ContainerDefinitions"][0]
+        environments[name] = {item["Name"]: item["Value"] for item in container["Environment"] if "Name" in item}
+    assert environments["BackendTaskDefinition"]["MAX_MODEL_TOKENS_PER_RUN"] == environments["AiTaskDefinition"]["MAX_MODEL_TOKENS_PER_RUN"]
+    assert int(environments["BackendTaskDefinition"]["COACH_CONCURRENT_REQUESTS"]) == 2
+    assert resources["CoachQuotaDeniedMetricFilter"]["Properties"]["LogGroupName"] == "BackendLogGroupName"
+    assert resources["CoachQuotaDeniedAlarm"]["Properties"]["MetricName"] == "CoachQuotaDenials"
+    assert resources["CoachModelTokensMetricFilter"]["Properties"]["MetricTransformations"][0]["MetricValue"] == "$.total_tokens"

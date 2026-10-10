@@ -418,6 +418,14 @@ Resources:
               Value: !Ref FrontendUrl
             - Name: AI_SERVICE_BASE_URL
               Value: http://ai.coach.internal:8001
+            - Name: MAX_MODEL_TOKENS_PER_RUN
+              Value: "80000"
+            - Name: COACH_REQUESTS_PER_MINUTE
+              Value: "30"
+            - Name: COACH_CONCURRENT_REQUESTS
+              Value: "2"
+            - Name: COACH_TOKENS_PER_HOUR
+              Value: "2000000"
             - Name: AI_SERVICE_TIMEOUT_SECONDS
               Value: "90"
             - Name: TRACE_RETENTION_DAYS
@@ -731,6 +739,48 @@ Resources:
           MetricValue: "1"
           Unit: Count
 
+  CoachQuotaDeniedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${ProjectName}-coach-quota-denials
+      FilterPattern: '"coach.quota.denied"'
+      LogGroupName: !Ref BackendLogGroupName
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ProjectName}/Application
+          MetricName: CoachQuotaDenials
+          MetricValue: "1"
+          DefaultValue: 0
+
+  CoachModelTokensMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterName: !Sub ${ProjectName}-coach-model-tokens
+      FilterPattern: '{ $.event = "coach.quota.completed" && $.total_tokens = * }'
+      LogGroupName: !Ref BackendLogGroupName
+      MetricTransformations:
+        - MetricNamespace: !Sub ${ProjectName}/Application
+          MetricName: CoachModelTokens
+          MetricValue: "$.total_tokens"
+          DefaultValue: 0
+
+  CoachQuotaDeniedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${ProjectName}-demo-coach-quota-denials
+      AlarmDescription: Repeated coaching quota denials may indicate automated abuse or an undersized limit.
+      Namespace: !Sub ${ProjectName}/Application
+      MetricName: CoachQuotaDenials
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref OperationalAlertsTopic
+      OKActions:
+        - !Ref OperationalAlertsTopic
+
   BackendTarget5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -886,7 +936,9 @@ Resources:
                     "region": "${AWS::Region}",
                     "period": 300,
                     "metrics": [
-                      ["${ProjectName}/Application", "CoachGenerationFailures", {"stat": "Sum"}]
+                      ["${ProjectName}/Application", "CoachGenerationFailures", {"stat": "Sum"}],
+                      ["${ProjectName}/Application", "CoachQuotaDenials", {"stat": "Sum"}],
+                      ["${ProjectName}/Application", "CoachModelTokens", {"stat": "Sum", "yAxis": "right"}]
                     ]
                   }
                 },
