@@ -36,3 +36,16 @@ def test_secret_keys_do_not_become_arguments_and_review_packet_is_separate():
     review = next(step for step in steps if step.get("name") == "Retain private synthetic calibration packet")
     assert "baseline_candidate == true" in review["if"] and review["with"]["retention-days"] == "7"
     assert any("list-subscriptions-by-topic" in step.get("run", "") for step in steps)
+
+
+def test_github_only_monitoring_does_not_require_aws_or_an_email_subscription():
+    job = workflow()["jobs"]["monitor"]
+    assert "'false'" in job["env"]["EMAIL_ALERTS_ENABLED"]
+    steps = {step.get("name"): step for step in job["steps"]}
+    credentials = steps["Configure notification and aggregate-query credentials"]
+    assert "MODEL_DRIFT_EMAIL_ALERTS_ENABLED == 'true'" in credentials["if"]
+    assert "MODEL_DRIFT_INPUT_LOG_GROUP != ''" in credentials["if"]
+    for name in ("Verify a confirmed operational notification endpoint", "Publish actionable drift or evidence failure"):
+        assert "MODEL_DRIFT_EMAIL_ALERTS_ENABLED == 'true'" in steps[name]["if"]
+    assert "EMAIL_ALERTS_ENABLED" not in steps["Compare quality and optional approved input aggregates"]["if"]
+    assert "EMAIL_ALERTS_ENABLED" not in steps["Persist comparison state, including failed and incomplete runs"]["if"]

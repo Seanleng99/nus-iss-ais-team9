@@ -41,8 +41,10 @@ intervals describe uncertainty and are not an automatic significance test.
 ## Establish The First Baseline
 
 First deploy the new provider-model and input observation metadata with the service.
-Configure the `demo` GitHub environment with the existing deployment role, coach URL,
-synthetic backend key and operational SNS topic, plus:
+Configure the `demo` GitHub environment with the coach URL and synthetic backend
+key, plus the settings below. GitHub-only monitoring publishes job summaries and
+retained artifacts without an SNS subscription or AWS credentials. The deployment
+role is used when enabling optional email alerts or input aggregate queries.
 
 | Setting | Purpose |
 |---|---|
@@ -52,13 +54,15 @@ synthetic backend key and operational SNS topic, plus:
 | Variable `MODEL_DRIFT_JUDGE_BUDGET_USD` | Judge spending limit, default USD 0.50. |
 | Variable `MODEL_DRIFT_GENERATOR_BUDGET_USD` | App generation spending limit, default USD 0.05. Raise only through a reviewed evaluation-budget change. |
 | Variable `MODEL_DRIFT_ENABLED` | Set to `true` after baseline acceptance to enable Sunday 10:15 Singapore scheduled monitoring. |
+| Optional variable `MODEL_DRIFT_EMAIL_ALERTS_ENABLED` | Default `false`; set to `true` to publish actionable failures to the existing `OPERATIONAL_ALERTS_TOPIC_ARN`. Requires updated IAM and a confirmed email subscription. |
 | Optional variable `MODEL_DRIFT_INPUT_LOG_GROUP` | Enables aggregate input comparison for an approved log group after data/retention review. |
 
-Apply the updated [OIDC role template](../infra/aws/github-actions-oidc.yaml) to grant
+For optional AWS features, apply the updated [OIDC role template](../infra/aws/github-actions-oidc.yaml) to grant
 SNS publication to the existing topic and aggregate-query access to the configured
 `DriftAiLogGroupName`. This source change does not establish that IAM is already
-updated. Confirm the SNS subscription and exercise the new sender before claiming
-notification delivery. The workflow runs only on `main` in the `demo` environment.
+updated. Confirm the SNS subscription and exercise the new sender before enabling
+email alerts or claiming notification delivery. The workflow runs only on `main`
+in the `demo` environment.
 
 Dispatch **Model Drift Monitoring** with `baseline_candidate=true`. Review the
 aggregate capture artifact. A complete passing capture also produces a separate,
@@ -124,7 +128,7 @@ ineligible run resets the streak. The workflow publishes a GitHub summary, prese
 comparison state and aggregate capture evidence for 90 days, and fails on confirmed
 drift, absolute acceptance failure, incompatible configuration or incomplete evidence.
 A first relative-only warning remains visible without claiming confirmed drift.
-Actionable failures go to the existing SNS topic with severity, owner, metric/count/
+When email alerts are enabled, actionable failures go to the existing SNS topic with severity, owner, metric/count/
 threshold, case IDs and the [response runbook](operational-alert-runbook.md#drift-response).
 Confirmed input-only shifts are P3; quality/evidence failures are P2; safety failures
 are P1. The implementation does not automatically change models or roll back.

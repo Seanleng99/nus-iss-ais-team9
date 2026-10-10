@@ -131,8 +131,10 @@ Singapore time and on demand, using repeated synthetic sessions against the depl
 model, prompts, orchestrator and retrieval. Its structural, latency and estimated-cost
 gates do not replace independent answer-quality scoring. Dedicated quality capture,
 baseline comparison, aggregate input queries and SNS reporting now have executable
-scripts and an opt-in Sunday 10:15 Singapore workflow. Deployment, an accepted
-baseline and notification verification remain activation gates; existing CloudWatch
+scripts and an opt-in Sunday 10:15 Singapore workflow. Deployment and an accepted
+baseline remain activation gates; optional email reporting additionally requires
+notification verification. GitHub-only monitoring retains summaries and artifacts.
+Existing CloudWatch
 generation-failure alarms remain separate operational signals. See
 [Model drift monitoring](model-drift-monitoring.md) for setup and commands.
 
@@ -208,7 +210,7 @@ Deleting the final chat session for a chat-only synthetic user also prunes the e
 
 The `AWS Operational Validation` workflow performs this load test, three repetitions of the live OpenAI/RAG suite, governed lifecycle retention, dashboard/alarm verification, and autoscaling verification each week. The live RAG cases require citations and persisted traces to match the configured corpus pin. A manual run can also force and verify one backend task replacement. The first retained AWS artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures **for the earlier Bedrock deployment**. GPT-6 Luna needs new live evidence. The default gates remain 10 seconds for live P95, 8 seconds for load P95, and USD 0.05 estimated live-evaluation cost. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
 
-The SNS topic, alarm actions, and managed team-mailbox subscription are deployed and confirmed. A controlled test on 2026-08-30 verified the CloudWatch-to-SNS action, restored the alarm to `OK`, and received human acknowledgement of both the `ALARM` and restoration emails. End-to-end delivery is verified. Use `infra/scripts/test_operational_alert.ps1` for repeatable tests. Ownership, severity, response targets, and recovery steps are defined in `docs/operational-alert-runbook.md`.
+A controlled test on 2026-08-30 verified the CloudWatch-to-SNS action, restored the alarm to `OK`, and received human acknowledgement of both the `ALARM` and restoration emails. That is historical delivery evidence. The 2026-10-10 activation check found zero confirmed or pending subscriptions on the operational topic, so current email delivery is unavailable. Model drift reporting is configured for GitHub Actions summaries and artifacts at the user's request. Use `infra/scripts/test_operational_alert.ps1` after restoring and confirming an email subscription. Ownership, severity, response targets, and recovery steps are defined in `docs/operational-alert-runbook.md`.
 
 ## Incident And Rollback Procedure
 

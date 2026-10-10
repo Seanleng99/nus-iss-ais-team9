@@ -38,6 +38,7 @@ jobs:
       JUDGE_BUDGET: ${{ vars.MODEL_DRIFT_JUDGE_BUDGET_USD || '0.5' }}
       GENERATOR_BUDGET: ${{ vars.MODEL_DRIFT_GENERATOR_BUDGET_USD || '0.05' }}
       ALERT_TOPIC: ${{ vars.OPERATIONAL_ALERTS_TOPIC_ARN }}
+      EMAIL_ALERTS_ENABLED: ${{ vars.MODEL_DRIFT_EMAIL_ALERTS_ENABLED || 'false' }}
       INPUT_LOG_GROUP: ${{ vars.MODEL_DRIFT_INPUT_LOG_GROUP }}
       BASELINE: infra/llmsecops/model-drift-baseline.json
       GH_TOKEN: ${{ github.token }}
@@ -51,6 +52,7 @@ jobs:
       - name: Install evaluator runtime
         run: python -m pip install -e apps/shared -e apps/ai-service
       - name: Configure notification and aggregate-query credentials
+        if: inputs.baseline_candidate != true && (vars.MODEL_DRIFT_EMAIL_ALERTS_ENABLED == 'true' || vars.MODEL_DRIFT_INPUT_LOG_GROUP != '')
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -60,13 +62,17 @@ jobs:
         env:
           BASELINE_CANDIDATE: ${{ inputs.baseline_candidate || false }}
         run: |
-          for name in COACH_URL MODEL_DRIFT_OPENAI_API_KEY SMOKE_BACKEND_API_KEY JUDGE_MODEL JUDGE_INPUT_RATE JUDGE_OUTPUT_RATE ALERT_TOPIC; do
+          for name in COACH_URL MODEL_DRIFT_OPENAI_API_KEY SMOKE_BACKEND_API_KEY JUDGE_MODEL JUDGE_INPUT_RATE JUDGE_OUTPUT_RATE; do
             [[ -n "${!name}" ]] || { echo "Missing drift setting: $name" >&2; exit 1; }
           done
+          if [[ "$EMAIL_ALERTS_ENABLED" == 'true' && "$BASELINE_CANDIDATE" != 'true' ]]; then
+            [[ -n "$ALERT_TOPIC" ]] || { echo 'Missing drift alert topic.' >&2; exit 1; }
+          fi
           if [[ "$BASELINE_CANDIDATE" != 'true' ]]; then
             [[ -f "$BASELINE" ]] || { echo 'An independently reviewed baseline must be committed before monitoring.' >&2; exit 1; }
           fi
       - name: Verify a confirmed operational notification endpoint
+        if: inputs.baseline_candidate != true && vars.MODEL_DRIFT_EMAIL_ALERTS_ENABLED == 'true'
         run: |
           count=$(aws sns list-subscriptions-by-topic --topic-arn "$ALERT_TOPIC" \
             --query "length(Subscriptions[?Protocol=='email' && SubscriptionArn!='PendingConfirmation' && SubscriptionArn!='Deleted'])" \
@@ -118,7 +124,7 @@ jobs:
             --previous artifacts/previous-drift.json --output artifacts/model-drift.json \
             "${input_args[@]}"
       - name: Publish actionable drift or evidence failure
-        if: always() && inputs.baseline_candidate != true && hashFiles('artifacts/model-drift.json') != ''
+        if: always() && inputs.baseline_candidate != true && vars.MODEL_DRIFT_EMAIL_ALERTS_ENABLED == 'true' && hashFiles('artifacts/model-drift.json') != ''
         run: |
           python -c 'import os, boto3; from infra.scripts.model_drift import load, notify; notify(load("artifacts/model-drift.json"), boto3.client("sns"), os.environ["ALERT_TOPIC"])'
       - name: Persist comparison state, including failed and incomplete runs

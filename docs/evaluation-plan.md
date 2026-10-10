@@ -266,7 +266,9 @@ such as `semantic_quality_review: required` identifies outstanding review rather
 than a completed score. The separate drift capture, comparison, aggregate-query and
 notification implementation is documented in [Model drift monitoring](model-drift-monitoring.md).
 Scheduled activation still requires a reviewed current-model baseline, configured
-evaluator credentials/rates, deployed metadata and a verified notification path.
+evaluator credentials/rates and deployed metadata. Optional email alerts also
+require a verified notification path; GitHub-only monitoring uses job summaries
+and retained artifacts.
 
 The fixed seed set does not measure production input drift. After privacy approval,
 monitor only aggregate production distributions described in
@@ -294,7 +296,8 @@ Before the OpenAI deployment is accepted, run the same routing cases plus repres
 `infra/scripts/drift_quality.py` performs independent live scoring alongside the
 existing structural checks; `infra/scripts/model_drift.py` enforces baseline,
 coverage, subgroup, configuration and consecutive-regression checks. The separate
-`model-drift.yml` workflow runs weekly/manual comparisons and SNS notifications.
+`model-drift.yml` workflow runs weekly/manual comparisons with GitHub reports and
+optional SNS notifications.
 It is opt-in until the activation requirements in
 [the implementation guide](model-drift-monitoring.md) are satisfied; source code
 alone does not establish a deployed monitor or accepted current-model baseline.
@@ -363,8 +366,8 @@ consecutive eligible runs; an absolute acceptance failure still blocks promotion
 immediately. Run the comparison weekly and manually before promoting changes to
 model, prompts, role settings, tools or retrieval; automatic release coupling is
 not added by this workflow. The implementation publishes an aggregate comparison
-artifact and sends actionable failures through the existing operations notification
-path, with the baseline, failed case IDs, owner and
+artifact and job summary. If email alerts are enabled, it sends actionable failures
+through the existing operations notification path, with the baseline, failed case IDs, owner and
 [drift response procedure](operational-alert-runbook.md#drift-response).
 
 ## Live AWS Evaluation
