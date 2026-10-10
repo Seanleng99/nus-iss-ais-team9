@@ -149,6 +149,10 @@ secret's earlier GPT-6 Sol preflight returned HTTP 403 before any app requests.
 Current configuration uses GPT-6 Luna for generation and separate rubric grading,
 with mandatory independent human calibration. See
 [candidate activation evidence](evaluation-evidence/model-drift-candidate-2026-10-10.json).
+Luna grading access is now verified. The corrected capture remains incomplete and
+failed quality/usage acceptance; a separate Education diagnostic returned no
+approved citations. These failures keep scheduling disabled and cannot establish
+confirmed relative drift without an accepted baseline.
 
 The weekly RAG governance job checks both reviewed manifests and exact local
 documents, then audits both Bedrock Knowledge Bases and their S3 objects for

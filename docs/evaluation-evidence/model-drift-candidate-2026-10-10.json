@@ -29,6 +29,9 @@
     "policy_ci_conclusion": "success",
     "same_model_ci": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38048490688",
     "same_model_ci_conclusion": "success",
+    "scoring_schema_commit": "8fcd3fdd92403bf0f53935b5dce5924d050b7e98",
+    "scoring_schema_ci": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049044875",
+    "scoring_schema_ci_conclusion": "success",
     "tightened_schema_connectivity": "passed_two_luna_only_synthetic_calls",
     "connectivity_estimated_cost_usd": 0.0002908,
     "connectivity_is_baseline_evidence": false
@@ -72,10 +75,43 @@
       "evaluator_failure_code": "EVALUATOR_RESPONSE_UNVERIFIED",
       "generator_estimated_cost_usd": 0.014235,
       "evaluator_estimated_cost_usd": 0.0014637
+    },
+    {
+      "run": "https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049061224",
+      "complete": false,
+      "evaluator_model": "gpt-6-luna",
+      "evaluator_access_verified": true,
+      "evaluator_failure_code": null,
+      "sample_count": 6,
+      "verified_score_count": 6,
+      "expected_sample_count": 36,
+      "structural_pass_count": 4,
+      "structural_failure_count": 2,
+      "failed_spending_cases": ["spending-en:1", "spending-zh:1"],
+      "spending_review_block_categories": ["factual_qualification"],
+      "first_sample_helpfulness": false,
+      "observed_answer_p95_ms": 34615.95,
+      "generation_usage_fully_accounted": false,
+      "generator_known_usage_estimated_cost_usd": 0.01376,
+      "evaluator_estimated_cost_usd": 0.0014491,
+      "relative_drift_established": false
     }
   ],
+  "separate_education_diagnostic": {
+    "measurement": "single_case_education_diagnostic",
+    "case_id": "education-en",
+    "trace_id": "a37ef65e-ed9e-4c81-96b1-7edf20228a5a",
+    "structural_pass": false,
+    "failed_check": "minimum_sources",
+    "approved_education_source_count": 0,
+    "token_usage_complete": true,
+    "cleanup_succeeded": true,
+    "model_call_count": 2,
+    "estimated_cost_usd": 0.001509,
+    "is_baseline_evidence": false
+  },
   "remaining_activation_work": [
-    "Verify gpt-6-luna grading access with the configured demo secret.",
+    "Resolve the live quality failures and incomplete generation usage accounting.",
     "Complete a passing repeated current-build capture, including latency and bounded costs.",
     "Independently review every synthetic sample and approve the calibrated baseline.",
     "Commit the accepted aggregate baseline, verify a passing monitoring comparison, and enable the schedule."

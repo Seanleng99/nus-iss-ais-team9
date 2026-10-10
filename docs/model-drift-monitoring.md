@@ -42,6 +42,19 @@ baseline evidence. The configured Standard rates for Luna are
 USD 0.10 input / USD 0.50 output per million tokens, matching the
 [official model card](https://developers.openai.com/api/docs/models/gpt-6-luna).
 
+The [corrected-schema capture](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049061224)
+verified all six returned grader scores, but stopped before completing 36 samples
+because generation usage could not be fully accounted for. Two Spending responses
+were withheld by Compliance with `factual_qualification` categories, and the Budget
+English sample again failed automated helpfulness. Observed P95 was 34,615.95 ms,
+below the provisional latency limit; quality and completeness still failed. A
+separate disposable Education diagnostic failed the approved-citation minimum,
+with complete token accounting and successful cleanup. These are acceptance
+failures, not confirmed relative drift: no accepted comparison baseline exists.
+Resolve the live behavior and accounting failures, complete the fixed capture,
+and independently calibrate it before enabling the schedule. Implementation CI
+passed for the [schema correction](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38049044875).
+
 One disposable deployed Budget case passed structural checks, matched the release
 build and included provider response model IDs in all completed calls. Cleanup
 succeeded. Its observed duration was 22,707.77 ms, above the inherited 10,000 ms
