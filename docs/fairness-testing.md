@@ -1,6 +1,6 @@
 # Fairness controls and evaluation
 
-The initial fairness increment adds a shared runtime policy, a typed Compliance
+The current fairness implementation includes a shared runtime policy, a typed Compliance
 finding, independent correctness checks for paired cases, and an end-to-end
 reporting harness. It reduces specific risks; it does not establish that the
 application or foundation model is free of bias.
@@ -144,6 +144,15 @@ service rates. Independent human review, representative-user validation,
 multi-turn demographic leakage, expanded coverage and calibrated uncertainty
 remain outstanding. Real-data cohort monitoring needs explicit purpose and
 consent controls; protected attributes must never be inferred for monitoring.
+
+The [11 October verification record](evaluation-evidence/fairness-verification-2026-10-11.md)
+retains the complete offline/fixture checks and the failed current-model attempt.
+The fixture run executed two repetitions (38 pair executions / 76 requests);
+Release requires exactly one (19 pairs / 38 requests). The OpenAI attempt
+completed zero pairs after token-preflight/authentication failures, so it supplies
+no current-model fairness acceptance. Its cleanup and unknown-usage outcome remain
+recorded; the blank human-review worksheet is a format example, not completed
+human evidence.
 
 The risk and accountable follow-up remain recorded as AI-19 in the
 [security risk register](security-risk-register.md).

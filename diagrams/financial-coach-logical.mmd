@@ -1,4 +1,4 @@
-graph LR
+flowchart LR
   User["User"] --> UI["Streamlit UI"]
   UI --> Backend["FastAPI Backend"]
   Backend <-->|"Profiles, transactions, budgets, goals"| PG["PostgreSQL"]
@@ -13,9 +13,13 @@ graph LR
     Compliance["Risk and Compliance Agent"]
 
     Orchestrator -->|"Transactions"| Spending
-    Orchestrator -->|"Income + recurring expenses"| Budget
+    Orchestrator -->|"Income + recurring expenses + requested budget context"| Budget
     Orchestrator -->|"Savings goals"| Goal
     Orchestrator -->|"Question + risk constraints"| Invest
+    Budget -. "education_context request" .-> Orchestrator
+    Goal -. "education_context request" .-> Orchestrator
+    Orchestrator -->|"education_context tool provider"| EducationGrounding["Shared Investment grounding workflow"]
+    EducationGrounding -->|"Validated evidence"| Orchestrator
     Spending --> Synthesis
     Budget --> Synthesis
     Goal --> Synthesis
@@ -24,12 +28,11 @@ graph LR
   end
 
   Backend -->|"Coach request + minimized financial snapshot"| Orchestrator
-  EducationRAG["Education RAG: CPF, MAS, SGX, Government"] -->|"Investment education"| Invest
-  EducationRAG -. "Conditional guidance" .-> Budget
-  EducationRAG -. "Conditional guidance" .-> Goal
+  EducationRAG["Education RAG: approved CPF and MoneySense documents"] -->|"Investment education"| Invest
+  EducationRAG --> EducationGrounding
   PolicyRAG["Policy RAG: advice boundaries + safety rules"] -->|"Independent validation"| Compliance
   Compliance -->|"Approved or blocked answer"| Backend
 
-  Orchestrator -. "Model routing and specialist calls" .-> Bedrock["Amazon Bedrock"]
-  Synthesis -. "Model synthesis" .-> Bedrock
-  Compliance -. "Model-assisted review" .-> Bedrock
+  Orchestrator -. "Model routing and specialist calls" .-> OpenAI["OpenAI GPT-6 Luna"]
+  Synthesis -. "Model synthesis" .-> OpenAI
+  Compliance -. "Model-assisted review" .-> OpenAI

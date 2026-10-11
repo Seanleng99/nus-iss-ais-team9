@@ -1,5 +1,11 @@
 # Bedrock KB restoration, 9 October 2026
 
+This is a dated restoration and deployment record. Its task revisions, KB IDs and
+successful checks describe that checkpoint. Use [Policy governance](policy-rag-governance.md)
+for the current retrieval contract and the remaining mandatory-source coverage
+check after sanitization; successful ingestion does not prove every later review
+receives complete policy document text.
+
 Both governed corpora were uploaded to their existing S3 data sources, ingested into the retained Bedrock Knowledge Bases, and audited against the checked-in source manifests. Answer generation uses the direct OpenAI API with `gpt-6-luna`. Bedrock supplies retrieval and the KB's Cohere embeddings.
 
 | Corpus | Knowledge Base | Data source | Approved documents | Corpus version | Release ingestion job |
@@ -9,7 +15,7 @@ Both governed corpora were uploaded to their existing S3 data sources, ingested 
 
 Both release ingestion jobs completed with zero failed or skipped documents. Remote audits found matching document checksums and metadata, approved and current review states, and no unmanifested S3 objects. A separate live retrieval check found indexed passages for every approved source and matching document versions and checksums. The Policy adapter carried all three control families.
 
-The release checks both local manifests before uploading either corpus, waits for ingestion, audits both KBs, and then sets the ECS provider and corpus pins. The AI task has `bedrock:Retrieve` on the two KBs. Release can upload to their approved prefixes and start ingestion; the weekly governance role is read-only. Policy retrieval uses public policy titles and exact source filters, and checks the approved source identity before carrying all three controls into review.
+The release checks both local manifests before uploading either corpus, waits for ingestion, audits both KBs, and then sets the ECS provider and corpus pins. The AI task has `bedrock:Retrieve` on the two KBs. Release can upload to their approved prefixes and start ingestion; the weekly governance role is read-only. Policy retrieval uses public policy titles and exact source filters and checks approved source identity. The restoration check observed all three control families; downstream review sanitization can discard contexts without rechecking mandatory coverage, so this observation is not a guarantee for every later review.
 
 Deployment passed. The tested release includes `45ea010` and `7fe7eed`, the KB restoration, and the validation fixes, at build commit `dc01ebd5403c8a447be66dd1ebbfc21da039a393`. The running AI service is `coach-ai:62`, with one running task using that image. A final ECS check confirmed both Bedrock provider settings, both KB IDs and corpus pins, and direct OpenAI generation with `gpt-6-luna`. CloudWatch recorded 17 retrieval requests from the running task, covering both Education and Policy KBs.
 

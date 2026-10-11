@@ -1,14 +1,8 @@
 # Conditional financial dependencies
 
-Implemented on 7 October 2026 in prompt set **v9**. The signed-in Edge application's
-trace metadata confirmed v9 with OpenAI / gpt-6-luna. All 34 approved prompt turns were
-attempted, with two retests. **Live acceptance has not passed**; see the
-[live results](agent-reasoning-live-test-results-2026-10-07.md) for the working graphs and remaining gaps.
+The single packaged [current prompt contract](current-prompt-contract.md) is labelled **v10**. Models classify the task's meaning; the capability registry and orchestrator enforce authorization, required inputs, evidence scope, scheduling and budgets. A prompt label does not switch dependency behavior.
 
 ## Behavior
-
-Existing goal capture, illustrative calculations and emergency-fund grounding retain their
-specialized contracts. The rules below describe ordinary saved-goal reasoning.
 
 | Request | Expected dependency |
 |---|---|
@@ -16,124 +10,48 @@ specialized contracts. The rules below describe ordinary saved-goal reasoning.
 | Personal affordability, whether goals can be funded or reached, on-track assessment | Goal requests required Budget `monthly_savings_capacity` |
 | Mixed Goal arithmetic and feasibility | Required Goal → Budget dependency remains |
 | Spending-informed funding assessment | Goal → Budget → Spending |
-| Independent Spending analysis and Budget explanation/capacity question | Parallel candidates; no Budget → Spending edge merely from a keyword elsewhere |
-| Independent Spending, Budget explanation and saved-goal arithmetic | Parallel candidates; no specialist dependency required |
+| Budget reconciliation of recorded expenses against saved limits | Budget requires Spending `transaction_category_totals` |
+| Independent Spending analysis and conceptual Budget explanation | Parallel candidates; no Budget → Spending edge merely from a keyword elsewhere |
+| Independent Spending, conceptual Budget and saved-goal arithmetic | Parallel candidates; no specialist dependency required |
 
-No direct Goal–Spending edge is added. A two-agent dependent Spending–Goal feasibility case is
-still unsupported. The relevant provider chain remains part of the orchestration demonstration.
+The direct Goal–Spending capability remains deferred. A dependent request linking Spending and Goal feasibility can therefore include Budget as the intermediary. Saved-goal capture and emergency-fund assessment retain their separate contracts.
 
-## Implementation
+## Goal capacity requirements
 
-Goal uses the strict boolean `GoalInputRequirements.requires_capacity` contract. The versioned
-classifier examines only the Goal portion of the current question and its resolved follow-up.
-Saved records establish arithmetic inputs; their presence does not establish a need for capacity.
-Any funding-feasibility part requires capacity, and ambiguous funding assessments classify
-conservatively. Invalid classifier output follows the existing bounded schema-validation behavior.
+The typed `GoalInputRequirements.requires_capacity` decision examines the Goal portion of the current question and its resolved follow-up. Saved records establish arithmetic inputs, while any personal funding-feasibility part requires capacity. Ambiguous funding assessments classify conservatively. The orchestrator caches the requirement on the task and shares it with an already selected Budget provider, so matching capacity can be reused. Resume/retry copies preserve the decision.
 
-The orchestrator determines and caches this requirement on the Goal task during initialization.
-It informs an already selected Budget task of the actual capacity requirement, allowing reuse
-without requiring income merely because Goal is selected alongside a conceptual Budget question.
-A dynamically requested Budget provider still computes capacity. Resume/retry task copies retain
-the classification; they do not repeat it simply to resolve a provider output.
-The trace records `task.capacity_requirement.evaluated` with
-`GOAL_FEASIBILITY_REQUIRES_CAPACITY` or `GOAL_CAPACITY_NOT_REQUIRED`, explaining the
-decision before dependency execution.
+The trace records `task.capacity_requirement.evaluated` with `GOAL_FEASIBILITY_REQUIRES_CAPACITY` or `GOAL_CAPACITY_NOT_REQUIRED`. Goal arithmetic carries deterministic remaining amounts, progress and contributions, without unsolicited affordability conclusions. Non-SGD amounts require clarification; no conversion is performed.
 
-Goal arithmetic grounding carries deterministic projections and progress calculated from saved
-targets and balances. It carries no affordability result or unsolicited capacity. The narrative
-contract omits irrelevant income, capacity-source and budget-month questions for this path.
-Non-SGD amounts still require clarification; no conversion is introduced.
+Confirmed monthly planning settings supply the chosen savings allocation as one shared pool. Unallocated income is separate. Each requested month is assessed independently; a period total is never substituted for a recurring monthly pool. A missing explicitly requested plan remains unavailable. Fallback capacity needs income and explicit recurring-obligation terms and carries its qualifications.
 
-Budget does not create the optional Spending request from a whole-message keyword test. The existing typed dependency planner evaluates the relationship between Budget's own work
-and recorded expense context. Capability options retain their required fields and optional status;
-the model cannot grant itself a new provider, broaden fields or make the optional edge required.
-Role-scoped Budget income classification also excludes independent Goal arithmetic and Spending.
+## Budget consumption of Spending evidence
 
-After the second 8 October retest, the router also receives the saved capacity source and
-month, and Budget's planner receives a compact description of available capacity and limits.
-An offered Spending capability remains optional: the semantic planner may reject an
-unnecessary `requires_spending` hint when a confirmed allocation supplies the assigned
-capacity calculation. Requested actual-versus-plan reconciliation still consumes Spending.
-See [the follow-on recovery changes](orchestration-post-retest-recovery.md).
+The router supplies an attributed assignment and requirement fields for each specialist. Budget's planner assesses Budget's own question against scoped or historical recorded expenses; an independent Spending question does not force an edge. A false `requires_spending` router hint does not veto consideration of an available approved capability. Co-selection alone never establishes dependency.
 
-The 9 October follow-up also removes the router's negative flag as a capability
-veto. Whenever recorded expenses are available, Budget's semantic planner can
-consider the approved totals capability against its own question and attributed
-source quotes. A confirmed allocation supplies capacity arithmetic, but an
-assessment of observed pressure on that allocation still needs actual expenses.
-The planner can choose ready for independent questions; co-selection never
-forces an edge. Mandatory reconciliation retains its stricter contract.
-See [latest live-failure fixes](latest-live-failure-fixes-2026-10-09.md).
+For ordinary reasoning, Spending is optional. A confirmed allocation can supply capacity arithmetic without recorded totals; assessing observed pressure on that allocation can still consume Spending. The typed `operation=reconciliation` requires the totals capability and rejects a readiness decision that did not consume it. The model selects the semantic operation; the server validates its consequences.
 
-After the third 8 October retest, a typed `operation=reconciliation` distinguishes
-actual-versus-limit reasoning from Budget planning and record commands. This operation
-offers the existing Spending totals capability as required, and a readiness decision
-without consuming it fails bounded contract validation. `requires_spending=false`
-contradicts reconciliation and is rejected. Other operations retain optional Spending
-selection, including capacity arithmetic supported by a confirmed allocation.
-The model selects the semantic operation; the server verifies its consequences rather
-than recognizing test prompt phrases. See [read-only routing and recovery](orchestration-read-only-recovery.md).
+Capability fingerprints include dates, historical records and scoped aggregates. The orchestrator reuses only compatible results, detects cycles, resolves required providers before resuming requesters and bounds dependency rounds, retries, time, calls and tokens. Required failures fail closed. Optional failures preserve useful calculations with visible limitations.
 
-This is semantic intent classification, not a guaranteed graph encoded in natural-language wording.
-Routing may select additional specialists. An exact parallel result requires no relevant dependency
-edges and overlapping ready-task execution, not simply a multi-agent result list.
+## Education dependencies
 
-The Education grounding, hybrid evidence modes, scoped review and bounded repair contracts are
-retained in the current catalog. Historical behavior is recoverable from Git; executable evaluations use the [single current contract](current-prompt-contract.md).
-The active source default, local development configuration, deployment template and smoke assertions
-use the current manifest, now v10. The [9 October Compliance update](risk-compliance-review-update-2026-10-09.md)
-changes review explanations and policy meaning while retaining financial dependency behavior.
-Changing source configuration does not deploy it or restart running services.
+Budget and Goal may request `education_context` only for validated allowlisted topics relevant to their assigned work. Investment Education alone can execute `education_retriever`; the orchestrator invokes its grounding logic as the tool provider. Requester questions and fingerprints retain scope. Identical evidence is reused within the run. An independently selected Investment specialist normally owns the conceptual explanation, avoiding duplicate optional retrieval; Goal's emergency-fund evidence remains required. Spending stays retrieval-free.
 
-## Verification
+Budget/Goal education needs verified RAG evidence. Optional missing support preserves their financial calculations and reports an education gap. Investment Education has a separately labelled, restricted model-knowledge supplement; that permission does not transfer to other specialists. Independent Policy review remains mandatory for ordinary answers.
 
-`tests/test_conditional_financial_dependencies.py` covers saved arithmetic without income,
-progress percentages, required feasibility, mixed requests, independent parts, provider reuse,
-semantic paraphrases and an actual three-task concurrency barrier. Existing dynamic dependency,
-saved capacity, budget reasoning, Education and Compliance suites verify the established chain
-and output review behavior. The offline fixture uses isolated conservative recognizers;
-production classifiers and planners continue using typed model decisions.
-The combined Goal, Budget, Spending and Education regression completes within the existing
-six-round limit; this limit has not been increased.
+## Verification and acceptance
 
-Verification on 7 October 2026:
+Current executable contracts are covered by `apps/ai-service/tests/test_conditional_financial_dependencies.py`, dynamic-dependency, saved-capacity, Budget reasoning, Education and Compliance suites. They exercise missing income, saved arithmetic, mixed requests, provider reuse, semantic paraphrases and a real task-concurrency barrier. Fixture tests verify deterministic contracts, not production-model accuracy.
 
-| Check | Result | Evidence |
-|---|---|---|
-| Full AI service suite | 1,833 passed; one platform-related skip | [Verification summary](evaluation-evidence/conditional-financial-dependencies-v9.json) |
-| Infrastructure selection, model policy, smoke and release checks | 85 passed | [Verification summary](evaluation-evidence/conditional-financial-dependencies-v9.json) |
-| Existing offline dependency and routing datasets | 14/14 dependency cases and 6/6 routing cases passed | [Evaluation results](evaluation-evidence/conditional-financial-dependencies-v9.json) |
-| Ruff and Git whitespace checks | Passed | Local checks |
-| Signed-in Edge reasoning prompts | 34 approved turns attempted plus two retests; live acceptance failed | [Live results](agent-reasoning-live-test-results-2026-10-07.md) |
+The [latest retained live retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md) reports matching specialist sets and dependency edges for all 42 turns at build `7356713`: 30/34 original answers passed, case 35 passed and 6/7 planned repeats passed. Five withheld/incomplete answer outcomes failed. That run predates subsequent source changes and does not establish acceptance of the current effective prompt hash.
 
-These results verify offline contracts. They do not measure the deployed model's routing
-accuracy or conversational answer quality. The Windows test harness required execution outside
-the sandbox; test temporary files were kept in the project's artifacts directory.
-Full JUnit reports remain local under `artifacts/agent-reasoning-demo-20261007/`.
-
-The updated [review prompts](agent-reasoning-test-prompts-2026-10-07.md) use saved-goal arithmetic
-for single Goal and independent multi-agent cases. The live runs demonstrated this conditional
-Goal behavior, the required funding chain, provider reuse and several independent overlapping
-executions. Budget still requested Spending for some independent conceptual or confirmed-plan
-questions. Six first attempts timed out, seven were withheld, and two explicit education requests
-became unnecessary clarification. These are live-model gaps despite the passing offline contracts.
-The profile records and expected shared-pool shortfalls are unchanged. Direct Goal–Spending remains deferred.
+Use [current orchestration](orchestration-current-implementation-2026-10-07.md), [the reasoning prompt catalogue](agent-reasoning-test-prompts-2026-10-07.md) and `app.evals.orchestration_acceptance` for graph, overlap, numeric and answer-coverage checks. The frozen historical datasets remain revision-specific test inputs. Complete current acceptance needs repeated real-model evaluation and review; no graph is guaranteed solely by natural-language wording.
 
 ## Code
 
-The subsequent [seven live-gap fixes](orchestration-live-fixes.md) add attributed model task assignments before planning, independent Spending calendar scope, workflow deadlines and one bounded financial qualification correction. Model requirement fields can avoid redundant classifiers; unknown legacy single-specialist requirements retain the scoped classifier. Confirmed-plan capacity arithmetic can use saved allocations without raw income. Independent Budget concepts retain their own requirement even when a separate Goal task assesses feasibility. Conditional Education providers receive requester-specific questions and fingerprints. The historical verification table above predates those changes; it is not a new live acceptance result.
-
-The frozen `orchestration_live_regression_v1.json` suite contains all 34 approved turns with graph and financial assertions plus human answer checks. `app.evals.orchestration_acceptance` runs it without `requested_agents` overrides and explicitly separates offline fixture contracts from repeated production-model evaluation. Fixture failures remain visible rather than being tailored to expected routes.
-
-- `app/agents/goal_strategy.py`: requirement classification, conditional input/dependency checks and arithmetic grounding.
-- `app/agents/budget.py`: scoped optional Spending selection and Budget input classification.
-- `app/orchestrator.py`: cached requirement shared with preselected capacity providers.
-- `app/core/schemas.py`: private task classification cache.
-- `app/models/dependency_fixture.py`: offline-only test decisions.
-- `prompts/current/prompts.json`: Goal requirement contract and scoped planner/writer instructions.
-
-Paths above are relative to `apps/ai-service`.
-
-## Review recovery and graph demonstrations
-
-The [8 October recovery changes](orchestration-review-recovery.md) preserve explicitly requested data flow in model task assignments, retain safe requirement flags in traces and separate a valid conditional decomposition from a full-chain demonstration. Updated evaluation v2 keeps case 7's original prompt and financial checks, makes Budget consumption of Spending conditional, and adds case 35 with an explicit reconciliation step. Historical v1 and browser verdicts remain unchanged. Direct Goal-Spending remains deferred.
+- `apps/ai-service/app/capabilities/registry.py`: requester/provider authorization and required inputs.
+- `apps/ai-service/app/agents/goal_strategy.py`: conditional capacity, saved arithmetic and Goal grounding.
+- `apps/ai-service/app/agents/budget.py`: scoped optional/required Spending selection and capacity.
+- `apps/ai-service/app/orchestrator.py`: assignments, cached requirements, fingerprints, scheduling and reuse.
+- `apps/ai-service/app/core/schemas.py`: typed tasks, decisions and capability outcomes.
+- `apps/ai-service/prompts/current/prompts.json`: scoped planner/writer instructions.
+- `apps/ai-service/app/models/dependency_fixture.py`: offline-only planning decisions.

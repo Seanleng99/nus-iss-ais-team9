@@ -4,7 +4,7 @@ The application writes method entry logs and existing boundary completion/failur
 
 ## Explicit method entry logs
 
-The investment application inventory covers **67 Python modules, with entry logs in all 677 implemented functions/methods across 66 of them**, including shared frontend login/chat, backend authentication and request/history packaging, orchestration, Investment Education, RAG, model calls and Risk & Compliance. Each implementation starts with this call as its first executable statement (after any Python docstring):
+The investment application inventory covers **67 Python modules, with entry logs in all 678 implemented functions/methods across 66 of them**, including shared frontend login/chat, backend authentication and request/history packaging, orchestration, Investment Education, RAG, model calls and Risk & Compliance. Each implementation starts with this call as its first executable statement (after any Python docstring):
 
 ```python
 def _ground(self, task, sanitized_message):

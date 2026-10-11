@@ -6,16 +6,28 @@ These are initial targets to validate with AWS load evidence, not production gua
 
 | Signal | Initial objective | Release/alert action |
 |---|---:|---|
-| Backend availability | 99.5% during demo window | Alarm on 5-minute error rate above 2% |
+| Backend availability | 99.5% during demo window | Provisioned alarm fires on at least two target 5xx responses in five minutes |
 | Non-model backend P95 | Under 1 second | Investigate sustained breach for 15 minutes |
 | End-to-end coaching P95 | Under 8 seconds | Review OpenAI request latency, retries, and scaling |
 | Critical safety block rate | 100% on approved eval set | Block release immediately |
 | Retrieval recall@3 | At least 85% | Block release or restore source/index version |
 | Missing correlation IDs | 0 | Alert and treat affected audit trail as incomplete |
 
+The eight-second coaching target is an initial aspiration. Current live drift
+acceptance uses a provisional 60-second P95 gate; AWS Operational Validation has
+no coaching latency gate. See [model drift monitoring](model-drift-monitoring.md)
+and [the current operational profile](operational-evidence.md#current-operational-profile-2026-10-11).
+
 ## Telemetry
 
-Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, bearer tokens, OIDC claims, or model prompts. The AI service additionally emits `service.ai.workflow` JSON lifecycle events for workflow start/completion/failure, guardrails, routing, task start/completion, synthesis, Compliance, canonical retrieval topics and chunk counts, total duration, and model-call/token counts. Detail fields are allowlisted and error/reason codes are restricted to bounded token values. These logs never contain the raw question, user/profile/session identifiers, retrieved text, model output, provider message, or financial snapshot. AI response audit metadata includes the server trace ID, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the owner-bound profile session without raw prompts, retrieved text, identity claims, or financial grounding.
+Application access events contain service, correlation ID, method, path, status, and duration. They do not contain request bodies, financial values, API keys, bearer tokens, OIDC claims, or model prompts. The AI service additionally emits JSON lifecycle events through the shared `service.calls` logger for workflow start/completion/failure, guardrails, routing, task start/completion, synthesis, Compliance, canonical retrieval topics and chunk counts, total duration, and model-call/token counts. Detail fields are allowlisted and error/reason codes are restricted to bounded token values. These logs never contain the raw question, user/profile/session identifiers, retrieved text, model output, provider message, or financial snapshot. AI response audit metadata includes the server trace ID, UTC execution time, selected agents, task timing and attempts, dependency edges, guardrail categories, model/prompt identity, model-call duration, token usage, retrieval corpus versions, and source/version/checksum/review tuples. The backend persists the trace against the owner-bound profile session without raw prompts, retrieved text, identity claims, or financial grounding.
+
+The backend has one explicit content-logging exception: `X-Synthetic-Log: true`
+on an authorized automation request using a reserved synthetic ID in local, test
+or demo mode emits `coach.synthetic.exchange` after persistence, containing the
+synthetic question and final safety-filtered answer. This opt-in record is not
+content-free telemetry and must never contain real personal financial data.
+AI/frontend logs and persisted decision traces retain their allowlisted scope.
 
 Each workflow receives a server-generated UUID trace ID, independent of the caller's correlation ID, so repeated client headers cannot collide with persisted traces. `X-Correlation-ID` remains a diagnostic link across service headers and logs; accepted values contain 1–128 ASCII letters, digits, underscores, dots, or hyphens and start with a letter or digit. Invalid values are replaced with a UUID. AI workflow logs carry both IDs; response audit metadata carries the trace ID.
 
@@ -60,17 +72,20 @@ In AWS, ECS stdout/stderr is sent to CloudWatch log groups with 30-day retention
 
 ## Alerts
 
-- ALB/backend target 5xx count and target-health loss.
-- ECS deployment failure events through EventBridge and SNS.
-- AI service sustained CPU pressure and increased end-to-end model latency.
-- OpenAI throttling or server errors surfaced through sanitized generation-failure telemetry.
-- Privacy-safe AI model/retrieval generation failures derived from logs.
-- Sanitized OIDC/authorization failure spike or prompt-injection spike.
-- Critical/high Inspector finding after deployment.
-- Scheduled evaluation failure or metric regression.
-- Education RAG manifest, freshness, checksum, ingestion, or deployed-object drift.
+- Backend target 5xx: at least two responses in five minutes.
+- Backend target health: at least one unhealthy host in two consecutive minutes.
+- AI generation failure: at least one sanitized model/retrieval failure in five minutes.
+- AI CPU: average utilization at least 80 percent in two consecutive five-minute periods.
+- Coaching quota denial: at least 20 denials in five minutes.
 
-The first five controls are provisioned by `infra/aws/demo-application.yaml`; the remaining controls require an approved metric definition or existing security service integration. AWS Operational Validation uses GitHub Actions failure status, summaries and artifacts at the user's request, recorded on 2026-10-11. It does not require an email subscription, validate email delivery, or forward CloudWatch alarm events to GitHub. Review the CloudWatch dashboard for alarm state changes between validation runs. Email alerts remain an optional infrastructure capability: pass `-AlertEmail address@example.com` to the bootstrap script, confirm the SNS subscription and run the controlled notification test before claiming delivery. Without a confirmed endpoint, alarms still change state and publish to the topic but do not notify a person.
+These five alarms are defined by [demo-application.yaml](../infra/aws/demo-application.yaml)
+and required by AWS Operational Validation. The template also routes ECS deployment
+failure events through EventBridge to SNS. Model latency, provider-specific
+throttling, authorization/injection spikes and post-deployment Inspector findings
+need separately configured metric/security integrations before claiming dedicated
+alarms. Evaluation and corpus-governance failures are reported by their workflows.
+
+AWS Operational Validation uses GitHub Actions failure status, summaries and artifacts at the user's request, recorded on 2026-10-11. It does not require an email subscription, validate email delivery, or forward CloudWatch alarm events to GitHub. Review the CloudWatch dashboard for alarm state changes between validation runs. Email alerts remain an optional infrastructure capability: pass `-AlertEmail address@example.com` to the bootstrap script, confirm the SNS subscription and run the controlled notification test before claiming delivery. Without a confirmed endpoint, alarms still change state and publish to the topic but do not notify a person.
 
 ## Database Changes
 
@@ -171,6 +186,14 @@ ingests and audits both approved corpora before activating their version pins;
 any issue blocks corpus promotion. These controls detect source/configuration
 changes but do not establish retrieval relevance or generated-answer groundedness.
 
+Document/S3 checksum audits verify the governed source objects. They do not
+prove that Bedrock's reconstructed Policy chunks equal each complete document.
+The retriever requests all mandatory Policy sources, but downstream review
+filtering can drop unsafe or oversized contexts without rechecking that coverage.
+A nonempty remaining set can report `grounded`; operators must inspect the
+admitted source IDs before inferring full Policy coverage. See
+[security limitations](security-guardrails.md#limitations).
+
 | Signal | Measurements | Interpretation and current status |
 |---|---|---|
 | Live answer quality | Financial correctness, routing/dependencies, groundedness, citation support, unsafe advice, false refusal and explanation/language quality | Same-model scoring has an independently reviewed baseline and scheduled GitHub comparisons enabled; the latest Chinese safety-refusal grading alert remains open. |
@@ -234,7 +257,7 @@ The utility gives each independent request a unique chat-only synthetic user, de
 
 Deleting the final chat session for a chat-only synthetic user also prunes the empty user record. PostgreSQL transaction-scoped lifecycle locks serialize same-user creation and deletion, including the boundary where the user row does not yet exist. Users with a profile, demographics, consent, transactions, goals, or budgets are never pruned by chat cleanup. This prevents standalone evaluation and load exercises from accumulating empty synthetic identities.
 
-The `AWS Operational Validation` workflow verifies ECS service state, autoscaling, the CloudWatch dashboard and five required alarms, HTTPS/origin protection, and governed lifecycle retention each week. Live coaching, concurrent-load and task-replacement stages were removed on 2026-10-11, including their inputs, latency/cost gates and coaching credentials. Run the live-evaluation and load utilities separately when that evidence is requested; release smoke and selected release live stages provide their own model/RAG checks. The first retained operational artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures for the earlier Bedrock deployment. Those historical results remain in the evidence register and do not establish current GPT-6 Luna acceptance. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
+The `AWS Operational Validation` workflow runs on Sunday at 10:00 Singapore when repository variable `AWS_OPERATIONAL_VALIDATION_ENABLED=true`, or on manual dispatch. It verifies ECS service state, autoscaling, the CloudWatch dashboard and five required alarms, and independent governed lifecycle retention. HTTPS/origin checks run only when `EDGE_ORIGIN_RESTRICTION_ENABLED=true`; `EDGE_CUSTOM_DOMAIN_ENABLED=true` additionally requires the configured viewer domain. A run with edge checks skipped provides no edge acceptance. Live coaching, concurrent-load and task-replacement stages were removed on 2026-10-11, including their inputs, latency/cost gates and coaching credentials. Run the live-evaluation and load utilities separately when that evidence is requested; release smoke and selected release live stages provide their own model/RAG checks. The first retained operational artifact recorded 100 percent case and load success, 7.32-second live P95, 4.85-second load P95, and zero chat-session cleanup failures for the earlier Bedrock deployment. Those historical results remain in the evidence register and do not establish current GPT-6 Luna acceptance. A failed-deployment rollback remains separately demonstrated by the release workflow and ECS circuit breaker.
 
 Quota accounting retains concurrency leases and token reservations for unknown or still-running model work. A terminal failed workflow can release its lease and charge actual tokens only when the persisted trace pairs every generation start with a completed generation, includes exact token counts, and records the workflow ending after those calls. Missing, conflicting or unfinished metadata keeps the reservation until expiry. This prevents a known completed failure from needlessly occupying the next load request's capacity without refunding uncertain provider usage.
 

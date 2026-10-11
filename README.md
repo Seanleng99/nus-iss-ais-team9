@@ -24,7 +24,8 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 
 ## Design Evidence
 
-- [Documentation alignment audit](docs/documentation-audit-2026-10-10.md): review of all 100 tracked Markdown files against the current code, with per-file coverage and verification limits.
+- [Documentation index](docs/README.md): current guides and retained evidence.
+- [Documentation alignment audit](docs/documentation-audit-2026-10-11.md): current implementation review, obsolete-document removals and verification limits.
 - [requirements-traceability](docs/requirements-traceability.md): requirement-to-evidence status and remaining work.
 - [architecture](docs/architecture.md): logical and physical architecture, trust boundaries, and ECS/EKS decision.
 - [agent-design](docs/agent-design.md): roles, model strategy, memory, tools, prompts, MCP, and A2A.
@@ -96,7 +97,7 @@ The offline model fixture uses explicit fields, for example: `Create goal; name:
 
 ## Agents
 
-Coach retains attributed user-reported facts and corrections within each chat, alongside the latest eight messages and a bounded extractive summary of older preferences, objectives and discussion. Validated local replies also remain available as context. The application’s globe selector explicitly chooses English or Simplified Chinese; conversational text does not override that selection. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Run `alembic upgrade head` (current head `20261010_0018`) before updating the backend; this includes the previous memory/pending-transaction migration branches and adds durable chat-scoped transaction edit and just-saved references. Reinstall `apps/shared` and update the backend/AI service together. See [Session context](docs/session-context.md) and [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for supported inputs, limits and validation.
+Coach retains attributed user-reported facts and corrections within each chat, alongside the latest eight messages and a bounded extractive summary of older preferences, objectives and discussion. Validated local replies also remain available as context. The application’s globe selector explicitly chooses English or Simplified Chinese; conversational text does not override that selection. Clarification checks and local follow-ups use this owned session context without changing saved financial records or calculation grounding. Run `alembic upgrade head` (current head `20261010_0018`) before updating the backend. Revision `20261004_0016` adds durable chat-scoped transaction edit and just-saved references; `20261004_0017` adds explicit recurrence/obligation identity; the current head adds shared per-principal Coach quota storage. Reinstall `apps/shared` and update all services together. See [Session context](docs/session-context.md) and [current orchestration](docs/orchestration-current-implementation-2026-10-07.md) for supported inputs, limits and validation.
 
 Read-only references such as `Explain that more simply`, `What about that goal?` and `Explain the second option` are resolved before routing. Ambiguous references ask one brief question; remembered dialogue cannot resume a pending goal, budget or transaction draft as an action.
 
@@ -138,7 +139,7 @@ POLICY_RAG_PROVIDER=local_documents
 POLICY_CORPUS_VERSION=financial-coach-policy-sg@2026-10-09.1
 ```
 
-`MODEL_ROLE_OVERRIDES` accepts a JSON map keyed by prompt role, with optional `model_id`, `reasoning_effort`, and `max_tokens`. The example and AWS template give writers more output room than routing. OpenAI receives a schema on the initial request, and traces distinguish reasoning tokens, output limits, refusals, and invalid contracts. OpenAI reasoning calls do not use the application's temperature setting. See [Coach remediation](docs/coach-response-remediation-2026-10-03.md) for regression coverage and remaining live validation.
+`MODEL_ROLE_OVERRIDES` accepts a JSON map keyed by prompt role, with optional `model_id`, `reasoning_effort`, and `max_tokens`. The example and AWS template give writers more output room than routing. OpenAI receives a schema on the initial request, and traces distinguish reasoning tokens, output limits, refusals, and invalid contracts. OpenAI reasoning calls do not use the application's temperature setting. See [current orchestration](docs/orchestration-current-implementation-2026-10-07.md) for regression coverage and remaining live validation.
 
 To run the services separately:
 

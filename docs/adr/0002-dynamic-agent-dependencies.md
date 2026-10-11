@@ -23,23 +23,23 @@ detects cycles where applicable, and resumes the requester with only the validat
 `CapabilityResult`. Dependency rounds, provider calls, task attempts, agent duration, model calls,
 and model tokens are bounded by configuration.
 
-Prompt set v3 allows eligible specialists to produce a schema-validated `ready`,
+Eligible specialists produce a schema-validated `ready`,
 `needs_dependency`, or `needs_input` planning result. The implemented chain is Goal Strategy
 requesting `monthly_savings_capacity` from Budget; Budget can in turn request
 `transaction_category_totals` from Spending when recent transactions are needed. Independent ready
 tasks run concurrently. Risk and Compliance remains a mandatory fixed release gate and is not
 selected through the dependency mechanism.
 
-Prompt set v4 adds the `education_context` tool capability. Budget and Goal Strategy may request it
+The registry also exposes the `education_context` tool capability. Budget and Goal Strategy may request it
 only for deterministically allowlisted investment topics. The orchestrator constructs a canonical
-topic-only query, invokes `education_retriever`, reuses an identical result within the run, and
+public-concept query, invokes Investment Education's authorized grounding logic, reuses an identical result within the run, and
 records the tool invocation as a dependency provider. Spending and Risk and Compliance are denied
 that capability. Optional retrieval failure preserves deterministic calculations and becomes an
 explicit evidence gap.
 
-## Conditional financial dependencies, 7 October 2026
+## Conditional financial dependencies
 
-Prompt set v9 makes Goal's Budget dependency conditional on the Goal question. A typed
+Goal's Budget dependency is conditional on the Goal question. A typed
 `goal_input_requirements` decision requires capacity for personal feasibility, affordability,
 on-track assessments and funding strategy. Saved-goal remaining amounts, progress percentages
 and equal monthly contribution arithmetic can finish without income or Budget. Any feasibility
@@ -50,6 +50,10 @@ Budget's existing dependency planner evaluates whether its own work consumes rec
 totals. A spending keyword in another independent part no longer forces a capability request.
 Required Goal capacity and optional Spending context retain their server-owned contracts; provider
 reuse, fingerprint checks, role data boundaries and Compliance review are unchanged.
+
+Model-selected reconciliation requires Spending totals. Other Budget operations can choose an
+optional edge against their own attributed task; a negative router hint alone does not veto the
+approved capability. Ready tasks without dependency edges can overlap in execution.
 
 The direct Goal–Spending edge remains deferred. Spending-informed feasibility continues through
 Goal → Budget → Spending; unrelated Spending analysis and saved-goal arithmetic can run independently.

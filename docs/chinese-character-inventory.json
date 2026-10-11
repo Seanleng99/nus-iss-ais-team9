@@ -1,15 +1,24 @@
 {
   "revision": "working_tree",
-  "text_files_scanned": 670,
-  "files_with_han": 29,
+  "text_files_scanned": 657,
+  "files_with_han": 30,
   "categories": {
-    "evaluation_datasets": 9,
+    "evaluation_datasets": 10,
     "test_fixtures": 7,
     "language_resources": 8,
     "documentation": 4,
     "application_or_configuration": 1
   },
   "files": [
+    {
+      "path": "apps/ai-service/app/evals/datasets/fairness_consistency.jsonl",
+      "category": "evaluation_datasets",
+      "literal_lines": [
+        14,
+        16
+      ],
+      "escaped_lines": []
+    },
     {
       "path": "apps/ai-service/app/evals/datasets/investment_answerability_v1.jsonl",
       "category": "evaluation_datasets",
@@ -749,21 +758,21 @@
       "literal_lines": [
         2,
         3,
-        5,
+        4,
         6,
         7,
         8,
-        10,
+        9,
         11,
-        14,
+        12,
         15,
         16,
         17,
         18,
         19,
         20,
-        22,
-        24,
+        21,
+        23,
         25,
         26,
         27,
@@ -773,7 +782,7 @@
         31,
         32,
         33,
-        35,
+        34,
         36,
         37,
         38,
@@ -783,11 +792,11 @@
         42,
         43,
         44,
-        46,
+        45,
         47,
         48,
         49,
-        51,
+        50,
         52,
         53,
         54,
@@ -823,8 +832,8 @@
         84,
         85,
         86,
-        88,
-        91,
+        87,
+        89,
         92,
         93,
         94,
@@ -835,15 +844,16 @@
         99,
         100,
         101,
-        103,
+        102,
         104,
         105,
         106,
         107,
-        108
+        108,
+        109
       ],
       "escaped_lines": [
-        85
+        86
       ]
     },
     {
@@ -983,20 +993,20 @@
         78,
         79,
         80,
+        81,
         82,
         83,
         84,
-        85,
         86,
         87,
         88,
         89,
         90,
         91,
+        92,
         93,
         94,
         95,
-        96,
         97,
         98,
         99,
@@ -1201,10 +1211,10 @@
         298,
         299,
         300,
+        301,
         302,
         303,
         304,
-        305,
         306,
         307,
         308,
@@ -1585,10 +1595,10 @@
         683,
         684,
         685,
+        686,
         687,
         688,
         689,
-        690,
         691,
         692,
         693,
@@ -1627,10 +1637,10 @@
         726,
         727,
         728,
+        729,
         730,
         731,
         732,
-        733,
         734,
         735,
         736,
@@ -1944,7 +1954,11 @@
         1044,
         1045,
         1046,
-        1047
+        1047,
+        1048,
+        1049,
+        1050,
+        1051
       ],
       "escaped_lines": []
     },
@@ -2039,21 +2053,28 @@
       "escaped_lines": []
     },
     {
-      "path": "docs/model-drift-monitoring.md",
+      "path": "docs/evaluation-evidence/fairness-fixture-human-review-2026-10-11.csv",
       "category": "documentation",
       "literal_lines": [
-        69,
-        70,
-        71
+        30,
+        32,
+        83,
+        85,
+        93,
+        101
       ],
       "escaped_lines": []
     },
     {
-      "path": "docs/superpowers/plans/2026-10-03-risk-compliance-agent-tests.md",
+      "path": "docs/evaluation-evidence/fairness-local_fixture-2026-10-11-e3047345.json",
       "category": "documentation",
       "literal_lines": [
-        141,
-        144
+        1335,
+        1515,
+        1516,
+        3042,
+        3222,
+        3223
       ],
       "escaped_lines": []
     },
@@ -2102,7 +2123,8 @@
         9,
         10,
         11,
-        14
+        15,
+        22
       ],
       "escaped_lines": []
     },

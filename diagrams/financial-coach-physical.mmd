@@ -1,43 +1,18 @@
-graph LR
-  User["User Browser"] -->|"HTTPS"| ALB["Application Load Balancer"]
-
-  subgraph AWS["AWS Account"]
-    subgraph VPC["VPC across two Availability Zones"]
-      subgraph AppTier["Private Application Subnets"]
-        UI["ECS Fargate: Streamlit"]
-        Backend["ECS Fargate: FastAPI Backend"]
-        AI["ECS Fargate: Private AI Service"]
-        Ingestion["Scheduled Trusted-Content Ingestion Task"]
-      end
-
-      subgraph DataTier["Private Data Subnets"]
-        RDS["Amazon RDS PostgreSQL"]
-        VectorDB["Vector DB: Education + Policy Collections"]
-      end
-
-      ALB --> UI
-      UI -->|"Backend service key"| Backend
-      Backend -->|"Private service key + minimized snapshot"| AI
-      Backend <-->|"Personal financial records"| RDS
-      AI <-->|"Role-scoped retrieval"| VectorDB
-    end
-
-    S3["S3 Curated Document Store"]
-    Bedrock["Amazon Bedrock: Models + Embeddings"]
-    Secrets["AWS Secrets Manager"]
-    Logs["Amazon CloudWatch"]
-
-    S3 --> Ingestion
-    Ingestion -->|"Chunk + metadata"| Bedrock
-    Bedrock -->|"Document embeddings"| VectorDB
-    AI <-->|"Routing, generation, compliance review"| Bedrock
-    Secrets -.-> UI
-    Secrets -.-> Backend
-    Secrets -.-> AI
-    UI -.-> Logs
-    Backend -.-> Logs
-    AI -.-> Logs
-    Ingestion -.-> Logs
-  end
-
-  Sources["Trusted Sources: CPF, MAS, SGX, Government"] -->|"Allowlisted offline collection"| S3
+flowchart LR
+  User["User Browser"] --> CloudFront["Amazon CloudFront"]
+  User <-->|"OIDC + PKCE"| Cognito["Amazon Cognito"]
+  CloudFront --> ALB["Application Load Balancer"]
+  ALB --> UI["ECS Fargate: Streamlit"]
+  UI --> Backend["ECS Fargate: FastAPI Backend"]
+  Backend <--> RDS["Amazon RDS PostgreSQL"]
+  Backend --> AI["ECS Fargate: Private AI Service"]
+  AI -->|"Retrieve API"| Education["Bedrock Education Knowledge Base"]
+  AI -->|"Retrieve API"| Policy["Bedrock Policy Knowledge Base"]
+  Git["Reviewed Git documents and manifests"] -->|"Release validates and syncs"| S3["S3 source documents and metadata"]
+  S3 -->|"Ingestion and Cohere embeddings"| Education
+  S3 -->|"Ingestion and Cohere embeddings"| Policy
+  Education --> Vectors["Separate S3 Vectors indexes"]
+  Policy --> Vectors
+  AI -->|"HTTPS: model generation"| OpenAI["OpenAI GPT-6 Luna Responses API"]
+  Secrets["AWS Secrets Manager"] -.-> AI
+  Logs["Amazon CloudWatch"] -.-> AI

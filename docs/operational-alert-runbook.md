@@ -28,8 +28,8 @@ When email alerts are enabled, a missing notification requires inspection of the
 
 The [implemented drift workflow](model-drift-monitoring.md) uses this procedure.
 Its presence in source does not establish deployed activation or delivery. See
-[Operations](operations.md#drift-detection) for implemented controls and planned
-activation, and [the evaluation plan](evaluation-plan.md#live-quality-baseline-and-drift-gate)
+[Operations](operations.md#drift-detection) for the accepted baseline, enabled
+GitHub monitoring and the open quality alert, and [the evaluation plan](evaluation-plan.md#live-quality-baseline-and-drift-gate)
 for the baseline and scoring contract. Safety or ownership failures remain P1.
 
 1. Verify the comparison's baseline ID, model/prompt/role settings, build, corpus

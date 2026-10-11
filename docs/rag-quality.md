@@ -74,7 +74,7 @@ python -m app.evals.rag_evidence \
 
 Acceptance requires at least 99% passage recall@3 and complete-case accuracy,
 including each language and represented status category; 100% correct scope; and
-bounded context. The separate current policy v8 gate covers 120 cases/pairs across nine datasets.
+bounded context. The separate current policy v9 gate covers 136 cases/pairs across nine datasets.
 CI runs both and retains separate reports.
 
 There are 84 development cases and 16 initially held-out cases, split by evidence
@@ -152,13 +152,12 @@ safety blocks. A stronger APAC Nova Pro pilot also produced unsupported claims a
 citation errors. Neither pilot establishes generated-answer acceptance or approval
 for production financial use.
 
-As recorded on 6 October, that application revision accepted only v8; see [combined Education recovery](combined-education-recovery.md). The v7 evaluation candidate and v6 historical benchmark remain archived. At the earlier recovery check, the demo was still running v5. The v7 candidate sets the
-requested language explicitly, uses literal Unicode through policy review, retains
-a single education specialist's answer without a second generation, and requires
-a summary citation with at most one bounded contract correction. Policy review,
-source validation and output safety checks still apply. Valid citations establish
-provenance, not the truth of every claim. Rejected quote/translation experiments
-were removed from the application after measured regressions.
+The [current orchestration](orchestration-current-implementation-2026-10-07.md)
+retains a single Education specialist's answer when eligible, explicit application
+language, validated citations, independent review and bounded correction. Earlier
+prompt implementations are reproducible from their recorded Git revisions.
+Valid citations establish provenance rather than the truth of every claim;
+source validation and output safety checks still apply.
 
 The score command pins the expected model ID (Nova Lite by default). An explicitly
 selected comparison uses `--model-id` for both capture and scoring, matching the
@@ -176,8 +175,8 @@ demo until a separately reviewed use-scope and source update permits more.
 
 The subsequent 2026-09-15 Singapore-time demo release of main `c36423f` completed
 successfully (GitHub Actions release `34863374765`). All three running service image
-digests were checked against that commit's ECR images. The deployed prompt is v6
-with Nova Lite; v6 now also preserves a single education specialist's grounded
+digests were checked against that commit's ECR images. That deployed prompt was v6
+with Nova Lite; it preserved a single education specialist's grounded
 summary, applies the requested explanation language, and repairs education routing
 that could otherwise omit retrieval. This demo deployment is separate from the
 unpassed production quality gate. Authenticated synthetic UI and ownership checks

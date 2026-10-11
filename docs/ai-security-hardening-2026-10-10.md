@@ -5,9 +5,13 @@ address the confirmed preference privacy leak and add aggregate abuse limits.
 They do not establish production readiness. The coordinated database migration
 and application deployment subsequently passed for `80c3482`; see the
 [deployment evidence in the risk register](security-risk-register.md#deployment-and-validation-evidence).
-That release does not establish quota-alarm activation, cross-replica behavior
-or complete live-matrix acceptance. The local and bounded live results below
-retain their original scope.
+That release did not establish quota-alarm activation, cross-replica behavior
+or complete live-matrix acceptance. On 11 October, a scoped stack repair activated
+the quota-denial filter/alarm, and operational runs verified all five required
+alarms, edge controls and retention. The token metric/dashboard additions and
+cross-replica behavior remain separately unverified; full live acceptance remains
+incomplete. See [operational evidence](operational-evidence.md#operational-alert-notification).
+The local and bounded live results below retain their original scope.
 
 ## Changes
 
@@ -37,9 +41,13 @@ The backend reservation is 80,000 tokens per request and must match
 Deployment configuration tests verify that alignment. These limits are token
 controls, not a currency-denominated billing cap.
 
-Input counting adds a provider request before inference, with a three-second
-timeout inside the workflow deadline. Failure to establish the count fails
-closed. The SDK requirement is now OpenAI 2.54 or later. The count and generation
+Input counting adds a provider request before inference. The initial hardening
+used a three-second timeout; current source permits one retry after a typed
+timeout, connection or server failure, with three- and five-second attempt limits
+inside an eight-second local budget and the remaining workflow deadline.
+Invalid counts and access failures do not retry, and generation keeps SDK retries
+disabled. Failure to establish the count fails closed. The SDK requirement is
+OpenAI 2.54 or later. The count and generation
 use the same model, instructions, input, reasoning policy and output schema;
 tests verify those fields agree. OpenAI documents the
 [input-counting endpoint](https://developers.openai.com/api/docs/guides/token-counting).
@@ -116,17 +124,20 @@ change and is explicitly identified that way.
 
 ## Rollout and remaining work
 
-1. Apply Alembic revision `20261010_0018` before starting the new backend. Missing
-   quota tables fail coaching closed with HTTP 503.
-2. Deploy the coordinated backend/AI images and updated application stack.
-   Include the new CloudWatch resources and keep the token reservation settings aligned.
+1. Completed for `80c3482`: Alembic revision `20261010_0018` and coordinated
+   application images deployed. Missing quota tables still fail coaching closed
+   with HTTP 503 on any future environment.
+2. Quota-denial filter/alarm activation was verified on 11 October. Verify the
+   remaining token metric/dashboard resources and keep token reservation settings aligned.
 3. Verify concurrent requests across at least two backend replicas with an
    authenticated synthetic principal; confirm 429, expiry, usage reconciliation,
    ownership isolation, alarms and the scheduled retention job.
 4. Require review of live safety, useful completion, false refusals and provider
    errors after changing a model, prompt policy or approved corpus. The existing
-   CI security scan runs automatically after relevant changes; paid live checks
-   remain an explicit manual workflow option.
+   CI security scan runs automatically after relevant changes. Paid release
+   security runs only when `RUN_LIVE_SECURITY=true`; it defaults off and then
+   requires the full two-trial matrix. The bounded local CLI remains available.
+   See [post-deployment acceptance](post-deployment-acceptance.md).
 5. Repeat the corrected educational control and investigate relevance/clarification
    failures, review lexical grader limitations, and finish the full repeated live
    matrix before claiming readiness for real-user financial data.
@@ -135,7 +146,8 @@ Database concurrency tests use independent controllers against a file-backed
 SQLite database, and PostgreSQL locking/upsert SQL is generated. Docker's local
 PostgreSQL daemon is unavailable, so PostgreSQL concurrency and deployed replica
 behavior remain rollout checks. Deployment and cloud alarm activation were not
-performed as part of this workspace change.
+performed as part of the original 10 October workspace validation; the later
+milestones are recorded above.
 
 Pattern redaction cannot recognize all personal names, addresses, secrets or
 encoded disclosures. The model and its separate compliance call can share blind

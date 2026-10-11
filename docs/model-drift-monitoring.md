@@ -14,7 +14,7 @@ uncertainty; quality percentages, safety/financial gates, two-run regression
 confirmation and independent human calibration remain required. Historical
 24- and 36-sample captures below retain their original repetition counts and evidence.
 
-## Demo Activation Status — 2026-10-11
+## Demo Activation Status 2026-10-11
 
 The deployed one-run configuration is published at `49843e3`, with successful
 [CI](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38073037247)
@@ -175,7 +175,11 @@ policy thresholds and minimum one sample per scored subgroup are demo defaults;
 review measured variation and sampling needs before accepting that policy. Wilson
 intervals describe uncertainty and are not an automatic significance test.
 
-## Establish The First Baseline
+## Capture And Approve A Baseline
+
+The demo already has the independently accepted baseline recorded above. Use
+this procedure for a fresh candidate after a configuration change; preserve the
+existing baseline and failed reports until a replacement has been reviewed.
 
 The provider-model and input-observation metadata deployment is recorded in the
 2026-10-10 activation evidence above; it is no longer a deployment prerequisite.
@@ -330,5 +334,5 @@ approval, confirmation, critical/absolute failures, malformed evidence, configur
 changes, unknown usage and spending limits, aggregate queries, notifications, and
 capture-to-comparison integration with mocked endpoints. AI observation tests verify
 bounded metadata and absence of content. These tests require no provider or AWS calls;
-current-model baseline acceptance remains deployment work. End-to-end SNS delivery
+they do not replace the independently reviewed live baseline recorded above. End-to-end SNS delivery
 verification applies only if optional email reporting is enabled.

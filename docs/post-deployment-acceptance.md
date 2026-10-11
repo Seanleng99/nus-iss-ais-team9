@@ -165,9 +165,9 @@ All 204 offline security trials, 12 JavaScript grader tests and 80 workflow Bash
 syntax checks passed. The gate tests reject missing/duplicate/extra fairness pairs
 and exercise rollback using a local AWS command stub.
 
-The [verification record](evaluation-evidence/release-live-acceptance-wiring-2026-10-11.json)
-retains source hashes, execution details and limitations. These checks made no
-paid model calls or remote deployment and do not establish actual live acceptance.
+These earlier mandatory-live wiring checks made no paid model calls or remote
+deployment and do not establish actual live acceptance. Their contract snapshot
+is superseded by the retained [optional-stage verification record](evaluation-evidence/optional-release-live-verification-2026-10-11.json).
 
 The subsequent [job-split verification](evaluation-evidence/release-job-split-verification-2026-10-11.json)
 covers job failure/cancellation/skip propagation, incomplete artifacts, per-job
@@ -193,6 +193,6 @@ stopped in OIDC preflight because the initial trust repair used name-only
 subjects. No image publishing, corpus ingestion, ECS update or paid test started.
 The immutable subjects above were then added and verified against the
 repository's OIDC settings and numeric IDs. Existing trust and secret permissions
-were preserved. The required order is smoke → live security → fairness →
-agent/RAG matrix → final acceptance; all acceptance
-and rollback gates remain required.
+were preserved. When all optional stages are enabled, the order is smoke → live
+security → fairness → agent/RAG matrix → final acceptance. Mandatory acceptance
+and failure rollback remain required; disabled paid stages are intentionally skipped.

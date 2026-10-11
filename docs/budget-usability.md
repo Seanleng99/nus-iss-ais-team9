@@ -1,6 +1,6 @@
 # Everyday Budget and Coach workflow
 
-The simplified Budget page, inline method selector and monthly-editor improvements were tested in the deployed application using the signed-in Edge browser on 2026-10-01. The latest monitoring/editor and always-visible chart changes were subsequently deployed and checked in the same signed-in browser; see [deployed acceptance results](budget-browser-acceptance-20261001.md). Earlier local-only status and test counts below describe each revision before that acceptance run. This document supersedes earlier UI entry points in `budget-planning.md`; calculation and confirmation contracts remain in force. Browser UI checks and release smoke tests do not establish full Budget live-model acceptance.
+Budget provides saved-spending monitoring, charts and a monthly editor. Coach provides guided comparisons and advanced planning commands. This guide describes the current UI; [Budget planning](budget-planning.md) defines the calculation, ownership and confirmation contracts. The [retained browser acceptance](budget-browser-acceptance-20261001.md) applies to its recorded revision. Browser checks and release smoke do not establish current live-model answer quality.
 
 ## Everyday Budget page
 
@@ -20,7 +20,7 @@ The selected month remains shared with Overview and supplies Coach's default whe
 - **Explore a change** is removed. Direct editing already shows the effect on monthly affordability before saving. Ask Coach for comparisons or tradeoffs; the deterministic comparison tools and their separate adoption/confirmation contract remain available there.
 - Overview offers **View budget** for saved plans and **Set up budget** when no category limits exist. View budget opens monitoring; **Edit budget** starts editing on Budget. The duplicate **Ask Coach** button is removed from Budget. Coach remains available in the sidebar with the shared selected month and saved-plan context; unsaved editor values are not treated as confirmed settings.
 
-## Coach budget management — 5 October 2026
+## Coach budget management
 
 Coach's caption reads **Default month: October 2026** (using the actual selection). Its help text explains that the selection is used only when the question omits a period. The former "Budget capacity uses the selected month" wording is removed.
 
@@ -28,152 +28,9 @@ Ask Coach to show saved budgets, compare months or summarise a year without chan
 
 Changing limits preserves each month's other categories, income, savings and method. Removing limits keeps recorded transactions. Deleting a monthly budget keeps transactions, goals, bills, reserves and commitment settings, and retains a restorable budget-history version. Delete requests cannot bypass saved commitments. Deleted plans no longer provide confirmed savings capacity.
 
-Explicit months also determine the saved savings pool used in goal calculations. For a requested range, Coach assesses each month separately; a yearly savings total is never treated as one recurring monthly pool. Missing planning settings remain unavailable. The new workflows have local contract coverage; their deployment and live-provider acceptance have not yet been established.
+Explicit months also determine the saved savings pool used in goal calculations. For a requested range, Coach assesses each month separately; a yearly savings total is never treated as one recurring monthly pool. Missing planning settings remain unavailable. Contract regressions cover these workflows. Deployment evidence applies to its recorded revision; complete current live-provider acceptance remains outstanding.
 
 Ordinary advice such as “Which parts of my November budget could I adjust?” receives that month's saved category limits and protected commitments. Spending evidence follows the same period, with prior history identified separately even when the selected month has no transactions. General questions such as “Explain how to calculate disposable income” do not require personal income. If there is no confirmed plan, recurring expenses need known schedules before Coach estimates capacity; historical repeated payments are not summed as separate monthly bills. See [everyday reasoning contracts](budget-planning.md#everyday-reasoning-context).
-
-## Browser acceptance follow-up — 1 October 2026
-
-The deployed Edge session exercised missing-input validation, save confirmation,
-all six method choices, custom percentages and categories, reload persistence,
-affordable and unaffordable comparisons, spending/adjustment reviews, next-month
-copying, Overview and Coach navigation. It used an isolated synthetic profile,
-two monthly plans and two labelled transactions. A 390 × 844 viewport was also
-checked. No live Coach message was sent.
-
-Four issues were reproduced and fixed locally:
-
-1. Overview no longer claims the monthly total is exceeded solely because a
-   category is over its limit. For spending of SGD 750 against SGD 2,600 in total
-   limits, with Food at SGD 650 against a SGD 600 limit, it reports Food's SGD 50
-   category overage. Total-budget and income-overrun warnings still apply when
-   those totals are actually exceeded.
-2. Budget now includes unbudgeted expenses in its headline figures, as Overview
-   already does. With SGD 650 in Food and SGD 100 in unbudgeted Entertainment,
-   both pages show Spent SGD 750 and Remaining SGD 1,850. An adjacent caption
-   identifies spending without category limits. Unsaved editor changes do not
-   affect the saved-plan spending summary.
-3. A simple one-month copy shows the target month, copied limits, supplied income
-   and savings, and confirmation. The backend returns carry and multi-month
-   explanations only for those operations. Existing-plan replacement and relevant
-   saved-commitment warnings/questions remain visible; enforcement is unchanged.
-4. The primary spending chart's legend now sits above the bars. Its currency is
-   shown in a caption instead of an axis title that overlapped the mobile legend.
-
-Local verification passed **97 frontend tests** and **11 backend continuity
-tests**, with Ruff and whitespace checks. A separate local Edge fixture rendered
-the actual frontend code with the same synthetic totals: the corrected Overview
-warning, matching spending totals and mobile chart were verified visually. At
-390 × 844 the chart's labels were separated and no document-level horizontal
-overflow was observed. The fixture did not contact the deployed backend, so this
-does not claim the fixes are live or that the live model has been retested.
-
-## Further simplification — 1 October 2026
-
-Next-month copying, category/pace details and suggested adjustments are removed
-from Budget. The unused review renderer and copy form are deleted. Budget keeps
-the monthly editor, method choices, saved-plan spending summary, category overage
-warnings, main chart, optional allocation chart, explicit one-change comparisons
-and Coach navigation. The earlier copy-preview browser fix above is historical;
-its backend warning correction remains, but the copy UI is no longer offered.
-
-Ordinary Coach reviews still use deterministic, owned SGD spending and optional
-bounded pace calculations. Reviews no longer create a **Cover recorded spending**
-scenario or suggest raising limits to recorded expenses. An overage is evidence
-to discuss, not permission to normalize overspending. Coach can clarify whether
-purchases repeat and ask which amount the user wants to compare before calling
-the existing comparison tools. Adoption produces an unsaved draft and saving
-still requires confirmation of actual income, expense coverage and the changes.
-Explicit requests to reuse a month can still use the backend preview/confirmation
-contract; no recurring copy or automatic rollover is added.
-
-Review responses use `budget-review-v2`; compatibility fields `suggestions` and
-`comparison` are empty/null. Existing saved plans and transactions are unchanged.
-Legacy pending review-derived drafts retain their evidence checks at adoption,
-clarification and final save. No database migration is needed. These changes and
-the earlier browser fixes remain local until explicitly pushed for deployment.
-
-Verification: the full frontend suite passed **95 tests**; focused backend review,
-method, planning, capture and continuity suites passed **74 tests**; focused AI
-review, method, planner and capture suites passed **25 tests**. Ruff and diff
-whitespace checks passed. These are offline checks; the simplified page has not
-yet been deployed or retested against the live model.
-
-## Monitoring and editor layout — 1 October 2026
-
-This revision separates saved spending from editing. The previous always-visible
-form and category multiselect are replaced by monitoring mode, explicit editing,
-row removal and an Add category action. This earlier revision collapsed chart and method guidance views;
-the always-visible chart revision below supersedes its chart behavior. On narrow screens, monitoring metrics use two columns with Remaining
-on its own row; the editor summary uses a two-by-two layout. Amount inputs and
-category types retain readable labels and ordinary keyboard controls.
-
-The public Budget entry point delegates to `ui/budget_page.py`;
-`ui/budget_spending.py` renders saved facts independently of editor state.
-Backend APIs, deterministic calculations, ownership and confirmation contracts
-are unchanged. No database migration is required. The revision remains local.
-
-The full frontend suite passed **102 tests**, including new checks for monitoring
-mode, cancellation, comparison adoption, duplicate/custom category input,
-explicit zero amounts, category limits, empty categories, persistent save
-feedback and zero-limit/unbudgeted spending. Ruff and diff whitespace checks
-passed. A local Edge fixture rendered the actual page with synthetic data and
-the repository's light theme. Desktop checks confirmed immediate editor placement,
-unsaved status and cancellation; at **390 × 844**, monitoring metrics used two
-columns plus a full-width Remaining card, category statuses stayed readable, and
-the editor summary used two-by-two cards. Both monitoring and editing had a
-390-pixel document width, with no document-level horizontal overflow. Cancellation
-restored the saved savings allocation. The fixture did not contact the deployed
-backend. Production and live-model acceptance remain separate.
-
-## Always-visible charts — 1 October 2026
-
-The optional **Explore a change** form and its unused frontend renderer are
-removed. Coach retains deterministic comparisons and explicit adoption before
-confirmation. Budget editing still calculates live affordability and reviews
-changes before a confirmed save. Legacy local drafts remain reviewable and
-cancellable; whole-number draft limits are converted to the editor's numeric
-format while missing values remain unknown.
-
-Both charts appear automatically with meaningful saved data, including below
-the editor. Per-category progress cards are removed. The overall progress bar,
-headline totals, explicit category overages and spending without limits remain.
-The spending chart labels amounts; its unbudgeted row has no invented limit.
-The allocation donut shows saved expense shares and category names in a legend.
-
-The full frontend suite passed **101 tests**. After removing the overlapping
-chart toolbar, the focused monitoring/editor checks passed **16 tests**. Ruff
-and diff whitespace checks passed. Coverage includes automatic chart rendering,
-saved limits staying unchanged during edits, unbudgeted spending without an
-invented limit, explicit zero limits, no UI comparison/review calls and legacy
-draft cancellation.
-
-A local Edge fixture rendered the actual frontend with synthetic data. Desktop
-charts appeared side by side; at **390 × 844** they stacked at 348-pixel widths,
-with a 390-pixel document width and no page-level horizontal overflow. Category
-names, amounts and allocation legend were checked visually. Editing retained
-both saved charts; cancelling returned to monitoring. Screenshots are stored
-in `artifacts/budget-browser-20261001/charts-desktop.jpg`, `charts-mobile.jpg`
-and `charts-mobile-allocation.jpg`. The fixture did not contact the deployed
-backend or run live-model acceptance.
-
-No backend calculation, write contract or migration changes. This revision
-is validated locally; deployment and live-model acceptance remain pending.
-
-## Navigation simplification — 1 October 2026
-
-Overview's **Manage budget** shortcut is renamed **View budget** because it opens
-Budget monitoring rather than editing. **Set up budget** remains the empty-plan
-action. The duplicate **Ask Coach** button and its two-column action layout are
-removed from Budget; **Edit budget** remains the monitoring action.
-
-Coach is still accessible through the sidebar. Shared month selection and saved
-budget context are unchanged, and unsaved editor amounts are not automatically
-sent or saved. The obsolete button-specific test was removed with the button.
-The full frontend suite passed **100 tests**; Ruff and diff whitespace checks
-passed. These checks validate the revision locally; deployed browser verification
-remains pending. The browser acceptance report above records the earlier deployed
-shortcut behavior.
 
 ## Guidance and save feedback
 
@@ -236,42 +93,14 @@ Editing a goal or floor preserves the reference amounts behind an unchanged redu
 
 For one comparison alternative, **use this change** or **use this option** adopts it as an unsaved draft. With multiple alternatives, Coach asks which one. Adoption and final confirmation remain separate, and expired or changed evidence cannot be bypassed.
 
-## Retained limits and verification
+## Retained limits
 
 Monthly affordability does not establish a bank balance or liquidity before payday. Payday projections require explicit cash/bill/date information; full category timing additionally requires spending/savings assumptions and record-coverage confirmation. Saved balances, schedules, debt terms, goal allocations and refunds are never inferred from their absence.
 
 Relational reconciliation, account balances/transfers and imports remain excluded as requested. JSON reconciliation, ownership checks, shared savings constraints, cancellation, expiry, atomic persistence and stale-preview rejection remain in force.
 
-Regression coverage checks no-setup comparisons, partial fixed-amount policies, preserved floors, owned context, matching-month reuse, ambiguous adoption, drafts versus saves, simpler UI inputs, stale comparison/copy inputs and conditional refund questions. Offline tests validate deterministic behavior and contracts; they do not establish production natural-language quality. The first simplification and routing correction were deployed at `72846d0` after explicitly approved exact-package security exceptions. [Release run 36805858272](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36805858272) passed scans, migrations, all three service deployments and health/AI safety smoke tests. The later UI improvements were subsequently checked in the deployed browser session described above; full live-model acceptance remains pending.
+## Verification and limits
 
-Verification of the first simplification before optional-form removal: backend **601 passed**, frontend **85 passed**, AI service **1,162 passed** with one existing Windows symlink test unable to run (`WinError 1314`). The focused final AI checks passed 24 tests, and the final simple-flow/matching checks passed seven tests. Ruff, diff whitespace checks and Bandit with the repository's CI severity/confidence thresholds passed. Linux CI must run the symlink case; these counts are local evidence, not a deployed acceptance result.
+Current frontend regressions cover monitoring, editing, cancellation, custom categories, six methods, explicit zero amounts, save-confirmation invalidation, backend rejection and charts based on saved data. Backend/AI suites cover owned previews, capacity sourcing, constraints, comparisons, expiry and atomic writes. See [test organization](test-organization.md) for current required suites and [post-deployment acceptance](post-deployment-acceptance.md) for the optional deployed agent/RAG matrix.
 
-Verification of the optional-form removal: the full remaining frontend suite
-passed **76 tests**, including comparison adoption, saved-method preservation,
-save confirmation, next-month preview invalidation, Overview and Coach navigation.
-Frontend Ruff and diff whitespace checks passed. Tests specific to deleted forms
-were removed with those forms. Backend/AI code and their confirmation contracts
-were not modified by this revision; their earlier test counts above are historical
-evidence rather than newly executed suites.
-
-Before deployment, the inline method selector's focused checks passed
-13 tests, including explicit custom percentages/grouping, all six methods,
-no automatic amount changes, zero-based completeness, and fresh confirmation
-after method changes. Deployment and full-suite results are recorded separately.
-
-The full frontend suite for this revision passed **83 tests**, and the backend
-method suite passed **19 tests**. Frontend Ruff and diff whitespace checks passed.
-These counts are historical pre-deployment evidence; live-model acceptance
-remains separate.
-
-The monthly-editor layout, compact charts, guided savings and save-review revision's
-interaction checks cover missing custom amounts,
-confirmation invalidation after edits, explicit category removal, suggested savings,
-comparison values and rejected-save input retention. Automated checks verify
-behavior; they do not establish mobile visual usability or live-model quality.
-
-Verification for the monthly-editor revision: the full frontend suite passed
-**89 tests**, including the six new editor interaction checks. The unchanged
-backend method suite passed **19 tests**. Frontend Ruff and diff whitespace checks
-passed. At that stage the headless browser library was unavailable. The subsequent
-Edge desktop/mobile visual checks are recorded above; no user usability study is claimed.
+The [retained browser acceptance](budget-browser-acceptance-20261001.md) records its tested UI revision. It does not validate later model extraction or current semantic quality. The [latest live reasoning retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md) retains failed and inconsistent Budget combinations; complete current model acceptance remains outstanding.

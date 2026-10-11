@@ -8,8 +8,6 @@ workflow retains governance evidence for 90 days.
 
 The Education retriever queries the approved Bedrock Knowledge Base using `Retrieve`; generation remains on the direct OpenAI API. The ten approved source files and manifest remain packaged for local governance validation. `EDUCATION_CORPUS_VERSION` pins the exact reviewed version. Before activating both corpus pins, release runs `sync_bedrock_corpora.py` to validate local bytes, upload documents and metadata sidecars, wait for ingestion, and audit remote objects/checksums/metadata. Weekly governance validates local files and audits both KB/S3 sources through a dedicated read-only OIDC role. Source changes require review, a new corpus version, successful ingestion, and passing retrieval/evaluation gates.
 
-## AWS ingestion and governance tooling
-
 ## Governed Corpus
 
 The governed Education knowledge base uses the versioned manifest at `knowledge/investment_education/source_manifest.json` as its source of truth. Corpus version `investment-education-sg@2026-09-27.2` contains ten approved documents for the synthetic-data demo: six existing public-reference documents and four project-authored MoneySense paraphrases. It supports Investment Education directly and conditional Budget or Goal Strategy explanations through the orchestrator. Approval does not grant a production-content licence or authorize real personal financial data.
@@ -72,16 +70,7 @@ Accepted citations expose document version, checksum, corpus version, and review
 
 ## AWS Evidence
 
-On 2026-08-28, governed metadata was published to the then-current six documents and ingestion job `D4C4MMUERE` completed successfully. The recorded evidence below applies only to that earlier six-document corpus. Later restoration and ingestion evidence is recorded in [Bedrock KB restoration](bedrock-kb-restoration-2026-10-09.md); historical IDs and results are not current deployment configuration. Bedrock scanned six documents, modified six metadata documents, and reported zero failed documents. The post-ingestion audit verified:
-
-- active knowledge base `X2BXBRYX2X` and available data source `H6D6Z2RUL2`;
-- 12 expected S3 objects and no unmanifested object under the approved prefix;
-- six matching document SHA-256 checksums and sidecars;
-- corpus version `investment-education-sg@2026-08-28.1` on retrieved chunks;
-- Singapore source Region with the knowledge base's configured Cohere multilingual embedding model; and
-- earliest source review due date of 2026-11-14, with zero governance issues.
-
-The AWS identifiers are demo evidence, not reusable defaults for another account.
+The [Bedrock KB restoration record](bedrock-kb-restoration-2026-10-09.md) records ingestion and release checks for the Education/Policy retrieval path. Current operating evidence comes from the combined RAG Source Governance workflow, which verifies the packaged manifests and deployed KB/S3 state. Use the IDs and exact corpus pins from the active environment; earlier six-document corpus measurements do not establish acceptance of the current ten-document corpus or generated answers.
 
 ## Scheduled Gate And Review Procedure
 

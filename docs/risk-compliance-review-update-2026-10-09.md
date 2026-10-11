@@ -3,7 +3,10 @@
 The subsequent [local claim recovery](orchestration-local-claim-recovery-2026-10-09.md)
 addresses correction and partial-review failures found in the deployed v10 retest,
 and fixes backend sanitization of safe review metadata. The scope and verification
-counts below describe the original Risk & Compliance update.
+counts below describe the original Risk & Compliance update. The later
+[post-recovery browser retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md)
+retains five failed answers; current controls and their remaining limits are in
+[security guardrails](security-guardrails.md) and [Policy governance](policy-rag-governance.md).
 
 Permitted requests previously received the same generic verification message
 whether a generated claim needed qualification or the reviewer failed its own

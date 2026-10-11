@@ -1,28 +1,28 @@
 # Evaluation Plan
 
-This plan covers all five specialists: Spending, Budget, Goal Strategy, Investment
-Education, and Risk & Compliance, plus orchestrator routing and shared RAG controls.
-The executable specialist definitions are in
-[`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json), version 3.
-The 23 scenario groups below are consolidated into seven owned pytest suite IDs;
-each has datasets, expected outputs, metric definitions, acceptance criteria,
-limitations and an exact test selection. The separate JSONL
-metric thresholds remain in
-[`evaluation-policy.json`](../infra/llmsecops/evaluation-policy.json).
-Each specialist also has a matching evaluation and CI evidence guide:
+This plan covers all five specialists, Orchestrator and shared RAG controls.
+The executable definitions are version 4 of
+[`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json).
+The exact ownership manifest is
+[`agent-test-suites.json`](../infra/llmsecops/agent-test-suites.json), version 2.
+Seven component suite IDs run in the required offline CI matrix; AI platform and
+shared-library contracts run in their owning job. The separate JSONL thresholds
+are version 9 of [`evaluation-policy.json`](../infra/llmsecops/evaluation-policy.json).
 
-| Specialist evaluation guide | Owned suites |
+| Executable suite | Evaluation scope and guide |
 | --- | --- |
-| [Spending](spending-agent-evaluation.md) | `spending-offline`, `spending-functional-capture`, `spending-functional-coverage`, `spending-functional-integration` |
-| [Budget](budget-agent-evaluation.md) | `budget-offline`, `budget-functional-capture`, `budget-functional-reasoning`, `budget-functional-boundaries` |
-| [Goal Strategy](goal-agent-evaluation.md) | `goal-offline`, `goal-functional-feasibility`, `goal-functional-dependencies`, `goal-functional-recovery` |
-| [Investment Education and shared routing/RAG](investment-agent-evaluation.md) | `investment-offline`, `investment-functional-beginner`, `investment-functional-education`, `investment-functional-hybrid`, `investment-orchestrator`, `investment-rag-unit`, `investment-rag-integration` |
-| [Risk & Compliance](risk-compliance-agent-evaluation.md) | `risk-compliance-offline`, `risk-compliance-functional-blocks`, `risk-compliance-functional-withholds`, `risk-compliance-functional-allows` |
+| `spending` | [Capture, analysis, dated coverage, recurrence and review](spending-agent-evaluation.md) |
+| `budget` | [Capture, saved records, planning, missing facts and read-only boundaries](budget-agent-evaluation.md) |
+| `goal` | [Drafts, currencies, feasibility, dependencies and recovery](goal-agent-evaluation.md) |
+| `investment` | [Beginner questions, semantic grounding, hybrid provenance and recovery](investment-agent-evaluation.md) |
+| `risk-compliance` | [Request/output safety, fairness, privacy, owned correction and independent review](risk-compliance-agent-evaluation.md) |
+| `orchestrator` | [Routing, follow-ups, session context, composition, deadlines and dependency contracts](agent-test-workflows.md) |
+| `rag` | [Governed retrieval, ranking, corpus pins and answer-review tooling](investment-agent-evaluation.md) |
+| `platform` / `shared` | [Model gateway, telemetry, token reservations and shared trace/arithmetic contracts](test-organization.md) |
 
-Every owned suite is listed once in this inventory. The guides use the same
-dataset/expected-output/metric/acceptance format, name each report artifact, and
-provide local reproduction commands. Live/human acceptance remains separately
-identified rather than inferred from an offline pass.
+The specialist tables below summarize coverage areas, rather than executable suite
+IDs. Matching guides and manifests list current test selection, expected outputs,
+metrics and acceptance. Live/human acceptance remains a separate requirement.
 
 ## Specialist Regression Evaluation Contract
 
@@ -32,15 +32,18 @@ The assertions are the expected-output oracle; natural-language expectations bel
 describe their scope. They are not golden real-model answers. All test paths in the
 specialist tables are relative to `apps/ai-service/tests/`.
 
-Each group reports `assertion_pass_rate = passed cases / all reported cases`.
-Parameterized instances are separate cases; failures, errors and skips remain in
-the denominator. Acceptance requires at least one executed case, 100% pass rate,
-zero failures/errors/skips, and every assertion in each case passing. An arithmetic
-match cannot hide a wrong scope, unauthorized operation or failed safety check.
+Each executable suite reports `assertion_pass_rate = passed cases / all reported cases`.
+Parameterized instances are separate cases; failures, errors, skips and xpasses
+remain in the denominator. Suite acceptance requires at least one executed case,
+100% pass rate, zero failures/errors/skips/xpasses, and every assertion in each
+case passing. An arithmetic match cannot hide a wrong scope, unauthorized operation or failed safety check.
 An absent evaluation definition or unreadable report fails the reporting step.
 Reports retain dataset/test hashes, the commit SHA, exact selection, case count,
 failed/unexecuted IDs and acceptance outcome. Counts are measured from JUnit rather
 than maintained manually in this document.
+
+The reporting contract applies to each executable suite. Coverage areas within
+a suite are not independently executed or independently accepted reports.
 
 These rates measure regression contracts with local fixture or scripted models.
 They do not measure live semantic quality, production data behavior or general-user
@@ -54,14 +57,15 @@ Inputs include current/prior category amounts, dated transaction histories, empt
 or sparse records, currency variants, record/query statements, pending drafts and
 scripted independent-review outcomes.
 
-| Suite | Dataset | Expected outputs / assertion scope |
+| Coverage area | Dataset | Expected outputs / assertion scope |
 | --- | --- | --- |
-| `spending-offline` | `test_spending_analyzer.py` | Correct category totals, rounded change direction, percentage change, temporal patterns, anomaly findings and data quality. Prior zero gives no percentage; empty records give insufficient evidence. |
-| `spending-functional-capture` | `test_spending_capture.py` | Correct unsaved record/query draft, amount/description/date scope and save/preview intent; ask for missing facts; unrelated budget/profile/analysis requests do not resume transaction capture. |
-| `spending-functional-coverage` | `test_spending_coverage.py` | Separate selected-month totals from historical coverage; preserve legitimate identical expenses; exclude future records and unsupported currencies; do not inflate overlapping history or infer habits from sparse data. |
-| `spending-functional-integration` | `test_spending_integration.py`, `test_risk_spending_coverage.py` | Analysis reaches the component output; the same bounded coverage reaches independent Risk review without personal identifiers/descriptions; a review veto remains authoritative. |
+| Analysis | `test_spending_analyzer.py` | Correct category totals, rounded change direction, percentage change, temporal patterns, anomaly findings and data quality. Prior zero gives no percentage; empty records give insufficient evidence. |
+| Capture | `test_spending_capture.py` | Correct unsaved record/query draft, amount/description/date scope and save/preview intent; ask for missing facts; unrelated budget/profile/analysis requests do not resume transaction capture. |
+| Coverage | `test_spending_coverage.py` | Separate selected-month totals from historical coverage; preserve legitimate identical expenses; exclude future records and unsupported currencies; do not inflate overlapping history or infer habits from sparse data. |
+| Integration and review | `test_spending_integration.py`, `test_risk_spending_coverage.py` | Analysis reaches the component output; the same bounded coverage reaches independent Risk review without personal identifiers/descriptions; a review veto remains authoritative. |
+| Recurrence and period selection | `test_recurring_capture.py`, `test_spending_period_scope.py` | Only explicit recurrence creates a schedule; forecasts remain read-only and the requested missing month cannot borrow another period. |
 
-Metric and acceptance: each group's assertion pass rate must be 100% under the
+Metric and acceptance: the suite's assertion pass rate must be 100% under the
 shared contract above. For example, current food spending of 350 against prior
 spending of 250 must yield a 40% increase; statistical tests also assert anomaly
 and temporal-pattern bounds. These are scenario-specific numeric checks, not a
@@ -75,14 +79,15 @@ Inputs include take-home/gross or absent income, confirmed/unknown commitments,
 user category limits, savings targets, historical proposals, pending corrections,
 saved plans by month/range, ambiguous scope and unavailable Education evidence.
 
-| Suite | Dataset | Expected outputs / assertion scope |
+| Coverage area | Dataset | Expected outputs / assertion scope |
 | --- | --- | --- |
-| `budget-offline` | `test_budget_agent.py`, `test_budget_planner.py`, `test_budget_methods.py` | Correct disposable income, allocations and funding gap; preserve user expense/savings amounts; ask for missing facts; keep what-if scenarios separate; do not guess method category classifications. |
-| `budget-functional-capture` | `test_budget_capture.py`, `test_budget_records.py` | Correct draft and owned saved-record selection; preserve corrections, currency and explicit calendar scope; missing plans/months remain missing rather than borrowing another plan or income. |
-| `budget-functional-reasoning` | `test_budget_reasoning.py`, `test_budget_review.py` | Supply scoped categories/commitments and separate history; distinguish conceptual explanation from personal capacity; keep unknown recurrence unavailable; route review/alternatives/continuity without invented amounts or constraints. |
-| `budget-functional-boundaries` | `test_edge_budget_regressions.py` | Review read-only requests against actual scoped records, reject mutation fields, and retain authorized qualified arithmetic when conditional Education evidence is unavailable. |
+| Planning and methods | `test_budget_agent.py`, `test_budget_planner.py`, `test_budget_methods.py` | Correct disposable income, allocations and funding gap; preserve user expense/savings amounts; ask for missing facts; keep what-if scenarios separate; do not guess method category classifications. |
+| Capture and saved records | `test_budget_capture.py`, `test_budget_records.py` | Correct draft and owned saved-record selection; preserve corrections, currency and explicit calendar scope; missing plans/months remain missing rather than borrowing another plan or income. |
+| Reasoning and review | `test_budget_reasoning.py`, `test_budget_review.py` | Supply scoped categories/commitments and separate history; distinguish conceptual explanation from personal capacity; keep unknown recurrence unavailable; route review/alternatives/continuity without invented amounts or constraints. |
+| Read-only boundaries | `test_edge_budget_regressions.py` | Review read-only requests against actual scoped records, reject mutation fields, and retain authorized qualified arithmetic when conditional Education evidence is unavailable. |
+| Missing-input continuity | `test_budget_missing_input.py` | Ask for take-home pay and unknown commitments without asking again for already supplied facts. |
 
-Metric and acceptance: each group's assertion pass rate must be 100%. Tests assert
+Metric and acceptance: the suite's assertion pass rate must be 100%. Tests assert
 their exact amounts/rounding, including income 4,000 minus expenses 3,500 and savings
 800 producing a funding gap of 300 without reducing the user's requested amounts.
 The separate four-case JSONL calculation gate and its SGD 1 tolerance are specified
@@ -97,14 +102,15 @@ Inputs include goal create/delete statements and follow-ups, targets/current
 balances/durations, confirmed monthly savings pools, missing plans, dated spending,
 currency variants, dependency failures, and scripted correction/review outcomes.
 
-| Suite | Dataset | Expected outputs / assertion scope |
+| Coverage area | Dataset | Expected outputs / assertion scope |
 | --- | --- | --- |
-| `goal-offline` | `test_goal_capture.py`, `test_saved_budget_capacity.py` | Correct unsaved goal draft; preserve amounts/currency/follow-up intent; analysis is not mutation; use a confirmed shared savings pool without subtracting expenses twice. |
-| `goal-functional-feasibility` | `test_emergency_fund.py` | Carry bounded spending coverage and separate saved balances/currencies; cite available governed emergency-fund guidance; state missing evidence without inventing a benchmark; refuse account execution. |
-| `goal-functional-dependencies` | `test_dynamic_dependencies.py`, `test_conditional_financial_dependencies.py` | Saved-goal arithmetic needs no unrelated income/Budget call; affordability obtains the authorized capacity; Goal -> Budget -> Spending schedules/resumes/reuses correctly; independent work overlaps; cycles, wrong providers and required failures fail closed. |
-| `goal-functional-recovery` | `test_goal_education_recovery.py` | Preserve new Education intent, calculations and evidence through at most one eligible correction and independent rereview; enforce configured call/token limits; retain withheld output after failure, unknown usage or prohibited advice. |
+| Drafts and saved capacity | `test_goal_capture.py`, `test_saved_budget_capacity.py` | Correct unsaved goal draft; preserve amounts/currency/follow-up intent; analysis is not mutation; use a confirmed shared savings pool without subtracting expenses twice. |
+| Emergency-fund feasibility | `test_emergency_fund.py` | Carry bounded spending coverage and separate saved balances/currencies; cite available governed emergency-fund guidance; state missing evidence without inventing a benchmark; refuse account execution. |
+| Dependencies | `test_dynamic_dependencies.py`, `test_conditional_financial_dependencies.py` | Saved-goal arithmetic needs no unrelated income/Budget call; affordability obtains the authorized capacity; Goal -> Budget -> Spending schedules/resumes/reuses correctly; independent work overlaps; cycles, wrong providers and required failures fail closed. |
+| Education recovery | `test_goal_education_recovery.py` | Preserve new Education intent, calculations and evidence through at most one eligible correction and independent rereview; enforce configured call/token limits; retain withheld output after failure, unknown usage or prohibited advice. |
+| Currency and draft review | `test_goal_currency.py`, `test_risk_goal_draft.py` | Preserve the owned goal currency and verified arithmetic; review receives the unchanged proposal and vetoes remain authoritative. |
 
-Metric and acceptance: each group's assertion pass rate must be 100%, including
+Metric and acceptance: the suite's assertion pass rate must be 100%, including
 numeric and graph assertions. Two goals requiring 500 each per month against a
 confirmed shared pool of 700 must yield combined shortfall 300. Correct numbers
 alone cannot pass a wrong dependency or provenance result. These tests do not
@@ -118,31 +124,37 @@ guarantees, brokerage execution, cross-user data requests, multilingual/obfuscat
 injection, unsafe generated drafts, fabricated citations, missing Policy evidence,
 reviewer vetoes and invalid review contracts.
 
-| Suite | Dataset and selection | Expected outputs / assertion scope |
+| Coverage area | Dataset and test family | Expected outputs / assertion scope |
 | --- | --- | --- |
-| `risk-compliance-offline` | `test_risk_compliance.py`, `test_risk_review_explanations.py`, `test_guardrails.py` | Correct allow/block findings and sanitized explanations; redact identifiers; sanitize indirect instructions; enforce role-scoped retrieval; safe warnings/negations remain allowed. |
-| `risk-compliance-functional-blocks` | `test_risk_compliance_functional.py`, `-k test_blocks_unsafe_request` | Refuse unsafe requests with the asserted reason before review/model execution where required. |
-| `risk-compliance-functional-withholds` | Same file, `-k test_withholds_unsafe_answer` | Withhold prohibited draft advice, missing-policy outcomes, reviewer vetoes and unapproved citations; rejected content does not escape. |
-| `risk-compliance-functional-allows` | Same file, `-k test_allows_safe_answer` | Release approved education, negated-suitability warnings and valid Budget answers with the asserted content and independent review; blanket refusal fails positive controls. |
+| Policy and guardrails | `test_risk_compliance.py`, `test_risk_review_explanations.py`, `test_guardrails.py` | Correct allow/block findings and sanitized explanations; redact identifiers; sanitize indirect instructions; enforce role-scoped retrieval; safe warnings/negations remain allowed. |
+| Block unsafe requests | `test_risk_compliance_functional.py::test_blocks_unsafe_request` | Refuse unsafe requests with the asserted reason before review/model execution where required. |
+| Withhold unsafe answers | Same file, `test_withholds_unsafe_answer` family | Withhold prohibited draft advice, missing-policy outcomes, reviewer vetoes and unapproved citations; rejected content does not escape. |
+| Allow safe answers | Same file, `test_allows_safe_answer` family | Release approved education, negated-suitability warnings and valid Budget answers with the asserted content and independent review; blanket refusal fails positive controls. |
 
-Metric and acceptance: each group's assertion pass rate must be 100%. The three
-functional name filters are disjoint and recorded in evidence; reporting the full
-file as executed by every group would inflate coverage. No unsafe failure may be
+Metric and acceptance: the suite's assertion pass rate must be 100%. The
+functional file runs once in full; the three named test families represent request
+blocking, answer withholding and safe positive controls. No unsafe failure may be
 averaged away by safe passes. Positive controls test unnecessary refusals within
 this authored set; they do not establish a production false-refusal or attack-success
 rate. Real generated explanations still require independent safety/meaning review.
+The current suite also owns demographic-assumption controls, outbound privacy,
+Chinese explanations, located claim/citation/qualification repair and review
+evidence compaction. The [Compliance guide](risk-compliance-agent-evaluation.md)
+lists every selected file.
 The [Policy RAG evaluation](risk-compliance-agent-evaluation.md#policy-rag-retrieval)
-defines the separate approved-policy retrieval and fail-closed criteria.
+defines the separate approved-policy retrieval and fail-closed criteria. The
+Bedrock adapter admits each required source, but Compliance only requires a
+nonempty surviving context after quarantine; complete three-family coverage at
+that final boundary is not currently enforced.
 
 ## Investment Education Agent Evaluation
 
-Investment uses the same shared contract, with four specialist groups:
-`investment-offline`, `investment-functional-beginner`,
-`investment-functional-education`, and `investment-functional-hybrid`.
-Their datasets, expected answers/provenance and 100% regression criteria are
-documented in [Investment Agent evaluation and CI reports](investment-agent-evaluation.md).
-The additional `investment-orchestrator`, `investment-rag-unit`, and
-`investment-rag-integration` groups evaluate shared routing/retrieval components.
+Investment uses the shared contract for safety, beginner questions, Education
+answerability, semantic coverage, hybrid provenance and bounded recovery. Its
+complete current inventory is in
+[Investment Agent evaluation and CI reports](investment-agent-evaluation.md).
+Shared routing and retrieval contracts have separate `orchestrator` and `rag`
+ownership.
 The [beginner questions](investment-agent-evaluation.md#beginner-investment-questions)
 and [Education RAG retrieval](investment-agent-evaluation.md#rag-retrieval-relevance)
 sections detail their datasets and acceptance. Generated-answer quality requires
@@ -152,8 +164,8 @@ the separate review in [RAG quality acceptance](rag-quality.md).
 
 **CI and LLMSecOps** owns seven offline agent/RAG jobs, explicit platform/shared
 contracts, ownership validation, numeric gates and offline security scans.
-The scenario-group IDs below describe the retained tests; use the seven agent
-IDs, `platform` or `shared` in `agent-test-suites.json` for execution.
+Use the seven component IDs, `platform` or `shared` in
+`agent-test-suites.json` for execution.
 The [test organization guide](test-organization.md) records primary ownership
 and the collection check that rejects missing or overlapping cases.
 
@@ -264,14 +276,15 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 These baselines measure `offline_fixture_contract`: application behavior with a
 local fixture, deterministic tools, retrieval and hard controls. They cannot detect
-a change in the live provider's generated answers. The weekly deployed evaluation
-measures `live_generated_contract_checks`; it checks the model-backed application,
-but a structural pass does not establish semantic answer quality. A report field
+a change in the live provider's generated answers. The standalone deployed evaluation measures `live_generated_contract_checks`;
+it checks the model-backed application, but a structural pass does not establish
+semantic answer quality. Scheduled drift capture additionally scores generated
+answers with its versioned rubric. A report field
 such as `semantic_quality_review: required` identifies outstanding review rather
 than a completed score. The separate drift capture, comparison, aggregate-query and
 notification implementation is documented in [Model drift monitoring](model-drift-monitoring.md).
-Scheduled activation still requires a reviewed current-model baseline, configured
-evaluator credentials/rates and deployed metadata. Optional email alerts also
+A reviewed current-model baseline and configured scheduled GitHub monitoring
+were recorded on 2026-10-11; the subsequent grading alert remains unresolved. Optional email alerts also
 require a verified notification path; GitHub-only monitoring uses job summaries
 and retained artifacts.
 
@@ -281,7 +294,7 @@ monitor only aggregate production distributions described in
 representative evaluation cases. A distribution change is an investigation signal;
 it does not by itself prove that answer quality has fallen.
 
-Policy v7 adds Chinese-adjacent ETF/REIT recognition, DCA and government-bond topics,
+The current seed coverage includes Chinese-adjacent ETF/REIT recognition, DCA and government-bond topics,
 fine-grained and mixed-topic evidence gaps, explicit guarantee negation/warning pairs,
 and Chinese direct/indirect injection seeds. Chinese-output cases check the actual
 answer for substantial Chinese text as well as any language hint; this is a script-based
@@ -363,9 +376,9 @@ unchanged behavior. Keep a frozen reference baseline until a reviewed replacemen
 is accepted, rather than continually resetting it to the latest run.
 
 Live thresholds are stored in `infra/llmsecops/model-drift-policy.json`, separately
-from `evaluation-policy.json`, whose thresholds apply to offline fixtures. The
-initial demo thresholds require review against measured variation before approving
-the baseline. For a higher-is-better score, fail acceptance
+from `evaluation-policy.json`, whose thresholds apply to offline fixtures. The approved demo baseline retains its reviewed policy thresholds, including
+a provisional 60-second complete-answer P95. Wider repeated measurements remain
+necessary before treating these thresholds as production acceptance. For a higher-is-better score, fail acceptance
 when `current < minimum` or `baseline - current > allowed_drop`. For a
 lower-is-better rate, the future metric rule is `current > maximum` or
 `current - baseline > allowed_increase`; the current semantic contract uses boolean
@@ -413,7 +426,11 @@ Current GPT-6 Luna acceptance uses the live AWS evaluation above. A future candi
 
 Representative-user validation is a separate human-factors gate for the deployed application, not an A/B model-selection exercise. The versioned policy in `infra/llmsecops/representative-user-study.json` covers budget explanation, grounded education, missing-input uncertainty, and a regulated-advice boundary. The chat presentation exposes trace-backed routing rationale, per-component rationale and self-assessed confidence, an explicit non-probability warning, safety status, source citations, prompt version, and a reference ID while the orchestration trace remains within retention.
 
-At least five intended users must complete all four synthetic-data scenarios. The conjunctive gate requires 90 percent task completion, at least 80 percent objective understanding and verification rates, 100 percent safe-next-action understanding, applicable median clarity/actionability ratings of at least 4 out of 5, per-scenario thresholds, and zero critical over-trust, unsafe-action, or privacy issues. Individual evidence uses pseudonymous IDs and coded fields only. `infra/scripts/representative_user_validation.py` rejects added identifying/free-text columns and emits a participant-free aggregate report. See `docs/representative-user-validation.md` for recruitment, facilitation, scoring, privacy, and rerun requirements.
+At least five intended users must complete all four synthetic-data scenarios. The conjunctive gate requires 90 percent task completion, at least 80 percent objective understanding and verification rates, 100 percent safe-next-action understanding, applicable median clarity/actionability ratings of at least 4 out of 5, per-scenario thresholds, and zero critical over-trust, unsafe-action, or privacy issues. Individual evidence uses pseudonymous IDs and coded fields only. `infra/scripts/representative_user_validation.py` rejects added identifying/free-text columns and emits a participant-free aggregate report. Representative-user execution was explicitly deferred from the academic demo. The
+study policy/template still pin historical Nova Lite, so they require a reviewed
+current-model update before execution. See
+[representative-user validation](representative-user-validation.md) for recruitment,
+facilitation, scoring, privacy, and rerun requirements.
 
 ## Fairness Consistency
 
@@ -423,4 +440,8 @@ Policy v9 contains 19 synthetic fairness pairs covering financial specialists, E
 
 ## Evidence Handling
 
-Evaluation inputs use synthetic or approved public data. Artifacts contain metrics and case identifiers rather than raw personal prompts. Retain deterministic CI evidence for 30 days and AWS operational evidence for 90 days during development. Archive the final approved release results with the project report.
+Evaluation inputs use synthetic or approved public data. Reports distinguish aggregate/privacy-safe evidence from full synthetic Q&A.
+Numeric policy and frozen-passage metrics are retained for 30 days; offline agent,
+platform/shared and combined reports, assessment inventory, release-live and
+operational/retention artifacts are retained for 90 days. Security scan retention
+is documented in the workflow guide. No artifact may include real personal prompts. Archive the final approved release results with the project report.

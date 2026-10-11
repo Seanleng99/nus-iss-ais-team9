@@ -2,7 +2,7 @@
 
 ## Current Bedrock corpus governance
 
-The deployed `BedrockPolicyRetriever` retrieves each of the three required Policy sources independently, using public titles and exact source-ID/version/approval filters. It checks retrieved provenance against the checksum-verified manifest packaged at `knowledge/policy_controls`; missing or altered controls fail closed. It does not send personal draft text to Bedrock. `POLICY_CORPUS_VERSION` pins the reviewed version. Release ingests and audits the corpus before activating its pin; weekly **RAG Source Governance** audits both KBs and S3 prefixes through a read-only role. The duplicate Policy-only workflow remains removed. A Policy update requires review, a new version, successful ingestion, and live compliance evaluation. Earlier AWS records below remain historical evidence.
+The deployed `BedrockPolicyRetriever` retrieves each of the three required Policy sources independently, using public titles and exact source-ID/version/approval filters. It checks returned source metadata against the checksum-verified manifest packaged at `knowledge/policy_controls` and fails retrieval when a required source has no matching chunk. It does not send personal draft text to Bedrock. `POLICY_CORPUS_VERSION` pins the reviewed version. Release ingests and audits the corpus before activating its pin; weekly **RAG Source Governance** audits both KBs and S3 prefixes through a read-only role. A Policy update requires review, a new version, successful ingestion and live compliance evaluation.
 
 ## 9 October 2026 policy and review update
 
@@ -22,12 +22,16 @@ conversation and preferences, mixed evidence modes, and independent release
 review. Missing Education support does not invalidate grounded arithmetic;
 missing approved Policy support still prevents model-assisted review.
 
-All three complete documents are supplied on every packaged Policy review. The
-retriever does not perform question-dependent passage ranking. Each document
-fits the existing 6,000-character context limit. Offline fixtures now carry the
-same full document text and all three policy families, while retaining their
-explicit fixture corpus label and synthetic expiry. The release workflow derives
-the deployment pin from the manifest; the bootstrap template default matches it.
+Local-document and fixture providers carry all three full packaged policies, each
+within the existing 6,000-character context limit. Bedrock queries up to 20 chunks
+per required source and joins unique matching chunks rather than ranking by the
+personal question. Returned metadata does not prove full document coverage or
+byte equality of returned text. Compliance then removes unsafe or oversized
+contexts and blocks when none remain; it does not recheck all three source IDs
+after that filtering. Complete mandatory-source coverage after sanitization is
+therefore a remaining validation boundary. Fixtures retain their explicit corpus
+label and synthetic expiry. Release derives the deployment pin from the manifest;
+the bootstrap template default matches it.
 
 Blocked runs retain fixed reason categories, relevant policy-family clause IDs
 and validation failure codes. Clause references identify the family associated
@@ -68,14 +72,14 @@ python infra/scripts/rag_source_governance.py prepare `
   --output artifacts/policy-rag-prepare.json
 ```
 
-The historical 29 August 2026 collection used Policy Knowledge Base `MLOCSOIFML`, data source `WMLKUDKZX5`, and corpus version `financial-coach-policy-sg@2026-08-29.1` in `ap-southeast-1`. Ingestion job `PKEVBW4XUB` completed on 2026-08-29 with three new documents indexed, three metadata documents scanned, and zero failed or skipped documents. The post-ingestion audit found all six expected document and sidecar objects, no governance issues, an active Knowledge Base, and an available data source.
+Use the active environment's Policy Knowledge Base and data-source IDs with the exact reviewed corpus pin. The [Bedrock restoration record](bedrock-kb-restoration-2026-10-09.md) retains the current path's ingestion/release checks; earlier corpus versions do not establish acceptance of the current policies.
 
 CloudFormation pins the exact Knowledge Base ID into the ECS task and limits the task role to the configured Education and Policy knowledge bases. GitHub variables record the Policy knowledge-base ID, data-source ID, corpus version, bucket, and prefix. Release configuration checks require all Policy settings, and post-deployment smoke verifies governed Policy sources and the policy corpus version in both the live response and persisted trace.
 
-The retired Policy governance workflow performed a weekly and on-demand read-only AWS audit. Its OIDC scope could inspect only the approved Policy Knowledge Base and read its exact S3 prefix; it could not upload, delete, or start ingestion. The first historical audit passed with three approved sources and zero issues in [run 33231041612](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33231041612). Artifact `policy-rag-governance-33231041612` was retained until 2026-11-27. Current operating evidence comes from the combined RAG Source Governance workflow, covering packaged files and deployed Bedrock/S3 state.
+Current operating evidence comes from the combined RAG Source Governance workflow, covering packaged files and deployed Bedrock/S3 state. Its read-only OIDC role can inspect approved Knowledge Bases and exact S3 prefixes; it cannot upload, delete or start ingestion.
 
 ## Promotion Record And Ongoing Gate
 
-Policy RAG is implemented for the synthetic AWS demo. Commit `c6eee3b6e01d7cdc438addd4e20e585e2a213cb1` passed [CI run 33229618646](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229618646), and [release run 33229698149](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/33229698149) passed configuration validation, immutable-image scanning, deployment, and live health/AI-safety smoke testing on attempt 2. The smoke verified governed Policy provenance and the configured corpus version in both the live response and persisted trace. The separate retained governance audit then passed against the deployed collection.
+Policy RAG is implemented for the synthetic AWS demo. Release smoke verifies governed Policy provenance and the exact corpus version in both the live response and persisted trace. Passing ingestion, governance or smoke establishes those controls at the recorded revision; it does not establish complete semantic answer acceptance.
 
 Promotion of a later Policy corpus version requires reviewed source records, exact-version preparation and apply confirmation, successful ingestion and read-only AWS audit, updated runtime pins, a passing release smoke, and retained governance evidence. Review the current three sources by 2027-01-06 or publish a newly approved corpus version before that deadline.

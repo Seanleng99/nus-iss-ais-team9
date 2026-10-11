@@ -32,9 +32,16 @@ All routes reuse the backend's issuer/subject ownership boundary or the tightly 
 
 The Streamlit `Privacy & data` tab exposes the same lifecycle summary, consent preference, export, and confirmed deletion flow. Users should export before deleting if they need a copy. Deletion is immediate and cannot be undone from the application.
 
+These routes delete the active application store. The RDS template retains
+automated backups for one day and preserves snapshots on stack deletion or
+replacement. Expiry of manual/final snapshots and reconciliation of deleted
+workspaces or withdrawn consent after a restore have not been demonstrated.
+Do not describe workspace deletion as erasure of every retained backup; see
+[AI-21 and AI-22](security-risk-register.md#risks-and-implemented-controls).
+
 ## Scheduled enforcement
 
-When enabled, the weekly AWS operational workflow runs the lifecycle task below in an independent `retention` job; it can also be dispatched manually. The job requires only the deployment role, cluster, backend service and backend container configuration. Alarm, edge, load, live-evaluation or input-validation failures in the separate validation job cannot prevent the purge. Retention failures still fail the workflow, and `aws-retention-evidence-<run-id>` retains the task result for 90 days. A policy value alone does not prove that the purge job ran:
+When enabled by repository variable `AWS_OPERATIONAL_VALIDATION_ENABLED=true`, the Sunday 10:00 Singapore AWS operational workflow runs the lifecycle task below in an independent `retention` job; manual dispatch runs it regardless of that switch. The job requires only the deployment role, cluster, backend service and backend container configuration. Operational environment, alarm or edge failures in the separate validation job cannot prevent the purge. Retention failures still fail the workflow, and `aws-retention-evidence-<run-id>` retains the task result for 90 days. A policy value alone does not prove that the purge job ran:
 
 ```text
 python -m app.jobs.purge_data_lifecycle

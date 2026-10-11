@@ -58,9 +58,18 @@ This preserves independent presentation, application, and AI boundaries while re
 
 ## Feedback Incorporated
 
-The skeleton addresses the project feedback by:
+The current implementation addresses the project feedback by:
 
 - Applying PII detection, schema validation, prompt-injection checks, RAG document sanitization, and tool permission allowlists across all agents and service boundaries.
-- Defining eval datasets for orchestrator routing, budget calculations, and RAG retrieval relevance.
+- Defining seven owned component regression suites plus platform/shared contracts,
+  nine offline JSONL suites (136 cases/pairs), the frozen 100-case passage benchmark,
+  and separately optional release live checks for all specialists, routing, RAG,
+  security and the 19 fairness pairs.
 - Capturing expected outputs, metrics, and acceptance criteria in `docs/evaluation-plan.md`.
 - Adding an ADR on MCP and A2A relevance.
+
+The approved current-model drift baseline, later failed grading result and blocked
+live fairness attempt retain separate outcomes. Representative-user execution is
+deferred, and full current-model live acceptance remains open. See
+[requirements traceability](requirements-traceability.md) and the
+[final assessment package](final-assessment.md) for the current evidence boundaries.

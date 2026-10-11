@@ -6,7 +6,7 @@ The current model selection, confirmed against repository configuration on 2026-
 
 ## Budget planner deployment and live acceptance — 2026-09-29
 
-The four Budget roadmap increments, merged with the newer Coach transaction/privacy fixes, are deployed at application revision `f821887a62e8b8d94aa77975f34d6770042e6312`. [CI 36566192931](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566192931) and [release 36566489405](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566489405) passed. The release verified migrations through `20260930_0012`, deployed all three services, and passed health and AI safety smoke tests.
+The four Budget roadmap increments, merged with the Coach transaction/privacy fixes, were deployed at application revision `f821887a62e8b8d94aa77975f34d6770042e6312` on 29 September. [CI 36566192931](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566192931) and [release 36566489405](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36566489405) passed. The release verified migrations through `20260930_0012`, deployed all three services, and passed health and AI safety smoke tests. This is a historical deployment checkpoint; later releases use the current v10 contract.
 
 [Budget live acceptance 36568248515](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/36568248515) passed 14/14 executions: seven focused cases repeated twice against GPT-6 Luna, prompt set v6. P50 was 11,670.29 ms and P95 was 17,418.61 ms, below the declared 30-second Budget gate. Model provenance, custom and Chinese category extraction, missing-input/gross-income clarification, unaffordable-plan feedback, read-only alternatives and the continuity handoff all passed. Synthetic-session cleanup succeeded for every execution. Artifact `budget-live-acceptance-36568248515` is retained until 2026-12-28. Token-cost output uses inherited diagnostic rates and is not billing evidence.
 
@@ -46,7 +46,7 @@ Before removal, the single-repetition live profile selected 120-second HTTP time
 
 ## Historical Threshold Decision (2026-08-31)
 
-Using the baseline above, evaluation policy v4 sets these operational gates:
+Using the baseline above, evaluation policy v4 then set these operational gates:
 
 - live cases repeated three times;
 - 100 percent structural case pass rate;
@@ -55,19 +55,19 @@ Using the baseline above, evaluation policy v4 sets these operational gates:
 - 100 percent bounded-load success and zero cleanup failures; and
 - estimated live-evaluation cost no greater than USD 0.05 per workflow run.
 
-The GitHub environment variables enforce the 10-second live P95, 8-second load P95, and USD 0.05 cost limits. They replaced the original 30-second and USD 1.00 characterization values before run 33164881856.
+The then-active GitHub environment variables enforced the 10-second live P95, 8-second load P95, and USD 0.05 cost limits. They replaced the original 30-second and USD 1.00 characterization values before run 33164881856. These are historical gates; the current operational workflow has no live, load or estimated-cost stage.
 
-## Container Security Exceptions
+## Historical Container Security Exceptions — 2026-08-31
 
 On 2026-08-31, all four exact-version image-scan exceptions were rechecked against live `COMPLETE` Inspector/ECR results, the current official Python base-image digest, and current Debian stable-package status. The deployed images contained one critical and three high findings each, all matching the reviewed `sqlite3` `3.46.1-7+deb13u1` or `glibc` `2.41-12+deb13u3` exceptions; there were zero unexcepted critical or high findings. Debian still had no Trixie fix and classified each as minor/no-DSA, while the application did not expose the required vulnerable operations.
 
-The gate now requires review metadata and limits every exception to 30 days. The exceptions expire on 2026-09-30, and a package-version change cannot reuse them. CI run 33375543534 and release run 33375735946 validated the hardened policy, rebuilt all images, passed fresh Inspector/ECR scans, and deployed the same immutable commit to all services. The detailed decision and source links are in `docs/container-security.md`.
+The gate introduced review metadata and a maximum 30-day lifetime. Those historical exceptions expired on 2026-09-30, and a package-version change cannot reuse them. CI run 33375543534 and release run 33375735946 validated the hardened policy, rebuilt all images, passed fresh Inspector/ECR scans, and deployed the same immutable commit to all services. The [current container-security decision](container-security.md#2026-10-03-decision-and-renewal) covers six exact-version GCC/OpenSSL/zlib exceptions through 2026-10-30; the gate still rejects other HIGH/CRITICAL findings.
 
 ## Candidate Model Decision
 
 **Current model selection: `gpt-6-luna`.** This is the configured OpenAI model; the historical `retain_baseline` result below does not select the current module model or establish Luna acceptance.
 
-The choice fits bounded agent tasks and the implemented Responses API integration: schema-constrained results, medium reasoning for specialist writing/final Compliance review, and low reasoning for coordination and composition. Current Standard token rates give an illustrative USD 0.0279 at the historical Nova Lite token mix, within the USD 0.05 run cap, compared with USD 0.0623 for GPT-5.6 Luna. Historical Nova prices were lower; there is no current head-to-head quality or latency result. The [selection rationale and candidate table](model-selection.md#why-gpt-6-luna-is-chosen) record the official sources checked on 2026-10-10 and the estimate assumptions. Current live acceptance remains a separate gate.
+The choice fits bounded agent tasks and the implemented Responses API integration: schema-constrained results, medium reasoning for specialist writing/final Compliance review, and low reasoning for coordination and composition. Standard token rates checked on 2026-10-10 give an illustrative USD 0.0279 at the historical Nova Lite token mix, below the historical USD 0.05 run cap, compared with USD 0.0623 for GPT-5.6 Luna. Historical Nova prices were lower; there is no current head-to-head quality or latency result. The [selection rationale and candidate table](model-selection.md#why-gpt-6-luna-is-chosen) record the official sources checked on 2026-10-10 and the estimate assumptions. Current live acceptance remains a separate gate; AWS Operational Validation no longer imposes that cost cap.
 
 The historical 2026-08-31 AWS comparison ran 15 cases three times per model through the service orchestrator and prompt set v4. Both the Nova Lite and Nova Micro APAC profiles were active from Singapore, listed six APAC destinations, completed all 45 executions, and had zero invocation errors.
 

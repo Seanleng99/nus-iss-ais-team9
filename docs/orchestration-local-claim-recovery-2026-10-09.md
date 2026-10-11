@@ -6,7 +6,10 @@ but answer acceptance failed in several turns. The
 [root-cause diagnosis](agent-reasoning-live-root-causes-2026-10-09.md) separates
 confirmed implementation defects from claim identities that the private-draft-free
 export could not establish. This change addresses correction, composition and
-diagnostics. The recorded live outcomes remain unchanged.
+diagnostics. The recorded live outcomes remain unchanged. The subsequent
+[build 7356713 retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md)
+passed 30/34 original turns, case 35 and 6/7 repeats, while retaining two withheld
+and three incomplete answers. It does not establish acceptance of later builds.
 
 ## Correct identified claims without regenerating the answer
 
@@ -126,5 +129,6 @@ metadata.
 [Retained verification metadata](evaluation-evidence/orchestration-local-claim-recovery-2026-10-09.json)
 identifies the current prompt hash, role policy and test results. Windows HTTP/UI
 and Git Bash checks used approved execution outside the sandbox. These checks
-test contracts and scripted behavior; deployment and repeated live-model testing
-are still required to assess answer quality and consistency.
+test contracts and scripted behavior. The subsequent retest above supplies separate
+browser evidence; fresh repeated live testing is required for later implementations
+and unresolved answer-quality findings.

@@ -1,40 +1,24 @@
 # Budget planning: plans, methods, scenarios and spending reviews
 
-Current contract: `budget-planning-v4` with `budget-workspace-v1` for extended Coach commands. The Budget page contains monitoring, charts and a monthly editor; advanced cash-flow, reconciliation, history, review-preference and multi-month operations are available through Coach/backend APIs, not the removed Budget forms. Dated local test counts and deployment-pending statements below describe their original checkpoints. Use [Budget usability](budget-usability.md) for current UI entry points and [CI and LLMSecOps](agent-test-workflows.md) for current CI/live jobs.
+Current contract: `budget-planning-v4` with `budget-workspace-v1` for extended Coach commands. The Budget page contains monitoring, charts and a monthly editor; advanced cash-flow, reconciliation, history, review-preference and multi-month operations are available through Coach/backend APIs, not the removed Budget forms. Use [Budget usability](budget-usability.md) for current UI entry points and [CI and LLMSecOps](agent-test-workflows.md) for current CI/live jobs.
 
 ## Saved budgets across months and years
 
-Implemented locally on 5 October 2026. Monthly budgets remain the stored records, while Coach supports an explicitly requested month, a list of months, an inclusive range, a year or all saved budgets. A year expands to January–December. Relative periods are interpreted against the Singapore calendar. The sidebar's **Default month** is used only when the message omits a period; ambiguous dates require clarification and do not fall back to it.
+Monthly budgets remain the stored records, while Coach supports an explicitly requested month, a list of months, an inclusive range, a year or all saved budgets. A year expands to January–December. Relative periods are interpreted against the Singapore calendar. The sidebar's **Default month** is used only when the message omits a period; ambiguous dates require clarification and do not fall back to it.
 
-### Edge acceptance follow-up, 5 October 2026
+### Saved-record and education contracts
 
-The deployed Edge run passed 11 of 17 acceptance flows. It exposed blocked saved-budget reads/comparisons, rejected second-month `set` wording, unavailable source-required education and an unsolicited personal allocation in a conceptual answer. Subsequent CloudWatch inspection found that standalone and mixed education retrieval accepted six passages, then exhausted answerability correction with `INVALID_EDUCATION_PROVENANCE`. This was an evidence-validation failure; the traces do not establish missing corpus coverage or a token overrun.
-
-The local corrections give saved-record reads a typed read-only contract, reject edit fields in read commands and carry scoped owned records into Compliance. Their extraction summary identifies reading/comparing records, without claiming a pending write. The backend still retrieves the current owned records before displaying its final deterministic result. Reads cannot be confirmed as mutations.
+Saved-record reads have a typed read-only contract, reject edit fields in read commands and carry scoped owned records into Compliance. Their extraction summary identifies reading/comparing records, without claiming a pending write. The backend still retrieves the current owned records before displaying its final deterministic result. Reads cannot be confirmed as mutations.
 
 `Set my December 2026 budget limits ...` now extracts `action=set`. The authenticated backend checks that target month for the active owner. Existing plans receive a category patch that preserves unrelated limits and funding settings. A missing month enters funded-plan creation, asking for take-home income, savings allocation and expense coverage; neither another month nor another profile supplies those values. Explicit edits/deletions of missing plans remain validation errors. Every mutation still needs its own exact preview and confirmation.
 
 The input classifier also runs when profile income is present. A conceptual request does not receive an unrequested percentage allocation; a compound request containing a personal calculation still receives financial grounding. Goal capacity dependencies remain explicit calculation requirements. When optional Education cannot be verified, Budget/Goal render their tool-derived amounts and qualifications alongside the education limitation. Compliance assesses calculation support and education support separately.
 
-These corrections are local. The previous browser results remain deployment evidence for the earlier build; rerun the exact failed prompts and the full 17-flow Edge checklist after deploying the corrected build.
-
-Local verification for the Edge acceptance corrections on 5 October 2026:
-
-| Check | Result |
-| --- | --- |
-| Full AI unit/API and safety suite | 1,716 passed; 1 Windows symlink-privilege skip |
-| Full backend unit/API suite | 937 passed |
-| Shared language/math suite | 39 passed |
-| Release-smoke contract suite | 42 passed |
-| LLMSecOps offline evaluation policy | All 8 suites / 87 cases passed |
-| Approved full-document retrieval and scope benchmark | 100/100 cases passed |
-| Ruff, whitespace and Chinese-character inventory | Passed |
-
-The focused regressions additionally cover read/compare without usable profile income, rejection of edits inside a read command, conceptual answers with existing income, mixed arithmetic/source gaps and separate Goal capacities across a range containing a missing month. The retrieval benchmark measures retrieval and scope, not generated-answer quality. Scripted gateway tests validate the new passage-reference and Compliance contracts; live-provider acceptance and deployed Edge results remain pending. The workflow token budget now defaults to 80,000 for conversation and specialist headroom. Governed Education access permissions remain unchanged.
+Contract regressions cover read-only extraction, scoped ownership, preserved financial calculations and source provenance. Full live-model acceptance requires current deployed evidence.
 
 ## Everyday reasoning context
 
-The 5 October reasoning follow-up gives ordinary Budget advice the requested saved category limits, method, planning values, affordability results and protected category/savings minimums. Category-only plans remain readable without income; unavailable overall affordability does not prevent qualitative guidance. Capture and ordinary advice share the same owned plan evidence, while ordinary advice omits unrelated workspace configuration and record IDs. Risk and Compliance receives the same reasoning evidence.
+Ordinary Budget advice receives the requested saved category limits, method, planning values, affordability results and protected category/savings minimums. Category-only plans remain readable without income; unavailable overall affordability does not prevent qualitative guidance. Capture and ordinary advice share the same owned plan evidence, while ordinary advice omits unrelated workspace configuration and record IDs. Risk and Compliance receives the same reasoning evidence.
 
 The backend supplies monthly aggregates of owned expense records across the available history, without descriptions or transaction IDs. The Orchestrator selects the requested month, list, range, year or all-saved-budget months before specialist tasks and capability fingerprints are built. Expense-only months are not added to an all-saved-budget scope. Requested totals and up to six preceding months of history remain separate. A month with no recorded expenses has zero recorded totals, which never establishes zero actual household costs. Missing budgets remain unavailable. Budget can request Spending history even when the requested month contains no transactions.
 
@@ -42,18 +26,7 @@ These reasoning aggregates describe gross recorded expenses in SGD; other curren
 
 Without a confirmed plan, the illustrative baseline projects recurring expenses into the selected calendar month using explicit frequency, interval, start/end and month-end terms. Already-paid occurrences remain part of the full month's cost. Repeated payment rows sharing an owned obligation ID use one schedule, rather than adding multiple months' payments. Distinct obligations remain distinct even when names match. Unknown frequency, conflicting terms or indistinguishable unlinked schedules make capacity unavailable instead of guessing monthly amounts or reporting zero. Goals receive that unavailable result and ask for the missing information. Confirmed-plan savings capacity continues to use its saved allocation directly.
 
-A bounded semantic input check distinguishes general learning from personal calculations. Definitions, formulas and explanations can proceed without income even when they contain words such as *calculate*, *build* or *how much*. Personal disposable-income/affordability calculations and dependent goal-capacity requests still require financial inputs. The input check cannot calculate, save, confirm or supply missing amounts. These changes are local; live-provider wording acceptance and deployment remain unverified.
-
-Local verification for the reasoning follow-up on 5 October 2026:
-
-| Check | Result |
-| --- | --- |
-| Complete AI-service suite | 1,678 passed, 1 skipped |
-| Backend budget, conversation, query and ownership regression sweep | 316 passed |
-| Complete shared mathematics and language suite | 39 passed |
-| Ruff across services/shared/infra scripts; whitespace and language inventory | Passed |
-
-Coverage includes advisory writer context, month/range/all scope selection, historical-only expenses, missing plans, conceptual versus personal input requirements, calendar recurrence costs, repeated obligations, changed prices, conflicting/unknown schedules and unavailable goal capacity. Older positive-calculation fixtures now provide explicit monthly terms rather than assuming cadence from a recurring label. The backend sweep retains two existing serialization/deprecation warnings. These checks use local fixtures and isolated databases; they establish neither deployed behavior nor real-provider semantic acceptance.
+A bounded semantic input check distinguishes general learning from personal calculations. Definitions, formulas and explanations can proceed without income even when they contain words such as *calculate*, *build* or *how much*. Personal disposable-income/affordability calculations and dependent goal-capacity requests still require financial inputs. The input check cannot calculate, save, confirm or supply missing amounts. Fixture contracts do not establish live-provider semantic accuracy.
 
 ## Saved-budget operations
 
@@ -80,24 +53,9 @@ API contracts:
 - Existing `POST /budget/workspace/preview` accepts `operation: "budgets"` with JSON-encoded `payload_json`: `action: read|compare|edit|delete`, `scope`, optional edit `categories`, `remove_categories`, and `planning` patch. `scope` is `{kind:"periods",periods:[...]}`, `{kind:"range",start:...,end:...}` or `{kind:"all"}`. Coach resolves `{kind:"default"}` into an explicit month using the trusted sidebar default before previewing.
 - Existing `POST /budget/workspace/confirm` confirms a mutation preview by its owned preview ID. Read/compare previews cannot be confirmed as writes.
 
-Explicit lists/ranges and mutation batches are bounded to 120 months per request; all-saved reads include the complete owned history. Mixed legacy currencies have separate read totals and are never converted; edits support SGD. No database migration is needed. Tests cover scope validation, ownership, year/range reads, per-month preservation, deletions/restoration, constraints, stale/expired/cancelled previews, batch rollback, Coach/API confirmation and period-specific goal capacity. These are local/offline contracts; deployment and real-provider extraction acceptance remain unverified for this increment.
+Explicit lists/ranges and mutation batches are bounded to 120 months per request; all-saved reads include the complete owned history. Mixed legacy currencies have separate read totals and are never converted; edits support SGD. No database migration is needed. Tests cover scope validation, ownership, year/range reads, per-month preservation, deletions/restoration, constraints, stale/expired/cancelled previews, batch rollback, Coach/API confirmation and period-specific goal capacity. These contracts need deployed model evaluation in addition to offline regressions.
 
-Local verification on 5 October 2026:
-
-| Check | Result |
-| --- | --- |
-| Backend budget, conversation, status-query and ownership regression sweep | 311 passed |
-| Final budget capture/workspace/records checks, including additional action-switch and empty-commitment regressions | 75 passed (overlaps the sweep above) |
-| AI budget, dependency, conversation and follow-up contracts | 205 passed |
-| Frontend Coach language, app and budget editor checks | 47 passed |
-| Shared calendar-scope and language catalog checks | 30 passed |
-| Ruff across services/shared/infra scripts; whitespace checks; Chinese-character inventory | Passed |
-
-The frontend run preloaded the UI modules after a cold-start run exceeded AppTest's three-second timeout. Language inventory required the already-approved unsandboxed command because the sandbox blocked its Git subprocess. Neither check used a deployed service or established live-provider acceptance.
-
-Current UI and Coach flow: see [Everyday Budget and Coach workflow](budget-usability.md) for the 2026-10-01 simplification. The first simplification deployed at `72846d0`; the subsequent optional-form removal is local and requires separate deployment/live acceptance. Earlier workflow descriptions below retain the underlying contracts; the new document supersedes their UI entry points.
-
-Earlier release evidence: the AWS demo deployment on 2026-09-29 at `f821887a62e8b8d94aa77975f34d6770042e6312` passed CI, migrations and release smoke. The focused GPT-6 Luna Budget acceptance suite passed 14/14 executions at that revision; it does not validate later improvements or this simplification.
+Current UI entry points are described in [Budget usability](budget-usability.md). Historical deployed acceptance appears under [Deployed Budget acceptance](#deployed-budget-acceptance); it applies only to the recorded revision.
 
 ## User workflow
 
@@ -146,7 +104,7 @@ Pending drafts use the existing conversation-scoped JSON field. Preview expiry (
 
 The Budget and Overview pages show take-home income, the separate savings allocation, and unallocated income for saved plans. The Budget form preserves these settings, requires confirmation of expense coverage when editing, and prevents saving a funding gap. Direct API clients editing a planned budget should round-trip its `planning` settings; this optional field distinguishes a planned budget from a legacy manual category budget.
 
-## Stage two: method selection and scenario comparisons
+## Method selection and scenario comparisons
 
 Users can select a method in Coach or the single **Budgeting method** dropdown in **Budget → Edit budget**. Custom percentage inputs and explicit needs/wants grouping appear only for methods that require them. Income-based guidance does not overwrite entered amounts. The separate method/scenario workspace and **Explore a change** form are removed. Direct editing shows monthly affordability; Coach retains deterministic comparisons of income, savings, category amounts and budgeting methods. The method is saved alongside income and savings after confirmation; Overview displays it. Existing saved v1 plans load as flexible plans. No new database migration is needed beyond `20260929_0011` because the settings use the existing JSON column.
 
@@ -173,7 +131,7 @@ The last instruction is matched to a stored scenario by the backend, not interpr
 
 The original UI comparison workspace has been removed. Budget offers a method selector and live affordability while editing, then an exact change review and confirmation before saving. Saved spending and allocation charts remain visible. Coach retains SGD scenario comparisons, explicit adoption to an unsaved conversation draft, clarification and final confirmation. Budget can finish or cancel a legacy local editor draft; it no longer creates comparison drafts.
 
-### Stage-two contracts
+### Method and scenario contracts
 
 - `BudgetMethod` is mirrored in the AI extraction and backend domain contracts. Supported method names, custom percentages and user-supplied category groups are validated at both boundaries.
 - `BudgetDraft.action`: `plan` (default) or `compare`; `scenarios` contains up to three explicitly requested alternatives. Comparison metadata remains in conversation-scoped pending state with the existing 30-minute expiry.
@@ -181,13 +139,13 @@ The original UI comparison workspace has been removed. Budget offers a method se
 - `services/budget_scenarios.py`: independent copies, override validation, comparisons and deterministic explanations. No persistence calls.
 - `POST /api/users/{user_id}/budget/compare`: authenticated, owner-scoped, read-only calculation from an explicitly supplied draft. It returns no stored owner data and does not write budgets, profiles or conversations. Unlike Coach, which merges saved categories, the UI supplies the whole editor plan. Response includes `results`, `questions`, and `saved: false`.
 - Saving still uses the existing budget API or Coach confirmation path. `BudgetPlanSettings.method` persists the selected method. Direct saves enforce classifications, valid percentages, affordability and the zero-based equality constraint.
-- Stage two introduced `budget-planning-v2`; stage three expands the extraction contract to v3. Readers accept v1, v2 and v3 settings. The legacy general prompt-set version and baseline calculation are unchanged.
+- Current extraction and saved settings use `budget-planning-v4`; readers accept legacy v1–v3 planning settings. The separately versioned prompt catalog and illustrative baseline retain their own contracts.
 
 Offline fixture example, following the stage-one plan example: `scenario More saving: savings=1000`, then `use scenario More saving`. The fixture grammar supports one explicit scenario override at a time; the production extraction schema supports three. Live-model tests must separately verify multi-option language, gross versus take-home hypotheticals, method corrections and explicit adoption.
 
 The confirmed plan now supplies `monthly_savings_capacity` to Budget and Goal Strategy. Its chosen savings allocation is the shared pool; unallocated income remains separate. The prior illustrative calculator is used only when no valid confirmed planning settings exist for the selected month, with an explicit fallback label. It retains the legacy 50/30/20 calculation **after recorded recurring expenses**; it is not the standard take-home-income interpretation of that rule. The new category-planning path does not use that baseline or publish its result as an observed savings balance.
 
-## Stage three: on-demand spending reviews
+## On-demand spending reviews
 
 Request **“Review my budget for September 2026”** in Coach. Coach asks for the
 month/year when missing; a read-only review needs no new income or savings inputs.
@@ -261,7 +219,7 @@ pace, `evidence_fingerprint`, and `saved: false`. Compatibility response fields
 `suggestions` and `comparison` are always empty/null. `BudgetUpsert.review_evidence`
 is an optional transient precondition, not a database field. Model-provided
 numbers do not compute review totals. Backend audit records `budget-review-v2`;
-extraction still uses `budget-planning-v3` with `action=review`. No new migration
+extraction uses `budget-planning-v4` with `action=review`. No new migration
 is required.
 
 Tests cover ownership, currency, cutoff dates, transfers, zero limits, leap months,
@@ -278,7 +236,7 @@ cd C:\ai-financial-wellness-coach\apps\backend
 C:\ai-financial-wellness-coach\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-Migration `20260929_0011` adds the nullable monthly budget planning column after `20260928_0010` (conversation drafts). Compose already runs migrations. Existing category limits need no backfill. Downgrading `0011` removes the planning metadata column; category limits remain.
+Apply all migrations through current head `20261010_0018`. Migration `20260929_0011` adds the nullable monthly budget planning column after `20260928_0010` (conversation drafts). Compose already runs migrations. Existing category limits need no backfill. Downgrading `0011` removes the planning metadata column; category limits remain.
 
 The current planning contract is independently versioned as `budget-planning-v4` in model extraction, deterministic output, saved settings, and backend response audit. Changes to this contract require a version update and refreshed planning tests. The general prompt-set version and its existing workflows remain unchanged.
 
@@ -305,7 +263,7 @@ Test live-model extraction separately with paraphrases, ambiguous currencies/dat
 
 ## Remaining boundaries
 
-The original three stages were extended by the four increments below and the subsequent roadmap additions described later in this document. Background delivery (email/push), unattended automatic rollover and bank-provider connections remain separate extensions. Variable income uses explicit user-supplied cases rather than statistical forecasting; debt payoff uses user-supplied rates and fees rather than lender integration. Cash-flow schedules support explicit weekly/annual frequencies; category budgets still require explicit monthly amounts. Non-SGD amounts and uncertain inputs require clarification. User-chosen goal contributions are modeled but never transferred automatically.
+Background delivery (email/push), unattended automatic rollover and bank-provider connections remain separate extensions. Variable income uses explicit user-supplied cases rather than statistical forecasting; debt payoff uses user-supplied rates and fees rather than lender integration. Cash-flow schedules support explicit weekly/annual frequencies; category budgets still require explicit monthly amounts. Non-SGD amounts and uncertain inputs require clarification. User-chosen goal contributions are modeled but never transferred automatically.
 
 
 ## Shared capacity source
@@ -361,13 +319,13 @@ Owned endpoints:
 - `GET /api/users/{user_id}/budget/reviews/due`
 - `POST /api/users/{user_id}/budget/reviews/acknowledge` with the displayed evidence fingerprint and explicit confirmation
 
-All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. The retained release requires migrations through `20260930_0012`; the proposed relational storage migration was removed before deployment. The subsequent 2026-09-29 release applied and verified these migrations before updating the backend.
+All continuity and review state uses `planning_preferences`; owner export and deletion include it. No additional migration beyond `20260930_0012` is required for these features. Apply the full checked-in Alembic head before starting the backend. Relational reconciliation storage remains deferred.
 
-## Roadmap verification
+## Extended contract coverage
 
 The extended extraction/planning contract is `budget-planning-v4`; saved planning settings from v1–v3 remain readable.
 
-Regression coverage includes confirmed-plan cross-agent sourcing, explicit typed cash flows, pre-payday shortages, settled occurrences, protected category and goal/debt minimums, infeasible alternatives, read-only Coach comparisons, preview expiration and ownership, stale evidence, duplicate confirmation, all-or-nothing monthly writes, opt-in review dates, and UI confirmation gates. Local fixtures exercise the model contract; the focused deployed acceptance result is recorded below. The Windows environment cannot run the existing symlink-dependent AI test without symlink privilege; the rest of the AI suite is run with that test excluded.
+Regression coverage includes confirmed-plan cross-agent sourcing, explicit typed cash flows, pre-payday shortages, settled occurrences, protected category and goal/debt minimums, infeasible alternatives, read-only Coach comparisons, preview expiration and ownership, stale evidence, duplicate confirmation, all-or-nothing monthly writes, opt-in review dates, and UI confirmation gates. Local fixtures exercise the model contract; the focused deployed acceptance result is recorded below. Platform-specific symlink checks need a host with symlink permission; current CI ownership and requirements are listed in [test organization](test-organization.md).
 
 
 ## Deployed Budget acceptance
@@ -418,7 +376,7 @@ Owned API endpoints:
 - `POST /budget/workspace/confirm` — `{preview_id, confirmed: true}`; verifies evidence and consumes the preview.
 - Existing settlement endpoint accepts `settled=false` to explicitly remove manual settlement.
 
-The command contract/audit is `budget-workspace-v1`; the monthly allocation contract remains `budget-planning-v4`. Offline model fixtures are intentionally limited. Stubbed orchestration and HTTP integration tests verify contract forwarding and confirmation behavior, not natural-language extraction quality. The expanded nine-case live dataset is prepared for the next deployed acceptance run; the older 14/14 result above applies only to revision `f821887`, not these new capabilities.
+The command contract/audit is `budget-workspace-v1`; the monthly allocation contract remains `budget-planning-v4`. Offline model fixtures are intentionally limited. Stubbed orchestration and HTTP integration tests verify contract forwarding and confirmation behavior, not natural-language extraction quality. The older 14/14 result above applies only to revision `f821887`. The current unified live matrix and standalone multi-turn harness are distinct evidence sources.
 
 
 ## Cash-flow-aware alternatives
@@ -466,11 +424,11 @@ New refund matches require an explicit budget-spending choice: `cash_only` prese
 
 Coach supports `edits` in cashflow, commitments and reserves payloads. Each edit names a collection, explicit add/update/remove action, an existing ID (or exact unique debt name), and only changed values. Category floors use `{amount}`; protected categories support add/remove. New schedules/reserves receive server-generated IDs. The backend preserves unspecified entries and fields, rejects ambiguous/missing selectors and conflicting replacements, then validates the complete configuration including existing bill/debt links.
 
-Corrections replace the complete pending edit list; edits always run once against saved settings. The exact resulting collection is previewed before confirmation. Cancellation, intervening data changes, expired previews and ownership checks remain enforced. Local multi-turn tests cover clarification, correction, confirmation, cancellation and stale evidence. These deterministic contract tests do not establish live-model extraction quality; live acceptance remains a separate quality criterion; Release requires the live Budget contracts after smoke and rolls changed services back on failed or incomplete acceptance. Offline/security gates and representative human semantic review retain their separate purposes.
+Corrections replace the complete pending edit list; edits always run once against saved settings. The exact resulting collection is previewed before confirmation. Cancellation, intervening data changes, expired previews and ownership checks remain enforced. Local multi-turn tests cover clarification, correction, confirmation, cancellation and stale evidence. These deterministic contract tests do not establish live-model extraction quality; live acceptance remains a separate quality criterion. Release runs the Budget live stage only when `RUN_LIVE_AGENT_RAG=true`; a failed or incomplete enabled stage fails release and triggers rollback. Offline/security gates and representative human semantic review retain their separate purposes.
 
 
-### Final release scope and multi-turn acceptance
+### Scope and multi-turn acceptance
 
-User clarified the final scope on 2026-10-01: the entire seventh increment is excluded. Relational reconciliation storage, account balances, account-to-account transfer workflows and CSV imports are deferred. Their uncommitted code, UI and proposed migration were removed. Reconciliation remains in the owned JSON workspace with its existing limits and validation. The six preceding planner improvements, dated cash-flow balance and typed transaction ledger are retained.
+Relational reconciliation storage, account balances, account-to-account transfer workflows and CSV imports are deferred. Reconciliation remains in the owned JSON workspace with its existing limits and validation. Dated cash-flow balance and the typed transaction ledger are implemented.
 
 The retained Budget live harness also includes a bounded multi-turn Coach scenario using a unique synthetic profile: missing amount, precise bill edit, correction, confirmation, cancellation and stale-preview rejection. It verifies the unchanged second bill and actual saved values, and erases only its own synthetic profile in cleanup. Retained evidence contains check results and model/latency metadata rather than conversation content. Run it after the complete release; local contract/harness tests do not substitute for this live result.

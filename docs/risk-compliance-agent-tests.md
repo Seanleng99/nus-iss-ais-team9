@@ -13,15 +13,20 @@ The selection covers:
 | Scenario group | Tests | Expected behavior |
 |---|---|---|
 | Offline policy and guardrails | `test_risk_compliance.py`, `test_risk_review_explanations.py`, `test_guardrails.py` | Allow safe education and warnings; block prohibited requests; sanitize reasons and retrieved instructions; redact identifiers; enforce role-scoped retrieval. |
-| Block unsafe requests | `test_risk_compliance_functional.py -k test_blocks_unsafe_request` | Refuse recommendations, guarantees, account execution, cross-user access, and injection at the required boundary. |
-| Withhold unsafe answers | `test_risk_compliance_functional.py -k test_withholds_unsafe_answer` | Withhold unsafe drafts, missing or invalid Policy evidence, reviewer vetoes, and unapproved citations. |
-| Allow safe answers | `test_risk_compliance_functional.py -k test_allows_safe_answer` | Release permitted education, negated-suitability warnings, and valid Budget answers after independent review; blanket refusal fails the positive controls. |
+| Block unsafe requests | `test_risk_compliance_functional.py::test_blocks_unsafe_request` | Refuse recommendations, guarantees, account execution, cross-user access, and injection at the required boundary. |
+| Withhold unsafe answers | `test_risk_compliance_functional.py::test_withholds_unsafe_answer` | Withhold unsafe drafts, missing or invalid Policy evidence, reviewer vetoes, and unapproved citations. |
+| Allow safe answers | `test_risk_compliance_functional.py::test_allows_safe_answer` | Release permitted education, negated-suitability warnings, and valid Budget answers after independent review; blanket refusal fails the positive controls. |
 | Fixture-backed dialogue examples | `test_agent_evaluation_examples.py::test_example_risk_compliance` | Run versioned synthetic questions through application components and check their authored response, safety, and source expectations. |
 
-The three functional filters are disjoint selections from one test file. Each
-parameterized case is counted separately. Acceptance requires at least one case,
-100% assertion pass rate, and zero failures, errors, skips, or xpasses in every
-group. An aggregate pass cannot hide a failed safety or privacy assertion.
+The functional file runs once in full; the three names identify test families.
+Each parameterized case is counted separately. Suite acceptance requires at least one case,
+100% assertion pass rate, and zero failures, errors, skips, or xpasses. An aggregate pass cannot hide a failed safety or privacy assertion.
+
+Current ownership also includes scripted fairness controls, advice-language and
+Chinese explanations, outbound privacy, review follow-ups, located claim and
+financial/qualification/citation repairs, scoped Education review and evidence
+compaction. The [evaluation guide](risk-compliance-agent-evaluation.md) lists every
+current test file; the table above summarizes the core request/output boundaries.
 
 The offline fixture reviewer is scripted, so these results verify application
 contracts and the authored cases; they do not measure live-model reviewer accuracy
@@ -57,7 +62,8 @@ python infra/scripts/summarize_pytest_junit.py artifacts/risk-compliance.xml \
 
 The functional unsafe-answer parameterization currently asserts three generated-advice
 patterns: a guaranteed return, a product presented as the best choice, and personal
-suitability. These checks do not establish that every imperative trade instruction
-or third-party financial disclosure in generated prose is caught deterministically.
+suitability. The separate advice-language, privacy and review-recovery regressions extend
+coverage beyond those three examples. These checks do not establish that every
+imperative trade instruction or third-party financial disclosure in generated prose is caught deterministically.
 The real Compliance reviewer and broader adversarial testing remain necessary;
 see [the security risk register](security-risk-register.md).

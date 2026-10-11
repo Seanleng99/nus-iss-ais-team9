@@ -4,7 +4,12 @@
 
 This study validates whether intended users can understand and safely act on the deployed coach's explanations, confidence presentation, uncertainty, sources, limitations, and safety boundaries. It is separate from the blinded Nova Lite versus Nova Micro review, which supports model selection.
 
-The study package is implemented, but the validation remains open until real representative participants complete the governed protocol. Automated or fabricated responses are not acceptable human evidence.
+The study package is implemented, but execution was explicitly deferred from the
+academic demo in the [assessment manifest](../infra/llmsecops/final-assessment-manifest.json).
+No representative-user acceptance is claimed. Before activating this separate
+gate, review the current model pin and complete the governed protocol with real
+representative participants. Automated or fabricated responses are not acceptable
+human evidence.
 
 The current study policy and session template still require the historical model ID
 `apac.amazon.nova-lite-v1:0` (`infra/llmsecops/representative-user-study.json`),

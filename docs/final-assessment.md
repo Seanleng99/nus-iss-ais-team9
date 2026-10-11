@@ -87,7 +87,11 @@ Specialists never select or invoke another specialist. They request a typed capa
 
 ## Evidence Baseline
 
-The detailed operating record is in `docs/operational-evidence.md`. The assessment baseline currently includes:
+The detailed operating record is in [operational evidence](operational-evidence.md).
+The following AWS runs are retained historical evidence for their recorded build,
+model, prompts and workflow configuration. Their counts and outcomes have not been
+rerun in this documentation audit; the eight-suite CI record predates current
+evaluation policy v9, which has nine suites / 136 cases and pairs.
 
 | Area | Retained result |
 |---|---|
@@ -99,7 +103,25 @@ The detailed operating record is in `docs/operational-evidence.md`. The assessme
 | Identity and edge | Two-user owner isolation, Cognito logout, custom-domain TLS, HTTPS origin, and direct-origin denial have retained evidence. |
 | Operations and lifecycle | CloudWatch-to-SNS delivery was human-acknowledged; `data-lifecycle-v1` retention, export, and complete deletion have automated evidence. |
 
-Workflow run URLs, commits, measurements, known failed attempts, corrections, and artifact-retention dates remain in the operational register so the assessment does not hide unfavorable evidence.
+Current retained records add the following distinct evidence:
+
+- The [9 October v10 reasoning retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md)
+  passed 30/34 original turns, the additional full-chain case and 6/7 planned
+  repeats. Two answers remained withheld and three delivered answers incomplete
+  across 42 turns; this is an open quality finding, not full acceptance.
+- The [11 October fairness verification](evaluation-evidence/fairness-verification-2026-10-11.md)
+  passed the complete offline policy and isolated fixture paired checks. Its
+  current-model attempt completed no pairs because preflight/authentication failed;
+  human fairness review remains pending.
+- The [drift activation record](evaluation-evidence/model-drift-activation-2026-10-11.json)
+  retains an independently reviewed 12-sample Luna baseline and scheduled
+  GitHub-only monitoring. The subsequent Chinese safety-refusal grading alert
+  remains failed, with no confirmed generator drift and no overridden score.
+
+Workflow URLs, commits, measurements, failed attempts, corrections and retention
+dates remain in the operating record. Historical SNS acknowledgement does not
+establish current email delivery: the 10–11 October checks found no subscription,
+and current operational/drift reporting uses GitHub Actions.
 
 ## Assessment Gate
 

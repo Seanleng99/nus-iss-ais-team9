@@ -1,36 +1,45 @@
 # Spending Agent evaluation and CI reports
 
-**Current entry point:** **CI and LLMSecOps** → `spending` offline tests; **Release to AWS** → optional `spending` live acceptance when `RUN_LIVE_AGENT_RAG=true`.
-The former four suite IDs below describe retained scenario groups, now executed
-inside one `spending` offline job. They are not separate workflow or CLI names.
-Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
-job graph, live Yes/No choice and reports.
+**Current entry point:** **CI and LLMSecOps** → `spending` offline tests;
+**Release to AWS** → optional `spending` live acceptance when
+`RUN_LIVE_AGENT_RAG=true`. Use [the consolidated workflow guide](agent-test-workflows.md)
+for job selection and reports. Disabled live stages provide no acceptance evidence;
+every enabled stage must pass.
 
-
-The `spending` offline job contains the following four scenario groups. The versioned
-definitions are in [agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json);
-the exact selection is in [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json).
-Each listed test file contains authored synthetic inputs and expected-output
-assertions, including parameterized cases and scripted review failures. Reports
-hash those files and count executed cases instead of relying on a fixed count.
+The executable evaluation definition is version 4 of
+[agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json).
+[agent-test-suites.json](../infra/llmsecops/agent-test-suites.json) defines exact ownership.
+The following inventory includes every test file currently selected by `spending`.
+Authored synthetic inputs, parameterized cases and fault injections are the datasets;
+each assertion supplies its expected-output oracle. Reports retain file hashes and
+measured case counts. The former suffixed scenario IDs are retired CLI names.
 
 ## Datasets, expected outputs, metrics and acceptance
 
-Test paths in this table are relative to `apps/ai-service/tests/`.
+Test paths below are relative to `apps/ai-service/tests/`.
 
-| Owned suite | Dataset | Expected output | Metric and acceptance |
-| --- | --- | --- | --- |
-| `spending-offline` | `test_spending_analyzer.py` | Correct category totals, rounded direction, percentage change, temporal patterns, anomalies and data quality; undefined percentage for prior zero; insufficient evidence for empty inputs | Scenario assertion pass rate 100%; zero failures/errors/skips |
-| `spending-functional-capture` | `test_spending_capture.py` | Correct unsaved record/query draft, amounts/descriptions/date scope and save/preview intent; missing facts require clarification; unrelated requests do not resume capture | Scenario assertion pass rate 100%; no incorrect draft or intent tolerated |
-| `spending-functional-coverage` | `test_spending_coverage.py` | Separate selected-month totals from prior-history coverage; preserve legitimate duplicate-looking transactions; exclude overlapping history, future records and unsupported currencies; retain sparse-data limitations | Scenario assertion pass rate 100%; every tested scope/count/amount invariant passes |
-| `spending-functional-integration` | `test_spending_integration.py`, `test_risk_spending_coverage.py` | Analysis reaches component output; independent Risk review receives the same bounded evidence without personal descriptions/identifiers; a veto is respected | Scenario assertion pass rate 100%, including allowed and vetoed review outcomes |
+| Dataset | Expected output / assertion scope |
+| --- | --- |
+| `test_spending_analyzer.py` | Synthetic current/prior category amounts and dated histories must produce asserted totals, rounded trend direction, percentage change, temporal patterns, anomaly severity and data-quality status. A zero prior amount yields no percentage; empty inputs yield insufficient evidence and empty findings. |
+| `test_spending_capture.py` | Record/query statements and pending drafts preserve amount, description, date scope and save/preview intent. Missing amount/date stays missing and asks for details; analysis, budget requests and unrelated profile corrections do not create or resume transaction drafts. |
+| `test_spending_coverage.py` | Selected-month totals/counts and prior-history coverage remain separate. Actual dated records reach the writer; identical legitimate expenses survive, overlapping legacy history and future records do not inflate totals, unsupported currencies are excluded, and sparse history does not establish recurring habits. |
+| `test_spending_integration.py` | Scripted requests traversing Spending analysis expose the asserted trends, anomalies, temporal patterns and months/data-quality fields, including insufficient empty data. |
+| `test_risk_spending_coverage.py` | Independent Risk review receives the same bounded dated coverage, category totals and currency exclusions without personal descriptions or identifiers; either review outcome is respected, including a veto. |
+| `test_recurring_capture.py` | Only explicit cadence/date range can create recurrence or forecast scope; merchant names alone do not establish frequency, and read-only forecast requests do not become writes. |
+| `test_spending_period_scope.py` | Requested missing-month Spending remains primary while independent Budget context stays separate; raw records are partitioned to the requested period rather than silently using another month. |
+
+The shared synthetic dataset
+[`agent_offline_examples.jsonl`](../apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl)
+is executed only by `test_agent_evaluation_examples.py::test_example_spending`
+in this suite. All other listed files run in full. Questions, authored expectations
+and full fixture responses are attached to the JUnit/evaluation evidence.
 
 ## Scoring and acceptance
 
 For every suite, `assertion_pass_rate = passed pytest cases / all reported cases`.
-Failures, errors and skips stay in the denominator; parameterized instances count
-separately. At least one case must execute, every assertion must pass, and the
-accepted result requires zero failures/errors/skips. A numeric match cannot mask
+Failures, errors, skips and xpasses stay in the denominator; parameterized instances
+count separately. At least one case must execute, every assertion must pass, and
+the accepted suite requires zero failures/errors/skips/xpasses. A numeric match cannot mask
 incorrect date scope, currency leakage, fabricated coverage or an ignored veto.
 
 The arithmetic oracle includes current food spending of 350 against prior 250:

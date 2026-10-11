@@ -1,36 +1,46 @@
 # Goal Strategy Agent evaluation and CI reports
 
-**Current entry point:** **CI and LLMSecOps** → `goal` offline tests; **Release to AWS** → optional `goal` live acceptance when `RUN_LIVE_AGENT_RAG=true`.
-The former four suite IDs below describe retained scenario groups, now executed
-inside one `goal` offline job. They are not separate workflow or CLI names.
-Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
-job graph, live Yes/No choice and reports.
+**Current entry point:** **CI and LLMSecOps** → `goal` offline tests;
+**Release to AWS** → optional `goal` live acceptance when
+`RUN_LIVE_AGENT_RAG=true`. Use [the consolidated workflow guide](agent-test-workflows.md)
+for job selection and reports. Disabled live stages provide no acceptance evidence;
+every enabled stage must pass.
 
-
-The `goal` offline job contains four scenario groups. Definitions are in
-[agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json), with
-the exact test selection in [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json).
-Authored test inputs cover goal drafts, targets/balances/durations, confirmed savings
-pools, missing facts, dated spending, currency variants and dependency/review failures.
-Assertions provide the expected-output oracle; reports retain file hashes and actual
-case counts, including parameterized instances.
+The executable evaluation definition is version 4 of
+[agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json).
+[agent-test-suites.json](../infra/llmsecops/agent-test-suites.json) defines exact ownership.
+The following inventory includes every test file currently selected by `goal`.
+Authored synthetic inputs, parameterized cases and fault injections are the datasets;
+each assertion supplies its expected-output oracle. Reports retain file hashes and
+measured case counts. The former suffixed scenario IDs are retired CLI names.
 
 ## Datasets, expected outputs, metrics and acceptance
 
-Paths are relative to `apps/ai-service/tests/`.
+Test paths below are relative to `apps/ai-service/tests/`.
 
-| Owned suite | Dataset | Expected output | Metric and acceptance |
-| --- | --- | --- | --- |
-| `goal-offline` | `test_goal_capture.py`, `test_saved_budget_capacity.py` | Correct unsaved create/delete/follow-up draft; preserve goal amounts/currency; analysis is not mutation; confirmed shared savings pool used without double subtraction | Scenario assertion pass rate 100%; exact tested draft/amount/capacity invariants |
-| `goal-functional-feasibility` | `test_emergency_fund.py` | Dated-spending coverage and separate goal balances/currencies; governed emergency-fund guidance when available; explicit evidence gap otherwise; account execution refused | Scenario assertion pass rate 100%; no invented benchmark or unsupported execution |
-| `goal-functional-dependencies` | `test_dynamic_dependencies.py`, `test_conditional_financial_dependencies.py` | Saved-goal arithmetic avoids unrelated income/Budget; affordability uses authorized capacity; correct Goal -> Budget -> Spending graph, reuse/resumption and independent overlap; cycles/wrong providers/required failures rejected | Scenario assertion pass rate 100%; numeric correctness cannot hide wrong graph/permissions |
-| `goal-functional-recovery` | `test_goal_education_recovery.py` | New Education intent preserved; at most one eligible correction retains calculations/evidence and independent review; configured limits respected; failure or prohibited advice retains withheld output | Scenario assertion pass rate 100%, including correction failures and usage-limit controls |
+| Dataset | Expected output / assertion scope |
+| --- | --- |
+| `test_goal_capture.py` | Create/delete requests and pending follow-ups preserve goal name, target/current amounts, duration and currency as unsaved drafts; goal analysis alongside budget creation is not mistaken for a goal mutation. |
+| `test_saved_budget_capacity.py` | Confirmed monthly savings of 700 remains the shared pool without another subtraction or requiring profile income. Two goals each needing 500 per month yield combined shortfall 300; unavailable confirmed plans use an explicitly labeled illustrative fallback when permitted. |
+| `test_emergency_fund.py` | Emergency-fund education carries asserted dated-spending coverage and saved goal balances with separate currencies, retrieves governed general guidance when available, states a gap rather than inventing a benchmark when unavailable, and refuses account execution. |
+| `test_dynamic_dependencies.py` | Required Goal -> Budget -> Spending capabilities are authorized, scheduled, reused and resumed with their asserted feasibility or typed missing-input outcome. Independent ready work overlaps; unauthorized edges, cycles, wrong providers and required timeouts fail closed, while optional failures retain qualified results. |
+| `test_conditional_financial_dependencies.py` | Saved-goal arithmetic needs no income/Budget dependency; affordability uses required monthly savings capacity and the shared pool. Explicit spending-informed feasibility retains the authorized chain, providers are reused, and an independent spending question does not manufacture a financial dependency. |
+| `test_goal_education_recovery.py` | Goal references preserve new education intent. One eligible correction preserves financial calculations and evidence, stays within configured call/token/usage bounds, receives independent rereview, and retains the original withheld answer after failure, unknown usage or prohibited advice. |
+| `test_goal_currency.py` | Goal projections and narrative checks preserve the owned currency and current arithmetic; ambiguous/wrong currencies receive one bounded correction without changing financial grounding. |
+| `test_risk_goal_draft.py` | Goal proposals and their stated financial facts reach Risk review unchanged; either independent verdict is respected and an unsafe proposal stays withheld. |
+
+The shared synthetic dataset
+[`agent_offline_examples.jsonl`](../apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl)
+is executed only by `test_agent_evaluation_examples.py::test_example_goal`
+in this suite. All other listed files run in full. Questions, authored expectations
+and full fixture responses are attached to the JUnit/evaluation evidence.
 
 ## Scoring and arithmetic/dependency oracles
 
 `assertion_pass_rate = passed cases / all reported cases`. Failed, error and skipped
-instances remain in the denominator. Every suite must execute at least one case
-and reach 100%, with zero failures/errors/skips and all case assertions passing.
+instances and xpasses remain in the denominator. The suite must execute at least
+one case and reach 100%, with zero failures/errors/skips/xpasses and all case
+assertions passing.
 
 Two goals each requiring 500 monthly against one confirmed pool of 700 must yield
 combined monthly shortfall 300. The pool must not be subtracted twice. Saved-goal
@@ -41,8 +51,8 @@ concurrency independently of amounts. Optional provider failure may retain an
 explicitly qualified result; required unresolved evidence must not silently pass.
 
 Shared numeric dependency results also appear under the LLMSecOps policy job in
-`investment-evaluation-metrics`. These four Goal scenario groups remain selected
-by the `goal` suite in **CI and LLMSecOps**.
+`investment-evaluation-metrics`. All tests in the inventory above remain selected by the `goal` suite in
+**CI and LLMSecOps**.
 
 Conditional Education retrieval follows the shared
 [RAG Retrieval Relevance evaluation](investment-agent-evaluation.md#rag-retrieval-relevance),

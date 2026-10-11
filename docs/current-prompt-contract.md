@@ -36,7 +36,7 @@ assertion from the manifest and verifies the rendered ECS definition. A stale
 inherited value is replaced before release.
 
 Every response audit and workflow trace identifies the prompt release, a SHA-256
-hash of the effective prompt content (including the shared currency policy), and
+hash of the effective prompt content (including the shared currency and fairness policies), and
 `BUILD_COMMIT`. Releases inject the Git commit; local builds report `unknown` unless
 explicitly identified. These are provenance fields, not routing rules. Private
 Education and financial grounding snapshots bind correction to the same prompt
@@ -79,17 +79,11 @@ dependency behavior. The reviewed Policy corpus has its own version,
 fixtures, with a separate synthetic lifecycle. Changes are local until released
 and evaluated with the deployed model.
 
-Historical offline validation of the preceding catalog on 2026-10-08 passed 1,805 AI-service tests (one skipped), 942
-backend tests, 46 shared tracing tests, and 331 infrastructure tests (five skipped,
-16 subtests passed). The final focused check passed 169 tests. Lint, the language
-source scan, and prompt packaging checks passed. These offline checks do not
-establish production-model acceptance. The release workflow separately verifies
-deployed model behavior, conditional source retrieval and persisted trace
-provenance; its deployment job records the current release outcome.
-
-The v10 [9 October verification](risk-compliance-review-update-2026-10-09.md)
-passed 1,883 AI-service tests (one platform skip), 64 shared tests, 22 backend
-trace/storage tests, 40 frontend tests, 99 release/evaluation configuration tests
-and all 87 offline evaluation cases. It also verified active configuration and
-current docs against the manifest. Frozen prior-release reports retain their
-observed prompt version; no deployed v10 model acceptance is claimed.
+The [latest retained live retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md)
+records build `7356713`, prompt release v10 and its effective hash: 30/34 original
+turns passed, additional full-chain case 35 passed and 6/7 planned repeats passed.
+Five of 42 delivered-answer outcomes failed despite matching specialist selections
+and dependency edges. That run predates the 11 October fairness instructions and
+does not establish acceptance of the current effective prompt hash. Current CI
+checks and the optional deployed evaluation stages are described in
+[test organization](test-organization.md) and [post-deployment acceptance](post-deployment-acceptance.md).

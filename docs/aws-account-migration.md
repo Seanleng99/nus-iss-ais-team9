@@ -2,6 +2,11 @@
 
 This is the historical September 2026 account-migration record; resource IDs, login/health observations and remaining tasks below describe that cutover, not a fresh AWS inspection. The current templates use OpenAI GPT-6 Luna for generation and separate Bedrock Education/Policy Knowledge Bases for retrieval. Bootstrap validates or restores those KBs; use the current bootstrap configuration rather than copying historical IDs. See [AWS demo infrastructure](../infra/aws/README.md) and [model selection](model-selection.md).
 
+References to the production cutover or apex below mean the main demo hostname.
+They do not grant production readiness or permission to process real financial data.
+The recorded KMS deletion date has passed; this historical record does not verify
+that deletion completed.
+
 Source account: `902552928492`. Destination account: `862124275471`.
 Deployment Region: `ap-southeast-1`. Domain: `ai-financial-wellness-coach.click`.
 

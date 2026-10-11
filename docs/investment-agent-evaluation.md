@@ -5,9 +5,8 @@ Investment, Orchestrator and RAG have required offline CI jobs and optional live
 stages in **Release to AWS** after deployment. Set `RUN_LIVE_AGENT_RAG=true` in
 repository or `demo` variables to enable all seven suites; it defaults off. Failed
 or incomplete enabled live evidence fails
-the release and rolls changed services back. Former `investment-*` IDs below
-name retained scenario groups; use `investment`, `orchestrator` and `rag` as CLI
-suite IDs. See [post-deployment release acceptance](post-deployment-acceptance.md).
+the release and rolls changed services back. Use `investment`, `orchestrator`
+and `rag` as CLI suite IDs; the former suffixed IDs are retired. See [post-deployment release acceptance](post-deployment-acceptance.md).
 
 
 The consolidated evaluation workflow retains the existing Investment
@@ -19,7 +18,7 @@ the same CI workflow can also be dispatched manually. The required agent gate fa
 
 The machine-readable definition is
 [`agent-evaluation-specs.json`](../infra/llmsecops/agent-evaluation-specs.json).
-Version 2 covers every owned specialist suite; this document focuses on Investment
+Version 4 covers every owned component suite; this document focuses on Investment
 and the shared routing/RAG checks. See the [evaluation plan](evaluation-plan.md)
 for Spending, Budget, Goal Strategy and Risk & Compliance definitions.
 Matching guides are available for [Spending](spending-agent-evaluation.md),
@@ -32,7 +31,7 @@ instead of a manually maintained count that can drift.
 
 | Evaluation | Dataset | Expected output | Metric and acceptance |
 | --- | --- | --- | --- |
-| Orchestrator unit/component behavior | `test_orchestrator.py`, `test_education_routing_coverage.py`, `test_evaluation_runner.py` | Correct routing authority, mixed-task dispatch, safety boundary, evidence-to-compliance flow, and scoring behavior | 100% pytest assertion pass rate; zero failures/errors/skips |
+| Orchestrator unit/component behavior | `test_orchestrator.py`, `test_education_routing_coverage.py`, `test_evaluation_runner.py` | Correct routing authority, mixed-task dispatch, safety boundary, evidence-to-compliance flow, and scoring behavior | 100% pytest assertion pass rate; zero failures/errors/skips/xpasses |
 | Routing accuracy | `orchestrator_routing.jsonl` | Exact selected agent set on automatic questions; explicit user selection respected separately; malicious request blocked | Exact set-match accuracy, micro precision/recall/F1, automatic-routing accuracy, override accuracy, critical block rate; policy below |
 | RAG retrieval units | `test_retriever.py`, `test_local_documents.py`, `test_retrieval_boundaries.py`, `test_request_retrieval_cache.py` | Relevant approved evidence, correct metadata/ranking, privacy-safe queries, rejected weak/unapproved/injected evidence, request-scoped reuse | 100% pytest assertion pass rate; no safety failure tolerated |
 | Source attribution/component relevance | `rag_retrieval.jsonl` | Required source IDs in response, correct missing-evidence and language behavior | Mean expected source recall among first three response citations >=85%; overall case accuracy and gap-case pass rate 100% |
@@ -45,15 +44,30 @@ instead of a manually maintained count that can drift.
 
 Dataset paths above are under `apps/ai-service/app/evals/datasets/`; test paths are
 under `apps/ai-service/tests/`. The JSON definition gives exact repository paths.
-Existing additional semantic-planner, follow-up, repair, dependency, backend and
-frontend regressions still run in their existing owning jobs; this is not an inventory
-of every project test.
+The `investment` suite additionally selects `test_current_response_contract.py`,
+`test_education_access.py`, `test_education_answerability.py`,
+`test_education_contract_recovery.py`, `test_education_grounding_reuse.py`,
+`test_education_repair_diagnostics.py`, `test_education_repair_window.py` and
+`test_education_semantic_coverage.py`. These enforce public-query privacy, exact
+server-owned supporting passages, owned citations, scope and language preservation,
+and one eligible correction within remaining time/call/token authority followed by
+fresh independent review. Exhausted or unsafe corrections remain withheld.
 
-The seven owned pytest suite IDs are `investment-offline`,
-`investment-functional-beginner`, `investment-functional-education`,
-`investment-functional-hybrid`, `investment-orchestrator`, `investment-rag-unit`
-and `investment-rag-integration`. The numeric policy/passages job is additional
-workflow coverage; it is not another pytest suite in the ownership manifest.
+The `rag` suite additionally selects `test_bedrock_openai_configuration.py`,
+`test_coach_retrieval_flexibility.py`, `test_ingestion.py`, `test_local_policy.py`,
+`test_passage_ranking.py`, `test_policy_retriever.py` and `test_rag_answer_review.py`.
+These enforce direct OpenAI generation with governed Bedrock retrieval, bounded
+public queries/document windows, current Education/Policy sidecars and corpus pins,
+relevant passage ranking, and integrity-bound real-provider review packets.
+
+Each component suite selects its own `test_agent_evaluation_examples.py` function
+(`test_example_investment`, `test_example_orchestrator` or `test_example_rag`) over
+the shared versioned `agent_offline_examples.jsonl`. All other selected files run
+in full. The [ownership manifest](../infra/llmsecops/agent-test-suites.json) contains
+the complete Orchestrator selection, including follow-ups/session context, task
+assignment, conditional dependencies, synthesis/composition, repairs and deadlines.
+Backend and frontend regressions remain separately owned. The required numeric
+policy/passages job is additional workflow coverage.
 
 ## Beginner Investment Questions
 
@@ -202,8 +216,9 @@ Integration tests run the real application components with deterministic model o
 Local-document scenarios load the real Markdown corpus. Bedrock scenarios use the real
 adapter but stub the AWS transport response; they test wiring, filters and provenance,
 not AWS availability or semantic ranking. No credentials or paid calls are needed.
-Required real OpenAI and Bedrock testing runs after deployment in Release's
-Investment and RAG stages. Each dataset runs once and retains full synthetic
+Optional real OpenAI and Bedrock testing runs after deployment in Release's
+Investment and RAG stages when `RUN_LIVE_AGENT_RAG=true`. Every enabled contract
+must pass. Each dataset runs once and retains full synthetic
 questions/answers in `release-live-acceptance-<run_id>` for 90 days. See [live evaluation](investment-agent-live-evaluation.md).
 
 ## Finding the report in GitHub Actions
@@ -219,7 +234,7 @@ Open an automatic or manually dispatched **CI and LLMSecOps** run:
   actual scores, routing TP/FP/FN, automatic/override diagnostics, RAG slices and failed IDs.
 - Download `investment-evaluation-metrics` for the Markdown summary, machine-readable
   results, policies and datasets. Evidence is retained for 30 days.
-- Missing/unreadable reports, empty evaluations, failed checks or skipped cases in these
+- Missing/unreadable reports, empty evaluations, failed checks, skipped or xpassed cases in these
   owned pytest suites cannot be reported as an accepted result.
 
 The beginner dataset's `answer_rubric` and `forbidden_behaviors` describe human-review

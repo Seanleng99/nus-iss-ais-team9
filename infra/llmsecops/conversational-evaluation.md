@@ -1,4 +1,20 @@
-# Conversational evaluation — historical 3–5 October 2026 record
+# Conversational evaluation protocol and retained results
+
+The scenario protocol below remains reusable. The measured 3–5 October results
+retain their historical configuration and outcomes. Current source defaults are
+80,000 total model tokens, 20 model calls, a 45-second specialist window, an
+85-second workflow deadline and a 30-second provider read timeout; explicit
+configured lower bounds remain enforced. Source and role policy are documented
+in the [current prompt contract](../../docs/current-prompt-contract.md) and
+[operations guide](../../docs/operations.md).
+
+The later [9 October v10 browser retest](../../docs/agent-reasoning-live-test-results-2026-10-09-post7356713.md)
+retains 30/34 passing original turns, an additional passing full-chain case and
+6/7 passing planned repeats. Across its 42 turns, two answers were withheld and
+three were delivered incomplete. These newer failures remain open; the earlier
+21/21 conversational run below does not establish current overall acceptance.
+
+## Historical 3–5 October execution
 
 This records the remediation implementation and verification at that cutoff.
 The 50,000-token default, test counts, deadlines and outstanding rollout items
@@ -35,7 +51,7 @@ Resolved convexity retains its distinct canonical topic and fallback permission 
 
 The initial live attempt failed authentication and stopped on unknown usage; its total provider cost remains unknown. Later attempts exposed budget/deadline, provenance, alias, correction planning, convexity scope and transport timeout gaps. Historical failures remain preserved independently of fixes. After the user's key update, a complete OpenAI run passed 21/21 scenarios across 28 turns with complete usage, successful cleanup, p95 conversation latency 48,873.23 ms and an estimated USD 0.056716 at supplied test rates. Separate assistant review found the final answers met the named rubrics and recorded presentation limits. It is not human acceptance or proof of arbitrary conversational quality.
 
-| Latest local evidence | Result |
+| Historical local evidence at the 3–5 October cutoff | Result |
 |---|---|
 | AI unit/API/regression suite | 1,653 passed; 1 skipped; scope, deadlines, unknown-usage safety and final source-status prompt included |
 | Backend suite | 907 passed; selected-period totals, optional itemization and confirmed schedule changes included |
@@ -58,11 +74,15 @@ links: `root-final-ai-results.xml`, `root-final-offline84.json`,
 `closure-infra-final-release-unsandboxed.xml`, and `closure-live-evaluation.json`.
 They retain the completed evidence and historical measurements described above.
 The infrastructure report and isolated retry record the Bash environment failure;
-passing negative cases without Bash does not establish release behavior. Target
-PostgreSQL migration/concurrency, Linux release checks and deployment remain
-outstanding. See [the remediation record](../../docs/coach-response-remediation-2026-10-03.md)
-for rollout details.
+passing negative cases without Bash does not establish release behavior. At that cutoff, target PostgreSQL migration/concurrency, Linux release checks
+and deployment remained outstanding. Current persistence/session behavior and
+release evidence are maintained in [session context](../../docs/session-context.md),
+[agent design](../../docs/agent-design.md) and
+[operational evidence](../../docs/operational-evidence.md); this historical record
+does not establish their current acceptance.
 
 The prior 18/21 run and later incomplete transport failures remain preserved. The complete passing run still contained long source/provenance blocks and a repeated verification message. After removing the contradictory writer instruction, the archived local `closure-live-evaluation.json` evidence recorded a targeted three-case run that passed five turns with complete usage and an estimated USD 0.015970 at supplied rates. Its generated language-switch and arithmetic answers were concise; the follow-up example explicitly stated equal five-company weights. Those education turns had verified semantic coverage, so they do not independently demonstrate the unverified-status path; that conditional contract remains covered by offline regressions. Separate provenance blocks can still exceed a one-paragraph request. Human quality acceptance and comparative model tuning remain unperformed.
+
+## Provider selection for reproduction
 
 The helper explicitly selected OpenAI for these tests. Setting `OPENAI_API_KEY` alone does not switch Compose from its default fixture provider; live operation also requires `MODEL_PROVIDER=openai`. The private `.env` and running user deployment were not changed by these verification runs.

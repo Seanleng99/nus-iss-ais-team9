@@ -52,7 +52,7 @@ Existing profile authorization and trace deletion apply to unfinished runs as we
 
 ## Rollout
 
-1. Build the shared package including `coach_trace` and deploy it with all three services; no new database migration is required for the decision-contract improvements. Apply backend Alembic migration `20260926_0009` (`alembic upgrade head` from `apps/backend`). This allows a missing assistant message and adds lifecycle fields/indexes.
+1. Build the shared package including `coach_trace` and deploy it with all three services. Run `alembic upgrade head` from `apps/backend` (current head `20261010_0018`). Durable runs were introduced by `20260926_0009`, which permits a missing assistant message and adds lifecycle fields/indexes; the later head also includes shared Coach quota tables. The decision-contract and viewer changes add no separate migration.
 2. Deploy the AI service with `/coach/stream` and `/coach/compose/stream` before the new backend. Existing backend instances continue to use `/coach` during this transition.
 3. Deploy the backend; verify a normal run and a forced AI failure in the target environment, using their trace IDs to compare API records with logs.
 

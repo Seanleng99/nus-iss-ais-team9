@@ -1,36 +1,47 @@
 # Budget Agent evaluation and CI reports
 
-**Current entry point:** **CI and LLMSecOps** → `budget` offline tests; **Release to AWS** → optional `budget` live acceptance when `RUN_LIVE_AGENT_RAG=true`.
-The former four suite IDs below describe retained scenario groups, now executed
-inside one `budget` offline job. They are not separate workflow or CLI names.
-Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
-job graph, live Yes/No choice and reports.
+**Current entry point:** **CI and LLMSecOps** → `budget` offline tests;
+**Release to AWS** → optional `budget` live acceptance when
+`RUN_LIVE_AGENT_RAG=true`. Use [the consolidated workflow guide](agent-test-workflows.md)
+for job selection and reports. Disabled live stages provide no acceptance evidence;
+every enabled stage must pass.
 
-
-The `budget` offline job contains the following four scenario groups. The executable
-definitions are in [agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json),
-with selection in [agent-test-suites.json](../infra/llmsecops/agent-test-suites.json).
-Test inputs cover take-home/gross/missing income, commitments, user expense and
-savings amounts, methods, pending corrections and saved records by period.
-Per-test assertions specify the expected output; reports retain dataset hashes and
-measured counts rather than a hand-maintained scenario count.
+The executable evaluation definition is version 4 of
+[agent-evaluation-specs.json](../infra/llmsecops/agent-evaluation-specs.json).
+[agent-test-suites.json](../infra/llmsecops/agent-test-suites.json) defines exact ownership.
+The following inventory includes every test file currently selected by `budget`.
+Authored synthetic inputs, parameterized cases and fault injections are the datasets;
+each assertion supplies its expected-output oracle. Reports retain file hashes and
+measured case counts. The former suffixed scenario IDs are retired CLI names.
 
 ## Datasets, expected outputs, metrics and acceptance
 
-Test paths are relative to `apps/ai-service/tests/`.
+Test paths below are relative to `apps/ai-service/tests/`.
 
-| Owned suite | Dataset | Expected output | Metric and acceptance |
-| --- | --- | --- | --- |
-| `budget-offline` | `test_budget_agent.py`, `test_budget_planner.py`, `test_budget_methods.py` | Correct income after confirmed commitments, allocations and funding gaps; preserve user amounts; clarify unknown income/category classification; keep what-if changes separate | Scenario assertion pass rate 100%; all asserted amounts/rounding and planning invariants pass |
-| `budget-functional-capture` | `test_budget_capture.py`, `test_budget_records.py` | Correct draft/corrections, currency and owned saved-record selection; explicit month/range respected; missing plans do not borrow another month or income | Scenario assertion pass rate 100%; zero failures/errors/skips |
-| `budget-functional-reasoning` | `test_budget_reasoning.py`, `test_budget_review.py` | Scoped saved categories and separate history; conceptual questions need no personal income; personal capacity needs validated facts; review/alternatives/continuity retain their intended behavior | Scenario assertion pass rate 100%; no invented capacity, amount, period or constraint |
-| `budget-functional-boundaries` | `test_edge_budget_regressions.py` | Read-only review uses actual scoped records; mutation fields rejected; unavailable conditional Education evidence leaves authorized qualified arithmetic intact | Scenario assertion pass rate 100%, including missing-evidence and rejected-mutation controls |
+| Dataset | Expected output / assertion scope |
+| --- | --- |
+| `test_budget_agent.py` | SGD 5,000 income minus confirmed recurring rent of 1,500 and phone of 80 yields disposable income 3,420 and allocations 1,710 / 1,026 / 684. |
+| `test_budget_planner.py` | Proposals preserve user category limits and savings targets, use the asserted historical month, report funding gaps, do not infer missing income or savings, and retain pending corrections. Expenses of 3,500 plus savings of 800 against income of 4,000 yield a 300 funding gap. |
+| `test_budget_methods.py` | What-if scenarios remain separate from the base income/savings, unclassified categories require clarification, and a comparison request selects the asserted method and planning action. |
+| `test_budget_capture.py` | Category/amount corrections, pending drafts, owned workspace context, currency and explicit month are preserved; unspecified values are not invented and a different month cannot borrow selected-month income. |
+| `test_budget_records.py` | List/show/history and Goal capacity requests resolve the explicit period or range against saved records. Missing/ambiguous requested months remain missing rather than borrowing another plan or an illustrative profile fallback. |
+| `test_budget_reasoning.py` | Writers receive scoped saved categories/commitments and separately bounded history. Conceptual questions do not require personal income; affordability still requires validated capacity. Unknown recurrence and ambiguous scope remain unavailable instead of false zero or default-plan evidence. |
+| `test_budget_review.py` | Review, alternatives, follow-up and multi-month intents route to the correct read-only/confirmation path without invented categories, amounts, period or constraints; explicit language variants retain budget capture. |
+| `test_edge_budget_regressions.py` | Read-only requests use the actual scoped saved records and need no unrelated income. Mutation fields are rejected; unavailable education does not invent guidance or erase the authorized financial calculation and its limitations. |
+| `test_budget_missing_input.py` | Missing income requests take-home pay and only unknown commitments; supplied financial context is retained instead of repeatedly asking known fields. |
+
+The shared synthetic dataset
+[`agent_offline_examples.jsonl`](../apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl)
+is executed only by `test_agent_evaluation_examples.py::test_example_budget`
+in this suite. All other listed files run in full. Questions, authored expectations
+and full fixture responses are attached to the JUnit/evaluation evidence.
 
 ## Scoring and numeric oracles
 
 `assertion_pass_rate = passed cases / all reported cases`, including failed,
-error and skipped cases. Every parameterized instance counts separately. Each suite
-must execute at least one case and achieve 100%, with zero failures/errors/skips.
+error, skipped and xpassed cases. Every parameterized instance counts separately.
+The suite must execute at least one case and achieve 100%, with zero
+failures/errors/skips/xpasses.
 
 Examples of asserted outputs:
 

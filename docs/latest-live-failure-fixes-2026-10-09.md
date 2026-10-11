@@ -2,7 +2,10 @@
 
 Risk & Compliance explanations, diagnostics, policy documents and v10 alignment
 were committed separately as `45ea010`. This follow-up addresses the seven
-failed cases in the [latest deployed test run](agent-reasoning-live-test-results-2026-10-08-poste99409d.md).
+failed cases in the 8 October v9 retest at build `e99409d`. That retired report is
+recoverable from Git. The retained [v10 baseline](agent-reasoning-live-test-results-2026-10-09.md)
+and [post-recovery retest](agent-reasoning-live-test-results-2026-10-09-post7356713.md)
+record subsequent outcomes; this note preserves the original fixes and local counts.
 
 | Case | Observed problem | Follow-up change |
 |---|---|---|
@@ -23,8 +26,8 @@ backend operation, not a financial recommendation.
 
 The single packaged catalog remains v10; there are no prompt-version selection
 branches. Inline instructions and schemas are implementation changes bound to
-the deployed build. Historical v9 live evidence and the separate Compliance
-verification remain unchanged.
+the deployed build. Historical v9 evidence is recoverable from Git; the separate
+Compliance verification remains retained with its original measurement scope.
 
 ## Verification and remaining acceptance
 
