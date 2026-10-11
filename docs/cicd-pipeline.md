@@ -68,7 +68,7 @@ match the default per-principal limit. Every request must still return HTTP 200;
 quota denials remain failures and the report records their HTTP status. Backend
 quota tests separately verify rejection and `Retry-After` above the limit.
 
-`AWS Operational Validation` runs weekly or on demand against the deployed synthetic demo. It repeats the live OpenAI/RAG cases, measures bounded load and estimated model cost, checks service state, lifecycle controls, dashboard and alarms, and can exercise backend task replacement. Its current model expectation is GPT-6 Luna. This is the required live acceptance evidence for the migration; historical Nova results cannot validate it.
+`AWS Operational Validation` runs weekly or on demand against the deployed synthetic demo. It repeats the live OpenAI/RAG cases, measures bounded load and estimated model cost, checks service state, dashboard and the five named alarms defined by the application template, and can exercise backend task replacement. A separate `retention` job enforces lifecycle expiry without depending on validation, live credentials or evaluation inputs, and retains its own evidence for 90 days. Its current model expectation is GPT-6 Luna. This is the required live acceptance evidence for the migration; historical Nova results cannot validate it.
 
 `RAG Source Governance` validates both approved local corpora and audits the deployed KBs/S3 objects weekly or on demand. Its dedicated OIDC role has read-only corpus and KB permissions. It checks approval, provenance, review deadlines, content inspection, SHA-256 checksums, sidecars and completed ingestion, and retains privacy-safe evidence for 90 days. Historical Bedrock generation comparisons remain historical.
 
@@ -105,7 +105,7 @@ and `security/promptfoo`. Each update arrives as a pull request that must pass C
 before merging, so pinned tool upgrades are reviewed instead of arriving with
 a new upstream release.
 
-`Release to AWS` has separate jobs for live preflight, image build/scan, corpus governance, deployment, smoke, security, fairness, the seven-entry live agent/RAG matrix, aggregate acceptance and rollback. The workflow lock covers them all. Smoke and final acceptance are mandatory. Live security, fairness and the agent/RAG matrix default off and are enabled independently by `RUN_LIVE_SECURITY`, `RUN_LIVE_FAIRNESS` and `RUN_LIVE_AGENT_RAG` in repository or `demo` variables. Enabled stages retain the order smoke → live security → all 19 fairness pairs once (38 coaching requests) → seven serial agent/RAG datasets → final acceptance, bypassing disabled predecessors. Enabled stages must pass; deliberate optional skips provide no live acceptance evidence. Failed, cancelled, skipped or incomplete required checks fail acceptance and restore attempted service updates to their previous task revisions. CI has no paid-live input. See [post-deployment release acceptance](post-deployment-acceptance.md) for the job graph, rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
+`Release to AWS` has separate jobs for live preflight, image build/scan, corpus governance, deployment, smoke, security, fairness, the seven-entry live agent/RAG matrix, aggregate acceptance and rollback. The workflow lock covers them all. Smoke and final acceptance are mandatory. Live security, fairness and the agent/RAG matrix default off and are enabled independently by `RUN_LIVE_SECURITY`, `RUN_LIVE_FAIRNESS` and `RUN_LIVE_AGENT_RAG` in repository or `demo` variables. Enabled stages retain the order smoke → live security → all 19 fairness pairs once (38 coaching requests) → seven serial agent/RAG datasets → final acceptance, bypassing disabled predecessors. Enabled stages must pass; deliberate optional skips provide no live acceptance evidence. Failed, cancelled, skipped or incomplete required checks fail acceptance and restore attempted service updates to their previous task revisions. CI has no paid-live input. See [post-deployment release acceptance](post-deployment-acceptance.md) for the job graph, rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. The academic evidence inventory runs as a required CI job; live AWS evidence is collected separately by `AWS Operational Validation`.
 
 ## Workflow inventory
 
@@ -113,18 +113,22 @@ The workflow audit keeps the following responsibilities:
 
 | Workflow | Purpose and trigger |
 | --- | --- |
-| CI and LLMSecOps | Required pre-release service, offline agent/RAG, platform/shared, metrics and security checks; PR/main/weekly/manual |
+| CI and LLMSecOps | Required assessment inventory, pre-release service, offline agent/RAG, platform/shared, metrics and security checks; PR/main/weekly/manual |
 | Release to AWS | Image build/scan and deployment after successful push CI for current main; required smoke/final acceptance; optional live stages must pass when enabled, with rollback on failure |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
-| AWS Operational Validation | Weekly/manual deployed-model, lifecycle, load and operational evidence |
+| AWS Operational Validation | Weekly/manual deployed-model, load and operational evidence, with independent lifecycle retention enforcement |
 | Model Drift Monitoring | Opt-in weekly/manual rubric-scored live capture and human-calibrated baseline comparison; current policy uses GPT-6 Luna for generation and grading, with GitHub reports and optional SNS alerts/input checks |
-| Final Assessment | Manual academic evidence inventory and operational validation wrapper |
 | Dependabot Updates | GitHub-managed dependency maintenance |
 
 The duplicate **Policy RAG Source Governance** and notice-only **Historical
 Bedrock Model Comparison** definitions have been removed. Historical reports
 remain available; the assessment manifest now references current prompt/model
-policy evidence and the combined governance workflow.
+policy evidence and the combined governance workflow. The standalone Final
+Assessment wrapper is also retired: the required `assessment-evidence` job in
+CI validates the manifest and hashes repository evidence on every run, including
+documentation-only changes. It publishes `final-assessment-evidence-<run-id>`
+for 90 days. Successful main CI and separate successful operational/retention
+jobs supply the assessment evidence described in the demonstration runbook.
 
 ## GitHub configuration
 

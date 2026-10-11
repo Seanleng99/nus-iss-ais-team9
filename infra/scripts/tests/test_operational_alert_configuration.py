@@ -1,4 +1,11 @@
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ALERT_TEST_SCRIPT = PROJECT_ROOT / "infra" / "scripts" / "test_operational_alert.ps1"
@@ -8,6 +15,19 @@ OPERATIONAL_WORKFLOW = (
     PROJECT_ROOT / ".github" / "workflows" / "aws-operational-validation.yml"
 )
 RELEASE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "release.yml"
+
+
+def operational_jobs():
+    return yaml.load(
+        OPERATIONAL_WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+    )["jobs"]
+
+
+def alarm_step():
+    return next(
+        step for step in operational_jobs()["validate"]["steps"]
+        if step.get("name") == "Verify CloudWatch dashboard and alarms"
+    )
 
 
 def test_alert_exercise_requires_confirmation_and_uses_full_alarm_path() -> None:
@@ -34,11 +54,75 @@ def test_operational_workflow_requires_a_confirmed_subscription() -> None:
 
 
 def test_operational_workflow_enforces_the_complete_data_lifecycle() -> None:
-    workflow = OPERATIONAL_WORKFLOW.read_text(encoding="utf-8")
+    jobs = operational_jobs()
+    retention = jobs["retention"]
+    workflow = "\n".join(step.get("run", "") for step in retention["steps"])
 
     assert "app.jobs.purge_data_lifecycle" in workflow
     assert "data-lifecycle-retention-task.json" in workflow
     assert "purge_orchestration_traces" not in workflow
+    assert not retention.get("needs")
+    assert retention["if"] == jobs["validate"]["if"]
+    assert "COACH_URL" not in workflow
+    assert "SMOKE_BACKEND_API_KEY" not in workflow
+    assert "REPEATS" not in workflow
+    assert "purge_data_lifecycle" not in json.dumps(jobs["validate"])
+    assert retention.get("continue-on-error", "false") == "false"
+    upload = next(
+        step for step in retention["steps"]
+        if step.get("uses", "").startswith("actions/upload-artifact")
+    )
+    assert upload["if"] == "always()"
+    assert upload["with"]["name"] == "aws-retention-evidence-${{ github.run_id }}"
+    assert upload["with"]["retention-days"] == "90"
+
+
+def test_required_alarm_names_match_the_application_template():
+    template = yaml.load(
+        APPLICATION_TEMPLATE.read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+    )
+    prefix = "${ProjectName}-demo-"
+    defined = {
+        resource["Properties"]["AlarmName"].removeprefix(prefix)
+        for resource in template["Resources"].values()
+        if resource["Type"] == "AWS::CloudWatch::Alarm"
+    }
+    assert set(json.loads(alarm_step()["env"]["EXPECTED_ALARM_SUFFIXES"])) == defined
+
+
+@pytest.mark.parametrize("missing, unrelated_count", [
+    (None, 0), (None, 6), ("coach-quota-denials", 6), ("backend-5xx", 6),
+    ("backend-unhealthy-host", 6), ("ai-generation-failure", 6),
+    ("ai-high-cpu", 6), ("all", 6),
+])
+def test_alarm_gate_requires_each_alarm_even_when_unrelated_alarms_exist(
+    tmp_path, missing, unrelated_count,
+):
+    step = alarm_step()
+    suffixes = json.loads(step["env"]["EXPECTED_ALARM_SUFFIXES"])
+    prefix = "synthetic-demo-"
+    alarms = [
+        {"AlarmName": prefix + suffix}
+        for suffix in suffixes if suffix != missing and missing != "all"
+    ]
+    alarms.extend(
+        {"AlarmName": prefix + f"unrelated-{index}"} for index in range(unrelated_count)
+    )
+    evidence = tmp_path / "artifacts"
+    evidence.mkdir()
+    (evidence / "cloudwatch-alarms.json").write_text(json.dumps({"MetricAlarms": alarms}))
+    script = step["run"].split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path,
+        env={**os.environ, "ALARM_PREFIX": prefix,
+             "EXPECTED_ALARM_SUFFIXES": step["env"]["EXPECTED_ALARM_SUFFIXES"]},
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    assert (result.returncode == 0) == (missing is None), result.stderr
+    if missing is not None:
+        assert "Missing required operational alarms:" in result.stderr
+        expected_missing = suffixes if missing == "all" else [missing]
+        assert all(prefix + suffix in result.stderr for suffix in expected_missing)
 
 
 def test_deployment_pins_and_release_verifies_lifecycle_configuration() -> None:

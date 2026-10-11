@@ -180,7 +180,7 @@ class ChangeDetectionTests(unittest.TestCase):
         self.assertTrue(result["sast"])
         self.assertFalse(result["deploy"])
 
-    def test_assessment_workflows_validate_without_service_deployment(self):
+    def test_operational_and_retired_assessment_workflows_validate_without_deployment(self):
         for path in (
             ".github/workflows/aws-operational-validation.yml",
             ".github/workflows/final-assessment.yml",

@@ -12,7 +12,7 @@ Before starting, verify that:
 - all three ECS services are stable on the documented application revision;
 - both test users can sign in and see only their own workspace;
 - the Education and Policy governance workflows have unexpired successful artifacts; and
-- a successful final-assessment workflow artifact will remain available through the assessment date.
+- successful CI assessment-inventory, AWS operational and retention artifacts will remain available through the assessment date.
 
 Record the commit, workflow URLs, demonstration date, presenter, and outcome. Capture only the screens named below and redact browser or AWS chrome that contains identity or account information.
 
@@ -75,16 +75,18 @@ Expected result: the owner controls export and deletion, retention is versioned 
 
 ## 6. Automated Final Assessment
 
-From GitHub Actions on `main`, dispatch **Final Assessment** with the defaults:
+Open the successful **CI and LLMSecOps** run for the assessed `main` commit. Its required assessment evidence job validates `infra/llmsecops/final-assessment-manifest.json` and uploads `final-assessment-evidence-<run-id>` with the integrity-hashed repository inventory. The standalone Final Assessment workflow is retired.
+
+From GitHub Actions on `main`, dispatch **AWS Operational Validation** with the defaults:
 
 - live case repetitions: `3`;
 - bounded load requests: `10`;
 - load concurrency: `2`; and
 - backend task replacement: disabled, because retained replacement evidence already exists.
 
-The workflow first validates `infra/llmsecops/final-assessment-manifest.json` and uploads `final-assessment-evidence-<run-id>`. It then reuses **AWS Operational Validation** to verify live OpenAI generation and both Bedrock RAG paths, lifecycle enforcement, bounded load and cleanup, ECS/autoscaling state, alarms and confirmed notification path, custom-domain TLS, and direct-origin denial. That job uploads `aws-operational-evidence-<run-id>`.
+The validation job verifies live OpenAI generation and both Bedrock RAG paths, bounded load and cleanup, ECS/autoscaling state, the five required application alarms and confirmed notification path, custom-domain TLS, and direct-origin denial. It uploads `aws-operational-evidence-<run-id>`. The independent retention job enforces governed lifecycle expiry and uploads `aws-retention-evidence-<run-id>` even if validation fails; retention failures still fail the workflow.
 
-Expected result: all workflow jobs pass, both privacy-safe artifacts are retained for 90 days, and the run URL is added to `docs/operational-evidence.md`. A transient failure remains visible; investigate it and rerun only after recording whether the cause was code, configuration, test data, or provider availability.
+Expected result: CI and both operational jobs pass, all three privacy-safe artifacts are retained for 90 days, and both run URLs are added to `docs/operational-evidence.md`. A transient failure remains visible; investigate it and rerun only after recording whether the cause was code, configuration, test data, or provider availability.
 
 ## Demonstration Close
 

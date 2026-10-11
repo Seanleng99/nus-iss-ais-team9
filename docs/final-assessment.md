@@ -107,9 +107,9 @@ The final gate passes only when:
 2. Every referenced evidence file exists and is integrity-hashed.
 3. All six runbook scenarios are linked to one or more assessed requirements.
 4. The deployed AWS operational workflow passes the repeated live evaluation, bounded load, edge, alerting, ECS, autoscaling, and lifecycle checks.
-5. Both generated artifacts are retained for 90 days and their workflow URL is added to `docs/operational-evidence.md` after the approved run.
+5. The CI inventory, operational validation and retention artifacts are retained for 90 days and their workflow URLs are added to `docs/operational-evidence.md` after the runs.
 
-Run `.github/workflows/final-assessment.yml` manually from `main` after its CI run succeeds. It first produces the privacy-safe repository evidence inventory and then calls the established AWS operational validation with the assessment parameters. It does not deploy application images or mutate governed RAG sources.
+The required `assessment-evidence` job in `.github/workflows/ci.yml` produces the privacy-safe repository evidence inventory on every CI run. Use a successful main CI run for the assessed commit, then dispatch **AWS Operational Validation** from `main` with the assessment parameters. Both its validation job and independent retention job must pass. The standalone Final Assessment workflow is retired; the manifest, validator and assessment package remain maintained. These evidence jobs do not deploy application images or mutate governed RAG sources.
 
 ## Explicit Scope Decisions
 

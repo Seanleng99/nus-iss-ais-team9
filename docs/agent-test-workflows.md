@@ -24,6 +24,7 @@ for configuration, budgets, evidence and rollback limits.
 
 | Job | Responsibility and dependencies |
 |---|---|
+| `assessment-evidence` | Required evidence manifest validation and SHA-256 inventory on every CI run, including documentation-only changes; retains the report for 90 days |
 | `changes` | Test classifier/baseline helpers, inventory language data, then classify changes since the last actual successful deployment |
 | `offline` ×7 | Orchestrator, Spending, Budget, Goal, Investment, Risk & Compliance and RAG; selected after change detection |
 | `metrics` | Required LLMSecOps thresholds, including all 19 frozen fairness pairs, and 100-case full-document RAG evidence evaluation |
@@ -53,17 +54,22 @@ runtime changes still select deployment and their required checks.
 
 ## Remaining workflows
 
-There are **six repository workflow files**, plus GitHub-managed Dependabot:
+There are **five repository workflow files**, plus GitHub-managed Dependabot:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| CI and LLMSecOps | PR, main push, weekly, manual | Required pre-release service, offline agent/RAG, metrics and security checks |
+| CI and LLMSecOps | PR, main push, weekly, manual | Required assessment inventory, pre-release service, offline agent/RAG, metrics and security checks |
 | Release to AWS | Successful push CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke and final acceptance; live security, fairness and agent/RAG are optional but must pass when enabled; roll back failed releases |
 | RAG Source Governance | Weekly, manual | Read-only corpus approval, checksum, freshness and deployed KB audit |
-| AWS Operational Validation | Weekly when enabled, manual, reusable | Live service, load, retention, edge and operational controls |
+| AWS Operational Validation | Weekly when enabled, manual | Live service, load, edge and operational controls; independent retention cleanup job |
 | Model Drift Monitoring | Weekly when enabled, manual | Quality capture/baseline comparison and optional operational alerts |
-| Final Assessment | Manual | Repository evidence inventory, then reuse AWS Operational Validation |
 | Dependabot Updates | GitHub-managed weekly dependency checks | Propose dependency PRs that still pass CI |
+
+The standalone Final Assessment workflow is retired. CI now publishes
+`final-assessment-evidence-<run-id>`; AWS Operational Validation separately
+publishes `aws-operational-evidence-<run-id>` and `aws-retention-evidence-<run-id>`.
+Its retention job has no dependency on the validation job and requires only the
+deployment role, cluster, backend service and backend container configuration.
 
 Release checks freshness before building and immediately before deployment.
 A superseded release skips deployment. A green no-op cannot advance the deployed

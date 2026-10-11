@@ -20,24 +20,6 @@ on:
         required: true
         type: boolean
         default: false
-  workflow_call:
-    inputs:
-      repeats:
-        description: Repetitions of each live evaluation case
-        required: true
-        type: string
-      load_requests:
-        description: Number of bounded synthetic load requests
-        required: true
-        type: string
-      load_concurrency:
-        description: Maximum concurrent synthetic requests
-        required: true
-        type: string
-      exercise_task_replacement:
-        description: Force and verify one backend ECS task replacement
-        required: true
-        type: boolean
   schedule:
     - cron: "0 2 * * 0"
 
@@ -72,11 +54,77 @@ env:
   LOAD_CONCURRENCY: ${{ inputs.load_concurrency || '2' }}
 
 jobs:
+  retention:
+    name: Enforce governed data retention
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.AWS_OPERATIONAL_VALIDATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: demo
+    steps:
+      - name: Validate retention environment
+        run: |
+          for name in DEPLOY_ROLE ECS_CLUSTER BACKEND_SERVICE BACKEND_CONTAINER_NAME; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing demo environment variable: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Enforce governed data retention in a one-shot backend task
+        run: |
+          mkdir -p artifacts
+          network_configuration=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            --query 'services[0].networkConfiguration' --output json)
+          task_definition=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          overrides=$(jq -nc --arg name "$BACKEND_CONTAINER_NAME" \
+            '{containerOverrides:[{name:$name,command:["python","-m","app.jobs.purge_data_lifecycle"]}]}')
+          aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$task_definition" \
+            --launch-type FARGATE \
+            --network-configuration "$network_configuration" \
+            --overrides "$overrides" \
+            > artifacts/data-lifecycle-retention-run.json
+          jq -e '(.failures | length) == 0 and (.tasks | length) == 1' \
+            artifacts/data-lifecycle-retention-run.json > /dev/null
+          task_arn=$(jq -r '.tasks[0].taskArn' artifacts/data-lifecycle-retention-run.json)
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
+          aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" --tasks "$task_arn" \
+            > artifacts/data-lifecycle-retention-task.json
+          exit_code=$(jq -r --arg name "$BACKEND_CONTAINER_NAME" \
+            '.tasks[0].containers[] | select(.name == $name) | .exitCode' \
+            artifacts/data-lifecycle-retention-task.json)
+          if [[ "$exit_code" != "0" ]]; then
+            echo "Data-lifecycle retention task failed with exit code $exit_code" >&2
+            exit 1
+          fi
+
+      - name: Upload privacy-safe retention evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: aws-retention-evidence-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 90
+
   validate:
     name: Validate live AI and AWS operations
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'workflow_call' ||
       vars.AWS_OPERATIONAL_VALIDATION_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -90,7 +138,7 @@ jobs:
         run: |
           required=(
             DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
-            BACKEND_CONTAINER_NAME COACH_URL SMOKE_BACKEND_API_KEY
+            COACH_URL SMOKE_BACKEND_API_KEY
             EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX OPERATIONAL_ALERTS_TOPIC_ARN
           )
           for name in "${required[@]}"; do
@@ -148,6 +196,10 @@ jobs:
           ' artifacts/ecs-scalable-targets.json > /dev/null
 
       - name: Verify CloudWatch dashboard and alarms
+        env:
+          EXPECTED_ALARM_SUFFIXES: >-
+            ["coach-quota-denials", "backend-5xx", "backend-unhealthy-host",
+             "ai-generation-failure", "ai-high-cpu"]
         run: |
           aws cloudwatch get-dashboard \
             --dashboard-name "$DASHBOARD_NAME" \
@@ -155,7 +207,21 @@ jobs:
           aws cloudwatch describe-alarms \
             --alarm-name-prefix "$ALARM_PREFIX" \
             > artifacts/cloudwatch-alarms.json
-          jq -e '(.MetricAlarms | length) >= 6' artifacts/cloudwatch-alarms.json > /dev/null
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = {
+              os.environ["ALARM_PREFIX"] + suffix
+              for suffix in json.loads(os.environ["EXPECTED_ALARM_SUFFIXES"])
+          }
+          evidence = json.loads(Path("artifacts/cloudwatch-alarms.json").read_text())
+          actual = {alarm["AlarmName"] for alarm in evidence["MetricAlarms"]}
+          missing = sorted(expected - actual)
+          if missing:
+              raise SystemExit("Missing required operational alarms: " + ", ".join(missing))
+          PY
 
       - name: Verify a confirmed human notification path
         run: |
@@ -185,38 +251,6 @@ jobs:
             --origin-url "$ALB_ORIGIN_URL" \
             --output artifacts/edge-security.json \
             "${custom_domain_args[@]}"
-
-      - name: Enforce governed data retention in a one-shot backend task
-        run: |
-          network_configuration=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
-            --query 'services[0].networkConfiguration' --output json)
-          task_definition=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
-            --query 'services[0].taskDefinition' --output text)
-          overrides=$(jq -nc --arg name "$BACKEND_CONTAINER_NAME" \
-            '{containerOverrides:[{name:$name,command:["python","-m","app.jobs.purge_data_lifecycle"]}]}')
-          aws ecs run-task \
-            --cluster "$ECS_CLUSTER" \
-            --task-definition "$task_definition" \
-            --launch-type FARGATE \
-            --network-configuration "$network_configuration" \
-            --overrides "$overrides" \
-            > artifacts/data-lifecycle-retention-run.json
-          jq -e '(.failures | length) == 0 and (.tasks | length) == 1' \
-            artifacts/data-lifecycle-retention-run.json > /dev/null
-          task_arn=$(jq -r '.tasks[0].taskArn' artifacts/data-lifecycle-retention-run.json)
-          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
-          aws ecs describe-tasks \
-            --cluster "$ECS_CLUSTER" --tasks "$task_arn" \
-            > artifacts/data-lifecycle-retention-task.json
-          exit_code=$(jq -r --arg name "$BACKEND_CONTAINER_NAME" \
-            '.tasks[0].containers[] | select(.name == $name) | .exitCode' \
-            artifacts/data-lifecycle-retention-task.json)
-          if [[ "$exit_code" != "0" ]]; then
-            echo "Data-lifecycle retention task failed with exit code $exit_code" >&2
-            exit 1
-          fi
 
       - name: Run repeated live OpenAI and RAG evaluation
         id: live_evaluation

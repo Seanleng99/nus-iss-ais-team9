@@ -45,7 +45,7 @@ def classify_changes(paths: list[str], force_all: bool = False) -> dict[str, boo
                 ".github/workflows/risk-compliance-agent-tests.yml",
                 ".github/workflows/project-security-scan.yml",
                 ".github/workflows/aws-operational-validation.yml",
-                ".github/workflows/final-assessment.yml",
+                ".github/workflows/final-assessment.yml",  # Retired; classify its deletion.
                 ".github/workflows/model-comparison.yml",
                 ".github/workflows/rag-source-governance.yml",
                 ".github/workflows/policy-rag-source-governance.yml",

@@ -34,7 +34,7 @@ The Streamlit `Privacy & data` tab exposes the same lifecycle summary, consent p
 
 ## Scheduled enforcement
 
-When enabled, the weekly AWS operational workflow runs the lifecycle task below; it can also be dispatched manually. A policy value alone does not prove that the purge job ran:
+When enabled, the weekly AWS operational workflow runs the lifecycle task below in an independent `retention` job; it can also be dispatched manually. The job requires only the deployment role, cluster, backend service and backend container configuration. Alarm, edge, load, live-evaluation or input-validation failures in the separate validation job cannot prevent the purge. Retention failures still fail the workflow, and `aws-retention-evidence-<run-id>` retains the task result for 90 days. A policy value alone does not prove that the purge job ran:
 
 ```text
 python -m app.jobs.purge_data_lifecycle

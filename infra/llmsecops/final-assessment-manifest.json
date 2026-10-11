@@ -156,7 +156,6 @@
         {"kind": "documentation", "path": "docs/cicd-pipeline.md"},
         {"kind": "workflow", "path": ".github/workflows/ci.yml"},
         {"kind": "workflow", "path": ".github/workflows/release.yml"},
-        {"kind": "workflow", "path": ".github/workflows/final-assessment.yml"},
         {"kind": "policy", "path": "infra/llmsecops/final-assessment-manifest.json"},
         {"kind": "implementation", "path": "infra/scripts/final_assessment.py"},
         {"kind": "test", "path": "infra/scripts/tests/test_final_assessment.py"}

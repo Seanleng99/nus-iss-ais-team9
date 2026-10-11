@@ -27,6 +27,30 @@ def test_all_pre_release_tests_have_one_workflow_entry_point():
         assert name in ci["jobs"]
 
 
+def test_assessment_inventory_is_required_even_for_documentation_only_changes():
+    ci = workflow()
+    job = ci["jobs"]["assessment-evidence"]
+    assert not (ROOT / ".github/workflows/final-assessment.yml").exists()
+    assert "if" not in job and "needs" not in job
+    assert job.get("continue-on-error", "false") == "false"
+    assert "assessment-evidence" in ci["jobs"]["report"]["needs"]
+    assert ci["permissions"] == {"contents": "read"}
+    assert "permissions" not in job and "environment" not in job
+    commands = "\n".join(step.get("run", "") for step in job["steps"])
+    assert "infra/scripts/final_assessment.py" in commands
+    assert "infra/llmsecops/final-assessment-manifest.json" in commands
+    assert "GITHUB_STEP_SUMMARY" in commands
+    assert all(step.get("continue-on-error", "false") == "false" for step in job["steps"])
+    artifact = next(step["with"] for step in job["steps"]
+                    if step.get("uses", "").startswith("actions/upload-artifact"))
+    assert artifact["name"] == "final-assessment-evidence-${{ github.run_id }}"
+    assert set(artifact["path"].splitlines()) == {
+        "artifacts/final-assessment.json", "artifacts/final-assessment-summary.md",
+    }
+    assert artifact["retention-days"] == "90"
+    assert artifact["if-no-files-found"] == "error"
+
+
 def test_infrastructure_tests_have_one_owner_and_bootstrap_tests_are_excluded():
     jobs = workflow()["jobs"]
     infrastructure = next(s["run"] for s in jobs["infrastructure"]["steps"]

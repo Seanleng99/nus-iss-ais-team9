@@ -16,6 +16,39 @@ permissions:
   contents: read
 
 jobs:
+  assessment-evidence:
+    name: Validate assessment scope and repository evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate and inventory assessment evidence
+        run: >-
+          python infra/scripts/final_assessment.py
+          --manifest infra/llmsecops/final-assessment-manifest.json
+          --output artifacts/final-assessment.json
+          --markdown-output artifacts/final-assessment-summary.md
+
+      - name: Publish assessment summary
+        run: cat artifacts/final-assessment-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload privacy-safe assessment evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: final-assessment-evidence-${{ github.run_id }}
+          path: |
+            artifacts/final-assessment.json
+            artifacts/final-assessment-summary.md
+          if-no-files-found: error
+          retention-days: 90
+
   changes:
     name: Detect affected services
     runs-on: ubuntu-latest
@@ -684,7 +717,7 @@ jobs:
   report:
     name: Combined CI and evaluation report
     if: always()
-    needs: [changes, offline, metrics, agent-test-gate, ai-service, frontend, backend, infrastructure, service-integration, container-build, dependency-review, python-sast, project-security-scan]
+    needs: [assessment-evidence, changes, offline, metrics, agent-test-gate, ai-service, frontend, backend, infrastructure, service-integration, container-build, dependency-review, python-sast, project-security-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # Reporting preserves CI evidence; release performs mandatory live acceptance.
