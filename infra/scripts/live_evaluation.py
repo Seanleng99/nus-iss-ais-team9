@@ -449,6 +449,18 @@ def education_grounding_checks(response):
         for source in response.get("sources", [])
     )
     summary, sections = result.get("summary", ""), data.get("review_sections", [])
+    # Review offsets describe the specialist text before approved citation
+    # markers become public Markdown links. Restore only those exact links;
+    # unknown links remain visible to the provenance checks below.
+    if isinstance(summary, str):
+        for source in data.get("sources", []):
+            if (not isinstance(source, dict)
+                    or not all(isinstance(source.get(key), str) and source[key]
+                               for key in ("source_id", "title", "canonical_url"))):
+                continue
+            title = re.sub(r"([\\`*_{}\[\]<>|])", r"\\\1", " ".join(source["title"].split()))
+            link = f"[{title}]({urllib.parse.quote(source['canonical_url'], safe=':/?#=&%')})"
+            summary = summary.replace(link, f"[source:{source['source_id']}]")
     bounds = isinstance(summary, str) and bool(sections) and all(
         isinstance(section, dict) and type(section.get("start")) is int
         and type(section.get("end")) is int and 0 <= section["start"] < section["end"] <= len(summary)
@@ -462,6 +474,10 @@ def education_grounding_checks(response):
         label = "Model knowledge (not verified against retrieved sources):"
         separated = (
             all(left["end"] <= right["start"] for left, right in itertools.pairwise(ordered))
+            and not summary[:ordered[0]["start"]].strip()
+            and not summary[ordered[-1]["end"]:].strip()
+            and all(not summary[left["end"]:right["start"]].strip()
+                    for left, right in itertools.pairwise(ordered))
             and any(section["provenance"] == "retrieved" for section in ordered)
             and ((data.get("evidence_status") == "grounded" and not model and label not in summary)
                  or (data.get("evidence_status") == "hybrid" and bool(model)

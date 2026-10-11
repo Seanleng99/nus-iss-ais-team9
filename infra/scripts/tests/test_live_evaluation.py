@@ -858,13 +858,14 @@ def test_missing_input_component_allowlist_rejects_paid_goal_execution(component
     assert next(check["passed"] for check in checks if check["check"] == "allowed_model_components") is allowed
 
 
+@pytest.mark.parametrize("rendered_citations", [False, True])
 @pytest.mark.parametrize("status", ["grounded", "hybrid"])
 @pytest.mark.parametrize("fault", [
     None, "partial_source", "unverified", "unsupported_question", "missing_question",
     "missing_quote", "fabricated_quote", "unapproved_source", "missing_sections",
-    "model_only", "unlabelled_model", "source_claim_in_model", "model_link", "overlapping_sections",
+    "model_only", "unlabelled_model", "source_claim_in_model", "model_link", "overlapping_sections", "unscoped_text",
 ])
-def test_education_requires_verified_quote_coverage_and_separate_model_provenance(status, fault):
+def test_education_requires_verified_quote_coverage_and_separate_model_provenance(status, fault, rendered_citations):
     quote = "Diversification spreads investment risk."
     summary = quote + " [source:approved]"
     sections = [{"provenance": "retrieved", "start": 0, "end": len(summary)}]
@@ -876,7 +877,9 @@ def test_education_requires_verified_quote_coverage_and_separate_model_provenanc
     response["sources"] = [{"source_id": "approved"}]
     data = {"evidence_status": status, "sourced_evidence_status": "grounded",
             "coverage_assessment": "model_semantic_with_exact_quotes", "source_unanswered_topics": [],
-            "sources": [{"source_id": "approved"}], "contexts": [{"source_id": "approved", "text": quote}],
+            "sources": [{"source_id": "approved", "title": "Managing [investment] risk",
+                         "canonical_url": "https://example.test/investment-risk/"}],
+            "contexts": [{"source_id": "approved", "text": quote}],
             "subquestions": [{"question_id": "q1"}],
             "subquestion_coverage": [{"question_id": "q1", "status": "supported", "supporting_passages": [
                 {"source_id": "approved", "quote": quote, "evidence_field": "text"}]}],
@@ -898,6 +901,8 @@ def test_education_requires_verified_quote_coverage_and_separate_model_provenanc
         data["review_sections"] = []
     elif fault == "model_only":
         data["evidence_status"] = "general_knowledge"
+    elif fault == "unscoped_text":
+        response["answer"] = response["agent_results"][0]["summary"] = summary + "\nUnscoped assertion."
     elif fault in {"unlabelled_model", "source_claim_in_model", "model_link", "overlapping_sections"}:
         if status == "grounded":
             # A grounded answer cannot hide model-only material in its source scope.
@@ -913,6 +918,11 @@ def test_education_requires_verified_quote_coverage_and_separate_model_provenanc
                 sections[1]["start"] = 1
             sections[1]["end"] = len(summary)
             response["answer"] = response["agent_results"][0]["summary"] = summary
+    if rendered_citations:
+        for owner, key in ((response, "answer"), (response["agent_results"][0], "summary")):
+            owner[key] = owner[key].replace(
+                "[source:approved]", r"[Managing \[investment\] risk](https://example.test/investment-risk/)",
+            )
     passed, _checks = evaluate_response(
         response, {"education_grounding_contract": True}, expected_model_provider="openai",
         expected_model_id="model", expected_prompt_version="v6",
