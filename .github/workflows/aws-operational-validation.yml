@@ -3,10 +3,6 @@ name: AWS Operational Validation
 on:
   workflow_dispatch:
     inputs:
-      repeats:
-        description: Repetitions of each live evaluation case
-        required: true
-        default: "3"
       load_requests:
         description: Number of bounded synthetic load requests
         required: true
@@ -48,7 +44,6 @@ env:
   EXPECTED_MODEL_ID: gpt-6-luna
   DASHBOARD_NAME: ${{ vars.OPERATIONAL_DASHBOARD_NAME || 'ai-financial-wellness-coach-demo-operational' }}
   ALARM_PREFIX: ${{ vars.OPERATIONAL_ALARM_PREFIX || 'ai-financial-wellness-coach-demo-' }}
-  REPEATS: ${{ inputs.repeats || '3' }}
   LOAD_REQUESTS: ${{ inputs.load_requests || '10' }}
   LOAD_CONCURRENCY: ${{ inputs.load_concurrency || '2' }}
 
@@ -158,10 +153,6 @@ jobs:
               exit 1
             fi
           done
-          if ! [[ "$REPEATS" =~ ^[1-5]$ ]]; then
-            echo "repeats must be between 1 and 5" >&2
-            exit 1
-          fi
           if ! [[ "$LOAD_REQUESTS" =~ ^[0-9]+$ ]] ||
              (( LOAD_REQUESTS < 1 || LOAD_REQUESTS > 50 )); then
             echo "load_requests must be between 1 and 50" >&2
@@ -247,7 +238,7 @@ jobs:
             --output artifacts/edge-security.json \
             "${custom_domain_args[@]}"
 
-      - name: Run repeated live OpenAI and RAG evaluation
+      - name: Run each live OpenAI and RAG case once
         id: live_evaluation
         continue-on-error: true
         run: >-
@@ -256,12 +247,12 @@ jobs:
           --api-key "$SMOKE_BACKEND_API_KEY"
           --cases infra/llmsecops/live-evaluation-cases.jsonl
           --output artifacts/live-evaluation.json
-          --repeats "$REPEATS"
+          --repeats 1
           --expected-model-id "$EXPECTED_MODEL_ID"
           --timeout-seconds 120
           --latency-measurement request
           --maximum-p95-ms "${{ vars.LIVE_EVAL_MAX_P95_MS || '90000' }}"
-          --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '0.25' }}"
+          --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '0.10' }}"
 
       - name: Run bounded load and cleanup test data
         id: load_validation

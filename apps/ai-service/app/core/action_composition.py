@@ -77,23 +77,21 @@ from the user's request, prior assistant prose, or model-generated metadata.
 class CompositionGateway:
     """Give each reviewed stage a transport window within one total deadline."""
 
-    def __init__(self, delegate, settings, *, risk_read_timeout):
+    def __init__(self, delegate, settings, *, stage_read_timeout):
         log_event("VV entering ", "app.core.action_composition.CompositionGateway", "__init__")
         self.delegate = delegate
         self.settings = settings
-        self.risk_read_timeout = risk_read_timeout
+        self.stage_read_timeout = stage_read_timeout
         self.deadline = perf_counter() + 25.0
 
     def generate(self, **kwargs):
         log_event("VV entering ", "app.core.action_composition.CompositionGateway", "generate")
-        component = kwargs["system_prompt"].splitlines()[0].removeprefix("PROMPT_ID:").strip()
         remaining = self.deadline - perf_counter()
         connect = min(1.0, self.settings.model_connect_timeout_seconds)
         if remaining <= connect:
             raise ModelGatewayError("Composition deadline exhausted.", code="ACTION_COMPOSITION_DEADLINE")
-        read_limit = self.risk_read_timeout if component == "risk_compliance" else 6.0
         config = self.settings.model_copy(update={
-            "model_read_timeout_seconds": min(read_limit, remaining - connect),
+            "model_read_timeout_seconds": min(self.stage_read_timeout, remaining - connect),
             "model_connect_timeout_seconds": connect,
         })
         if isinstance(self.delegate, OpenAIModelGateway):
@@ -153,13 +151,13 @@ def compose_action(payload: ActionCompositionRequest, orchestrator) -> CoachResp
     config = orchestrator.config.model_copy(update={
         "max_model_calls_per_run": min(3, remaining_calls),
         "max_model_tokens_per_run": remaining_tokens,
-        "model_read_timeout_seconds": min(6.0, orchestrator.config.model_read_timeout_seconds),
+        "model_read_timeout_seconds": min(25.0, orchestrator.config.model_read_timeout_seconds),
         "model_connect_timeout_seconds": min(1.0, orchestrator.config.model_connect_timeout_seconds),
     })
     raw_gateway = orchestrator.gateway.delegate
     if isinstance(raw_gateway, (OpenAIModelGateway, BedrockModelGateway)):
         raw_gateway = CompositionGateway(
-            raw_gateway, config, risk_read_timeout=orchestrator.config.model_read_timeout_seconds,
+            raw_gateway, config, stage_read_timeout=orchestrator.config.model_read_timeout_seconds,
         )
     gateway = TracingModelGateway(raw_gateway, config)
     trace_id = str(response.audit.get("trace_id") or uuid4())

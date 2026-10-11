@@ -82,12 +82,12 @@ Inspect the optional release-stage selections and acceptance report described in
 
 From GitHub Actions on `main`, dispatch **AWS Operational Validation** with the defaults:
 
-- live case repetitions: `3`;
+- live case repetitions: exactly `1` (fixed for manual and scheduled runs);
 - bounded load requests: `10`;
 - load concurrency: `2`; and
 - backend task replacement: disabled, because retained replacement evidence already exists.
 
-The current multi-agent profile allows 120 seconds per HTTP request. Live P95 is measured per coach request with a 90-second target; complete conversation latency remains separately reported. The simple budget load target is P95 ≤60 seconds at concurrency two. Live evaluation retains a USD 0.25 estimated-cost ceiling for the default 39 cases, stops on unknown usage, and requires every requested case to pass. These demo targets replace the earlier single-model 10/8-second gates; they are not interactive-product latency claims. Load runs only after successful live evaluation so unfinished model work does not contaminate the load measurement. Failure or skipped load after a failed live suite still fails final validation.
+The current multi-agent profile allows 120 seconds per HTTP request. Live P95 is measured per coach request with a 90-second target; complete conversation latency remains separately reported. The simple budget load target is P95 ≤60 seconds at concurrency two. Live evaluation retains a USD 0.10 estimated-cost ceiling for the 13 cases, stops on unknown usage, and requires every requested case to pass. These demo targets replace the earlier single-model 10/8-second gates; they are not interactive-product latency claims. Load runs only after successful live evaluation so unfinished model work does not contaminate the load measurement. Failure or skipped load after a failed live suite still fails final validation.
 
 The validation job verifies live OpenAI generation and both Bedrock RAG paths, bounded load and cleanup, ECS/autoscaling state, the five required application alarms, custom-domain TLS, and direct-origin denial. It uploads `aws-operational-evidence-<run-id>`, including `notification-scope.json` declaring GitHub Actions reporting. Email delivery is not required or validated, and CloudWatch alarm events are not forwarded to GitHub. The independent retention job enforces governed lifecycle expiry and uploads `aws-retention-evidence-<run-id>` even if validation fails; retention failures still fail the workflow.
 

@@ -124,7 +124,7 @@ def test_capture_to_reviewed_baseline_to_comparison_has_no_answer_text(monkeypat
     from app.core.prompts import CURRENT_PROMPT_VERSION
 
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (response(), "correlation"))
-    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args: {})
+    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args, **kwargs: {})
     monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
     monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
     original_run = drift_quality.run_live_evaluation
@@ -198,7 +198,7 @@ def test_remote_identity_change_stops_with_specific_content_free_diagnostic(monk
         second["audit"]["prompt_content_hash"] = "different-prompt"
     answers = iter([first, second])
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (next(answers), "correlation"))
-    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args: {})
+    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args, **kwargs: {})
     monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
     monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
     client, calls = client_factory()
@@ -219,7 +219,7 @@ def test_remote_identity_change_stops_with_specific_content_free_diagnostic(monk
 
 def test_fixture_failure_is_retained_without_claiming_unknown_generation_spend(monkeypatch):
     client, _ = client_factory()
-    def fail_seed(*args):
+    def fail_seed(*args, **kwargs):
         raise live_evaluation.LiveEndpointError(503, "PRIVATE-ERROR-CONTENT")
     monkeypatch.setattr(live_evaluation, "seed_case_snapshot", fail_seed)
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: pytest.fail("No model request after failed seeding"))
@@ -271,7 +271,7 @@ def test_cost_budget_requires_consistent_per_call_usage_and_retains_reason(monke
     else:
         audit["model_input_tokens"] = 101
     monkeypatch.setattr(live_evaluation, "request_json", lambda *args: (answer, "correlation"))
-    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args: {})
+    monkeypatch.setattr(live_evaluation, "seed_case_snapshot", lambda *args, **kwargs: {})
     monkeypatch.setattr(live_evaluation, "cleanup_session", lambda *args: True)
     monkeypatch.setattr(live_evaluation, "cleanup_user_data", lambda *args: True)
     client, _ = client_factory()

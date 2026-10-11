@@ -136,7 +136,7 @@ def test_report_escapes_model_html_and_keeps_full_answer(tmp_path):
 def run_stubbed(monkeypatch, *, capture=False, budget=1000):
     response = sample_response()
     monkeypatch.setattr(runner, "request_json", lambda *a: (deepcopy(response), "synthetic"))
-    monkeypatch.setattr(runner, "seed_case_snapshot", lambda *a: {"transactions": 0, "goals": 0})
+    monkeypatch.setattr(runner, "seed_case_snapshot", lambda *a, **kw: {"transactions": 0, "goals": 0})
     monkeypatch.setattr(runner, "cleanup_session", lambda *a: True)
     monkeypatch.setattr(runner, "cleanup_user_data", lambda *a: True)
     cases = [{"id": str(i), "category": "spending", "request": {"message": "Synthetic question?"},

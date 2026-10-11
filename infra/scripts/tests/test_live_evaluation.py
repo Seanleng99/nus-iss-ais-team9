@@ -786,6 +786,78 @@ def test_fixture_limits_are_validated_before_any_owned_writes(monkeypatch):
     assert not calls
 
 
+@pytest.mark.parametrize("budgets", [
+    {}, [{}], [{"period_start": "2026-08-01", "user_id": "real-user"}],
+    [{"period_start": "2026-08-01"}] * 13,
+    [{"period_start": "2026-08-01", "categories": [{"category": "x" * 100_001}]}],
+])
+def test_budget_fixture_limits_are_validated_before_any_owned_writes(monkeypatch, budgets):
+    calls = []
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", lambda *args: calls.append(args))
+    with pytest.raises(ValueError, match="fixture budgets"):
+        live_evaluation.seed_case_snapshot(
+            "https://example.test/api/coach", "key", "live-evaluation-" + "a" * 32,
+            {}, 1, budgets=budgets,
+        )
+    assert not calls
+
+
+@pytest.mark.parametrize("coach_fails", [False, True])
+def test_budget_fixture_uses_owned_api_and_is_cleaned_without_entering_evidence(monkeypatch, coach_fails):
+    writes, sent, deleted = [], [], []
+    budget = {"period_start": "2026-08-01", "currency": "SGD",
+              "categories": [{"category": "Private synthetic category", "limit_amount": 123}],
+              "planning": {"take_home_income": 5000, "savings_target": 1000, "expenses_confirmed": True}}
+
+    def owned(url, _key, method, payload, _timeout):
+        if method in {"POST", "PUT"}:
+            writes.append((url, method, payload))
+        if url.endswith("/data-lifecycle"):
+            return {"policy_version": "reviewed-policy"}
+        if method == "DELETE":
+            deleted.append(payload["confirm_user_id"])
+        return {}
+
+    def request(_url, _key, payload, _timeout):
+        sent.append(payload)
+        if coach_fails:
+            raise LiveEndpointError(503, "synthetic-failure")
+        return turn_response(), None
+
+    monkeypatch.setattr(live_evaluation, "_owned_api_request_json", owned)
+    report = conversation_run(monkeypatch, request, [{
+        "id": "confirmed-budget", "category": "fixtures", "fixture_budgets": [budget],
+        "request": {"message": "Assess the confirmed budget", "budget_period_start": "2026-08-01"},
+        "expected": {"blocked": False},
+    }])
+    actor = sent[0]["user_id"]
+    assert writes[-1] == (f"https://example.test/api/users/{actor}/budget", "PUT", budget)
+    assert live_evaluation.SYNTHETIC_USER_PATTERN.fullmatch(actor)
+    assert deleted == [actor]
+    assert "fixture_budgets" not in sent[0] and "snapshot" not in sent[0]
+    assert report["records"][0]["seeded_records"]["budgets"] == 1
+    assert report["records"][0]["cleanup_succeeded"]
+    assert report["passed_runs"] == (0 if coach_fails else 1)
+    assert "Private synthetic category" not in json.dumps(report)
+    assert "private-api-key" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("component,allowed", [
+    ("router", True), ("goal_input_requirements", True), ("risk_compliance", True),
+    ("goal_strategy", False), (None, False),
+])
+def test_missing_input_component_allowlist_rejects_paid_goal_execution(component, allowed):
+    response = turn_response()
+    response["audit"]["model_calls"][0]["component"] = component
+    passed, checks = evaluate_response(
+        response, {"maximum_model_calls": 3,
+                   "allowed_model_components": ["router", "goal_input_requirements", "risk_compliance"]},
+        expected_model_provider="openai", expected_model_id="model", expected_prompt_version="v6",
+    )
+    assert passed is allowed
+    assert next(check["passed"] for check in checks if check["check"] == "allowed_model_components") is allowed
+
+
 def test_complete_user_cleanup_refuses_non_generated_identifiers(monkeypatch):
     calls = []
     monkeypatch.setattr(live_evaluation, "_owned_api_request_json", lambda *args: calls.append(args))

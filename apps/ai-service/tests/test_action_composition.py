@@ -136,8 +136,7 @@ def test_bedrock_composition_has_scoped_timeouts_and_no_sdk_retries(monkeypatch)
     orchestrator = AgentOrchestrator(config=configured, gateway=original)
     result = compose_action(payload(), orchestrator)
     assert result.audit["post_action_composed"] is True
-    assert [config.read_timeout for config in captured[:2]] == [6, 6]
-    assert 6 < captured[2].read_timeout <= 24
+    assert all(6 < config.read_timeout <= 24 for config in captured)
     assert all(config.connect_timeout == 1 for config in captured)
     assert all(config.retries["total_max_attempts"] == 1 for config in captured)
     assert original.settings.model_read_timeout_seconds == 60
@@ -159,11 +158,11 @@ def test_composition_risk_window_uses_remaining_total_deadline(monkeypatch):
     monkeypatch.setattr(BedrockModelGateway, "generate", generate)
     settings = Settings(MODEL_PROVIDER="bedrock", MODEL_READ_TIMEOUT_SECONDS=15, _env_file=None)
     gateway = action_composition.CompositionGateway(
-        BedrockModelGateway(settings), settings, risk_read_timeout=15,
+        BedrockModelGateway(settings), settings, stage_read_timeout=15,
     )
     for role in ["response_composer", "action_grounding_review", "risk_compliance"]:
         gateway.generate(system_prompt="PROMPT_ID: " + role, user_prompt="{}", temperature=0, max_tokens=100)
-    assert captured == [6, 6, 12]
+    assert captured == [15, 15, 12]
     with pytest.raises(ModelGatewayError, match="deadline exhausted"):
         gateway.generate(system_prompt="PROMPT_ID: risk_compliance", user_prompt="{}", temperature=0, max_tokens=100)
     assert len(captured) == 3

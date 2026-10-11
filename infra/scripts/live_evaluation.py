@@ -273,10 +273,16 @@ def _fixture_payloads(snapshot):
     return profile, transactions, goal_payloads
 
 
-def seed_case_snapshot(url, api_key, user_id, snapshot, timeout_seconds):
+def seed_case_snapshot(url, api_key, user_id, snapshot, timeout_seconds, *, budgets=None):
     if not SYNTHETIC_USER_PATTERN.fullmatch(user_id):
         raise ValueError("Only a freshly generated evaluation actor may be seeded")
     profile, transactions, goals = _fixture_payloads(snapshot)
+    budgets = [] if budgets is None else budgets
+    if (not isinstance(budgets, list) or len(budgets) > 12
+            or any(not isinstance(budget, dict) or not budget.get("period_start")
+                   or set(budget) - {"period_start", "currency", "categories", "planning"}
+                   for budget in budgets) or len(json.dumps(budgets)) > 100_000):
+        raise ValueError("fixture budgets must be at most 12 bounded, explicit budget plans")
     _owned_api_request_json(owned_api_url(url, "/profiles"), api_key, "POST",
                             {"user_id": user_id, **profile}, timeout_seconds)
     obligation_ids = {}
@@ -290,7 +296,13 @@ def seed_case_snapshot(url, api_key, user_id, snapshot, timeout_seconds):
                                              api_key, "POST", payload, timeout_seconds)
             if original_id and result.get("obligation_id"):
                 obligation_ids[original_id] = result["obligation_id"]
-    return {"transactions": len(transactions), "goals": len(goals)}
+    for budget in budgets:
+        _owned_api_request_json(owned_api_url(url, f"/users/{user_id}/budget"),
+                                api_key, "PUT", budget, timeout_seconds)
+    counts = {"transactions": len(transactions), "goals": len(goals)}
+    if budgets:
+        counts["budgets"] = len(budgets)
+    return counts
 
 
 def cleanup_user_data(url, api_key, user_id, timeout_seconds):
@@ -676,7 +688,8 @@ def evaluate_response(
             ),
         )
     if (audit.get("model_provider") is not None or response.get("selected_agents")
-            or "minimum_model_calls" in expected or "maximum_model_calls" in expected):
+            or "minimum_model_calls" in expected or "maximum_model_calls" in expected
+            or "allowed_model_components" in expected):
         add_check(
             "model_provider",
             audit.get("model_provider") == expected_model_provider,
@@ -736,6 +749,11 @@ def evaluate_response(
                 int(audit.get("model_call_count") or 0)
                 <= int(expected["maximum_model_calls"]),
             )
+        if "allowed_model_components" in expected:
+            add_check("allowed_model_components", all(
+                isinstance(call, dict) and call.get("component") in expected["allowed_model_components"]
+                for call in audit.get("model_calls", [])
+            ))
     return all(item["passed"] for item in checks), checks
 
 
@@ -835,7 +853,10 @@ def run_live_evaluation(
                 fixture = snapshots[0] if snapshots else {}
                 if any(snapshot != fixture for snapshot in snapshots[1:]):
                     raise ValueError("A conversation fixture must use one consistent starting snapshot")
-                record["seeded_records"] = seed_case_snapshot(url, api_key, synthetic_user_id, fixture, timeout_seconds)
+                record["seeded_records"] = seed_case_snapshot(
+                    url, api_key, synthetic_user_id, fixture, timeout_seconds,
+                    budgets=case.get("fixture_budgets"),
+                )
                 record["fixture_seed_latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
                 started = time.perf_counter()
                 for turn_index, (request, expected) in enumerate(turns):
