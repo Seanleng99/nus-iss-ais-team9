@@ -858,6 +858,68 @@ def test_missing_input_component_allowlist_rejects_paid_goal_execution(component
     assert next(check["passed"] for check in checks if check["check"] == "allowed_model_components") is allowed
 
 
+@pytest.mark.parametrize("status", ["grounded", "hybrid"])
+@pytest.mark.parametrize("fault", [
+    None, "partial_source", "unverified", "unsupported_question", "missing_question",
+    "missing_quote", "fabricated_quote", "unapproved_source", "missing_sections",
+    "model_only", "unlabelled_model", "source_claim_in_model", "model_link", "overlapping_sections",
+])
+def test_education_requires_verified_quote_coverage_and_separate_model_provenance(status, fault):
+    quote = "Diversification spreads investment risk."
+    summary = quote + " [source:approved]"
+    sections = [{"provenance": "retrieved", "start": 0, "end": len(summary)}]
+    if status == "hybrid":
+        start = len(summary) + 2
+        summary += "\n\nModel knowledge (not verified against retrieved sources):\nA stable concept explanation."
+        sections.append({"provenance": "model_knowledge", "start": start, "end": len(summary)})
+    response = turn_response(summary)
+    response["sources"] = [{"source_id": "approved"}]
+    data = {"evidence_status": status, "sourced_evidence_status": "grounded",
+            "coverage_assessment": "model_semantic_with_exact_quotes", "source_unanswered_topics": [],
+            "sources": [{"source_id": "approved"}], "contexts": [{"source_id": "approved", "text": quote}],
+            "subquestions": [{"question_id": "q1"}],
+            "subquestion_coverage": [{"question_id": "q1", "status": "supported", "supporting_passages": [
+                {"source_id": "approved", "quote": quote, "evidence_field": "text"}]}],
+            "review_sections": sections}
+    response["agent_results"] = [{"agent": "investment_education", "summary": summary, "data": data}]
+    if fault == "partial_source":
+        data["sourced_evidence_status"] = "partial"
+    elif fault == "unverified":
+        data["coverage_assessment"] = "semantic_contract_unverified"
+    elif fault == "unsupported_question":
+        data["subquestion_coverage"][0]["status"] = "unsupported"
+    elif fault == "missing_question":
+        data["subquestions"] = []
+    elif fault in {"missing_quote", "fabricated_quote"}:
+        data["subquestion_coverage"][0]["supporting_passages"][0]["quote"] = "" if fault == "missing_quote" else "An invented fact."
+    elif fault == "unapproved_source":
+        data["subquestion_coverage"][0]["supporting_passages"][0]["source_id"] = "unapproved"
+    elif fault == "missing_sections":
+        data["review_sections"] = []
+    elif fault == "model_only":
+        data["evidence_status"] = "general_knowledge"
+    elif fault in {"unlabelled_model", "source_claim_in_model", "model_link", "overlapping_sections"}:
+        if status == "grounded":
+            # A grounded answer cannot hide model-only material in its source scope.
+            data["evidence_status"] = "hybrid"
+        else:
+            if fault == "unlabelled_model":
+                summary = summary.replace("Model knowledge (not verified against retrieved sources):", "Unlabelled explanation:")
+            elif fault == "source_claim_in_model":
+                summary += " [source:approved]"
+            elif fault == "model_link":
+                summary += " https://example.test"
+            else:
+                sections[1]["start"] = 1
+            sections[1]["end"] = len(summary)
+            response["answer"] = response["agent_results"][0]["summary"] = summary
+    passed, _checks = evaluate_response(
+        response, {"education_grounding_contract": True}, expected_model_provider="openai",
+        expected_model_id="model", expected_prompt_version="v6",
+    )
+    assert passed is (fault is None)
+
+
 def test_complete_user_cleanup_refuses_non_generated_identifiers(monkeypatch):
     calls = []
     monkeypatch.setattr(live_evaluation, "_owned_api_request_json", lambda *args: calls.append(args))

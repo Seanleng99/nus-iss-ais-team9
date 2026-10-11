@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import json
 import math
 import os
@@ -414,6 +415,71 @@ def _answer_has_amount(answer: str, currency: str, amount: Any) -> bool:
     return any(_same_decimal(match.group(1).replace(",", ""), amount) for match in matches)
 
 
+def education_grounding_checks(response):
+    result = next((item for item in response.get("agent_results", [])
+                   if item.get("agent") == "investment_education"), {})
+    data = result.get("data", {})
+    coverage = data.get("subquestion_coverage", [])
+    questions = data.get("subquestions", [])
+    question_ids = [item.get("question_id") for item in questions if isinstance(item, dict)]
+    covered_ids = [item.get("question_id") for item in coverage if isinstance(item, dict)]
+    complete = (bool(question_ids) and all(isinstance(value, str) and value for value in question_ids)
+                and len(set(question_ids)) == len(questions) == len(coverage)
+                and set(question_ids) == set(covered_ids)
+                and all(isinstance(item, dict) and item.get("status") == "supported"
+                        and isinstance(item.get("supporting_passages"), list)
+                        and bool(item["supporting_passages"])
+                        and all(isinstance(proof, dict) for proof in item["supporting_passages"])
+                        for item in coverage))
+    source_ids = {source.get("source_id") for source in data.get("sources", []) if isinstance(source, dict)}
+    proofs = [proof for item in coverage if isinstance(item, dict)
+              for proof in item.get("supporting_passages", []) if isinstance(proof, dict)]
+    normalize = lambda value: " ".join(value.split())
+    quotes = complete and bool(proofs) and all(
+        proof.get("source_id") in source_ids and isinstance(proof.get("quote"), str)
+        and bool(proof["quote"].strip()) and proof.get("evidence_field", "text") == "text"
+        and any(isinstance(context, dict) and context.get("source_id") == proof["source_id"]
+                and isinstance(context.get("text"), str)
+                and normalize(proof["quote"]) in normalize(context["text"])
+                for context in data.get("contexts", [])) for proof in proofs
+    )
+    supported_ids = {proof.get("source_id") for proof in proofs}
+    quotes = quotes and bool(response.get("sources")) and all(
+        isinstance(source, dict) and source.get("source_id") in supported_ids
+        for source in response.get("sources", [])
+    )
+    summary, sections = result.get("summary", ""), data.get("review_sections", [])
+    bounds = isinstance(summary, str) and bool(sections) and all(
+        isinstance(section, dict) and type(section.get("start")) is int
+        and type(section.get("end")) is int and 0 <= section["start"] < section["end"] <= len(summary)
+        and section.get("provenance") in {"retrieved", "model_knowledge", "topic_label", "limitation"}
+        for section in sections
+    )
+    separated = False
+    if bounds:
+        ordered = sorted(sections, key=lambda section: section["start"])
+        model = [section for section in ordered if section["provenance"] == "model_knowledge"]
+        label = "Model knowledge (not verified against retrieved sources):"
+        separated = (
+            all(left["end"] <= right["start"] for left, right in itertools.pairwise(ordered))
+            and any(section["provenance"] == "retrieved" for section in ordered)
+            and ((data.get("evidence_status") == "grounded" and not model and label not in summary)
+                 or (data.get("evidence_status") == "hybrid" and bool(model)
+                     and label in response.get("answer", "")
+                     and all(summary[section["start"]:section["end"]].startswith(label)
+                             and len(summary[section["start"]:section["end"]].strip()) > len(label)
+                             and not re.search(r"\[source:|https?://", summary[section["start"]:section["end"]])
+                             for section in model)))
+        )
+    return {
+        "education_source_coverage": data.get("sourced_evidence_status") == "grounded"
+        and data.get("coverage_assessment") == "model_semantic_with_exact_quotes"
+        and data.get("source_unanswered_topics") == [] and complete,
+        "education_quote_evidence": quotes,
+        "education_answer_provenance": separated,
+    }
+
+
 def evaluate_response(
     response: dict[str, Any],
     expected: dict[str, Any],
@@ -634,6 +700,9 @@ def evaluate_response(
                 for source in policy_sources
             ),
         )
+    if expected.get("education_grounding_contract") is True:
+        for name, passed in education_grounding_checks(response).items():
+            add_check(name, passed)
     if "evidence_status" in expected:
         evidence_agent = expected.get("evidence_agent", "investment_education")
         add_check(
