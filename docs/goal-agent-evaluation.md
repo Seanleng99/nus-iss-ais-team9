@@ -77,8 +77,10 @@ actual application output with fixture providers.
 ## Live acceptance and limitations
 
 Release smoke checks exercise real Goal arithmetic, model calls and persisted
-traces. AWS Operational Validation supplies separate deployed dependency and
-behavior evidence; the consolidated live suite does not exercise a browser/UI flow.
+traces. Optional release agent/RAG stages and explicitly requested live evaluation
+utilities supply further deployed dependency and behavior evidence; those suites
+do not exercise a browser/UI flow. AWS Operational Validation checks infrastructure
+and retention.
 These fixture rates do not establish live explanation correctness, helpful goal
 prioritization or calibrated uncertainty.
 Independent generated-answer and representative-user review remain necessary;

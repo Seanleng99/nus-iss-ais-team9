@@ -2,20 +2,6 @@ name: AWS Operational Validation
 
 on:
   workflow_dispatch:
-    inputs:
-      load_requests:
-        description: Number of bounded synthetic load requests
-        required: true
-        default: "10"
-      load_concurrency:
-        description: Maximum concurrent synthetic requests
-        required: true
-        default: "2"
-      exercise_task_replacement:
-        description: Force and verify one backend ECS task replacement
-        required: true
-        type: boolean
-        default: false
   schedule:
     - cron: "0 2 * * 0"
 
@@ -39,13 +25,8 @@ env:
   ALB_ORIGIN_URL: ${{ vars.ALB_ORIGIN_URL }}
   EDGE_ORIGIN_RESTRICTION_ENABLED: ${{ vars.EDGE_ORIGIN_RESTRICTION_ENABLED || 'false' }}
   EDGE_CUSTOM_DOMAIN_ENABLED: ${{ vars.EDGE_CUSTOM_DOMAIN_ENABLED || 'false' }}
-  COACH_URL: ${{ vars.COACH_SMOKE_URL }}
-  SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
-  EXPECTED_MODEL_ID: gpt-6-luna
   DASHBOARD_NAME: ${{ vars.OPERATIONAL_DASHBOARD_NAME || 'ai-financial-wellness-coach-demo-operational' }}
   ALARM_PREFIX: ${{ vars.OPERATIONAL_ALARM_PREFIX || 'ai-financial-wellness-coach-demo-' }}
-  LOAD_REQUESTS: ${{ inputs.load_requests || '10' }}
-  LOAD_CONCURRENCY: ${{ inputs.load_concurrency || '2' }}
 
 jobs:
   retention:
@@ -116,7 +97,7 @@ jobs:
           retention-days: 90
 
   validate:
-    name: Validate live AI and AWS operations
+    name: Validate AWS operations
     if: >-
       github.event_name == 'workflow_dispatch' ||
       vars.AWS_OPERATIONAL_VALIDATION_ENABLED == 'true'
@@ -140,29 +121,18 @@ jobs:
             echo "Email delivery is not validated; CloudWatch alarm events are not forwarded to GitHub."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Validate operational inputs and environment
+      - name: Validate operational environment
         run: |
           required=(
             DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
-            COACH_URL SMOKE_BACKEND_API_KEY
-            EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX
+            DASHBOARD_NAME ALARM_PREFIX
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
-              echo "Missing demo environment variable or secret: $name" >&2
+              echo "Missing demo environment variable: $name" >&2
               exit 1
             fi
           done
-          if ! [[ "$LOAD_REQUESTS" =~ ^[0-9]+$ ]] ||
-             (( LOAD_REQUESTS < 1 || LOAD_REQUESTS > 50 )); then
-            echo "load_requests must be between 1 and 50" >&2
-            exit 1
-          fi
-          if ! [[ "$LOAD_CONCURRENCY" =~ ^[0-9]+$ ]] ||
-             (( LOAD_CONCURRENCY < 1 || LOAD_CONCURRENCY > 5 )); then
-            echo "load_concurrency must be between 1 and 5" >&2
-            exit 1
-          fi
           if [[ "$EDGE_ORIGIN_RESTRICTION_ENABLED" == "true" ]] &&
              [[ -z "$FRONTEND_URL" || -z "$ALB_ORIGIN_URL" ]]; then
             echo "Edge hardening validation requires FRONTEND_URL and ALB_ORIGIN_URL" >&2
@@ -237,83 +207,6 @@ jobs:
             --origin-url "$ALB_ORIGIN_URL" \
             --output artifacts/edge-security.json \
             "${custom_domain_args[@]}"
-
-      - name: Run each live OpenAI and RAG case once
-        id: live_evaluation
-        continue-on-error: true
-        run: >-
-          python infra/scripts/live_evaluation.py
-          --url "$COACH_URL"
-          --api-key "$SMOKE_BACKEND_API_KEY"
-          --cases infra/llmsecops/live-evaluation-cases.jsonl
-          --output artifacts/live-evaluation.json
-          --repeats 1
-          --expected-model-id "$EXPECTED_MODEL_ID"
-          --timeout-seconds 120
-          --latency-measurement request
-          --maximum-p95-ms "${{ vars.LIVE_EVAL_MAX_P95_MS || '90000' }}"
-          --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '0.10' }}"
-
-      - name: Run bounded load and cleanup test data
-        id: load_validation
-        if: steps.live_evaluation.outcome == 'success'
-        continue-on-error: true
-        run: >-
-          python infra/scripts/load_smoke.py
-          --url "$COACH_URL"
-          --api-key "$SMOKE_BACKEND_API_KEY"
-          --requests "$LOAD_REQUESTS"
-          --concurrency "$LOAD_CONCURRENCY"
-          --timeout-seconds 120
-          --maximum-p95-ms "${{ vars.LOAD_MAX_P95_MS || '60000' }}"
-          --output artifacts/load-evidence.json
-
-      - name: Exercise and verify backend task replacement
-        if: ${{ inputs.exercise_task_replacement == true }}
-        run: |
-          before=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
-            --query 'services[0].deployments[?status==`PRIMARY`].id | [0]' --output text)
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" --service "$BACKEND_SERVICE" \
-            --force-new-deployment > artifacts/task-replacement-start.json
-          aws ecs wait services-stable \
-            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE"
-          aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" --services "$BACKEND_SERVICE" \
-            > artifacts/task-replacement-complete.json
-          after=$(jq -r '.services[0].deployments[] | select(.status == "PRIMARY") | .id' \
-            artifacts/task-replacement-complete.json)
-          if [[ -z "$before" || -z "$after" || "$before" == "$after" ]]; then
-            echo "ECS did not report a new stable backend deployment" >&2
-            exit 1
-          fi
-
-      - name: Summarize load evidence
-        if: always() && hashFiles('artifacts/load-evidence.json') != ''
-        run: |
-          {
-            echo "## Bounded AWS load validation"
-            echo
-            jq -r '"- Result: **\(if .passed then "PASS" else "FAIL" end)**",
-              "- Success rate: \(.success_rate * 100)%",
-              "- P50/P95/P99: \(.latency_ms.p50) / \(.latency_ms.p95) / \(.latency_ms.p99) ms",
-              "- Synthetic cleanup failures: \(.cleanup_failures)"' artifacts/load-evidence.json
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Enforce live evaluation and load results
-        if: >-
-          always() &&
-          (steps.live_evaluation.outcome != 'skipped' || steps.load_validation.outcome != 'skipped')
-        env:
-          LIVE_EVALUATION_OUTCOME: ${{ steps.live_evaluation.outcome }}
-          LOAD_VALIDATION_OUTCOME: ${{ steps.load_validation.outcome }}
-        run: |
-          if [[ "$LIVE_EVALUATION_OUTCOME" != "success" ||
-                "$LOAD_VALIDATION_OUTCOME" != "success" ]]; then
-            echo "Operational validation failed: live=$LIVE_EVALUATION_OUTCOME load=$LOAD_VALIDATION_OUTCOME" >&2
-            exit 1
-          fi
 
       - name: Upload privacy-safe operational evidence
         if: always()

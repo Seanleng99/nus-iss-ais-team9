@@ -108,10 +108,10 @@ The final gate passes only when:
 1. The evidence manifest covers every required architecture, agent, communication, model, memory, tool, traceability, responsible-AI, security, evaluation, RAG, identity, CI/CD, operations, and lifecycle area.
 2. Every referenced evidence file exists and is integrity-hashed.
 3. All six runbook scenarios are linked to one or more assessed requirements.
-4. The deployed AWS operational workflow passes the repeated live evaluation, bounded load, edge, alerting, ECS, autoscaling, and lifecycle checks.
+4. The deployed AWS operational workflow passes its edge, CloudWatch, ECS, autoscaling, and lifecycle checks. Current-model behavior and performance require separate release/evaluation evidence; an operational pass does not establish them.
 5. The CI inventory, operational validation and retention artifacts are retained for 90 days and their workflow URLs are added to `docs/operational-evidence.md` after the runs.
 
-The required `assessment-evidence` job in `.github/workflows/ci.yml` produces the privacy-safe repository evidence inventory on every CI run. Use a successful main CI run for the assessed commit, then dispatch **AWS Operational Validation** from `main` with the assessment parameters. Both its validation job and independent retention job must pass. The standalone Final Assessment workflow is retired; the manifest, validator and assessment package remain maintained. These evidence jobs do not deploy application images or mutate governed RAG sources.
+The required `assessment-evidence` job in `.github/workflows/ci.yml` produces the privacy-safe repository evidence inventory on every CI run. Use a successful main CI run for the assessed commit, then dispatch **AWS Operational Validation** from `main`. Both its validation job and independent retention job must pass. The standalone Final Assessment workflow is retired; the manifest, validator and assessment package remain maintained. These evidence jobs do not deploy application images or mutate governed RAG sources.
 
 ## Explicit Scope Decisions
 

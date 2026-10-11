@@ -40,7 +40,9 @@ GitHub retains the operational artifact for 90 days. Copy the final approved art
 
 ## Current Operational Profile (2026-10-11)
 
-AWS Operational Validation runs each of the 13 live cases exactly once, for both manual and scheduled runs. It has no repetition input. The calibrated multi-agent profile allows 120 seconds per HTTP request, requires live P95 at or below 90 seconds per coach request, and requires simple Budget load P95 at or below 60 seconds. Estimated live cost is capped at USD 0.10. Repository overrides match these values. Every requested case must pass with complete model usage and successful synthetic-data cleanup; load requires 100 percent success and runs only after live acceptance. Conversation latency remains separately reported.
+At the user's request, AWS Operational Validation now checks ECS service state, autoscaling, the CloudWatch dashboard and five required alarms, CloudFront TLS/direct-origin denial, and independent governed data retention. Manual runs have no inputs. Live coaching/model/RAG evaluation, concurrent-load checks and backend task replacement were removed on 2026-10-11, together with their credentials, inputs and result gates. The workflow records GitHub Actions reporting and retains infrastructure and retention artifacts for 90 days. A pass establishes those AWS controls; model behavior, response times and estimated cost require separate release/evaluation evidence. Earlier failed live runs remain recorded below.
+
+Before removal, the single-repetition live profile selected 120-second HTTP timeouts, 90-second live request P95, 60-second load P95 and USD 0.10 estimated live cost. Those historical gates required every case, complete usage accounting and successful cleanup. The standalone utilities remain available with explicit arguments; these values are no longer gates in AWS Operational Validation.
 
 ## Historical Threshold Decision (2026-08-31)
 

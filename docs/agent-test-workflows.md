@@ -61,7 +61,7 @@ There are **five repository workflow files**, plus GitHub-managed Dependabot:
 | CI and LLMSecOps | PR, main push, weekly, manual | Required assessment inventory, pre-release service, offline agent/RAG, metrics and security checks |
 | Release to AWS | Successful push CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke and final acceptance; live security, fairness and agent/RAG are optional but must pass when enabled; roll back failed releases |
 | RAG Source Governance | Weekly, manual | Read-only corpus approval, checksum, freshness and deployed KB audit |
-| AWS Operational Validation | Weekly when enabled, manual | Live service, load, edge and operational controls; independent retention cleanup job |
+| AWS Operational Validation | Weekly when enabled, manual | ECS/autoscaling, CloudWatch and edge controls; independent retention cleanup job |
 | Model Drift Monitoring | Weekly when enabled, manual | Quality capture/baseline comparison and optional operational alerts |
 | Dependabot Updates | GitHub-managed weekly dependency checks | Propose dependency PRs that still pass CI |
 

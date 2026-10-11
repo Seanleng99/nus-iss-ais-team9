@@ -207,7 +207,7 @@
     },
     {
       "id": "OPS-01",
-      "name": "Monitoring, alerting, load, and retained operational evidence",
+      "name": "Monitoring, alerting, and retained AWS operational evidence",
       "status": "implemented",
       "evidence": [
         {"kind": "operations", "path": "docs/operations.md"},
@@ -278,7 +278,7 @@
       "id": "DEMO-06",
       "name": "Automated assessment and retained evidence",
       "runbook_section": "6-automated-final-assessment",
-      "expected_evidence": ["CI repository inventory and workflow coverage pass without asserting overall assessment acceptance", "Live evaluation and bounded load pass", "Independent retention enforcement passes", "Optional release stages record selection and require passing evidence when enabled", "Drift baseline approval and retained quality alerts are visible", "Privacy-safe artifacts are retained for 90 days"]
+      "expected_evidence": ["CI repository inventory and workflow coverage pass without asserting overall assessment acceptance", "AWS service, autoscaling, CloudWatch and edge controls pass", "Independent retention enforcement passes", "Optional release stages record selection and require passing evidence when enabled", "Drift baseline approval and retained quality alerts are visible", "Privacy-safe artifacts are retained for 90 days"]
     }
   ],
   "deferred": [
