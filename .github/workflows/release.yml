@@ -17,6 +17,8 @@ permissions:
 
 env:
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+  RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+  RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
 
 jobs:
@@ -107,7 +109,7 @@ jobs:
 
   build-images:
     name: Build, publish, and scan images
-    needs: release-gate
+    needs: [release-gate, live-preflight]
     if: needs.release-gate.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -239,11 +241,160 @@ jobs:
               --repository "$FRONTEND_REPOSITORY" --image-tag "$RELEASE_SHA"
           fi
 
+  live-preflight:
+    name: Validate live configuration and secret access
+    needs:
+      - release-gate
+    if: needs.release-gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
+      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+      LIVE_MODEL_INPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_INPUT_USD_PER_MILLION }}
+      LIVE_MODEL_OUTPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_OUTPUT_USD_PER_MILLION }}
+      FAIRNESS_LIVE_MAX_COST_USD: ${{ vars.FAIRNESS_LIVE_MAX_COST_USD || '1' }}
+      SECURITY_TEST_ROLE: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
+      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Validate required live acceptance configuration
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-config
+      - name: Preflight isolated live security credentials
+        id: security-preflight-credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          output-credentials: true
+          output-env-credentials: false
+          mask-aws-account-id: true
+      - name: Verify live security secret access before deployment
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.security-preflight-credentials.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.security-preflight-credentials.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.security-preflight-credentials.outputs.aws-session-token }}
+        run: python -c "from security.promptfoo.model_support import live_settings; live_settings()"
+
+  corpus:
+    name: Verify governed Bedrock corpora
+    needs:
+      - release-gate
+      - build-images
+    if: needs.release-gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EDUCATION_KNOWLEDGE_BASE_ID: ${{ vars.EDUCATION_KNOWLEDGE_BASE_ID }}
+      POLICY_KNOWLEDGE_BASE_ID: ${{ vars.POLICY_KNOWLEDGE_BASE_ID }}
+      AI_CHANGED: ${{ needs.release-gate.outputs.ai }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify release is still current main
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$RELEASE_SHA" != "$main_sha" ]]; then
+            echo "Superseded release $RELEASE_SHA skipped; current main is $main_sha." >> "$GITHUB_STEP_SUMMARY"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+        if: steps.current.outputs.deploy == 'true'
+      - name: Validate first-attempt release context
+        if: steps.current.outputs.deploy == 'true'
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
+      - name: Load packaged corpus versions
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          versions = {}
+          for name, directory in (
+              ("EDUCATION_CORPUS_VERSION", "investment_education"),
+              ("POLICY_CORPUS_VERSION", "policy_controls"),
+          ):
+              manifest = Path("knowledge") / directory / "source_manifest.json"
+              version = json.loads(manifest.read_text())["corpus_version"]
+              if (
+                  not isinstance(version, str)
+                  or not re.fullmatch(r"[a-z0-9][a-z0-9@._-]{2,127}", version)
+                  or version.endswith("@local-fixture-v1")
+              ):
+                  raise SystemExit(f"Invalid deployed corpus version in {manifest}")
+              versions[name] = version
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              for name, version in versions.items():
+                  output.write(f"{name}={version}\n")
+          PY
+        if: steps.current.outputs.deploy == 'true'
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+        if: steps.current.outputs.deploy == 'true'
+      - name: Ingest and verify approved Bedrock corpora
+        run: |
+          python infra/scripts/sync_bedrock_corpora.py \
+            --education-kb "$EDUCATION_KNOWLEDGE_BASE_ID" \
+            --policy-kb "$POLICY_KNOWLEDGE_BASE_ID" \
+            --region "$AWS_REGION"
+        if: steps.current.outputs.deploy == 'true'
+      - name: Retain Bedrock ingestion and governance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: bedrock-corpus-governance-${{ github.run_id }}
+          path: artifacts/bedrock-governance/
+          if-no-files-found: warn
+          retention-days: 90
+        if: steps.current.outputs.deploy == 'true' && always()
+    outputs:
+      deploy: ${{ steps.current.outputs.deploy }}
+
   deploy-demo:
     name: Deploy demo environment
-    needs: [release-gate, build-images]
+    needs:
+      - release-gate
+      - build-images
+      - corpus
+    if: needs.corpus.outputs.deploy == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 45
     environment:
       name: demo
       url: ${{ vars.FRONTEND_URL }}
@@ -273,13 +424,6 @@ jobs:
       SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
       EDUCATION_KNOWLEDGE_BASE_ID: ${{ vars.EDUCATION_KNOWLEDGE_BASE_ID }}
       POLICY_KNOWLEDGE_BASE_ID: ${{ vars.POLICY_KNOWLEDGE_BASE_ID }}
-      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
-      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-      SECURITY_TEST_ROLE: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
-      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
-      LIVE_MODEL_INPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_INPUT_USD_PER_MILLION }}
-      LIVE_MODEL_OUTPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_OUTPUT_USD_PER_MILLION }}
-      FAIRNESS_LIVE_MAX_COST_USD: ${{ vars.FAIRNESS_LIVE_MAX_COST_USD || '1' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -287,7 +431,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: '3.12'
       - name: Verify release is still current main
         id: current
         env:
@@ -303,12 +447,9 @@ jobs:
       - name: Install release acceptance dependencies
         if: steps.current.outputs.deploy == 'true'
         run: python -m pip install -e "apps/shared" -e "apps/ai-service"
-      - name: Initialize required live evidence
+      - name: Validate first-attempt release context
         if: steps.current.outputs.deploy == 'true'
-        run: python -m infra.scripts.post_deploy_acceptance --mode initialize
-      - name: Validate required live acceptance configuration
-        if: steps.current.outputs.deploy == 'true'
-        run: python -m infra.scripts.post_deploy_acceptance --mode validate-config
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
       - name: Load packaged corpus versions
         if: steps.current.outputs.deploy == 'true'
         run: |
@@ -365,24 +506,6 @@ jobs:
               exit 1
             fi
           done
-      - name: Preflight isolated live security credentials
-        id: security-preflight-credentials
-        if: steps.current.outputs.deploy == 'true'
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-          output-credentials: true
-          output-env-credentials: false
-          mask-aws-account-id: true
-      - name: Verify live security secret access before deployment
-        if: steps.current.outputs.deploy == 'true'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ steps.security-preflight-credentials.outputs.aws-access-key-id }}
-          AWS_SECRET_ACCESS_KEY: ${{ steps.security-preflight-credentials.outputs.aws-secret-access-key }}
-          AWS_SESSION_TOKEN: ${{ steps.security-preflight-credentials.outputs.aws-session-token }}
-        run: >-
-          python -c "from security.promptfoo.model_support import live_settings; live_settings()"
       - name: Configure short-lived AWS credentials
         if: steps.current.outputs.deploy == 'true'
         uses: aws-actions/configure-aws-credentials@v6
@@ -413,18 +536,26 @@ jobs:
           if [[ "$AI_CHANGED" == "true" ]]; then
             previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$AI_SERVICE" \
               --query 'services[0].taskDefinition' --output text)
+            [[ "$previous" =~ ^arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]{12}:task-definition/.+:[0-9]+$ ]] || { echo "Invalid previous ECS task revision" >&2; exit 1; }
             echo "AI_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
+            # Family/revision avoids GitHub dropping an ARN output containing the masked AWS account ID.
+            echo "ai-previous-task-definition=${previous##*/}" >> "$GITHUB_OUTPUT"
           fi
           if [[ "$BACKEND_CHANGED" == "true" ]]; then
             previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
               --services "$BACKEND_SERVICE" --query 'services[0].taskDefinition' --output text)
+            [[ "$previous" =~ ^arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]{12}:task-definition/.+:[0-9]+$ ]] || { echo "Invalid previous ECS task revision" >&2; exit 1; }
             echo "BACKEND_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
+            echo "backend-previous-task-definition=${previous##*/}" >> "$GITHUB_OUTPUT"
           fi
           if [[ "$FRONTEND_CHANGED" == "true" ]]; then
             previous=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
               --services "$FRONTEND_SERVICE" --query 'services[0].taskDefinition' --output text)
+            [[ "$previous" =~ ^arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]{12}:task-definition/.+:[0-9]+$ ]] || { echo "Invalid previous ECS task revision" >&2; exit 1; }
             echo "FRONTEND_PREVIOUS_TASK_DEFINITION=$previous" >> "$GITHUB_ENV"
+            echo "frontend-previous-task-definition=${previous##*/}" >> "$GITHUB_OUTPUT"
           fi
+        id: rollback-state
       - name: Download current task definitions
         if: steps.current.outputs.deploy == 'true'
         run: |
@@ -440,22 +571,6 @@ jobs:
             aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_FAMILY" \
               --query taskDefinition > frontend-task-definition.json
           fi
-      - name: Ingest and verify approved Bedrock corpora
-        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
-        run: |
-          python -m pip install -e "apps/shared" -e "apps/ai-service"
-          python infra/scripts/sync_bedrock_corpora.py \
-            --education-kb "$EDUCATION_KNOWLEDGE_BASE_ID" \
-            --policy-kb "$POLICY_KNOWLEDGE_BASE_ID" \
-            --region "$AWS_REGION"
-      - name: Retain Bedrock ingestion and governance evidence
-        if: steps.current.outputs.deploy == 'true' && (always() && needs.release-gate.outputs.ai == 'true')
-        uses: actions/upload-artifact@v7
-        with:
-          name: bedrock-corpus-governance-${{ github.run_id }}
-          path: artifacts/bedrock-governance/
-          if-no-files-found: warn
-          retention-days: 90
       - name: Render AI service task definition
         id: render-ai
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
@@ -490,33 +605,14 @@ jobs:
         env:
           RENDERED_AI_TASK: ${{ steps.render-ai.outputs.task-definition }}
           MODEL_ROLE_OVERRIDES: ${{ env.MODEL_ROLE_OVERRIDES }}
-        run: >-
-          python infra/scripts/verify_ecs_task_config.py
-          --task-definition "$RENDERED_AI_TASK"
-          --container "$AI_CONTAINER_NAME"
-          --expect APP_ENV=demo
-          --expect MODEL_PROVIDER=openai
-          --expect MODEL_ID=gpt-6-luna
-          --expect MODEL_REASONING_EFFORT=medium
-          --expect MODEL_MAX_TOKENS=3200
-          --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES"
-          --expect MAX_MODEL_TOKENS_PER_RUN=80000
-          --expect MODEL_READ_TIMEOUT_SECONDS=30
-          --expect AGENT_TIMEOUT_SECONDS=45
-          --expect WORKFLOW_TIMEOUT_SECONDS=85
-          --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION"
-          --expect "BUILD_COMMIT=$RELEASE_SHA"
-          --expect RAG_PROVIDER=bedrock
-          --expect POLICY_RAG_PROVIDER=bedrock
-          --expect "EDUCATION_KNOWLEDGE_BASE_ID=$EDUCATION_KNOWLEDGE_BASE_ID"
-          --expect "POLICY_KNOWLEDGE_BASE_ID=$POLICY_KNOWLEDGE_BASE_ID"
-          --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID
-          --require-nonempty POLICY_KNOWLEDGE_BASE_ID
-          --expect RAG_MINIMUM_SCORE=0.6
-          --expect POLICY_RAG_MINIMUM_SCORE=0.0
-          --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION"
-          --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
+        run: python infra/scripts/verify_ecs_task_config.py --task-definition "$RENDERED_AI_TASK" --container "$AI_CONTAINER_NAME" --expect APP_ENV=demo --expect MODEL_PROVIDER=openai --expect MODEL_ID=gpt-6-luna --expect MODEL_REASONING_EFFORT=medium --expect MODEL_MAX_TOKENS=3200 --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES" --expect MAX_MODEL_TOKENS_PER_RUN=80000 --expect MODEL_READ_TIMEOUT_SECONDS=30 --expect AGENT_TIMEOUT_SECONDS=45 --expect WORKFLOW_TIMEOUT_SECONDS=85 --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION" --expect "BUILD_COMMIT=$RELEASE_SHA" --expect RAG_PROVIDER=bedrock --expect POLICY_RAG_PROVIDER=bedrock --expect "EDUCATION_KNOWLEDGE_BASE_ID=$EDUCATION_KNOWLEDGE_BASE_ID" --expect "POLICY_KNOWLEDGE_BASE_ID=$POLICY_KNOWLEDGE_BASE_ID" --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID --require-nonempty POLICY_KNOWLEDGE_BASE_ID --expect RAG_MINIMUM_SCORE=0.6 --expect POLICY_RAG_MINIMUM_SCORE=0.0 --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION" --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
           --require-secret OPENAI_API_KEY
+      - name: Record ai deployment attempt
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
+        run: |
+          echo "AI_DEPLOYED=true" >> "$GITHUB_ENV"
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+        id: attempt-ai
       - name: Deploy AI service
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
@@ -527,9 +623,6 @@ jobs:
           wait-for-service-stability: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
-      - name: Record AI deployment
-        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')
-        run: echo "AI_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Render application backend task definition
         id: render-backend
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
@@ -548,15 +641,7 @@ jobs:
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         env:
           RENDERED_BACKEND_TASK: ${{ steps.render-backend.outputs.task-definition }}
-        run: >-
-          python infra/scripts/verify_ecs_task_config.py
-          --task-definition "$RENDERED_BACKEND_TASK"
-          --container "$BACKEND_CONTAINER_NAME"
-          --expect AI_SERVICE_TIMEOUT_SECONDS=90
-          --expect TRACE_RETENTION_DAYS=30
-          --expect CHAT_RETENTION_DAYS=90
-          --expect SYNTHETIC_USER_RETENTION_DAYS=30
-          --expect DURABLE_AGENT_MEMORY_ENABLED=false
+        run: python infra/scripts/verify_ecs_task_config.py --task-definition "$RENDERED_BACKEND_TASK" --container "$BACKEND_CONTAINER_NAME" --expect AI_SERVICE_TIMEOUT_SECONDS=90 --expect TRACE_RETENTION_DAYS=30 --expect CHAT_RETENTION_DAYS=90 --expect SYNTHETIC_USER_RETENTION_DAYS=30 --expect DURABLE_AGENT_MEMORY_ENABLED=false
       - name: Apply and verify database migrations as a one-shot task
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         env:
@@ -591,6 +676,12 @@ jobs:
               --query 'tasks[0].{stoppedReason:stoppedReason,containers:containers[*].{name:name,reason:reason,exitCode:exitCode}}'
             exit 1
           fi
+      - name: Record backend deployment attempt
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
+        run: |
+          echo "BACKEND_DEPLOYED=true" >> "$GITHUB_ENV"
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+        id: attempt-backend
       - name: Deploy application backend
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
@@ -601,9 +692,6 @@ jobs:
           wait-for-service-stability: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
-      - name: Record backend deployment
-        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.backend == 'true')
-        run: echo "BACKEND_DEPLOYED=true" >> "$GITHUB_ENV"
       - name: Render Streamlit task definition
         id: render-frontend
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
@@ -612,6 +700,12 @@ jobs:
           task-definition: frontend-task-definition.json
           container-name: ${{ env.FRONTEND_CONTAINER_NAME }}
           image: ${{ needs.build-images.outputs.frontend-image }}
+      - name: Record frontend deployment attempt
+        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
+        run: |
+          echo "FRONTEND_DEPLOYED=true" >> "$GITHUB_ENV"
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+        id: attempt-frontend
       - name: Deploy Streamlit frontend
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
@@ -622,55 +716,237 @@ jobs:
           wait-for-service-stability: true
           enable-ecs-managed-tags: true
           propagate-tags: SERVICE
-      - name: Record frontend deployment
-        if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.frontend == 'true')
-        run: echo "FRONTEND_DEPLOYED=true" >> "$GITHUB_ENV"
+    outputs:
+      deploy: ${{ steps.current.outputs.deploy }}
+      ai-previous-task-definition: ${{ steps.rollback-state.outputs.ai-previous-task-definition }}
+      ai-attempted: ${{ steps.attempt-ai.outputs.attempted }}
+      backend-previous-task-definition: ${{ steps.rollback-state.outputs.backend-previous-task-definition }}
+      backend-attempted: ${{ steps.attempt-backend.outputs.attempted }}
+      frontend-previous-task-definition: ${{ steps.rollback-state.outputs.frontend-previous-task-definition }}
+      frontend-attempted: ${{ steps.attempt-frontend.outputs.attempted }}
+
+  smoke:
+    name: Health and AI safety smoke
+    needs:
+      - deploy-demo
+    if: needs.deploy-demo.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: demo
+    permissions:
+      contents: read
+    env:
+      COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
+      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+      FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
+      BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Validate first-attempt release context
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
+      - name: Load packaged corpus versions
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          versions = {}
+          for name, directory in (
+              ("EDUCATION_CORPUS_VERSION", "investment_education"),
+              ("POLICY_CORPUS_VERSION", "policy_controls"),
+          ):
+              manifest = Path("knowledge") / directory / "source_manifest.json"
+              version = json.loads(manifest.read_text())["corpus_version"]
+              if (
+                  not isinstance(version, str)
+                  or not re.fullmatch(r"[a-z0-9][a-z0-9@._-]{2,127}", version)
+                  or version.endswith("@local-fixture-v1")
+              ):
+                  raise SystemExit(f"Invalid deployed corpus version in {manifest}")
+              versions[name] = version
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              for name, version in versions.items():
+                  output.write(f"{name}={version}\n")
+          PY
       - name: Run health and AI safety smoke tests
-        if: steps.current.outputs.deploy == 'true'
-        run: >-
-          python infra/scripts/post_deploy_smoke.py
-          --frontend-health-url "$FRONTEND_HEALTH_URL"
-          --backend-health-url "$BACKEND_HEALTH_URL"
-          --coach-url "$COACH_SMOKE_URL"
-          --expected-model-provider openai
-          --expected-corpus-version "$EDUCATION_CORPUS_VERSION"
-          --expected-policy-corpus-version "$POLICY_CORPUS_VERSION"
-          --persistence-base-url "${COACH_SMOKE_URL%/coach}"
-          --api-key "$SMOKE_BACKEND_API_KEY"
-      - name: Live fairness — all 19 pairs once
+        run: python infra/scripts/post_deploy_smoke.py --frontend-health-url "$FRONTEND_HEALTH_URL" --backend-health-url "$BACKEND_HEALTH_URL" --coach-url "$COACH_SMOKE_URL" --expected-model-provider openai --expected-corpus-version "$EDUCATION_CORPUS_VERSION" --expected-policy-corpus-version "$POLICY_CORPUS_VERSION" --persistence-base-url "${COACH_SMOKE_URL%/coach}" --api-key "$SMOKE_BACKEND_API_KEY"
+
+  fairness:
+    name: Live fairness testing
+    needs:
+      - deploy-demo
+      - smoke
+    if: needs.deploy-demo.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: demo
+    permissions:
+      contents: read
+    env:
+      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
+      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+      LIVE_MODEL_INPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_INPUT_USD_PER_MILLION }}
+      LIVE_MODEL_OUTPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_OUTPUT_USD_PER_MILLION }}
+      FAIRNESS_LIVE_MAX_COST_USD: ${{ vars.FAIRNESS_LIVE_MAX_COST_USD || '1' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Validate first-attempt release context
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
+      - name: Live fairness testing
         id: fairness-live
-        if: steps.current.outputs.deploy == 'true'
         timeout-minutes: 45
-        run: >-
-          python -m infra.scripts.fairness_live_evaluation
-          --url "$COACH_SMOKE_URL" --api-key-env SMOKE_BACKEND_API_KEY
-          --expected-model-provider openai --expected-model-id gpt-6-luna
-          --commit-sha "$RELEASE_SHA" --repeats 1 --timeout-seconds 120
-          --input-cost-per-million "$LIVE_MODEL_INPUT_USD_PER_MILLION"
-          --output-cost-per-million "$LIVE_MODEL_OUTPUT_USD_PER_MILLION"
-          --maximum-estimated-cost-usd "$FAIRNESS_LIVE_MAX_COST_USD"
-          --maximum-total-tokens 1000000
-          --output artifacts/post-deploy/fairness.json
-          --review-output artifacts/post-deploy/fairness-human-review.csv
+        run: |
+          python -m infra.scripts.fairness_live_evaluation \
+            --url "$COACH_SMOKE_URL" \
+            --api-key-env SMOKE_BACKEND_API_KEY \
+            --expected-model-provider openai \
+            --expected-model-id gpt-6-luna \
+            --commit-sha "$RELEASE_SHA" \
+            --repeats 1 \
+            --timeout-seconds 120 \
+            --input-cost-per-million "$LIVE_MODEL_INPUT_USD_PER_MILLION" \
+            --output-cost-per-million "$LIVE_MODEL_OUTPUT_USD_PER_MILLION" \
+            --maximum-estimated-cost-usd "$FAIRNESS_LIVE_MAX_COST_USD" \
+            --maximum-total-tokens 1000000 \
+            --output artifacts/post-deploy/fairness.json \
+            --review-output artifacts/post-deploy/fairness-human-review.csv
+      - name: Retain fairness evidence and blinded review
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-fairness-${{ github.run_id }}
+          path: artifacts/post-deploy/
+          if-no-files-found: error
+          retention-days: 90
+
+  live:
+    name: 'Live: ${{ matrix.suite }}'
+    needs:
+      - deploy-demo
+      - fairness
+    if: needs.deploy-demo.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      COACH_SMOKE_URL: ${{ vars.COACH_SMOKE_URL }}
+      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      AI_SERVICE: ${{ vars.ECS_AI_SERVICE }}
+      BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
+      FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
+      COACH_URL: ${{ vars.COACH_SMOKE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Initialize required suite evidence
+        run: python -m infra.scripts.agent_live_evaluation --suite "${{ matrix.suite }}" --initialize
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
       - name: Live agent and RAG release contracts
         id: agents-live
-        if: steps.current.outputs.deploy == 'true'
         timeout-minutes: 45
-        env:
-          COACH_URL: ${{ vars.COACH_SMOKE_URL }}
-        run: |
-          for suite in orchestrator spending budget goal investment risk-compliance rag; do
-            python -m infra.scripts.agent_live_evaluation --suite "$suite" --post-deployment
-            python -m infra.scripts.agent_live_evaluation --suite "$suite" --summarize
-          done
+        run: python -m infra.scripts.agent_live_evaluation --suite "${{ matrix.suite }}" --post-deployment
+      - name: Publish live suite evidence
+        if: always()
+        run: python -m infra.scripts.agent_live_evaluation --suite "${{ matrix.suite }}" --summarize
+      - name: Retain live suite evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-agent-live-${{ matrix.suite }}
+          path: artifacts/agent-live/
+          if-no-files-found: error
+          retention-days: 90
+    strategy:
+      # Stop queued paid suites on failure; the final gate rejects missing evidence.
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        suite:
+          - orchestrator
+          - spending
+          - budget
+          - goal
+          - investment
+          - risk-compliance
+          - rag
+
+  security-live:
+    name: Promptfoo — required live security
+    needs:
+      - deploy-demo
+      - live
+    if: needs.deploy-demo.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      SECURITY_TEST_ROLE: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
+      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Validate first-attempt release context
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
       - name: Prepare live security runtime
-        if: steps.current.outputs.deploy == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '24'
       - name: Obtain isolated live security credentials
         id: security-credentials
-        if: steps.current.outputs.deploy == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
@@ -680,27 +956,87 @@ jobs:
           mask-aws-account-id: true
       - name: Promptfoo — required live security regressions
         id: security-live
-        if: steps.current.outputs.deploy == 'true'
         timeout-minutes: 45
         env:
           AWS_ACCESS_KEY_ID: ${{ steps.security-credentials.outputs.aws-access-key-id }}
           AWS_SECRET_ACCESS_KEY: ${{ steps.security-credentials.outputs.aws-secret-access-key }}
           AWS_SESSION_TOKEN: ${{ steps.security-credentials.outputs.aws-session-token }}
-        run: >-
-          python security/promptfoo/run_bounded.py --mode live --repeats 2
-          --max-model-tokens 1000000 --output artifacts/post-deploy/promptfoo-live.json
+        run: |
+          python security/promptfoo/run_bounded.py \
+            --mode live \
+            --repeats 2 \
+            --max-model-tokens 1000000 \
+            --output artifacts/post-deploy/promptfoo-live.json
       - name: Publish live security evidence
-        if: steps.current.outputs.deploy == 'true' && always()
-        run: >-
-          python infra/scripts/summarize_promptfoo.py artifacts/post-deploy/promptfoo-live.json
-          --output artifacts/post-deploy/promptfoo-live-summary.md
-          --title "Required release live security — real model, release source"
+        run: python infra/scripts/summarize_promptfoo.py artifacts/post-deploy/promptfoo-live.json --output artifacts/post-deploy/promptfoo-live-summary.md --title "Required release live security — real model, release source"
+        if: always()
+      - name: Retain live security evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-security-${{ github.run_id }}
+          path: artifacts/post-deploy/
+          if-no-files-found: error
+          retention-days: 90
+
+  live-acceptance:
+    name: Require complete live release acceptance
+    needs:
+      - release-gate
+      - live-preflight
+      - build-images
+      - corpus
+      - deploy-demo
+      - smoke
+      - fairness
+      - live
+      - security-live
+    # Pre-deployment failures are reported; deliberate stale/no-op releases are skipped.
+    if: always() && needs.release-gate.outputs.deploy == 'true' && needs.corpus.outputs.deploy != 'false' && needs.deploy-demo.outputs.deploy != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: demo
+    permissions:
+      contents: read
+    env:
+      RELEASE_JOB_RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Initialize required live evidence
+        run: python -m infra.scripts.post_deploy_acceptance --mode initialize
+      - name: Collect agent/RAG evidence
+        if: always()
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-agent-live-*
+          path: artifacts/agent-live/
+          merge-multiple: true
+      - name: Collect fairness evidence
+        if: always()
+        uses: actions/download-artifact@v8
+        with:
+          name: release-fairness-${{ github.run_id }}
+          path: artifacts/post-deploy/
+      - name: Collect security evidence
+        if: always()
+        uses: actions/download-artifact@v8
+        with:
+          name: release-security-${{ github.run_id }}
+          path: artifacts/post-deploy/
       - name: Require complete live release acceptance
         id: live-acceptance
-        if: steps.current.outputs.deploy == 'true' && always()
         run: python -m infra.scripts.post_deploy_acceptance --mode gate
+        if: always()
       - name: Retain live release acceptance and review forms
-        if: steps.current.outputs.deploy == 'true' && always()
         uses: actions/upload-artifact@v7
         with:
           name: release-live-acceptance-${{ github.run_id }}
@@ -715,16 +1051,42 @@ jobs:
             security/promptfoo/assertions.cjs
           if-no-files-found: error
           retention-days: 90
-      - name: Refresh deployment credentials for rollback
-        if: steps.current.outputs.deploy == 'true' && failure() && (env.AI_DEPLOYED == 'true' || env.BACKEND_DEPLOYED == 'true' || env.FRONTEND_DEPLOYED == 'true')
+        if: always()
+
+  rollback:
+    name: Roll back failed release
+    needs:
+      - deploy-demo
+      - live-acceptance
+    # Runs after failed/cancelled prerequisites and also covers partial ECS updates.
+    if: always() && needs.deploy-demo.outputs.deploy == 'true' && (needs.deploy-demo.outputs.ai-attempted == 'true' || needs.deploy-demo.outputs.backend-attempted == 'true' || needs.deploy-demo.outputs.frontend-attempted == 'true') && (needs.deploy-demo.result != 'success' || needs.live-acceptance.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      AI_SERVICE: ${{ vars.ECS_AI_SERVICE }}
+      BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
+      FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
+      AI_DEPLOYED: ${{ needs.deploy-demo.outputs.ai-attempted }}
+      BACKEND_DEPLOYED: ${{ needs.deploy-demo.outputs.backend-attempted }}
+      FRONTEND_DEPLOYED: ${{ needs.deploy-demo.outputs.frontend-attempted }}
+      AI_PREVIOUS_TASK_DEFINITION: ${{ needs.deploy-demo.outputs.ai-previous-task-definition }}
+      BACKEND_PREVIOUS_TASK_DEFINITION: ${{ needs.deploy-demo.outputs.backend-previous-task-definition }}
+      FRONTEND_PREVIOUS_TASK_DEFINITION: ${{ needs.deploy-demo.outputs.frontend-previous-task-definition }}
+    steps:
+      - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
       - name: Roll back services when post-deploy checks fail
-        if: >-
-          steps.current.outputs.deploy == 'true' && (failure() && (env.AI_DEPLOYED == 'true' || env.BACKEND_DEPLOYED == 'true' || env.FRONTEND_DEPLOYED == 'true'))
         run: |
           services=()
           if [[ "$AI_DEPLOYED" == "true" ]]; then

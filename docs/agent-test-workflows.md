@@ -74,11 +74,14 @@ flowchart TD
     Tests --> Gate[Required CI checks]
     Gate --> PRBuild[PR / manual / scheduled build validation]
     Gate --> Push[Successful push CI for current main]
-    Push --> Build[Release builds + scans immutable images]
+    Push --> Preflight[Live configuration + secret access]
+    Preflight --> Build[Release builds + scans immutable images]
     Build --> Fresh{Still current main?}
     Fresh -->|No| Skip[Skip superseded deployment]
-    Fresh -->|Yes| Deploy[Deploy + health and safety smoke]
-    Deploy --> Fairness[19 live fairness pairs once]
+    Fresh -->|Yes| Corpus[Approved corpus ingestion + governance]
+    Corpus --> Deploy[Capture revisions + migrate + deploy]
+    Deploy --> Smoke[Health and AI safety smoke]
+    Smoke --> Fairness[19 live fairness pairs once]
     Fairness --> Agents[Seven serial live agent/RAG datasets]
     Agents --> Security[Two-trial live security regressions]
     Security --> Acceptance{Complete live acceptance?}
@@ -86,9 +89,12 @@ flowchart TD
     Acceptance -->|Fail or incomplete| Rollback[Fail release + restore previous services]
 ```
 
-Offline suites run in parallel. Paid stages run serially within the deployment
-job, retaining the release lock through acceptance and rollback. No live stage
-uses `continue-on-error`; the final gate and evidence upload also run on failure.
+Offline suites run in parallel. Release stages have separate jobs; the live
+matrix exposes all seven suites with one running at a time and stops queued
+work after failure. The workflow retains the release lock through acceptance
+and rollback. No live stage uses `continue-on-error`; the final gate and evidence
+upload also run on failure. That gate requires successful prerequisite jobs and
+complete evidence; a cancelled or skipped suite cannot pass the release.
 
 ## Evaluation definitions and acceptance
 

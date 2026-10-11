@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "validation_date": "2026-10-11",
+  "validation_type": "local_offline_and_remote_configuration_readback",
+  "base_commit": "9f883e03dc7d68ff0cf35906bc8dee35a47427a7",
+  "source_sha256_utf8_lf": {
+    ".github/workflows/release.yml": "93769b99ec33029b6a5042fb309ce9af11b9f18f42d96228c93affafb0ba2cf4",
+    "infra/scripts/post_deploy_acceptance.py": "6aa5e1244a5d364c32514cdf285287361a0ae25b59c51bbd58c8cfb240e84fb3",
+    "infra/scripts/deployment_baseline.py": "ae6f2bca790509c158ba4532ab077088e909b51c6bf34bc67e2dfb049bc52834",
+    "infra/scripts/tests/test_post_deploy_acceptance.py": "eabb5d07584901c60ee96ec78fdcf7a31cbaf416d04d676c8468bd16c493143d",
+    "infra/scripts/tests/test_deployment_baseline.py": "b34f353abb930f691e199e51494d2989b39fec99f696ab825bb01b2c60a4b3b1",
+    "infra/scripts/tests/test_release_corpus_versions.py": "531b12cac134bf284fd0b5037b35e340507ac5cff8a79e67cb62ff8e5609404c",
+    "infra/scripts/tests/test_investment_live_acceptance.py": "e97d873f27b4194aff6e6bb7328577ba98505786195e31872747e8812a646aee"
+  },
+  "pytest": {
+    "total": 828,
+    "passed": 823,
+    "failed": 0,
+    "error": 0,
+    "skipped": 5,
+    "reports": [
+      "release-split-full-tests-20261011.xml",
+      "release-split-gate-recheck-20261011.xml"
+    ],
+    "method": "Full infrastructure/provider run; corrected display-name-independent acceptance check rerun replaces that module evidence.",
+    "skips": [
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services0]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services1]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services2]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_non_application_change_still_does_not_deploy",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_stale_run_cannot_trigger_recovery_deployment",
+        "reason": "Release gate requires bash and jq"
+      }
+    ]
+  },
+  "actionlint": {
+    "version": "1.7.12",
+    "release_workflow": "PASS",
+    "shellcheck": "not installed; independent Bash syntax checks performed",
+    "pyflakes": "not installed"
+  },
+  "workflow_bash_syntax": {
+    "passed_steps": 97
+  },
+  "documentation_links": {
+    "valid_local_targets": 13
+  },
+  "release_job_ids": [
+    "release-gate",
+    "build-images",
+    "live-preflight",
+    "corpus",
+    "deploy-demo",
+    "smoke",
+    "fairness",
+    "live",
+    "security-live",
+    "live-acceptance",
+    "rollback"
+  ],
+  "deployment_steps": 23,
+  "live_matrix": {
+    "suites": [
+      "orchestrator",
+      "spending",
+      "budget",
+      "goal",
+      "investment",
+      "risk-compliance",
+      "rag"
+    ],
+    "max_parallel": 1,
+    "fail_fast": true
+  },
+  "fairness": {
+    "pairs": 19,
+    "repeats": 1,
+    "planned_coaching_requests": 38
+  },
+  "verified_controls": [
+    "all prerequisite conclusions and complete evidence required",
+    "failed/cancelled/skipped/missing jobs fail closed",
+    "stale/no-op releases skip acceptance and never advance deployment baseline",
+    "paid or mutating job reruns require fresh CI",
+    "attempts recorded before ECS updates; partial failures select rollback",
+    "rollback restores only attempted services and waits for stability",
+    "captured family/revision outputs omit masked AWS account ID",
+    "workflow lock covers all jobs",
+    "evidence retained for 90 days"
+  ],
+  "remote_configuration": {
+    "demo_live_model_input_usd_per_million": "0.10",
+    "demo_live_model_output_usd_per_million": "0.50",
+    "pricing_source": "https://developers.openai.com/api/docs/pricing",
+    "pricing_assumption": "GPT-6 Luna standard short-context token estimates",
+    "evaluation_role_trust": "existing main subject retained; exact repository demo environment subject added and read back",
+    "secret_read_policy": "existing single evaluation secret only; permissions unchanged; IAM simulation returned allowed",
+    "secret_values_printed": false
+  },
+  "paid_live_acceptance": "NOT RUN during local verification",
+  "deployment": "NOT RUN during local verification",
+  "limitations": [
+    "Synthetic reports, stubbed AWS commands and syntax checks do not establish a passing deployed release or semantic fairness.",
+    "Five release-selection shell tests need jq, unavailable locally; CI still runs them."
+  ]
+}

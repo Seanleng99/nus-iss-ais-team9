@@ -89,7 +89,8 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
         assert rejected.returncode != 0
         assert pin in rejected.stderr + rejected.stdout
         item["value"] = expected_value
-    smoke = STEPS["Run health and AI safety smoke tests"]["run"]
+    smoke = next(step["run"] for step in WORKFLOW["jobs"]["smoke"]["steps"]
+                 if step.get("name") == "Run health and AI safety smoke tests")
     assert '--expected-model-provider openai' in smoke
     assert '--expected-corpus-version "$EDUCATION_CORPUS_VERSION"' in smoke
     assert '--expected-policy-corpus-version "$POLICY_CORPUS_VERSION"' in smoke

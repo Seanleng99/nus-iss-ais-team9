@@ -14,6 +14,27 @@ def github_json(path: str) -> dict:
     return json.loads(result.stdout)
 
 
+def completed_step(job, names):
+    return (job.get("conclusion") == "success"
+            and any(step.get("name") in names and step.get("conclusion") == "success"
+                    for step in job.get("steps", [])))
+
+
+def accepted_deployment(jobs):
+    deployed = next((job for job in jobs if job.get("name") == "Deploy demo environment"), {})
+    if not completed_step(deployed, {
+        "Deploy AI service", "Deploy application backend", "Deploy Streamlit frontend",
+    }):
+        return False
+    # Retained releases from before the split have smoke inside the deployment job.
+    split_gate = next((job for job in jobs if job.get("name") == "Require complete live release acceptance"), None)
+    if split_gate is None:
+        return completed_step(deployed, {"Run health and AI safety smoke tests"})
+    smoke = next((job for job in jobs if job.get("name") == "Health and AI safety smoke"), {})
+    return (completed_step(smoke, {"Run health and AI safety smoke tests"})
+            and completed_step(split_gate, {"Require complete live release acceptance"}))
+
+
 def last_deployment(repository: str, api=github_json) -> dict | None:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("Invalid GitHub repository")
@@ -27,13 +48,7 @@ def last_deployment(repository: str, api=github_json) -> dict | None:
             if run.get("conclusion") != "success" or run.get("head_branch") != "main":
                 continue
             jobs = api(f"repos/{repository}/actions/runs/{run['id']}/jobs?filter=latest&per_page=100")["jobs"]
-            if any(job.get("name") == "Deploy demo environment" and job.get("conclusion") == "success"
-                   and any(step.get("name") == "Run health and AI safety smoke tests"
-                           and step.get("conclusion") == "success" for step in job.get("steps", []))
-                   and any(step.get("name") in {
-                       "Deploy AI service", "Deploy application backend", "Deploy Streamlit frontend",
-                   } and step.get("conclusion") == "success" for step in job.get("steps", []))
-                   for job in jobs):
+            if accepted_deployment(jobs):
                 sha = run["head_sha"]
                 if not re.fullmatch(r"[a-f0-9]{40}", sha):
                     raise ValueError("Invalid deployed commit SHA")

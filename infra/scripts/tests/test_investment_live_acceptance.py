@@ -584,13 +584,13 @@ def test_investment_live_release_is_required_with_demo_environment_and_retains_9
     assert not workflow["on"]["workflow_dispatch"]
     assert "live" not in workflow["jobs"]
     release = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
-    live_job = release["jobs"]["deploy-demo"]
+    live_job = release["jobs"]["live"]
     assert live_job["environment"]["name"] == "demo"
     assert "continue-on-error" not in live_job
     assert live_job["env"].get("OPENAI_API_KEY") is None
     run = next(step["run"] for step in live_job["steps"] if step.get("id") == "agents-live")
-    assert "investment" in run and "--post-deployment" in run
-    artifact = next(step for step in live_job["steps"]
+    assert "investment" in live_job["strategy"]["matrix"]["suite"] and "--post-deployment" in run
+    artifact = next(step for step in release["jobs"]["live-acceptance"]["steps"]
                     if step.get("with", {}).get("name", "").startswith("release-live-acceptance-"))
     assert artifact["with"]["retention-days"] == "90"
     assert "investment-live-*.jsonl" in artifact["with"]["path"]

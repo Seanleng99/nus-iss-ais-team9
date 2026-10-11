@@ -32,8 +32,9 @@ seeding, model execution or verification fails.
 
 Documentation and service README edits do not select deployment on their own. Every push still runs change detection, so a documentation-only successor cannot strand pending application changes. Governed RAG Markdown and runtime prompt files remain deployable inputs.
 
-Main pushes classify all changes since the last successful `Deploy demo environment`
-job, rather than just the newest push. Failed CI or deployment leaves application
+Main pushes classify all changes since the last accepted application release
+(successful service updates, smoke and the required live gate), rather than just
+the newest push. Failed CI or deployment leaves application
 changes pending; a successful release with a skipped deployment does not advance
 the baseline. This lets a later security or pipeline fix release the pending
 application changes. If no deployment is retained or its commit is outside the
@@ -104,7 +105,7 @@ and `security/promptfoo`. Each update arrives as a pull request that must pass C
 before merging, so pinned tool upgrades are reviewed instead of arriving with
 a new upstream release.
 
-`Release to AWS` requires all 19 live fairness pairs once (38 coaching requests), seven serial deployed-model/AWS datasets and two-trial live security regressions after deployment and smoke. Failed or incomplete evidence fails the release and restores changed services' previous task definitions. CI has no paid-live input. See [required live release acceptance](post-deployment-acceptance.md) for rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
+`Release to AWS` has separate jobs for live preflight, image build/scan, corpus governance, deployment, smoke, fairness, the seven-entry live agent/RAG matrix, security, aggregate acceptance and rollback. The workflow lock covers them all. It requires all 19 live fairness pairs once (38 coaching requests), seven serial deployed-model/AWS datasets and two-trial live security regressions after deployment and smoke. Failed, cancelled, skipped or incomplete required checks fail acceptance and restore attempted service updates to their previous task revisions. CI has no paid-live input. See [required live release acceptance](post-deployment-acceptance.md) for the job graph, rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
 

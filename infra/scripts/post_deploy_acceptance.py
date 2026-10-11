@@ -13,6 +13,8 @@ from infra.scripts.fairness_live_evaluation import load_pairs
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "artifacts/post-deploy"
 FAIRNESS = ROOT / "apps/ai-service/app/evals/datasets/fairness_consistency.jsonl"
+REQUIRED_JOBS = ("release-gate", "live-preflight", "build-images", "corpus", "deploy-demo",
+                 "smoke", "fairness", "live", "security-live")
 
 
 def require_release_context(env):
@@ -44,6 +46,22 @@ def read_json(path):
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def assess_jobs(raw):
+    """A failed/cancelled/skipped prerequisite cannot be masked by passing files."""
+    try:
+        jobs = json.loads(raw)
+    except (TypeError, ValueError):
+        jobs = {}
+    jobs = jobs if isinstance(jobs, dict) else {}
+    checks = []
+    for name in REQUIRED_JOBS:
+        job = jobs.get(name)
+        result = job.get("result") if isinstance(job, dict) else None
+        checks.append({"check": "job:" + name, "passed": result == "success",
+                       "result": result or "missing"})
+    return checks
 
 
 def assess(directory, sha, *, agent_root=None):
@@ -115,9 +133,11 @@ def publish(report, directory):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", required=True, choices=("validate-config", "initialize", "summarize", "gate"))
+    parser.add_argument("--mode", required=True, choices=("validate-context", "validate-config", "initialize", "summarize", "gate"))
     args = parser.parse_args(argv)
-    if args.mode == "validate-config":
+    if args.mode == "validate-context":
+        require_release_context(os.environ)
+    elif args.mode == "validate-config":
         validate_config(os.environ)
     elif args.mode == "initialize":
         for suite in SUITES:
@@ -125,6 +145,8 @@ def main(argv=None):
         OUTPUT.mkdir(parents=True, exist_ok=True)
     else:
         report = assess(OUTPUT, os.environ["RELEASE_SHA"])
+        report["checks"].extend(assess_jobs(os.getenv("RELEASE_JOB_RESULTS")))
+        report["passed"] = all(row["passed"] for row in report["checks"])
         publish(report, OUTPUT)
         if args.mode == "gate" and not report["passed"]:
             return 1

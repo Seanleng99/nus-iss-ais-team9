@@ -1,7 +1,9 @@
 """Exercise the required release gate using synthetic reports, never paid calls."""
+import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -141,6 +143,7 @@ def test_gate_cli_exit_status_and_published_result_control_release_failure(tmp_p
     monkeypatch.setattr(acceptance, "OUTPUT", tmp_path)
     monkeypatch.setattr(acceptance, "assess", lambda directory, sha: assess(directory, sha, agent_root=agents))
     monkeypatch.setenv("RELEASE_SHA", SHA)
+    monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps({job: {"result": "success"} for job in acceptance.REQUIRED_JOBS}))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert acceptance.main(["--mode", "gate"]) == (0 if complete else 1)
     report = json.loads((tmp_path / "acceptance.json").read_text())
@@ -152,31 +155,154 @@ def workflows():
             for name in ("ci", "release")]
 
 
-def test_live_stages_move_to_release_before_rollback_and_image_scan_stays_before_deploy():
+def test_split_release_requires_preflight_scan_smoke_and_all_live_stages():
     ci, release = workflows()
     assert "live" not in ci["jobs"] and "security-live" not in ci["jobs"]
     assert "inputs" not in (ci["on"]["workflow_dispatch"] or {})
     assert "github.event_name != 'push'" in ci["jobs"]["container-build"]["if"]
-    assert release["jobs"]["deploy-demo"]["needs"] == ["release-gate", "build-images"]
-    steps = release["jobs"]["deploy-demo"]["steps"]
-    names = [step.get("name") for step in steps]
-    assert names.index("Validate required live acceptance configuration") < names.index("Deploy AI service")
-    smoke, gate, rollback = (names.index(name) for name in ("Run health and AI safety smoke tests",
-        "Require complete live release acceptance", "Roll back services when post-deploy checks fail"))
-    fairness_step = steps[names.index("Live fairness — all 19 pairs once")]
+    jobs = release["jobs"]
+    assert jobs["build-images"]["needs"] == ["release-gate", "live-preflight"]
+    assert jobs["deploy-demo"]["needs"] == ["release-gate", "build-images", "corpus"]
+    assert jobs["smoke"]["needs"] == ["deploy-demo"]
+    assert jobs["fairness"]["needs"] == ["deploy-demo", "smoke"]
+    assert jobs["live"]["needs"] == ["deploy-demo", "fairness"]
+    assert jobs["security-live"]["needs"] == ["deploy-demo", "live"]
+    assert set(jobs["live-acceptance"]["needs"]) == set(acceptance.REQUIRED_JOBS)
+    assert jobs["rollback"]["needs"] == ["deploy-demo", "live-acceptance"]
+    assert release["concurrency"] == {"group": "deploy-demo", "cancel-in-progress": "false"}
+    assert jobs["live"]["strategy"]["matrix"]["suite"] == list(acceptance.SUITES)
+    assert jobs["live"]["strategy"]["max-parallel"] == "1"
+    assert jobs["live"]["strategy"]["fail-fast"] == "true"
+    fairness_step = next(s for s in jobs["fairness"]["steps"] if s.get("id") == "fairness-live")
     assert "--repeats 1" in fairness_step["run"]
-    assert smoke < names.index("Live fairness — all 19 pairs once") < gate < rollback
-    assert smoke < names.index("Live agent and RAG release contracts") < gate
-    assert smoke < names.index("Promptfoo — required live security regressions") < gate
-    assert "always()" in steps[gate]["if"] and "failure()" in steps[rollback]["if"]
-    assert not any(step.get("continue-on-error") == "true" for step in steps)
-    credentials = next(step for step in steps if step.get("id") == "security-credentials")
+    assert "always()" in jobs["live-acceptance"]["if"] and "always()" in jobs["rollback"]["if"]
+    assert not any(s.get("continue-on-error") == "true" for j in jobs.values() for s in j["steps"])
+    credentials = next(s for s in jobs["security-live"]["steps"] if s.get("id") == "security-credentials")
     assert credentials["with"]["output-env-credentials"] == "false"
-    for step in steps[names.index("Verify release is still current main") + 1:]:
-        assert "steps.current.outputs.deploy == 'true'" in step["if"]
+    for key in ("corpus", "deploy-demo"):
+        steps = jobs[key]["steps"]
+        guard = next(i for i, s in enumerate(steps) if s.get("id") == "current")
+        for s in steps[guard + 1:]:
+            assert "steps.current.outputs.deploy == 'true'" in s["if"]
+    deployment = jobs["deploy-demo"]["steps"]
+    for role, name in (("ai", "Deploy AI service"), ("backend", "Deploy application backend"),
+                       ("frontend", "Deploy Streamlit frontend")):
+        attempt = next(i for i, s in enumerate(deployment) if s.get("id") == "attempt-" + role)
+        assert attempt < next(i for i, s in enumerate(deployment) if s.get("name") == name)
+        assert f"steps.attempt-{role}.outputs.attempted" in jobs["deploy-demo"]["outputs"][role + "-attempted"]
+    assert all(s["with"]["retention-days"] == "90" for j in jobs.values() for s in j["steps"]
+               if s.get("uses", "").startswith("actions/upload-artifact"))
+    for name in ("corpus", "deploy-demo", "smoke", "fairness", "security-live"):
+        steps = jobs[name]["steps"]
+        guard = next(i for i, s in enumerate(steps) if "--mode validate-context" in s.get("run", ""))
+        protected = {"corpus": "Ingest and verify approved Bedrock corpora", "deploy-demo": "Deploy AI service",
+                     "smoke": "Run health and AI safety smoke tests", "fairness": "Live fairness — all 19 pairs once",
+                     "security-live": "Promptfoo — required live security regressions"}[name]
+        assert guard < next(i for i, s in enumerate(steps)
+                            if (s.get("id") == "fairness-live" if name == "fairness" else s.get("name") == protected))
 
 
-def test_real_rollback_shell_restores_all_captured_services(tmp_path):
+@pytest.mark.parametrize("job", acceptance.REQUIRED_JOBS)
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", None])
+def test_any_unsuccessful_or_missing_prerequisite_blocks_even_complete_files(tmp_path, monkeypatch, job, result):
+    agents, _, _ = evidence(tmp_path)
+    jobs = {name: {"result": "success"} for name in acceptance.REQUIRED_JOBS}
+    if result is None:
+        del jobs[job]
+    else:
+        jobs[job]["result"] = result
+    assess = acceptance.assess
+    monkeypatch.setattr(acceptance, "OUTPUT", tmp_path)
+    monkeypatch.setattr(acceptance, "assess", lambda directory, sha: assess(directory, sha, agent_root=agents))
+    monkeypatch.setenv("RELEASE_SHA", SHA)
+    monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps(jobs))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    assert acceptance.main(["--mode", "gate"]) == 1
+    report = json.loads((tmp_path / "acceptance.json").read_text())
+    assert not report["passed"]
+    assert all(row["passed"] for row in report["checks"] if not row["check"].startswith("job:"))
+
+
+@pytest.mark.parametrize("raw", [None, "", "invalid", "null", "[]", '{"smoke": null}'])
+def test_malformed_job_results_fail_closed(raw):
+    assert not any(row["passed"] for row in acceptance.assess_jobs(raw))
+
+
+@pytest.mark.parametrize("attempt", ["1", "2"])
+def test_per_job_context_cli_prevents_paid_or_mutating_reruns(monkeypatch, attempt):
+    for key, value in {**context(), "GITHUB_RUN_ATTEMPT": attempt}.items():
+        monkeypatch.setenv(key, value)
+    if attempt == "1":
+        assert acceptance.main(["--mode", "validate-context"]) == 0
+    else:
+        with pytest.raises(ValueError, match="PAID_RELEASE_RERUN_REQUIRES_FRESH_CI"):
+            acceptance.main(["--mode", "validate-context"])
+
+
+def selected(job, states):
+    """Evaluate only Boolean/equality expressions from the actual job guards."""
+    text = re.sub(r"needs\.([\w-]+)\.(outputs\.[\w-]+|result)",
+                  lambda m: repr(states.get(m[1], {}).get(m[2], "")), job["if"])
+    text = text.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+
+    def evaluate(node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.BoolOp):
+            values = [evaluate(value) for value in node.values]
+            return all(values) if isinstance(node.op, ast.And) else any(values)
+        assert isinstance(node, ast.Compare) and len(node.ops) == 1
+        left, right = evaluate(node.left), evaluate(node.comparators[0])
+        assert isinstance(node.ops[0], (ast.Eq, ast.NotEq))
+        return left == right if isinstance(node.ops[0], ast.Eq) else left != right
+
+    allowed = evaluate(ast.parse(text, mode="eval").body)
+    # GitHub implicitly adds success() unless a guard contains a status function.
+    return allowed and ("always()" in job["if"] or all(states[name].get("result") == "success" for name in job["needs"]))
+
+
+@pytest.mark.parametrize("failure", ["smoke", "fairness", "live", "security-live", "deploy-demo"])
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped"])
+def test_failed_stage_stops_later_paid_jobs_and_still_selects_gate_and_rollback(failure, result):
+    _, release = workflows()
+    jobs = release["jobs"]
+    states = {name: {"result": "success"} for name in acceptance.REQUIRED_JOBS}
+    states["release-gate"]["outputs.deploy"] = "true"
+    states["corpus"]["outputs.deploy"] = "true"
+    states["deploy-demo"].update({"outputs.deploy": "true", "outputs.ai-attempted": "true"})
+    states[failure]["result"] = result
+    if failure == "smoke":
+        assert not selected(jobs["fairness"], states)
+        states["fairness"]["result"] = "skipped"
+    if failure in ("smoke", "fairness"):
+        assert not selected(jobs["live"], states)
+        states["live"]["result"] = "skipped"
+    if failure in ("smoke", "fairness", "live"):
+        assert not selected(jobs["security-live"], states)
+    assert selected(jobs["live-acceptance"], states)
+    states["live-acceptance"] = {"result": "failure"}
+    assert selected(jobs["rollback"], states)
+
+
+@pytest.mark.parametrize("reason", ["accepted", "predeployment-failure", "stale-corpus", "stale-deploy"])
+def test_success_and_no_service_change_never_select_rollback(reason):
+    _, release = workflows()
+    states = {name: {"result": "success"} for name in acceptance.REQUIRED_JOBS}
+    states["release-gate"]["outputs.deploy"] = "true"
+    states["corpus"]["outputs.deploy"] = "true"
+    states["deploy-demo"].update({"outputs.deploy": "true", "outputs.ai-attempted": "true"})
+    states["live-acceptance"] = {"result": "success"}
+    if reason == "predeployment-failure":
+        states["deploy-demo"] = {"result": "skipped"}
+        states["live-acceptance"]["result"] = "failure"
+    elif reason.startswith("stale-"):
+        states["corpus" if reason == "stale-corpus" else "deploy-demo"]["outputs.deploy"] = "false"
+        assert not selected(release["jobs"]["live-acceptance"], states)
+    assert not selected(release["jobs"]["rollback"], states)
+
+
+@pytest.mark.parametrize("attempted", [("AI",), ("AI", "BACKEND"), ("AI", "BACKEND", "FRONTEND")])
+def test_real_rollback_shell_restores_only_attempted_services(tmp_path, attempted):
     bash = shutil.which("bash")
     if os.name == "nt":
         git = shutil.which("git")
@@ -187,18 +313,57 @@ def test_real_rollback_shell_restores_all_captured_services(tmp_path):
     if not bash:
         pytest.skip("Rollback shell test requires Bash")
     _, release = workflows()
-    script = next(step["run"] for step in release["jobs"]["deploy-demo"]["steps"]
+    script = next(step["run"] for step in release["jobs"]["rollback"]["steps"]
                   if step.get("name") == "Roll back services when post-deploy checks fail")
     log = tmp_path / "rollback.log"
     env = {**os.environ, "ECS_CLUSTER": "test-cluster", "ROLLBACK_LOG": log.as_posix()}
     for role in ("AI", "BACKEND", "FRONTEND"):
-        env.update({role + "_DEPLOYED": "true", role + "_SERVICE": role.lower(),
+        env.update({role + "_DEPLOYED": "true" if role in attempted else "false", role + "_SERVICE": role.lower(),
                     role + "_PREVIOUS_TASK_DEFINITION": role.lower() + "-previous"})
     stub = 'aws() { printf "%s\\n" "$*" >> "$ROLLBACK_LOG"; };\n'
     result = subprocess.run([bash, "-eu", "-c", stub + script], env=env, capture_output=True,
                             text=True, timeout=10, check=False)
     assert result.returncode == 0, result.stderr
     calls = log.read_text().splitlines()
-    assert len(calls) == 4
-    assert all(f"--task-definition {role}-previous" in calls[i] for i, role in enumerate(("ai", "backend", "frontend")))
-    assert calls[-1].endswith("--services ai backend frontend")
+    assert len(calls) == len(attempted) + 1
+    assert all(f"--task-definition {role.lower()}-previous" in calls[i] for i, role in enumerate(attempted))
+    assert calls[-1].endswith("--services " + " ".join(role.lower() for role in attempted))
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_capture_exports_family_revision_without_masked_account_and_rejects_invalid_revisions(tmp_path, invalid):
+    bash = shutil.which("bash")
+    if os.name == "nt":
+        git = shutil.which("git")
+        candidate = Path(git).parents[1] / "bin/bash.exe" if git else None
+        if not candidate or not candidate.is_file():
+            pytest.skip("Capture shell test requires Git Bash")
+        bash = str(candidate)
+    if not bash:
+        pytest.skip("Capture shell test requires Bash")
+    _, release = workflows()
+    script = next(s["run"] for s in release["jobs"]["deploy-demo"]["steps"] if s.get("id") == "rollback-state")
+    output = tmp_path / "outputs"
+    env = {**os.environ, "ECS_CLUSTER": "synthetic", "GITHUB_ENV": (tmp_path / "env").as_posix(),
+           "GITHUB_OUTPUT": output.as_posix(), "INVALID_REVISION": str(invalid)}
+    for role in ("AI", "BACKEND", "FRONTEND"):
+        env.update({role + "_CHANGED": "true", role + "_SERVICE": role.lower()})
+    stub = '''aws() {
+      case "$*" in
+        *deploymentCircuitBreaker*) echo True ;;
+        *taskDefinition*)
+          if [[ "$INVALID_REVISION" == True ]]; then echo None;
+          else echo arn:aws:ecs:ap-southeast-1:123456789012:task-definition/synthetic-family:42; fi ;;
+        *) return 1 ;;
+      esac
+    }
+    '''
+    result = subprocess.run([bash, "-eu", "-c", stub + script], env=env, capture_output=True,
+                            text=True, timeout=10, check=False)
+    if invalid:
+        assert result.returncode != 0 and not output.exists()
+    else:
+        assert result.returncode == 0, result.stderr
+        values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        assert values == {role + "-previous-task-definition": "synthetic-family:42" for role in ("ai", "backend", "frontend")}
+        assert "123456789012" not in output.read_text()

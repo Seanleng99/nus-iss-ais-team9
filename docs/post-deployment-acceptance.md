@@ -2,8 +2,8 @@
 
 **Release to AWS** runs live acceptance after deploying the tested current main
 SHA and passing health/safety smoke. All automated checks must pass before the
-deployment job succeeds. Failure or incomplete evidence fails the release and
-restores each changed ECS service's captured previous task definition.
+release succeeds. Failure or incomplete evidence fails the release and
+restores each attempted ECS service update to its captured previous task revision.
 The existing workflow release lock remains held through acceptance and rollback.
 
 ## Why the former CI jobs were skipped
@@ -23,16 +23,42 @@ CI runs retain their original optional/skipped/advisory results.
 
 ## Order and acceptance
 
-1. Successful push CI for current `main`; build/publish and scan release images.
-2. Validate live configuration and secret access before service changes. Stale
-   releases skip deployment; paid release-job reruns require fresh CI.
-3. Capture previous task definitions, deploy the coherent release, run migrations
-   and existing health/authentication/persistence/AI smoke checks.
+1. Successful push CI for current `main`; validate live configuration and secret
+   access, then build/publish and scan release images.
+2. Reject stale releases before corpus ingestion and immediately before deployment.
+   Mutating and paid release-job reruns require fresh CI.
+3. Ingest/audit approved corpora, capture previous task revisions, deploy the
+   coherent release, run migrations and existing health/authentication/persistence/AI smoke checks.
 4. Run all 19 fairness pairs once, then seven agent/RAG datasets, then live security.
    A failed execution stops subsequent paid stages; their missing evidence remains
    incomplete. The final evidence gate always runs for a selected release.
 5. Retain detailed evidence and review forms even on failure. Refresh deployment
-   credentials and restore changed services if checks fail; wait for stability.
+   credentials and restore attempted service updates if checks fail; wait for stability.
+
+Each stage is a separate job in [release.yml](../.github/workflows/release.yml):
+
+| Job ID | Required work |
+|---|---|
+| `release-gate` | Successful current-main push CI and coherent release selection |
+| `live-preflight` | First-attempt release context, rates, API settings and isolated model-secret access |
+| `build-images` | Immutable release images and ECR/Inspector findings gate |
+| `corpus` | Freshness check and approved Bedrock corpus ingestion/governance |
+| `deploy-demo` | Freshness check, runtime configuration checks, circuit breaker, previous revisions, migration and ECS updates |
+| `smoke` | Required health, authentication, persistence and AI safety smoke |
+| `fairness` | All 19 pairs once, with 38 coaching requests |
+| `live` | Seven visible agent/RAG matrix jobs; `max-parallel: 1`, `fail-fast: true` |
+| `security-live` | Full two-trial live security regressions |
+| `live-acceptance` | Collect artifacts and require every prerequisite job and all objective evidence to pass |
+| `rollback` | Fresh deployment credentials; restore attempted services if deployment or acceptance failed |
+
+The workflow lock covers every job, including artifact collection and rollback.
+Matrix cancellation stops queued paid work after the first failure. Missing,
+failed, cancelled or skipped prerequisites fail the final gate even if files
+contain passing results. A stale/no-op release skips acceptance and does not
+advance the successful deployment baseline. Partial service-update failures
+also select rollback, because each attempt is recorded before its ECS action.
+Only task family/revision references cross job boundaries; full task definitions,
+environment settings and AWS credentials remain inside their original jobs.
 
 [`post_deploy_acceptance.py`](../infra/scripts/post_deploy_acceptance.py) requires
 all seven agent reports to pass with identical test/deployed release SHA and stable
@@ -65,7 +91,7 @@ The security role's OIDC trust must accept the exact `demo` environment subject
 `repo:OWNER/REPOSITORY:environment:demo`, rather than only the former main-ref
 subject. Secret permissions remain scoped to the existing evaluation secret.
 The workflow preflights role/secret access before changing services. Security
-credentials are confined to scan steps using the AWS action's
+credentials are confined to the preflight/scan steps in their separate jobs using the AWS action's
 [documented credential-output settings](https://github.com/aws-actions/configure-aws-credentials#retrieving-credentials-from-step-output);
 they do not replace the deployment credentials used by rollback.
 
@@ -75,8 +101,11 @@ token ceiling and the configured cost ceiling. Security uses two trials with
 one million conservatively reserved tokens. These are bounded samples, not an
 account-credit guarantee; API turns can cross stop-before-next-request bounds.
 Fairness treats exceeding its final token/cost limit as failure. Missing usage
-stops further generation. Each live stage has a 45-minute step timeout; the job
-allows 180 minutes for deployment, testing, evidence and rollback.
+stops further generation. Fairness, each agent/RAG matrix entry and security
+have 45-minute execution timeouts inside 50-minute jobs, leaving time for evidence.
+Deployment has a separate 45-minute job limit; smoke and acceptance each have
+15 minutes, and rollback has 20 minutes with fresh credentials. The release lock
+remains held across these jobs.
 
 Do not lower correctness thresholds to fit an inadequate budget. A budget stop
 is incomplete acceptance and rolls the release back. Change reviewed limits or
@@ -87,7 +116,10 @@ the versioned sampling policy explicitly when necessary.
 Download **`release-live-acceptance-<run_id>`** from **Release to AWS**. It retains
 the aggregate `acceptance.json`/summary, seven full agent reports, fairness JSON,
 blinded `fairness-human-review.csv`, security results, scenario definitions and
-hashable inputs for 90 days. CI's offline artifacts and `investment-evaluation-metrics`
+hashable inputs for 90 days. Individual jobs also retain `release-fairness-<run_id>`,
+`release-agent-live-<suite>` and `release-security-<run_id>` artifacts; the final
+gate merges them into the aggregate artifact and initializes missing suites as
+NOT RUN. CI's offline artifacts and `investment-evaluation-metrics`
 retain their existing purpose and retention.
 
 Fairness automation tests structural parity and independent expected outcomes.
@@ -104,7 +136,7 @@ run; actual acceptance is the retained release report.
 
 ## Local wiring verification
 
-The 2026-10-11 full infrastructure/provider run and targeted module reruns
+The initial 2026-10-11 full infrastructure/provider run and targeted module reruns
 established 755 passing pytest cases. Five existing release-selection tests
 skipped because `jq` was unavailable locally; their CI checks remain intact.
 All 204 offline security trials, 12 JavaScript grader tests and 80 workflow Bash
@@ -114,3 +146,22 @@ and exercise rollback using a local AWS command stub.
 The [verification record](evaluation-evidence/release-live-acceptance-wiring-2026-10-11.json)
 retains source hashes, execution details and limitations. These checks made no
 paid model calls or remote deployment and do not establish actual live acceptance.
+
+The subsequent [job-split verification](evaluation-evidence/release-job-split-verification-2026-10-11.json)
+covers job failure/cancellation/skip propagation, incomplete artifacts, per-job
+rerun guards, partial deployment rollback and successful deployment-baseline
+selection. Actionlint and Bash syntax checks validate the split workflow.
+The full infrastructure/provider run with the corrected acceptance-module rerun
+established 823 passing pytest cases, zero failures and the same five `jq` skips.
+Actionlint 1.7.12, Ruff and all 97 CI/release Bash syntax checks passed.
+
+The first release of this wiring, [38115829213](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38115829213),
+stopped before service changes because both token-rate variables were unset.
+The `demo` rates were subsequently configured to USD 0.10 input / USD 0.50 output
+per million tokens for standard short-context GPT-6 Luna, checked against
+[OpenAI pricing](https://developers.openai.com/api/docs/pricing) on 2026-10-11.
+These rates are cost-estimation settings, not a billing guarantee. The existing
+evaluation role's trust now includes the exact `demo` subject as well as its
+existing main-ref subject; its secret-read permission remains scoped to the
+existing evaluation secret. Configuration and local tests do not establish live
+acceptance; the next release must pass all required jobs.

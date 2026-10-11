@@ -30,6 +30,25 @@ def deployed_steps():
 
 
 class DeploymentBaselineTests(unittest.TestCase):
+    def test_split_deployment_advances_baseline_only_after_smoke_and_acceptance(self):
+        jobs = [
+            {"name": "Deploy demo environment", "conclusion": "success", "steps": [deployed_steps()[0]]},
+            {"name": "Health and AI safety smoke", "conclusion": "success", "steps": [deployed_steps()[1]]},
+            {"name": "Require complete live release acceptance", "conclusion": "success", "steps": [
+                {"name": "Require complete live release acceptance", "conclusion": "success"}]},
+        ]
+        self.assertTrue(baseline.accepted_deployment(jobs))
+        for index in range(3):
+            for status in ("failure", "cancelled", "skipped"):
+                with self.subTest(job=index, status=status):
+                    self.assertFalse(baseline.accepted_deployment([
+                        {**job, "conclusion": status} if position == index else job
+                        for position, job in enumerate(jobs)]))
+                    self.assertFalse(baseline.accepted_deployment([
+                        {**job, "steps": [{**step, "conclusion": status} for step in job["steps"]]}
+                        if position == index else job for position, job in enumerate(jobs)]))
+            self.assertFalse(baseline.accepted_deployment(jobs[:index] + jobs[index + 1:]))
+
     def test_successful_superseded_job_with_skipped_deployment_cannot_advance_baseline(self):
         def api(path):
             if "/workflows/" in path:
