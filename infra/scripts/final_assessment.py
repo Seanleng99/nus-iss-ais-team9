@@ -171,6 +171,7 @@ def validate_manifest(manifest: dict[str, Any], repository_root: Path) -> list[P
     evidence_files: dict[str, Path] = {
         project["runbook_path"]: runbook_path,
     }
+    documented_workflows: set[str] = set()
     covered_scenarios: set[str] = set()
     for index, requirement in enumerate(requirements):
         _require_string(requirement.get("name"), f"requirements[{index}].name")
@@ -199,7 +200,12 @@ def validate_manifest(manifest: dict[str, Any], repository_root: Path) -> list[P
                 item.get("path"),
                 f"requirements[{index}].evidence[{evidence_index}].path",
             )
-            evidence_files[raw_path] = _resolve_evidence_path(repository_root, raw_path)
+            resolved_path = _resolve_evidence_path(repository_root, raw_path)
+            evidence_files[raw_path] = resolved_path
+            if kind == "workflow":
+                documented_workflows.add(
+                    resolved_path.relative_to(repository_root.resolve()).as_posix()
+                )
 
         linked_scenarios = requirement.get("demo_scenarios", [])
         if not isinstance(linked_scenarios, list):
@@ -213,6 +219,19 @@ def validate_manifest(manifest: dict[str, Any], repository_root: Path) -> list[P
                     f"requirement references unknown demo scenario: {normalized}"
                 )
             covered_scenarios.add(normalized)
+
+    repository_workflows = {
+        path.relative_to(repository_root).as_posix()
+        for pattern in ("*.yml", "*.yaml")
+        for path in (repository_root / ".github" / "workflows").glob(pattern)
+        if path.is_file()
+    }
+    missing_workflows = repository_workflows - documented_workflows
+    if missing_workflows:
+        raise AssessmentValidationError(
+            "repository workflows are not inventoried as workflow evidence: "
+            + ", ".join(sorted(missing_workflows))
+        )
 
     uncovered_scenarios = scenario_ids - covered_scenarios
     if uncovered_scenarios:
@@ -251,6 +270,8 @@ def build_report(
     return {
         "schema_version": 1,
         "result": "pass",
+        "validation_scope": "repository_evidence_inventory",
+        "assessment_acceptance": "not_evaluated",
         "generated_at": datetime.now(UTC).isoformat(),
         "repository_commit": _repository_commit(),
         "manifest": manifest_path.resolve().relative_to(resolved_root).as_posix(),
@@ -267,15 +288,23 @@ def build_report(
 def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(
         [
-            "## Final assessment evidence",
+            "## Final assessment evidence inventory",
             "",
-            f"- Result: **{report['result'].upper()}**",
+            f"- Inventory result: **{report['result'].upper()}**",
+            "- Overall assessment acceptance: **NOT EVALUATED**",
             f"- Commit: `{report['repository_commit']}`",
             f"- Data classification: `{report['data_classification']}`",
             f"- Requirements mapped: {report['requirement_count']}",
             f"- Demonstration scenarios: {report['demo_scenario_count']}",
             f"- Deferred scope decisions: {report['deferred_decision_count']}",
             f"- Integrity-hashed evidence files: {report['evidence_file_count']}",
+            "",
+            (
+                "This check validates manifest structure, scenario links, repository "
+                "workflow coverage, file existence and integrity. Semantic alignment, "
+                "application tests, live AWS operation and model quality require "
+                "separate evidence and review."
+            ),
             "",
             (
                 "The report contains repository-relative paths and SHA-256 hashes only; "
@@ -289,7 +318,7 @@ def render_markdown(report: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Validate and inventory final-assessment evidence"
+        description="Validate repository assessment inventory and workflow coverage"
     )
     parser.add_argument(
         "--manifest",

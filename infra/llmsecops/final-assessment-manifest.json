@@ -47,22 +47,37 @@
       "status": "implemented",
       "evidence": [
         {"kind": "documentation", "path": "docs/model-selection.md"},
+        {"kind": "documentation", "path": "docs/current-prompt-contract.md"},
+        {"kind": "implementation", "path": "apps/ai-service/app/core/config.py"},
         {"kind": "implementation", "path": "apps/ai-service/app/models/gateway.py"},
+        {"kind": "implementation", "path": "apps/ai-service/app/core/prompts.py"},
         {"kind": "implementation", "path": "apps/ai-service/prompts/current/prompts.json"},
-        {"kind": "policy", "path": "apps/ai-service/app/core/model-role-policy.json"}
+        {"kind": "policy", "path": "apps/ai-service/prompts/current/manifest.json"},
+        {"kind": "policy", "path": "apps/ai-service/app/core/model-role-policy.json"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_current_prompt_contract.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_model_role_policy.py"}
       ],
       "demo_scenarios": ["DEMO-02"]
     },
     {
       "id": "MEMORY-01",
-      "name": "Request-scoped agent state and disabled durable memory",
-      "status": "controlled",
+      "name": "Owned chat context, request-scoped agent state, and disabled cross-chat memory",
+      "status": "implemented",
       "evidence": [
         {"kind": "documentation", "path": "docs/agent-design.md"},
+        {"kind": "documentation", "path": "docs/session-context.md"},
+        {"kind": "implementation", "path": "apps/backend/app/services/session_context.py"},
+        {"kind": "implementation", "path": "apps/backend/app/services/conversation_summary.py"},
+        {"kind": "implementation", "path": "apps/ai-service/app/core/session_context.py"},
         {"kind": "policy", "path": "apps/backend/app/policies/data-lifecycle-policy.json"},
-        {"kind": "test", "path": "apps/backend/tests/test_data_lifecycle_api.py"}
+        {"kind": "test", "path": "apps/backend/tests/test_data_lifecycle_api.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_session_context.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_conversation_summary.py"},
+        {"kind": "test", "path": "apps/backend/tests/test_semantic_session_context.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_session_context.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_semantic_session_context.py"}
       ],
-      "demo_scenarios": ["DEMO-05"]
+      "demo_scenarios": ["DEMO-02", "DEMO-05"]
     },
     {
       "id": "TOOLS-01",
@@ -94,6 +109,7 @@
       "evidence": [
         {"kind": "policy", "path": "docs/responsible-ai.md"},
         {"kind": "policy", "path": "docs/security-risk-register.md"},
+        {"kind": "documentation", "path": "docs/fairness-testing.md"},
         {"kind": "documentation", "path": "docs/requirements-traceability.md"}
       ],
       "demo_scenarios": ["DEMO-04"]
@@ -106,6 +122,11 @@
         {"kind": "policy", "path": "docs/security-guardrails.md"},
         {"kind": "implementation", "path": "apps/ai-service/app/core/guardrails.py"},
         {"kind": "implementation", "path": "apps/backend/app/core/security.py"},
+        {"kind": "policy", "path": "security/promptfoo/promptfooconfig.yaml"},
+        {"kind": "evaluation", "path": "security/promptfoo/cases.json"},
+        {"kind": "implementation", "path": "security/promptfoo/run_bounded.py"},
+        {"kind": "implementation", "path": "security/promptfoo/provider.py"},
+        {"kind": "implementation", "path": "security/promptfoo/assertions.cjs"},
         {"kind": "test", "path": "apps/ai-service/tests/test_guardrails.py"},
         {"kind": "test", "path": "apps/backend/tests/test_security.py"}
       ],
@@ -117,9 +138,25 @@
       "status": "implemented",
       "evidence": [
         {"kind": "evaluation", "path": "docs/evaluation-plan.md"},
+        {"kind": "documentation", "path": "docs/agent-test-workflows.md"},
+        {"kind": "documentation", "path": "docs/test-organization.md"},
         {"kind": "policy", "path": "infra/llmsecops/evaluation-policy.json"},
+        {"kind": "policy", "path": "infra/llmsecops/agent-test-suites.json"},
+        {"kind": "evaluation", "path": "infra/llmsecops/agent-evaluation-specs.json"},
+        {"kind": "evaluation", "path": "infra/llmsecops/agent-live-evaluation-specs.json"},
         {"kind": "evaluation", "path": "infra/llmsecops/live-evaluation-cases.jsonl"},
-        {"kind": "implementation", "path": "apps/ai-service/app/evals/gate.py"}
+        {"kind": "evaluation", "path": "apps/ai-service/app/evals/datasets/fairness_consistency.jsonl"},
+        {"kind": "evaluation", "path": "docs/evaluation-evidence/fairness-verification-2026-10-11.md"},
+        {"kind": "evaluation", "path": "docs/evaluation-evidence/fairness-local_fixture-2026-10-11-e3047345.json"},
+        {"kind": "evaluation", "path": "docs/evaluation-evidence/fairness-openai-2026-10-11-c741fef7.json"},
+        {"kind": "implementation", "path": "apps/ai-service/app/evals/gate.py"},
+        {"kind": "implementation", "path": "infra/scripts/check_test_ownership.py"},
+        {"kind": "implementation", "path": "infra/scripts/run_agent_tests.py"},
+        {"kind": "implementation", "path": "infra/scripts/agent_live_evaluation.py"},
+        {"kind": "implementation", "path": "infra/scripts/fairness_live_evaluation.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_agent_live_evaluation.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_fairness_live_evaluation.py"},
+        {"kind": "test", "path": "apps/ai-service/tests/test_fairness_controls.py"}
       ],
       "demo_scenarios": ["DEMO-06"]
     },
@@ -130,6 +167,8 @@
       "evidence": [
         {"kind": "policy", "path": "docs/rag-source-governance.md"},
         {"kind": "policy", "path": "docs/policy-rag-governance.md"},
+        {"kind": "policy", "path": "knowledge/investment_education/source_manifest.json"},
+        {"kind": "policy", "path": "knowledge/policy_controls/source_manifest.json"},
         {"kind": "implementation", "path": "apps/ai-service/app/rag/retriever.py"},
         {"kind": "implementation", "path": "apps/ai-service/app/rag/policy.py"},
         {"kind": "workflow", "path": ".github/workflows/rag-source-governance.yml"}
@@ -154,11 +193,15 @@
       "status": "implemented",
       "evidence": [
         {"kind": "documentation", "path": "docs/cicd-pipeline.md"},
+        {"kind": "documentation", "path": "docs/post-deployment-acceptance.md"},
         {"kind": "workflow", "path": ".github/workflows/ci.yml"},
         {"kind": "workflow", "path": ".github/workflows/release.yml"},
         {"kind": "policy", "path": "infra/llmsecops/final-assessment-manifest.json"},
         {"kind": "implementation", "path": "infra/scripts/final_assessment.py"},
-        {"kind": "test", "path": "infra/scripts/tests/test_final_assessment.py"}
+        {"kind": "implementation", "path": "infra/scripts/post_deploy_acceptance.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_final_assessment.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_unified_ci.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_post_deploy_acceptance.py"}
       ],
       "demo_scenarios": ["DEMO-06"]
     },
@@ -169,7 +212,20 @@
       "evidence": [
         {"kind": "operations", "path": "docs/operations.md"},
         {"kind": "operations", "path": "docs/operational-evidence.md"},
-        {"kind": "workflow", "path": ".github/workflows/aws-operational-validation.yml"}
+        {"kind": "documentation", "path": "docs/model-drift-monitoring.md"},
+        {"kind": "workflow", "path": ".github/workflows/aws-operational-validation.yml"},
+        {"kind": "workflow", "path": ".github/workflows/model-drift.yml"},
+        {"kind": "policy", "path": "infra/llmsecops/model-drift-policy.json"},
+        {"kind": "evaluation", "path": "infra/llmsecops/model-drift-cases.jsonl"},
+        {"kind": "evaluation", "path": "infra/llmsecops/model-drift-baseline.json"},
+        {"kind": "evaluation", "path": "docs/evaluation-evidence/model-drift-human-review-2026-10-11.json"},
+        {"kind": "operations", "path": "docs/evaluation-evidence/model-drift-activation-2026-10-11.json"},
+        {"kind": "implementation", "path": "infra/scripts/model_drift.py"},
+        {"kind": "implementation", "path": "infra/scripts/drift_quality.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_model_drift.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_drift_quality.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_model_drift_workflow.py"},
+        {"kind": "test", "path": "infra/scripts/tests/test_operational_alert_configuration.py"}
       ],
       "demo_scenarios": ["DEMO-06"]
     },
@@ -181,6 +237,7 @@
         {"kind": "policy", "path": "docs/data-lifecycle.md"},
         {"kind": "implementation", "path": "apps/backend/app/core/data_lifecycle.py"},
         {"kind": "implementation", "path": "apps/backend/app/jobs/purge_data_lifecycle.py"},
+        {"kind": "workflow", "path": ".github/workflows/aws-operational-validation.yml"},
         {"kind": "test", "path": "apps/backend/tests/test_data_lifecycle_retention.py"}
       ],
       "demo_scenarios": ["DEMO-05", "DEMO-06"]
@@ -215,13 +272,13 @@
       "id": "DEMO-05",
       "name": "User data lifecycle controls",
       "runbook_section": "5-data-lifecycle-and-memory-boundary",
-      "expected_evidence": ["Policy version and retention periods are visible", "Durable memory is visibly disabled", "Export and confirmed deletion controls are available"]
+      "expected_evidence": ["Policy version and retention periods are visible", "Owned chat facts and summaries remain isolated and follow chat retention, export, and deletion", "Cross-chat durable memory is visibly disabled", "Export and confirmed deletion controls are available"]
     },
     {
       "id": "DEMO-06",
       "name": "Automated assessment and retained evidence",
       "runbook_section": "6-automated-final-assessment",
-      "expected_evidence": ["Repository evidence integrity passes", "Live evaluation and bounded load pass", "Privacy-safe artifacts are retained for 90 days"]
+      "expected_evidence": ["CI repository inventory and workflow coverage pass without asserting overall assessment acceptance", "Live evaluation and bounded load pass", "Independent retention enforcement passes", "Optional release stages record selection and require passing evidence when enabled", "Drift baseline approval and retained quality alerts are visible", "Privacy-safe artifacts are retained for 90 days"]
     }
   ],
   "deferred": [
@@ -232,7 +289,7 @@
     },
     {
       "id": "DEFER-DURABLE-MEMORY",
-      "reason": "Request-scoped state is sufficient and durable agent memory remains disabled by policy.",
+      "reason": "Owned chat facts, observations, referents, and bounded summaries are implemented within chat retention, export, and deletion boundaries; cross-chat durable agent memory remains disabled by policy.",
       "activation_condition": "Requires approved purpose, consent, correction, isolation, encryption, retention, and deletion design."
     },
     {

@@ -24,7 +24,7 @@ for configuration, budgets, evidence and rollback limits.
 
 | Job | Responsibility and dependencies |
 |---|---|
-| `assessment-evidence` | Required evidence manifest validation and SHA-256 inventory on every CI run, including documentation-only changes; retains the report for 90 days |
+| `assessment-evidence` | Required manifest/scenario and repository workflow-coverage validation plus SHA-256 inventory on every CI run, including documentation-only changes; retains the report for 90 days and labels overall assessment acceptance NOT EVALUATED |
 | `changes` | Test classifier/baseline helpers, inventory language data, then classify changes since the last actual successful deployment |
 | `offline` ×7 | Orchestrator, Spending, Budget, Goal, Investment, Risk & Compliance and RAG; selected after change detection |
 | `metrics` | Required LLMSecOps thresholds, including all 19 frozen fairness pairs, and 100-case full-document RAG evidence evaluation |

@@ -68,14 +68,17 @@ Expected result: the first request is blocked by deterministic prompt-injection 
 1. Open **Profile**, then **Privacy & data**.
 2. Show policy `data-lifecycle-v1`, 90-day conversation retention, and 30-day detailed trace retention.
 3. Show that cross-chat durable agent memory is disabled (bounded owned-chat context is implemented) and that recording a future preference does not activate it.
-4. Select **Prepare data export** and show that a portable JSON download becomes available. Do not display or retain its contents in the assessment recording.
-5. Explain the confirmed whole-workspace deletion control. Use a disposable synthetic profile if live deletion is demonstrated.
+4. In a disposable synthetic chat, state a monthly income and ask what income was supplied earlier. Show its user-reported attribution and explain that structured facts and bounded older-dialogue summaries belong to this chat, follow its lifecycle, and cannot supply confirmed financial calculation inputs. A fresh chat must not recall the earlier chat's facts.
+5. Select **Prepare data export** and show that a portable JSON download becomes available. Do not display or retain its contents in the assessment recording.
+6. Explain the confirmed whole-workspace deletion control. Use a disposable synthetic profile if live deletion is demonstrated.
 
 Expected result: the owner controls export and deletion, retention is versioned and automatically enforced, and the UI does not misrepresent a consent preference as active durable memory.
 
 ## 6. Automated Final Assessment
 
-Open the successful **CI and LLMSecOps** run for the assessed `main` commit. Its required assessment evidence job validates `infra/llmsecops/final-assessment-manifest.json` and uploads `final-assessment-evidence-<run-id>` with the integrity-hashed repository inventory. The standalone Final Assessment workflow is retired.
+Open the successful **CI and LLMSecOps** run for the assessed `main` commit. Its required assessment evidence job validates `infra/llmsecops/final-assessment-manifest.json`, requires every repository workflow to be mapped, and uploads `final-assessment-evidence-<run-id>` with the integrity-hashed repository inventory. The report states overall assessment acceptance is **NOT EVALUATED**; this inventory pass must be combined with executable, live and human evidence. The standalone Final Assessment workflow is retired.
+
+Inspect the optional release-stage selections and acceptance report described in `docs/post-deployment-acceptance.md`. Enabled stages require passing evidence; deliberate skips provide no live acceptance evidence. Show the approved drift baseline, human review receipt and activation record linked from `docs/model-drift-monitoring.md`, including the retained grading alert and GitHub-only notification scope. The approved baseline does not establish that every subsequent capture passed or that current email delivery works.
 
 From GitHub Actions on `main`, dispatch **AWS Operational Validation** with the defaults:
 

@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   assessment-evidence:
-    name: Validate assessment scope and repository evidence
+    name: Validate assessment repository evidence inventory
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate and inventory assessment evidence
+      - name: Validate assessment inventory and workflow coverage
         run: >-
           python infra/scripts/final_assessment.py
           --manifest infra/llmsecops/final-assessment-manifest.json
