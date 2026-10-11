@@ -813,7 +813,7 @@ jobs:
       - name: Validate first-attempt release context
         run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
       - name: Prepare live security runtime
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Obtain isolated live security credentials
