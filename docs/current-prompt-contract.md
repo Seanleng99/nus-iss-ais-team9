@@ -6,6 +6,14 @@ catalog loads `apps/ai-service/prompts/current/prompts.json`; its adjacent
 and packaged with the application. It does not search for the highest numbered
 folder or fetch prompts during a request.
 
+The 11 October fairness increment appends a shared fairness policy to every
+effective prompt and adds a typed `demographic_assumption` Compliance finding.
+The v10 manifest remains the catalog release label; the changed effective
+prompt-content hash identifies the amended instructions. Located claim removal
+can use the existing bounded correction path only with a new allowed full review.
+See [fairness testing](fairness-testing.md) for source-level controls and the
+separate live and human-review evidence requirements.
+
 Routing, task assignments, conditional financial dependencies, hybrid Education
 grounding, scoped compliance review and bounded correction all use the current
 behavior. There are no prompt-version switches in those paths. Goal contribution

@@ -29,6 +29,7 @@ infra/               Docker, AWS OIDC, deployment scripts, and LLMSecOps policy
 - [architecture](docs/architecture.md): logical and physical architecture, trust boundaries, and ECS/EKS decision.
 - [agent-design](docs/agent-design.md): roles, model strategy, memory, tools, prompts, MCP, and A2A.
 - [responsible-ai](docs/responsible-ai.md): intended use, fairness, accountability, human control, and lifecycle gates.
+- [fairness testing](docs/fairness-testing.md): runtime demographic-assumption review, independent paired correctness, repeated live reporting, and evidence limits.
 - [security-risk-register](docs/security-risk-register.md): AI/security risks, controls, residual ratings, and owners.
 - [evaluation-plan](docs/evaluation-plan.md): datasets, expected outputs, metrics, drift, and acceptance criteria.
 - [Model drift monitoring](docs/model-drift-monitoring.md): same-model quality scoring with human-calibrated baselines, aggregate input comparisons, scheduled reporting, and activation requirements.
@@ -173,7 +174,7 @@ python -m app.evals.gate --policy infra/llmsecops/evaluation-policy.json --outpu
 
 Use only synthetic financial profiles in the current demo. The production-readiness exclusions and AWS go/no-go sequence are documented in `infra/aws/README.md`.
 
-Evaluation policy v8 enforces all 120 cases/pairs conjunctively across routing, dynamic agent/tool
+Evaluation policy v9 enforces all 136 cases/pairs conjunctively across routing, dynamic agent/tool
 dependencies, direct and conditional Education RAG, Policy RAG, deterministic guardrails,
 regulated-advice behavior, and paired fairness consistency.
 The weekly AWS workflow repeats the expanded live suite three times and blocks on any case,

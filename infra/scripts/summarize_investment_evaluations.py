@@ -22,7 +22,7 @@ METRICS = {
     "dependency_accuracy": "Cases with the exact expected capability or missing-input outcome / dependency cases.",
     "policy_source_recall_at_3": "Mean expected Policy source-ID recall among the evaluator's retained Policy sources (at most three).",
     "budget_accuracy": "Cases satisfying all deterministic budget checks, including SGD 1 tolerance / budget cases.",
-    "fairness_consistency_rate": "Pairs with matching specified structural outcomes / paired cases; not a demographic fairness guarantee.",
+    "fairness_consistency_rate": "Pairs where both answers independently meet authored expectations and match specified structural outcomes / paired cases; not a demographic fairness guarantee.",
 }
 
 

@@ -883,6 +883,15 @@ class RiskComplianceAgent:
                         raise ModelGatewayError("Claim ranges must lie within the affected draft section.",
                                                 code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
                                                 validation_reason="REVIEW_INVALID_CLAIM_RANGE")
+                    if issue.category == "demographic_assumption" and (
+                        issue.action != "remove_claim" or issue.claim_start is None
+                        or issue.claim_end is None
+                    ):
+                        raise ModelGatewayError(
+                            "Demographic assumptions require removal of one located draft claim.",
+                            code="INVALID_STRUCTURED_RESPONSE", component="risk_compliance",
+                            validation_reason="REVIEW_CLAIM_LOCATION_REQUIRED",
+                        )
                 categories = set(review.block_categories)
                 claim_issues = [issue for issue in review.blocking_issues
                                 if issue.category in {None, "unverifiable_claim"}]
@@ -893,6 +902,9 @@ class RiskComplianceAgent:
                          or issue.section_id == "draft" and grounded_draft)
                     and (issue.action == "remove_claim" or bool(issue.evidence_refs))
                     for issue in claim_issues
+                )
+                demographic_correction = any(
+                    issue.category == "demographic_assumption" for issue in review.blocking_issues
                 )
                 # This admits a correction, never the rejected draft. All
                 # blocking issues must identify an eligible owned section and
@@ -905,8 +917,11 @@ class RiskComplianceAgent:
                     ("REVIEW_REQUEST_NOT_ALLOWED", review.request_allowed),
                     ("REVIEW_NO_OWNED_ISSUES", bool(review.blocking_issues)),
                     ("REVIEW_CATEGORY_NOT_CORRECTABLE", categories <= {
-                        "citation_attribution", "factual_qualification", "unverifiable_claim"}),
+                        "citation_attribution", "factual_qualification", "unverifiable_claim",
+                        "demographic_assumption"}),
                     ("REVIEW_CLAIM_NOT_LOCATED_OR_GROUNDED", "unverifiable_claim" not in categories or claim_correction),
+                    ("REVIEW_DEMOGRAPHIC_CLAIM_NOT_LOCATED", "demographic_assumption" not in categories
+                     or demographic_correction),
                     ("REVIEW_SECTION_NOT_OWNED", all(
                         sections_by_id[issue.section_id]["agent"] in grounded_owners | {"investment_education"}
                         or issue.section_id == "draft" and grounded_draft for issue in review.blocking_issues)),
@@ -981,11 +996,14 @@ class RiskComplianceAgent:
                         "blocking category; completeness issues use category=null. Locate a claim with "
                         "claim_quote: copy one unique exact substring of the affected draft section and "
                         "set claim_start=null and claim_end=null. The server calculates offsets. This applies "
-                        "to factual_qualification, citation_attribution and unverifiable_claim; choose a "
+                        "to factual_qualification, citation_attribution, unverifiable_claim and demographic_assumption; choose a "
                         "longer quote if a short phrase repeats. For unverifiable_claim use a ground_claim "
                         "or remove_claim action. ground_claim must "
                         "reference supplied evidence_refs owned by that financial section. Removing a claim must "
                         "preserve the requested grounded answer; an unknown required fact remains unavailable. "
+                        "For demographic_assumption use category=demographic_assumption, action=remove_claim "
+                        "and a unique claim_quote in the affected draft section. Never rewrite financial inputs "
+                        "or remove the user's legitimate question merely because it discloses an identity. "
                     )
                     + "Judge CURRENT request separately from draft safety. "
                     "Spending trend direction uses exact monetary movement: stable means equal rounded amounts, "
@@ -993,7 +1011,7 @@ class RiskComplianceAgent:
                     "claim against current_amount and previous_amount, including small changes. "
                     "Return block_categories from: prohibited_request, personal_advice, "
                     "return_guarantee, privacy, injection, citation_attribution, "
-                    "factual_qualification, unverifiable_claim. A blocked verdict or "
+                    "factual_qualification, unverifiable_claim, demographic_assumption. A blocked verdict or "
                     "request_allowed=false MUST include at least one category and a brief "
                     "policy_notes explanation identifying the defect. An allowed verdict "
                     "requires block_categories=[]. request_allowed=false requires "

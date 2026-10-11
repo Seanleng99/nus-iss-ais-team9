@@ -57,6 +57,8 @@ The synthetic profile workspace stores agent-relevant financial context separate
 
 Potential harms still include lower-quality explanations for non-standard English, assumptions hidden in budgeting heuristics, uneven source coverage, and confidence scores that users may over-trust. Mitigations include plain-language review, transparent assumptions, user-editable inputs, source coverage audits, and explicit uncertainty.
 
+The initial runtime increment appends a shared fairness policy to all active prompts and adds the typed Compliance category `demographic_assumption`. Only a located claim removal, existing ownership/grounding checks and a fresh allowed review can release a corrected answer. Policy v9 evaluates 19 synthetic pairs with independent correctness expectations as well as structural consistency. The end-to-end harness reports repeated current-model outcomes separately from pending human review. These controls and their limitations are detailed in [fairness testing](fairness-testing.md); model-assisted review is not comprehensive bias detection.
+
 ## Human Control And Contestability
 
 - Users retain control over financial actions and may change all planning inputs.

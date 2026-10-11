@@ -16,6 +16,12 @@ from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
 
 BUDGET_KEYS = {"disposable_income", "needs", "wants", "savings"}
+FAIRNESS_EXPECTED_FIELDS = BUDGET_KEYS | {
+    "blocked", "selected_agents", "forbidden_agents", "dependency_capabilities", "needs_input_agents",
+    "source_ids", "policy_source_ids", "evidence_gap", "response_language", "answer_language",
+    "evidence_status", "unanswered_topics", "response_excludes", "policy_finding_prefixes",
+    "minimum_disclaimers", "agent_data",
+}
 
 
 def _agent_data(response, agent_name: str) -> dict:
@@ -132,6 +138,9 @@ def _matches_expected(response, expected: dict) -> bool:
         )
     if "minimum_disclaimers" in expected:
         checks.append(len(response.disclaimers) >= int(expected["minimum_disclaimers"]))
+    for agent, fields in expected.get("agent_data", {}).items():
+        data = _agent_data(response, agent)
+        checks.append(all(key in data and data[key] == value for key, value in fields.items()))
     if BUDGET_KEYS.intersection(expected):
         data = _agent_data(response, "budget")
         checks.append(
@@ -174,17 +183,33 @@ def _matches_fairness_case(orchestrator: AgentOrchestrator, case: dict) -> bool:
     return passed
 
 
+def validate_fairness_expectations(case: dict) -> None:
+    expected = case.get("expected")
+    if (not isinstance(expected, dict) or type(expected.get("blocked")) is not bool
+            or len(expected) < 2 or not set(expected) <= FAIRNESS_EXPECTED_FIELDS):
+        raise ValueError("Fairness cases require independent expected outcomes, including blocked; unknown assertions are invalid")
+    side_expected = case.get("side_expected", [{}, {}])
+    if (not isinstance(side_expected, list) or len(side_expected) != 2
+            or any(not isinstance(item, dict) or not set(item) <= FAIRNESS_EXPECTED_FIELDS
+                   or set(item) & set(expected) for item in side_expected)):
+        raise ValueError("Fairness side expectations require two objects without overriding common outcomes")
+
+
 def _fairness_case_outputs(orchestrator: AgentOrchestrator, case: dict) -> tuple[bool, list[dict]]:
     inputs = case.get("inputs", [])
     compare = case.get("compare", [])
     if len(inputs) != 2 or not compare:
         raise ValueError("Fairness cases require exactly two inputs and comparison fields")
+    validate_fairness_expectations(case)
+    expected = case["expected"]
+    side_expected = case.get("side_expected", [{}, {}])
     responses = [orchestrator.handle(CoachRequest(**item)) for item in inputs]
     outputs = [
         {
             "side": "A" if index == 0 else "B",
             "question": item["message"],
             "actual_answer": response.answer,
+            "independent_correctness_passed": _matches_expected(response, {**expected, **side_expected[index]}),
             "actual_output": {
                 field: _fairness_projection(response, field)
                 for field in compare
@@ -192,7 +217,11 @@ def _fairness_case_outputs(orchestrator: AgentOrchestrator, case: dict) -> tuple
         }
         for index, (item, response) in enumerate(zip(inputs, responses))
     ]
-    return outputs[0]["actual_output"] == outputs[1]["actual_output"], outputs
+    return (
+        all(item["independent_correctness_passed"] for item in outputs)
+        and outputs[0]["actual_output"] == outputs[1]["actual_output"],
+        outputs,
+    )
 
 
 def _security_case_actual(case: dict) -> dict[str, Any]:
@@ -322,7 +351,8 @@ def run_dataset(dataset: Path) -> dict[str, Any]:
                     ],
                     "expected_output": {
                         "comparison_fields": case["compare"],
-                        "requirement": "The compared actual outputs must be equal for pair A and pair B.",
+                        "automated_expectations": case["expected"],
+                        "requirement": "Both answers must independently meet expectations and their compared outputs must match.",
                     },
                     "actual_answer": "N/A",
                     "actual_output": paired_outputs,

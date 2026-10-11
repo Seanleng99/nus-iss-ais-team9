@@ -259,6 +259,14 @@ def test_fairness_data_requires_consent_is_isolated_and_is_deleted_on_withdrawal
     assert "display_name" not in snapshot_json["preferences"]
     assert not set(demographic_payload).intersection(snapshot_json["preferences"])
 
+    changed = client.put(
+        "/api/users/fairness-user/demographics", headers=headers,
+        json={**demographic_payload, "gender_identity": "Man", "race_ethnicity": ["Chinese"],
+              "age_band": "31-35", "residential_region": "West"},
+    )
+    assert changed.status_code == 200
+    assert client.get("/api/users/fairness-user/snapshot", headers=headers).json() == snapshot_json
+
     withdrawal = client.put(
         "/api/users/fairness-user/fairness-consent",
         headers=headers,

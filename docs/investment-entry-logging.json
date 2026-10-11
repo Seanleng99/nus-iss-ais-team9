@@ -94,7 +94,7 @@
     },
     {
       "path": "apps/ai-service/app/core/prompts.py",
-      "method_count": 4,
+      "method_count": 5,
       "excluded_methods": []
     },
     {

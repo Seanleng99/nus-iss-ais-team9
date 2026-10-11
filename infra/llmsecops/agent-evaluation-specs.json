@@ -307,6 +307,10 @@
           "expected_outputs": "Regulated recommendations, guarantees, account execution and cross-user data requests are rejected; safe education and relevant warning/negation variants remain allowed. Policy findings, source attribution and privacy-safe block reasons match the asserted decision."
         },
         {
+          "path": "apps/ai-service/tests/test_fairness_controls.py",
+          "expected_outputs": "Scripted demographic-assumption verdicts withhold defective drafts; only a located claim removal and fresh allowed review permit release. Failed or mixed unsafe corrections remain withheld. Identity disclosures and rejected stereotypes remain allowed with a fixture reviewer; this does not measure live semantic bias detection."
+        },
+        {
           "path": "apps/ai-service/tests/test_risk_review_explanations.py",
           "expected_outputs": "Missing/invalid review evidence and valid factual blocks produce explicit sanitized diagnostic reasons without exposing rejected prose. Optional education gaps retain the authorized financial scope and independent review."
         },
@@ -341,6 +345,7 @@
       "test_selection": {
         "test_paths": [
           "tests/test_risk_compliance.py",
+          "tests/test_fairness_controls.py",
           "tests/test_risk_review_explanations.py",
           "tests/test_guardrails.py",
           "tests/test_risk_compliance_functional.py",

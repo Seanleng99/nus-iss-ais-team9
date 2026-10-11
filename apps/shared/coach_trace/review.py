@@ -7,7 +7,7 @@ BLOCK_REASONS = frozenset({
 })
 CATEGORIES = frozenset({
     "prohibited_request", "personal_advice", "return_guarantee", "privacy", "injection",
-    "citation_attribution", "factual_qualification", "unverifiable_claim",
+    "citation_attribution", "factual_qualification", "unverifiable_claim", "demographic_assumption",
 })
 VALIDATION_REASONS = frozenset({
     "CORRECTION_ISSUE_MISMATCH", "CORRECTION_EMPTY_REPLACEMENT",

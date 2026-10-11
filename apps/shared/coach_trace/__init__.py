@@ -253,7 +253,7 @@ def safe_details(details, *, decision=False):
                     continue
                 issue = {field: item[field] for field in ("issue_id", "section_id", "owner", "action", "requirement_hash")}
                 if item.get("category") in {"prohibited_request", "personal_advice", "return_guarantee", "privacy",
-                                           "injection", "citation_attribution", "factual_qualification", "unverifiable_claim"}:
+                                           "injection", "citation_attribution", "factual_qualification", "unverifiable_claim", "demographic_assumption"}:
                     issue["category"] = item["category"]
                 refs = item.get("evidence_refs", [])
                 issue["evidence_refs"] = [ref for ref in (refs[:6] if isinstance(refs, (list, tuple)) else [])

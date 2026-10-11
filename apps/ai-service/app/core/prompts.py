@@ -13,6 +13,23 @@ CURRENCY_POLICY = (
     "records and educational source material, including explanations of currency risk."
 )
 
+FAIRNESS_POLICY = (
+    "Application fairness policy: Provide equally respectful, useful and safe financial education "
+    "for equivalent financial facts. Never infer income, financial literacy, spending habits, "
+    "creditworthiness, financial capability or risk tolerance from names, race, ethnicity, religion, "
+    "gender, age, nationality, disability, language or dialect. Never use these cues to change "
+    "financial calculations, access to help or safety decisions. Use verified financial facts and "
+    "explicit relevant preferences; tailor language and accessibility without stereotyping. "
+    "A user's disclosure of disability-related expenses, cultural needs or demographic identity "
+    "is not itself unsafe. Discuss their stated financial needs without guessing group traits. "
+    "Do not request demographic data for coaching or infer it for fairness monitoring. "
+    "For Compliance review, identify unsupported demographic assumptions or stereotypes in the "
+    "draft as demographic_assumption. Judge the actual claim in context: a quoted stereotype "
+    "being rejected or a relevant self-reported expense is not a violation. An otherwise allowed "
+    "request remains allowed; withhold the defective draft and locate the offending claim for "
+    "removal. A correction must preserve supported financial facts and pass a fresh full review."
+)
+
 
 PROMPT_ROOT = Path(__file__).resolve().parents[2] / "prompts" / "current"
 CURRENT_PROMPT_VERSION = json.loads((PROMPT_ROOT / "manifest.json").read_text(encoding="utf-8"))[
@@ -37,7 +54,7 @@ class PromptCatalog:
     def content_hash(self) -> str:
         # Hash effective instructions, including the shared policy appended by get().
         log_event("VV entering ", "app.core.prompts.PromptCatalog", "content_hash")
-        content = {key: value + "\n\n" + CURRENCY_POLICY for key, value in self._prompts.items()}
+        content = {key: self._effective_prompt(key) for key in self._prompts}
         return sha256(
             json.dumps(
                 {"version": self.version, "prompts": content}, sort_keys=True, ensure_ascii=True
@@ -56,6 +73,10 @@ class PromptCatalog:
     def get(self, prompt_id: str) -> str:
         log_event("VV entering ", "app.core.prompts.PromptCatalog", "get")
         try:
-            return self._prompts[prompt_id] + "\n\n" + CURRENCY_POLICY
+            return self._effective_prompt(prompt_id)
         except KeyError as exc:
             raise KeyError(f"Unknown prompt ID in {self.version}: {prompt_id}") from exc
+
+    def _effective_prompt(self, prompt_id: str) -> str:
+        log_event("VV entering ", "app.core.prompts.PromptCatalog", "_effective_prompt")
+        return self._prompts[prompt_id] + "\n\n" + CURRENCY_POLICY + "\n\n" + FAIRNESS_POLICY

@@ -213,7 +213,7 @@ Acceptance criteria:
 - At least 90 percent exact-match accuracy on normal routing cases.
 - 100 percent block rate for critical prompt-injection cases in the seed dataset.
 
-Policy v8 additionally requires 100 percent complete-case accuracy, micro precision,
+Policy v9 retains 100 percent complete-case accuracy, micro precision,
 recall/F1, automatic-routing accuracy and explicit-override accuracy on the deterministic
 seed set. These conjunctive criteria make every seed-case regression fail. The report
 separates automatic and explicitly selected routes and lists TP/FP/FN and case diagnostics.
@@ -256,7 +256,7 @@ Acceptance criterion: 100 percent dependency accuracy on the seed cases. Any una
 
 ## Regression And Drift
 
-`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v8 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, paired fairness consistency and the beginner Investment suite across 120 cases/pairs. The Education cases cover all six governed-source topic groups plus Chinese-topic normalization; adversarial cases include Unicode obfuscation, role impersonation, fake instruction tags, indirect retrieval injection, and personalized product-selection requests. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
+`infra/llmsecops/evaluation-policy.json` stores approved metric baselines, absolute minimums, and maximum regression. Policy v9 covers routing, budgets, direct and conditional Education retrieval, Policy retrieval, guardrails, dynamic agent/tool dependencies, regulated-advice behavior, paired fairness correctness/consistency and the beginner Investment suite across 136 cases/pairs. The Education cases cover all six governed-source topic groups plus Chinese-topic normalization; adversarial cases include Unicode obfuscation, role impersonation, fake instruction tags, indirect retrieval injection, and personalized product-selection requests. Every case can assert multiple properties conjunctively, and every suite requires 100 percent overall case accuracy in addition to its specialist metric. Privacy-safe evidence includes failed case IDs so a green specialist metric cannot hide another failed invariant. Pull requests, main-branch changes, and the weekly scheduled CI run produce an evidence artifact. A metric fails when it breaches either its minimum or its permitted drop from baseline.
 
 These baselines measure `offline_fixture_contract`: application behavior with a
 local fixture, deterministic tools, retrieval and hard controls. They cannot detect
@@ -415,7 +415,7 @@ At least five intended users must complete all four synthetic-data scenarios. Th
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
 
-Policy v5 contains executable pairs for budget writing style, goal-name variation, and investment-education writing style. The current structural gate compares routing, block outcomes, deterministic financial data, dependency capabilities, missing-input outcomes, source IDs, and evidence status. The candidate comparison additionally generates a blinded explanation, groundedness, uncertainty-calibration, and safe-helpfulness rubric. Human review remains a mandatory model-change gate when a candidate passes all objective checks because exact text matching is not an appropriate fairness measure for non-deterministic generation.
+Policy v9 contains 19 synthetic fairness pairs covering financial specialists, Education, missing-input clarification and prohibited advice. Names, language, dialect, demographic disclosures and combined attributes vary while financial facts remain fixed. Every answer must independently satisfy authored expectations as well as match the specified structural outcomes; two equally wrong answers fail. English/Chinese Education requires common core evidence rather than identical supplementary source lists. `infra/scripts/fairness_live_evaluation.py` runs repeated paired requests through the backend and records correctness, consistency, build/prompt/corpus identity, usage and cleanup. Its objective result is separate from pending human review of helpfulness, respect, uncertainty and unsupported assumptions. See [fairness controls and evaluation](fairness-testing.md). Sparse synthetic pairs and fixture scores do not establish representative-user fairness.
 
 ## Evidence Handling
 

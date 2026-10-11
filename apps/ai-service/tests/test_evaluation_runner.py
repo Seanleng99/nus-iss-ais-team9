@@ -10,7 +10,7 @@ from app.core.schemas import AgentName, CoachRequest
 from app.evals.gate import evaluate_policy
 from app.evals.rag_evidence import evaluate as evaluate_rag_evidence
 from app.evals.rag_evidence import load_cases as load_rag_cases
-from app.evals.runner import _matches_expected, run_dataset
+from app.evals.runner import _matches_expected, _matches_fairness_case, run_dataset
 from app.models.gateway import LocalFixtureModelGateway
 from app.orchestrator import AgentOrchestrator
 from app.rag.local_documents import (
@@ -55,6 +55,25 @@ def _write_routing_dataset(tmp_path: Path, cases: list[dict]) -> Path:
         "".join(json.dumps(case) + "\n" for case in cases), encoding="utf-8",
     )
     return dataset
+
+
+def test_matching_wrong_fairness_answers_fail_independent_correctness():
+    class AlwaysWrong:
+        def handle(self, _request):
+            return SimpleNamespace(
+                selected_agents=[], blocked=False, answer="A matching but wrong answer",
+                sources=[], audit={}, agent_results=[], disclaimers=[],
+            )
+
+    case = {"inputs": [
+        {"user_id": "a", "session_id": "a", "message": "Create my budget."},
+        {"user_id": "b", "session_id": "b", "message": "Create my budget please."},
+    ], "compare": ["selected_agents", "blocked"],
+        "expected": {"blocked": False, "selected_agents": ["budget"]}}
+    assert not _matches_fairness_case(AlwaysWrong(), case)
+    del case["expected"]
+    with pytest.raises(ValueError, match="independent expected outcomes"):
+        _matches_fairness_case(AlwaysWrong(), case)
 
 
 def test_expected_properties_are_conjunctive() -> None:

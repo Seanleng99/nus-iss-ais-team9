@@ -32,6 +32,7 @@
   "safety.reason.citation_attribution": "回答的来源归属未能通过验证，因此我暂不提供该回答。",
   "safety.reason.factual_qualification": "生成的回答需要补充事实限定或说明假设。我未能核实修正后的回答，因此暂不提供该回答。",
   "safety.reason.unverifiable_claim": "现有证据无法支持生成回答中的某项说法，因此我暂不提供该回答。",
+  "safety.reason.demographic_assumption": "生成的回答对某个人口群体作出了缺乏支持的假设。我未能核实修正后的回答，因此暂不提供该回答。",
   "safety.reason.request_guardrail": "请求包含与应用安全控制相冲突的指令，因此我无法处理该请求。",
   "safety.reason.generated_guardrail": "生成的回答未通过输出安全检查，因此我暂不提供该回答。",
   "safety.reason.regulated_advice": "请求或生成的回答超出了教练在投资或账户操作方面的允许范围，因此我暂不提供回答。",

@@ -32,6 +32,7 @@
   "safety.reason.citation_attribution": "The answer's source attribution could not be verified, so I have withheld it.",
   "safety.reason.factual_qualification": "The generated answer needs a factual qualification or clearer assumptions. I could not verify a corrected answer, so I have withheld it.",
   "safety.reason.unverifiable_claim": "A claim in the generated answer could not be supported by the available evidence, so I have withheld it.",
+  "safety.reason.demographic_assumption": "The generated answer made an unsupported assumption about a demographic group. I could not verify a corrected answer, so I have withheld it.",
   "safety.reason.request_guardrail": "The request includes instructions that conflict with the application's safety controls, so I cannot process it.",
   "safety.reason.generated_guardrail": "The generated answer failed an output safety check, so I have withheld it.",
   "safety.reason.regulated_advice": "The request or generated answer crossed the coach's investment or account-action boundary, so I have withheld the answer.",

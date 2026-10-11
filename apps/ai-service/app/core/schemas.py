@@ -561,6 +561,7 @@ class SynthesisDecision(BaseModel):
 ComplianceCategory = Literal[
     "prohibited_request", "personal_advice", "return_guarantee", "privacy",
     "injection", "citation_attribution", "factual_qualification", "unverifiable_claim",
+    "demographic_assumption",
 ]
 
 

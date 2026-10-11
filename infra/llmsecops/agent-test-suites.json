@@ -68,6 +68,7 @@
     "risk-compliance": {
       "test_paths": [
         "tests/test_risk_compliance.py",
+        "tests/test_fairness_controls.py",
         "tests/test_risk_review_explanations.py",
         "tests/test_guardrails.py",
         "tests/test_risk_compliance_functional.py",
