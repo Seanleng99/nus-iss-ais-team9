@@ -310,7 +310,7 @@
     },
     {
       "path": "apps/backend/app/services/coach_quota.py",
-      "method_count": 7,
+      "method_count": 8,
       "excluded_methods": []
     },
     {

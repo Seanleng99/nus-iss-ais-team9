@@ -145,6 +145,7 @@ def known_tokens(response):
 
 def known_trace_tokens(trace):
     """Settle a failed run only from paired, terminal, persisted model events."""
+    log_event("VV entering ", "app.services.coach_quota", "known_trace_tokens")
     if (trace is None or trace.status not in {"failed", "timed_out", "abandoned"}
             or trace.finished_at is None or not isinstance(trace.audit, dict)):
         return None
