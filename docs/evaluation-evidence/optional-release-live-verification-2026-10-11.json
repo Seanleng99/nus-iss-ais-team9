@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "validation_date": "2026-10-11",
+  "validation_type": "local_offline_wiring_and_regression_checks",
+  "base_commit": "33f97ed76f99b094b929db6b881187d01d7c72b7",
+  "source_sha256_utf8_lf": {
+    ".github/workflows/release.yml": "e2a4e53115a652c95ae729ed6827904c1eb953814d877f2c0f0c7848fa496016",
+    "infra/scripts/agent_live_evaluation.py": "dc60c013bcb7c172a98625f95f973eed0daabb9974ddddb2bb14b0788b48b6b8",
+    "infra/scripts/deployment_baseline.py": "c486f637e4e5b37498a52e0d5bb0d474c423f886d21073b5ab8abdfe15c5487b",
+    "infra/scripts/post_deploy_acceptance.py": "036f4c36d8cb8cd8929433452b23f452d9a22f9ffaca0316ce40cc2c6ce2a0fd",
+    "infra/scripts/summarize_agent_evaluations.py": "59b9c643837b8fe00c540e0e5d5897cf5e85ef9f79cce2ec3fe915e30e9b4cc2",
+    "infra/scripts/tests/test_agent_live_evaluation.py": "e6f077d8e29d4267e10a77dd0c3568518687d692094076b75e79b797c53cab96",
+    "infra/scripts/tests/test_deployment_baseline.py": "ce7fd48281d46cc28f46254937dcf37466787a005cee6385757b2e7d7ab1536e",
+    "infra/scripts/tests/test_post_deploy_acceptance.py": "79ec6eb145f9289cd39cfe532d02ecbf0246a5d685f8a545cc0a5453497c7e10"
+  },
+  "pytest": {
+    "total": 871,
+    "passed": 866,
+    "failed": 0,
+    "error": 0,
+    "skipped": 5,
+    "reports": [
+      "optional-live-full-20261011.xml",
+      "optional-live-gate-final-20261011.xml"
+    ],
+    "method": "Full infrastructure/security-provider run; final acceptance-module rerun replaces that module after adding three focused checks and clearer selection reporting.",
+    "skips": [
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services0]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services1]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services2]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_non_application_change_still_does_not_deploy",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_stale_run_cannot_trigger_recovery_deployment",
+        "reason": "Release gate requires bash and jq"
+      }
+    ]
+  },
+  "actionlint": {
+    "version": "1.7.12",
+    "release_workflow": "PASS",
+    "shellcheck": "not installed; independent Bash syntax checks performed",
+    "pyflakes": "not installed; Ruff passed"
+  },
+  "workflow_bash_syntax": {
+    "passed_steps": 97
+  },
+  "documentation": {
+    "updated_guides": [
+      "README.md",
+      "docs/agent-test-workflows.md",
+      "docs/budget-agent-evaluation.md",
+      "docs/budget-planning.md",
+      "docs/cicd-pipeline.md",
+      "docs/evaluation-plan.md",
+      "docs/fairness-testing.md",
+      "docs/goal-agent-evaluation.md",
+      "docs/investment-agent-evaluation.md",
+      "docs/investment-agent-live-evaluation.md",
+      "docs/post-deployment-acceptance.md",
+      "docs/project-security-scan.md",
+      "docs/rag-quality.md",
+      "docs/requirements-traceability.md",
+      "docs/risk-compliance-agent-evaluation.md",
+      "docs/spending-agent-evaluation.md",
+      "docs/test-organization.md",
+      "infra/aws/README.md"
+    ],
+    "valid_local_targets": 141
+  },
+  "live_selection_variables": {
+    "RUN_LIVE_SECURITY": "false",
+    "RUN_LIVE_FAIRNESS": "false",
+    "RUN_LIVE_AGENT_RAG": "false"
+  },
+  "selection_mechanism": "Repository/demo variables snapshotted into live-preflight job outputs; complete JSON snapshot required by final acceptance; malformed flags/selection rejected.",
+  "mandatory_jobs": [
+    "release-gate",
+    "live-preflight",
+    "build-images",
+    "corpus",
+    "deploy-demo",
+    "smoke",
+    "live-acceptance"
+  ],
+  "optional_order_when_enabled": [
+    "security-live",
+    "fairness",
+    "live"
+  ],
+  "enabled_stage_failure_policy": "Fail release and restore attempted ECS revisions after failure, cancellation, unexpected skip or incomplete evidence.",
+  "disabled_stage_policy": "SKIPPED, never PASS; no live acceptance evidence; no evaluation secret access or fairness rate requirement for disabled stages.",
+  "verified_controls": [
+    "all eight independent stage combinations",
+    "disabled predecessors bypassed; enabled predecessor failures stop later paid stages",
+    "mandatory smoke/configuration still required with all optional stages off",
+    "enabled evidence criteria and budgets unchanged",
+    "missing/malformed selection cannot silently disable gates",
+    "later variable edits cannot alter selection snapshot",
+    "disabled agent reports initialized as SKIPPED without answers",
+    "disabled stage unexpectedly executing rejects acceptance",
+    "successful mandatory acceptance with optional skips advances real deployment baseline",
+    "historical baseline names remain supported",
+    "partial update rollback, rerun and stale-release controls retained",
+    "workflow lock and 90-day evidence retained"
+  ],
+  "fairness": {
+    "pairs": 19,
+    "repeats": 1,
+    "planned_coaching_requests": 38
+  },
+  "live_matrix": {
+    "suites": [
+      "orchestrator",
+      "spending",
+      "budget",
+      "goal",
+      "investment",
+      "risk-compliance",
+      "rag"
+    ],
+    "max_parallel": 1,
+    "fail_fast": true
+  },
+  "paid_live_execution": "NOT RUN",
+  "aws_deployment": "NOT RUN",
+  "remote_release_status": "NOT QUERIED",
+  "limitations": [
+    "Synthetic reports, stubbed AWS commands and syntax checks do not establish live model acceptance, semantic fairness or AWS deployment success.",
+    "Five release-selection tests require jq, unavailable locally; their CI requirements remain unchanged."
+  ]
+}

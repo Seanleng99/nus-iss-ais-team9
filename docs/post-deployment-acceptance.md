@@ -1,145 +1,162 @@
-# Required live release acceptance
+# Post-deployment release acceptance
 
-**Release to AWS** runs live acceptance after deploying the tested current main
-SHA and passing health/safety smoke. All automated checks must pass before the
-release succeeds. Failure or incomplete evidence fails the release and
-restores each attempted ECS service update to its captured previous task revision.
-The existing workflow release lock remains held through acceptance and rollback.
+**Release to AWS** requires successful current-main CI, image build/scans, governed
+corpus ingestion, deployment and health/safety smoke. Live security, live fairness
+and the seven-suite agent/RAG matrix are independently optional and **off by default**.
+When enabled, each live stage must pass with complete evidence. A mandatory or
+enabled-stage failure fails the release and restores attempted ECS service updates
+to their captured previous task revisions. The workflow lock spans acceptance and rollback.
 
-## Why the former CI jobs were skipped
+## Enabling optional live stages
 
-| Former CI job | Decision | Execution now |
+Set repository variables or variables in **Settings → Environments → demo**:
+
+| Variable | Default | Enables |
 |---|---|---|
-| Build hardened containers | Retain before deployment | PR/manual/scheduled CI validates selected builds. Main pushes build, publish and scan immutable images in Release to AWS, avoiding a second build. Images cannot deploy before the scan passes. |
-| Matrix: live | Retain its seven datasets; move to release | Seven agent/RAG contracts run serially against the newly deployed release. They are required rather than manually selected advisory jobs. |
-| Promptfoo — live security | Retain; move to release | Two repeated provider/grader trials use real model calls against checked-out release source and governed local corpora. Failure blocks release acceptance. |
-| Live fairness harness | Add to release | All 19 authored pairs run once: 19 pair comparisons / 38 coaching requests, with independent correctness, parity, identity, usage and cleanup checks. |
+| `RUN_LIVE_SECURITY` | `false` | Full two-trial Promptfoo live security scan |
+| `RUN_LIVE_FAIRNESS` | `false` | All 19 fairness pairs once: 19 comparisons / 38 coaching requests |
+| `RUN_LIVE_AGENT_RAG` | `false` | All seven deployed agent/RAG suites, serially |
 
-Ordinary CI has no paid-live checkbox or live matrix. Its report labels live
-acceptance **PENDING — required after deployment in Release to AWS**. A successful
-CI check precedes release and does not prove that deployed acceptance passed.
-Documentation-only/no-op releases have no new deployment to evaluate. Historical
-CI runs retain their original optional/skipped/advisory results.
+Use the literal value `true` to enable a stage and `false` to disable it. Unset
+variables default to `false`; malformed values fail configuration validation.
+Environment variables take precedence over repository variables. Set the flags
+before the next successful current-main push CI starts the release. Flags are
+snapshotted once by `live-preflight`; later variable edits cannot change which
+stages the current release runs or requires. The choices persist until changed.
 
-## Order and acceptance
+For example, enabling only `RUN_LIVE_FAIRNESS` runs smoke → fairness → final
+acceptance. Enabling all three runs smoke → live security → fairness → agent/RAG
+matrix → final acceptance. Leaving all three off runs smoke → final acceptance.
+Required smoke still makes its existing bounded deployed-model calls.
 
-1. Successful push CI for current `main`; validate live configuration and secret
-   access, then build/publish and scan release images.
-2. Reject stale releases before corpus ingestion and immediately before deployment.
-   Ingestion, deployment and paid-test job reruns require fresh CI. Rollback can
-   be retried separately if recovery itself fails.
+Disabled stages are **SKIPPED — not selected**, with no passing live evidence.
+An enabled stage that fails, is cancelled, skips unexpectedly or lacks complete
+evidence fails the release and triggers rollback after attempted service updates.
+Subsequent paid stages stop after an enabled predecessor fails. No live stage uses
+`continue-on-error`; opt-in selection does not make an executed result advisory.
+
+## Order and mandatory gates
+
+1. Require successful push CI for current `main`; snapshot live selections and
+   validate smoke configuration plus configuration for enabled live stages.
+2. Build/publish immutable images and pass ECR/Inspector findings gates. Reject
+   stale releases before corpus ingestion and immediately before deployment.
 3. Ingest/audit approved corpora, capture previous task revisions, deploy the
-   coherent release, run migrations and existing health/authentication/persistence/AI smoke checks.
-4. Run live security, then all 19 fairness pairs once, then seven agent/RAG datasets.
-   A failed execution stops subsequent paid stages; their missing evidence remains
-   incomplete. The final evidence gate always runs for a selected release.
-5. Retain detailed evidence and review forms even on failure. Refresh deployment
-   credentials and restore attempted service updates if checks fail; wait for stability.
+   coherent release, run migrations and required health/authentication/persistence/AI smoke.
+4. Run enabled stages in security → fairness → agent/RAG order, bypassing disabled
+   predecessors. Matrix work remains serial (`max-parallel: 1`, `fail-fast: true`).
+5. Always aggregate mandatory job conclusions and selected live evidence for an
+   attempted release. Retain evidence and available review forms, then refresh
+   deployment credentials and restore attempted service updates on failure.
 
 Each stage is a separate job in [release.yml](../.github/workflows/release.yml):
 
-| Job ID | Required work |
+| Job ID | Work and requirement |
 |---|---|
-| `release-gate` | Successful current-main push CI and coherent release selection |
-| `live-preflight` | First-attempt release context, rates, API settings and isolated model-secret access |
-| `build-images` | Immutable release images and ECR/Inspector findings gate |
-| `corpus` | Freshness check and approved Bedrock corpus ingestion/governance |
-| `deploy-demo` | Freshness check, runtime configuration checks, circuit breaker, previous revisions, migration and ECS updates |
-| `smoke` | Required health, authentication, persistence and AI safety smoke |
-| `security-live` | Full two-trial live security regressions |
-| `fairness` | All 19 pairs once after security, with 38 coaching requests |
-| `live` | Seven visible agent/RAG matrix jobs after fairness; `max-parallel: 1`, `fail-fast: true` |
-| `live-acceptance` | Collect artifacts and require every prerequisite job and all objective evidence to pass |
-| `rollback` | Fresh deployment credentials; restore attempted services if deployment or acceptance failed |
+| `release-gate` | Mandatory successful current-main push CI and coherent release selection |
+| `live-preflight` | Mandatory first-attempt context and smoke configuration; snapshot live flags and validate selected-stage settings |
+| `build-images` | Mandatory immutable images and ECR/Inspector findings gate |
+| `corpus` | Mandatory freshness check and approved Bedrock ingestion/governance |
+| `deploy-demo` | Mandatory runtime checks, circuit breaker, previous revisions, migration and ECS updates |
+| `smoke` | Mandatory health, authentication, persistence and AI safety smoke |
+| `security-live` | Optional; when enabled, full two-trial live security regressions must pass |
+| `fairness` | Optional; when enabled, all 19 pairs must pass exactly once |
+| `live` | Optional; when enabled, all seven agent/RAG suites must pass |
+| `live-acceptance` | Mandatory final acceptance: selected-stage evidence, all mandatory job conclusions and intentional optional skips |
+| `rollback` | Restore attempted services if deployment or final acceptance failed |
 
-The workflow lock covers every job, including artifact collection and rollback.
-Matrix cancellation stops queued paid work after the first failure. Missing,
-failed, cancelled or skipped prerequisites fail the final gate even if files
-contain passing results. A stale/no-op release skips acceptance and does not
-advance the successful deployment baseline. Partial service-update failures
-also select rollback, because each attempt is recorded before its ECS action.
-Only task family/revision references cross job boundaries; full task definitions,
-environment settings and AWS credentials remain inside their original jobs.
+The final gate requires a valid preflight selection snapshot; missing or malformed
+selection cannot silently disable checks. It also rejects unexpected execution of
+a disabled live stage. Stale/no-op releases skip acceptance and do not advance the
+successful deployment baseline. A real deployment with required smoke and final
+acceptance passing can advance the baseline with optional live stages skipped.
+Partial update failures select rollback because attempts are recorded before ECS
+actions. Ingestion, deployment and paid-test reruns require fresh CI; rollback
+can be retried separately. Only task family/revision references cross jobs; full
+task definitions, secret settings and AWS credentials stay inside their jobs.
 
-[`post_deploy_acceptance.py`](../infra/scripts/post_deploy_acceptance.py) requires
-all seven agent reports to pass with identical test/deployed release SHA and stable
-deployment evidence. Fairness requires all 19 pair results, the frozen dataset
-hash, exactly one result for each pair ID with repeat 1 and 38 planned requests,
-real-provider identity and complete usage. Security requires the full
-two-trial case/provider matrix, current case/grader hashes, complete usage and
-no budget stop. Missing reports, fixture results, subsets and wrong identities
-cannot establish acceptance.
+[`post_deploy_acceptance.py`](../infra/scripts/post_deploy_acceptance.py) preserves
+the full evidence criteria for enabled stages: seven passing agent reports with
+matching test/deployed SHA and stable deployment; all fairness pair IDs exactly
+once with repeat 1, current dataset hash, real-provider identity and complete usage;
+the full two-trial security matrix with current case/grader hashes and no budget
+stop. Subsets, fixtures, wrong identities or incomplete enabled evidence cannot pass.
+Build identity comes from the tested `RELEASE_SHA` throughout deployment and evaluation.
 
-The application build identity is set from `RELEASE_SHA`, including runtime
-configuration verification. The workflow event's default-branch SHA cannot
-substitute for the checked-out release source.
+## Configuration and bounds
 
-## Required configuration and bounds
+Deployment configuration and `SMOKE_BACKEND_API_KEY` remain required. Live-only
+settings are validated only when their associated stage is enabled:
 
-The existing `demo` environment, deployment configuration and
-`SMOKE_BACKEND_API_KEY` remain required. Configure these repository or `demo`
-environment variables before enabling a release with this wiring:
+| Variable | Required for | Purpose |
+|---|---|---|
+| `LIVE_MODEL_INPUT_USD_PER_MILLION` | Fairness | Positive finite input-token estimation rate |
+| `LIVE_MODEL_OUTPUT_USD_PER_MILLION` | Fairness | Positive finite output-token estimation rate |
+| `FAIRNESS_LIVE_MAX_COST_USD` | Fairness | Positive estimated-cost ceiling; defaults to USD 1 |
+| `AWS_INVESTMENT_TEST_ROLE_ARN` | Security | Existing isolated role allowed to read the evaluation model secret |
+| `INVESTMENT_TEST_OPENAI_SECRET_ID` | Security | Existing secret containing `openai-api-key` |
 
-| Variable | Purpose |
-|---|---|
-| `LIVE_MODEL_INPUT_USD_PER_MILLION` | Positive finite input-token rate for the configured model/account |
-| `LIVE_MODEL_OUTPUT_USD_PER_MILLION` | Positive finite output-token rate for the configured model/account |
-| `FAIRNESS_LIVE_MAX_COST_USD` | Fairness estimated-cost ceiling; defaults to USD 1 |
-| `AWS_INVESTMENT_TEST_ROLE_ARN` | Existing role allowed to read the evaluation model secret |
-| `INVESTMENT_TEST_OPENAI_SECRET_ID` | Existing secret containing `openai-api-key` |
-
-The security role's OIDC trust must accept the exact `demo` environment subject
-issued by the repository. This repository uses immutable subjects:
+When security is enabled, the role's OIDC trust must accept this repository's exact
+immutable `demo` subject:
 `repo:Seanleng99@73147011/nus-iss-ais-team9@1321857657:environment:demo`.
 Check `gh api repos/OWNER/REPOSITORY/actions/oidc/customization/sub` for its
-`sub_claim_prefix`; name-only subjects are insufficient when
-`use_immutable_subject` is true. See [GitHub's OIDC reference](https://docs.github.com/en/actions/reference/security/oidc).
-Secret permissions remain scoped to the existing evaluation secret.
-The workflow preflights role/secret access before changing services. Security
-credentials are confined to the preflight/scan steps in their separate jobs using the AWS action's
-[documented credential-output settings](https://github.com/aws-actions/configure-aws-credentials#retrieving-credentials-from-step-output);
-they do not replace the deployment credentials used by rollback.
+`sub_claim_prefix`. See [GitHub's OIDC reference](https://docs.github.com/en/actions/reference/security/oidc).
+Secret permissions remain scoped to the existing evaluation secret. Role/secret
+access is preflighted before changing services only when security is enabled.
+Credentials remain confined to security steps using the AWS action's
+[credential outputs](https://github.com/aws-actions/configure-aws-credentials#retrieving-credentials-from-step-output).
+Agent/RAG uses the existing deployment role for service inspection and retrieval.
 
-General agent suites retain 75,000-token bounds and one repetition; Investment
-retains its 200,000-token bound. Fairness uses one repetition, a one-million
-token ceiling and the configured cost ceiling. Security uses two trials with
-one million conservatively reserved tokens. These are bounded samples, not an
-account-credit guarantee; API turns can cross stop-before-next-request bounds.
-Fairness treats exceeding its final token/cost limit as failure. Missing usage
-stops further generation. Fairness, each agent/RAG matrix entry and security
-have 45-minute execution timeouts inside 50-minute jobs, leaving time for evidence.
-Deployment has a separate 45-minute job limit; smoke and acceptance each have
-15 minutes, and rollback has 20 minutes with fresh credentials. The release lock
-remains held across these jobs.
+Sampling and limits are unchanged: one repetition per agent dataset, 75,000 tokens
+per general agent suite, 200,000 for Investment; all 19 fairness pairs once with
+one-million-token and configured cost ceilings; two security trials with one
+million conservatively reserved tokens. Missing usage stops further generation.
+Budget stops are incomplete enabled-stage acceptance and trigger rollback.
+Bounds are estimates rather than account-credit guarantees; final API turns can
+cross stop-before-next-request limits. No correctness threshold is lowered.
+Live execution has a 45-minute timeout inside each 50-minute job; deployment has
+45 minutes, smoke/final acceptance 15 minutes each and rollback 20 minutes.
 
-Do not lower correctness thresholds to fit an inadequate budget. A budget stop
-is incomplete acceptance and rolls the release back. Change reviewed limits or
-the versioned sampling policy explicitly when necessary.
+## CI and retained evidence
 
-## Evidence and limitations
+CI keeps required offline component/platform/shared contracts, security scans and
+all 19 offline fairness pairs with 100% correctness and consistency. Its report
+labels live suites **OPTIONAL — selected in Release to AWS; off by default**.
+Container validation stays in PR/manual/scheduled CI; main releases build and scan
+images once before deployment. CI has no paid-live input.
 
-Download **`release-live-acceptance-<run_id>`** from **Release to AWS**. It retains
-the aggregate `acceptance.json`/summary, seven full agent reports, fairness JSON,
-blinded `fairness-human-review.csv`, security results, scenario definitions and
-hashable inputs for 90 days. Individual jobs also retain `release-fairness-<run_id>`,
-`release-agent-live-<suite>` and `release-security-<run_id>` artifacts; the final
-gate merges them into the aggregate artifact and initializes missing suites as
-NOT RUN. CI's offline artifacts and `investment-evaluation-metrics`
-retain their existing purpose and retention.
+Download **`release-live-acceptance-<run_id>`** from Release for `acceptance.json`
+and the final summary. The JSON records the selection snapshot, each job result,
+required status and explicit skipped results. A release can pass mandatory gates
+while `live_evidence_complete` is false; that does not establish live acceptance.
+The artifact retains full selected-stage results, blinded fairness review forms
+when fairness ran, all seven agent reports (SKIPPED when the matrix was disabled),
+and frozen definitions for 90 days. Selected jobs also publish
+`release-security-<run_id>`, `release-fairness-<run_id>` and
+`release-agent-live-<suite>`. CI's offline artifacts retain their existing purposes.
 
-Fairness automation tests structural parity and independent expected outcomes.
-The report continues to say human review is pending and overall fairness
-acceptance is not established. Semantic explanation quality and representative
-user validation remain separate. Promptfoo exercises real model behavior and
-release source with governed local retrieval; deployed authentication, persisted
-sessions and AWS retrieval are covered by the smoke/agent/fairness suites.
+Security uses real model calls against checked-out release source and governed
+local corpora. Agent/fairness suites exercise the deployed API/AWS. Fairness
+automation measures independent expected outcomes and structural parity; human
+semantic/fairness review remains separately pending. Synthetic samples and
+skipped stages do not establish representative-user fairness or answer quality.
 
-Rollback restores service task revisions; it does not undo additive database
-migrations or corpus ingestion. Infrastructure/service-circuit-breaker controls
-remain in place. Wiring and simulated tests do not establish a successful paid
-run; actual acceptance is the retained release report.
+Rollback restores task revisions; it does not undo additive database migrations
+or corpus ingestion. Service circuit breakers remain in place. Local wiring tests
+do not establish successful paid execution or a successful AWS deployment.
 
-## Local wiring verification
+## Verification history
+
+Current local verification established 866 passing infrastructure/provider pytest
+cases, zero failures and five existing skips because `jq` was unavailable.
+All eight selection combinations, enabled failure propagation, required smoke,
+skipped report initialization and baseline compatibility passed. Actionlint
+1.7.12, Ruff, all 97 CI/release Bash syntax checks and the Chinese-code inventory
+check passed. These checks made no paid model calls or AWS deployment.
+
+The earlier records below describe the mandatory-live policy that preceded this
+opt-in change. The [optional-stage verification record](evaluation-evidence/optional-release-live-verification-2026-10-11.json)
+records the current selection, skip, failure, rollback and baseline checks.
 
 The initial 2026-10-11 full infrastructure/provider run and targeted module reruns
 established 755 passing pytest cases. Five existing release-selection tests

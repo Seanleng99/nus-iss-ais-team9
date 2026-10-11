@@ -1,7 +1,9 @@
 # Investment Education live integration
 
 **Release to AWS** runs Investment and RAG contracts after deploying the tested
-current main SHA and passing health/safety smoke. Both stages are required;
+current main SHA and passing required health/safety smoke when
+`RUN_LIVE_AGENT_RAG=true` in repository or `demo` variables. The seven-suite matrix
+defaults off; disabled suites provide no live acceptance evidence. When enabled,
 failed or incomplete evidence fails the release and rolls changed services back.
 The deployment job retains the existing `demo` environment and release lock.
 
@@ -31,8 +33,9 @@ real-provider contracts do not establish 99% answer quality, semantic review or
 authenticated browser UI acceptance.
 
 The old `investment-agent-live.yml` entry point is removed. Its tested helper
-functions remain reused by the consolidated runner. Release additionally requires
-all 19 fairness pairs once, all other agent datasets and live security regressions.
+functions remain reused by the consolidated runner. The matrix includes all other agent datasets. Independently optional fairness
+and security use `RUN_LIVE_FAIRNESS` and `RUN_LIVE_SECURITY`; enabled stages must pass.
+Fairness runs all 19 pairs once when enabled.
 
 See [workflow ownership](agent-test-workflows.md) and
-[required live release acceptance](post-deployment-acceptance.md).
+[post-deployment release acceptance](post-deployment-acceptance.md).

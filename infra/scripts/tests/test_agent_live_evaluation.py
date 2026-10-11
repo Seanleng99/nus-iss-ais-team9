@@ -103,12 +103,13 @@ def test_missing_live_artifact_cannot_be_presented_as_pass(tmp_path, requested, 
     assert all(row["status"].startswith("NOT RUN" if requested else "SKIPPED") for row in live_rows)
 
 
-def test_pre_deployment_report_marks_all_live_suites_required_and_pending(tmp_path):
+def test_pre_deployment_report_marks_all_live_suites_optional_and_off_by_default(tmp_path):
     rows = combined.collect(tmp_path, live_requested=False, live_job_result="not_run", phase="pre_deployment")
     live_rows = [row for row in rows if row["mode"] == "live"]
     assert len(live_rows) == 7
-    assert all(row["status"] == "PENDING — required after deployment in Release to AWS" for row in live_rows)
-    assert "Release to AWS requires" in combined.render(rows)
+    assert all(row["status"] == "OPTIONAL — selected in Release to AWS; off by default" for row in live_rows)
+    assert "Enabled stages require passing evidence" in combined.render(rows)
+    assert "Enabled stages require passing evidence" in combined.render_html(rows)
 
 
 def test_failed_live_artifact_survives_advisory_success(tmp_path):

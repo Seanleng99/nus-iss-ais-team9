@@ -1,4 +1,4 @@
-"""Combine evaluation evidence and mark required release acceptance as pending in CI."""
+"""Combine offline evidence and identify optional post-deployment live evaluations."""
 import argparse
 import html
 import json
@@ -30,7 +30,7 @@ def collect(directory, *, live_requested, live_job_result, phase=None):
         candidates = list((directory / f"agent-live-{suite}").rglob("report.json"))
         live = json.loads(candidates[0].read_text()) if len(candidates) == 1 else None
         if phase == "pre_deployment":
-            status = "PENDING — required after deployment in Release to AWS"
+            status = "OPTIONAL — selected in Release to AWS; off by default"
         elif not live_requested:
             status = "SKIPPED — live not selected"
         elif live is None or live.get("status") == "NOT RUN":
@@ -49,7 +49,7 @@ def collect(directory, *, live_requested, live_job_result, phase=None):
 
 def render(reports):
     lines = ["# Agent and RAG evaluation report", "",
-             "Offline acceptance precedes deployment. Release to AWS requires live agent/RAG, fairness and security acceptance; missing evidence cannot pass.",
+             "Offline acceptance precedes deployment. Live agent/RAG, fairness and security stages are optional and off by default in Release to AWS. Enabled stages require passing evidence; skipped stages provide no live acceptance evidence.",
              "Full synthetic questions, expected outputs, actual answers, checks and dataset definitions follow in report.json and index.html.", "",
              "| Component | Offline | Live |", "|---|---|---|"]
     for suite in SUITES:
@@ -90,7 +90,7 @@ def render(reports):
 def render_html(reports):
     parts = ["<!doctype html><html lang='en'><meta charset='utf-8'><title>Agent evaluation report</title>",
              "<style>body{max-width:1180px;margin:36px auto;padding:0 24px;font:16px/1.55 system-ui;color:#182d40;background:#f8fafc}h1{font-size:32px}section{background:white;border:1px solid #dbe3ea;border-radius:10px;padding:22px;margin:24px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;border-bottom:1px solid #dbe3ea;padding:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f5f9;padding:14px}summary{cursor:pointer;padding:10px}details{border-bottom:1px solid #dbe3ea}a{color:#165ca2}.note{background:#eaf2fb;padding:14px}</style>",
-             "<h1>Agent and RAG evaluations</h1><p class='note'>Offline acceptance precedes deployment. Release to AWS requires live agent/RAG, fairness and security acceptance. Missing evidence cannot pass. Synthetic test data only.</p>",
+             "<h1>Agent and RAG evaluations</h1><p class='note'>Offline acceptance precedes deployment. Live agent/RAG, fairness and security stages are optional and off by default in Release to AWS. Enabled stages require passing evidence; skipped stages provide no live acceptance evidence. Synthetic test data only.</p>",
              "<table><tr><th>Component</th><th>Offline</th><th>Live</th></tr>"]
     for suite in SUITES:
         modes = {row["mode"]: row["status"] for row in reports if row["suite"] == suite}

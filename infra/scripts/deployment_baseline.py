@@ -27,12 +27,16 @@ def accepted_deployment(jobs):
     }):
         return False
     # Retained releases from before the split have smoke inside the deployment job.
-    split_gate = next((job for job in jobs if job.get("name") == "Require complete live release acceptance"), None)
+    split_gate = next((job for job in jobs if job.get("name") in {
+        "Final release acceptance", "Require complete live release acceptance",
+    }), None)
     if split_gate is None:
         return completed_step(deployed, {"Run health and AI safety smoke tests"})
     smoke = next((job for job in jobs if job.get("name") == "Health and AI safety smoke"), {})
     return (completed_step(smoke, {"Run health and AI safety smoke tests"})
-            and completed_step(split_gate, {"Require complete live release acceptance"}))
+            and completed_step(split_gate, {
+                "Require mandatory jobs and selected live evidence", "Require complete live release acceptance",
+            }))
 
 
 def last_deployment(repository: str, api=github_json) -> dict | None:

@@ -76,9 +76,10 @@ the scripted fairness controls; Orchestrator owns small scorer/report contract
 tests. These pytest cases do not repeat execution of the full fairness dataset.
 See [test organization](test-organization.md) for the required CI gate and ownership.
 
-## Required live release gate
+## Optional live release testing
 
-**Release to AWS** runs every authored fairness pair **once** after deployment
+Set `RUN_LIVE_FAIRNESS=true` in repository or `demo` variables to enable fairness
+in **Release to AWS**. It defaults off. When enabled, every authored pair runs **once** after deployment
 and health/safety smoke: **19 pair comparisons and 38 coaching requests**. The runner's
 default is one repetition. The release gate requires each dataset pair ID exactly
 once with repeat 1, all independent correctness/consistency checks passing,
@@ -88,9 +89,9 @@ Failure or incomplete evidence fails the release and rolls changed services back
 
 Download **`release-live-acceptance-<run_id>`** from Release for `fairness.json`,
 the blinded review CSV and the aggregate acceptance summary, retained 90 days.
-CI still runs all 19 offline policy pairs in its required metrics gate; its live
-status remains pending until Release runs. See
-[required live release acceptance](post-deployment-acceptance.md) for configuration,
+CI still runs all 19 offline policy pairs in its required metrics gate. Disabled
+live fairness is SKIPPED without live acceptance evidence; an enabled run must pass. See
+[post-deployment release acceptance](post-deployment-acceptance.md) for configuration,
 budgets and rollback details. Human fairness review remains separately pending.
 
 ## End-to-end report

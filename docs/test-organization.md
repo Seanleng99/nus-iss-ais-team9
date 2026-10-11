@@ -100,9 +100,10 @@ Backend, frontend, infrastructure and Promptfoo provider tests retain their
 package/job owners. PostgreSQL-backed service integration, deployment smoke and
 paid live evaluations retain separate execution and acceptance boundaries.
 
-Live agent/RAG, fairness and security contracts are required in the
-[post-deployment release gate](post-deployment-acceptance.md). CI's ownership
-and offline evidence remain prerequisites to that release stage.
+Live agent/RAG, fairness and security contracts are independently optional and
+off by default in the [post-deployment release gate](post-deployment-acceptance.md). CI's ownership
+and offline evidence remain prerequisites to that release stage. Enabled live
+stages must pass; intentional skips provide no live acceptance evidence.
 
 ## Verification of this reorganization
 

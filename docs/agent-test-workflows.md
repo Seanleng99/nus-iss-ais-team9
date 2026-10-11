@@ -10,12 +10,14 @@ The former separate agent and security workflow entry points are removed;
 historical runs retain their original results.
 
 Successful push CI for current `main` starts **Release to AWS**. After immutable
-image builds/scans, deployment and health/safety smoke, Release requires all
-19 fairness pairs once (38 coaching requests), seven serial agent/RAG datasets and
-two-trial live security regressions. Any failure or incomplete required evidence
+image builds/scans, deployment and required health/safety smoke, Release can run
+optional live security, all 19 fairness pairs once (38 coaching requests) and the
+seven serial agent/RAG datasets. These stages default off; set `RUN_LIVE_SECURITY`,
+`RUN_LIVE_FAIRNESS` and/or `RUN_LIVE_AGENT_RAG` to `true` in repository or `demo`
+variables to enable them independently. Any failure or incomplete enabled evidence
 fails the release and restores changed services' previous task definitions.
 Manual CI does not deploy. Documentation-only/no-op releases have no deployment
-to evaluate. See [required live release acceptance](post-deployment-acceptance.md)
+to evaluate. See [post-deployment release acceptance](post-deployment-acceptance.md)
 for configuration, budgets, evidence and rollback limits.
 
 ## Jobs inside ci.yml
@@ -33,7 +35,7 @@ for configuration, budgets, evidence and rollback limits.
 | `service-integration` | PostgreSQL-backed backend-to-AI safety and bounded load checks after service tests |
 | `dependency-review`, `python-sast` | Resolved dependency audit and Bandit source scan |
 | `container-build` | Build validation for PRs, schedules and manual CI; main pushes build in Release |
-| `report` | Always assemble CI conclusions and offline evidence; live acceptance is PENDING until the required release gate runs |
+| `report` | Always assemble CI conclusions and offline evidence; live suites are labelled OPTIONAL; the release report records selections and actual outcomes |
 
 Each selected AI pytest function has one owner. Classifier/baseline tests run in
 `changes`; remaining helper/report tests run in `infrastructure`. Provider and
@@ -56,7 +58,7 @@ There are **six repository workflow files**, plus GitHub-managed Dependabot:
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | CI and LLMSecOps | PR, main push, weekly, manual | Required pre-release service, offline agent/RAG, metrics and security checks |
-| Release to AWS | Successful push CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke, live fairness, agent/RAG and security acceptance; roll back failed releases |
+| Release to AWS | Successful push CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke and final acceptance; live security, fairness and agent/RAG are optional but must pass when enabled; roll back failed releases |
 | RAG Source Governance | Weekly, manual | Read-only corpus approval, checksum, freshness and deployed KB audit |
 | AWS Operational Validation | Weekly when enabled, manual, reusable | Live service, load, retention, edge and operational controls |
 | Model Drift Monitoring | Weekly when enabled, manual | Quality capture/baseline comparison and optional operational alerts |
@@ -65,7 +67,7 @@ There are **six repository workflow files**, plus GitHub-managed Dependabot:
 
 Release checks freshness before building and immediately before deployment.
 A superseded release skips deployment. A green no-op cannot advance the deployed
-baseline: actual successful service updates, smoke and the required live gate
+baseline: actual successful service updates, smoke and final release acceptance
 must complete. Authentication/configuration/API failures fail closed.
 
 ```mermaid
@@ -74,27 +76,29 @@ flowchart TD
     Tests --> Gate[Required CI checks]
     Gate --> PRBuild[PR / manual / scheduled build validation]
     Gate --> Push[Successful push CI for current main]
-    Push --> Preflight[Live configuration + secret access]
+    Push --> Preflight[Snapshot live flags + validate selected configuration]
     Preflight --> Build[Release builds + scans immutable images]
     Build --> Fresh{Still current main?}
     Fresh -->|No| Skip[Skip superseded deployment]
     Fresh -->|Yes| Corpus[Approved corpus ingestion + governance]
     Corpus --> Deploy[Capture revisions + migrate + deploy]
     Deploy --> Smoke[Health and AI safety smoke]
-    Smoke --> Security[Two-trial live security regressions]
-    Security --> Fairness[19 live fairness pairs once]
-    Fairness --> Agents[Seven serial live agent/RAG datasets]
-    Agents --> Acceptance{Complete live acceptance?}
+    Smoke --> Security[Optional security: run or skip]
+    Security --> Fairness[Optional fairness: 19 pairs once or skip]
+    Fairness --> Agents[Optional agent/RAG: seven serial suites or skip]
+    Agents --> Acceptance{Mandatory jobs + enabled stages pass?}
     Acceptance -->|Pass| Success[Release accepted]
     Acceptance -->|Fail or incomplete| Rollback[Fail release + restore previous services]
 ```
 
 Offline suites run in parallel. Release stages have separate jobs; the live
-matrix starts after live security and fairness pass, exposes all seven suites with one running at a time and stops queued
-work after failure. The workflow retains the release lock through acceptance
+matrix runs when enabled after enabled security/fairness predecessors pass; disabled
+predecessors are bypassed. It exposes all seven suites with one running at a time
+and stops queued work after failure. The workflow retains the release lock through acceptance
 and rollback. No live stage uses `continue-on-error`; the final gate and evidence
 upload also run on failure. That gate requires successful prerequisite jobs and
-complete evidence; a cancelled or skipped suite cannot pass the release.
+complete enabled-stage evidence. A cancelled or unexpectedly skipped enabled
+suite fails the release; disabled suites remain SKIPPED without live evidence.
 
 ## Evaluation definitions and acceptance
 
@@ -129,7 +133,7 @@ full-document RAG evaluation. Their report states per-metric formula, thresholds
 dataset IDs, expected/actual outputs and failing examples. No threshold is lowered
 to accommodate live variability.
 
-Live acceptance additionally requires stable ECS tasks with real OpenAI and
+Enabled live acceptance additionally requires stable ECS tasks with real OpenAI and
 Bedrock configuration, consistent deployed SHA for API replies, complete token
 accounting, and synthetic-user cleanup. Request timeout is 90 seconds; latency
 and token usage are reported descriptively. Each dataset runs once without
@@ -139,7 +143,7 @@ request may cross the budget; these are stop-before-next-request bounds, not
 currency caps. Missing usage stops further generation. No claim about account
 credit balance or exact dollar cost is made.
 
-**The release gate requires the test SHA and deployed SHA to equal `RELEASE_SHA`.**
+**Enabled live stages require the test SHA and deployed SHA to equal `RELEASE_SHA`.**
 The runner checks deployment identity before making model calls and retains stable
 build evidence. A small synthetic sample and passing structural contracts do not
 establish 99% answer quality; semantic clarity/correctness still needs review.
@@ -149,13 +153,14 @@ establish 99% answer quality; semantic clarity/correctness still needs review.
 CI publishes **`agent-evaluation-report`** with Markdown, full JSON and HTML,
 plus per-suite JUnit and evaluation artifacts. Offline/platform/shared evidence
 is retained for 90 days; `investment-evaluation-metrics` retains 30 days. CI's
-live status is **PENDING — required after deployment in Release to AWS**.
+live status is **OPTIONAL — selected in Release to AWS; off by default**.
 
 Release publishes **`release-live-acceptance-<run_id>`** for 90 days, including
-the aggregate acceptance result, seven full agent reports, fairness answers and
-blinded review CSV, live security results and frozen definitions. Inspect the
-**Require complete live release acceptance** step and its summary. Missing,
-failed, fixture or partial evidence cannot pass or produce a successful release.
+the aggregate acceptance result, stage selections, seven agent reports, selected
+fairness/security evidence and frozen definitions. Inspect **Require mandatory
+jobs and selected live evidence** in **Final release acceptance**. Missing, failed,
+fixture or partial enabled-stage evidence fails acceptance. Disabled stages are
+explicitly SKIPPED; a passing release with skipped stages provides no live proof.
 
 Summaries shorten long answers; JSON retains full synthetic responses. No secret,
 actual-user history or full ECS environment is retained. Automation passes

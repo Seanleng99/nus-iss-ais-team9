@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+from itertools import product
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from infra.scripts import post_deploy_acceptance as acceptance
 
 ROOT = Path(__file__).resolve().parents[3]
 SHA = "a" * 40
+ALL_LIVE = dict.fromkeys(acceptance.LIVE_FLAGS, True)
 
 
 def context():
@@ -23,7 +25,8 @@ def context():
             "SMOKE_BACKEND_API_KEY": "synthetic-key", "COACH_SMOKE_URL": "https://example.test/api/coach",
             "SECURITY_TEST_ROLE": "synthetic-role", "INVESTMENT_TEST_OPENAI_SECRET_ID": "synthetic-secret-id",
             "LIVE_MODEL_INPUT_USD_PER_MILLION": "1", "LIVE_MODEL_OUTPUT_USD_PER_MILLION": "1",
-            "FAIRNESS_LIVE_MAX_COST_USD": "1"}
+            "FAIRNESS_LIVE_MAX_COST_USD": "1", "RELEASE_LIVE_SELECTION": json.dumps(ALL_LIVE),
+            **dict.fromkeys(acceptance.LIVE_FLAGS.values(), "true")}
 
 
 @pytest.mark.parametrize("key,value", [
@@ -141,9 +144,10 @@ def test_gate_cli_exit_status_and_published_result_control_release_failure(tmp_p
         (tmp_path / "fairness.json").write_text(json.dumps(fairness))
     assess = acceptance.assess
     monkeypatch.setattr(acceptance, "OUTPUT", tmp_path)
-    monkeypatch.setattr(acceptance, "assess", lambda directory, sha: assess(directory, sha, agent_root=agents))
+    monkeypatch.setattr(acceptance, "assess", lambda directory, sha, **kwargs: assess(directory, sha, agent_root=agents, **kwargs))
     monkeypatch.setenv("RELEASE_SHA", SHA)
-    monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps({job: {"result": "success"} for job in acceptance.REQUIRED_JOBS}))
+    monkeypatch.setenv("RELEASE_LIVE_SELECTION", json.dumps(ALL_LIVE))
+    monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps({job: {"result": "success"} for job in acceptance.RELEASE_JOBS}))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert acceptance.main(["--mode", "gate"]) == (0 if complete else 1)
     report = json.loads((tmp_path / "acceptance.json").read_text())
@@ -155,7 +159,7 @@ def workflows():
             for name in ("ci", "release")]
 
 
-def test_split_release_requires_preflight_scan_smoke_and_all_live_stages():
+def test_split_release_requires_preflight_scan_smoke_and_selected_live_stages():
     ci, release = workflows()
     assert "live" not in ci["jobs"] and "security-live" not in ci["jobs"]
     assert "inputs" not in (ci["on"]["workflow_dispatch"] or {})
@@ -164,10 +168,10 @@ def test_split_release_requires_preflight_scan_smoke_and_all_live_stages():
     assert jobs["build-images"]["needs"] == ["release-gate", "live-preflight"]
     assert jobs["deploy-demo"]["needs"] == ["release-gate", "build-images", "corpus"]
     assert jobs["smoke"]["needs"] == ["deploy-demo"]
-    assert jobs["security-live"]["needs"] == ["deploy-demo", "smoke"]
-    assert jobs["fairness"]["needs"] == ["deploy-demo", "security-live"]
-    assert jobs["live"]["needs"] == ["deploy-demo", "fairness"]
-    assert set(jobs["live-acceptance"]["needs"]) == set(acceptance.REQUIRED_JOBS)
+    assert jobs["security-live"]["needs"] == ["live-preflight", "deploy-demo", "smoke"]
+    assert jobs["fairness"]["needs"] == ["live-preflight", "deploy-demo", "smoke", "security-live"]
+    assert jobs["live"]["needs"] == ["live-preflight", "deploy-demo", "smoke", "security-live", "fairness"]
+    assert set(jobs["live-acceptance"]["needs"]) == set(acceptance.RELEASE_JOBS)
     assert jobs["rollback"]["needs"] == ["deploy-demo", "live-acceptance"]
     assert release["concurrency"] == {"group": "deploy-demo", "cancel-in-progress": "false"}
     assert jobs["live"]["strategy"]["matrix"]["suite"] == list(acceptance.SUITES)
@@ -197,24 +201,25 @@ def test_split_release_requires_preflight_scan_smoke_and_all_live_stages():
         guard = next(i for i, s in enumerate(steps) if "--mode validate-context" in s.get("run", ""))
         protected = {"corpus": "Ingest and verify approved Bedrock corpora", "deploy-demo": "Deploy AI service",
                      "smoke": "Run health and AI safety smoke tests", "fairness": "Live fairness — all 19 pairs once",
-                     "security-live": "Promptfoo — required live security regressions"}[name]
+                     "security-live": "Promptfoo — selected live security regressions"}[name]
         assert guard < next(i for i, s in enumerate(steps)
                             if (s.get("id") == "fairness-live" if name == "fairness" else s.get("name") == protected))
 
 
-@pytest.mark.parametrize("job", acceptance.REQUIRED_JOBS)
+@pytest.mark.parametrize("job", acceptance.RELEASE_JOBS)
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", None])
 def test_any_unsuccessful_or_missing_prerequisite_blocks_even_complete_files(tmp_path, monkeypatch, job, result):
     agents, _, _ = evidence(tmp_path)
-    jobs = {name: {"result": "success"} for name in acceptance.REQUIRED_JOBS}
+    jobs = {name: {"result": "success"} for name in acceptance.RELEASE_JOBS}
     if result is None:
         del jobs[job]
     else:
         jobs[job]["result"] = result
     assess = acceptance.assess
     monkeypatch.setattr(acceptance, "OUTPUT", tmp_path)
-    monkeypatch.setattr(acceptance, "assess", lambda directory, sha: assess(directory, sha, agent_root=agents))
+    monkeypatch.setattr(acceptance, "assess", lambda directory, sha, **kwargs: assess(directory, sha, agent_root=agents, **kwargs))
     monkeypatch.setenv("RELEASE_SHA", SHA)
+    monkeypatch.setenv("RELEASE_LIVE_SELECTION", json.dumps(ALL_LIVE))
     monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps(jobs))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert acceptance.main(["--mode", "gate"]) == 1
@@ -239,11 +244,13 @@ def test_per_job_context_cli_prevents_paid_or_mutating_reruns(monkeypatch, attem
             acceptance.main(["--mode", "validate-context"])
 
 
-def selected(job, states):
+def selected(job, states, *, cancelled=False):
     """Evaluate only Boolean/equality expressions from the actual job guards."""
     text = re.sub(r"needs\.([\w-]+)\.(outputs\.[\w-]+|result)",
                   lambda m: repr(states.get(m[1], {}).get(m[2], "")), job["if"])
-    text = text.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+    text = (text.replace("always()", "True").replace("cancelled()", str(cancelled))
+            .replace("&&", " and ").replace("||", " or "))
+    text = re.sub(r"!(?!=)", " not ", text)
 
     def evaluate(node):
         if isinstance(node, ast.Constant):
@@ -251,14 +258,192 @@ def selected(job, states):
         if isinstance(node, ast.BoolOp):
             values = [evaluate(value) for value in node.values]
             return all(values) if isinstance(node.op, ast.And) else any(values)
+        if isinstance(node, ast.UnaryOp):
+            assert isinstance(node.op, ast.Not)
+            return not evaluate(node.operand)
         assert isinstance(node, ast.Compare) and len(node.ops) == 1
         left, right = evaluate(node.left), evaluate(node.comparators[0])
         assert isinstance(node.ops[0], (ast.Eq, ast.NotEq))
         return left == right if isinstance(node.ops[0], ast.Eq) else left != right
 
-    allowed = evaluate(ast.parse(text, mode="eval").body)
+    allowed = evaluate(ast.parse("(" + text.strip() + ")", mode="eval").body)
     # GitHub implicitly adds success() unless a guard contains a status function.
     return allowed and ("always()" in job["if"] or all(states[name].get("result") == "success" for name in job["needs"]))
+
+
+def successful_states(selection):
+    states = {name: {"result": "success"} for name in acceptance.RELEASE_JOBS}
+    states["release-gate"]["outputs.deploy"] = "true"
+    states["corpus"]["outputs.deploy"] = "true"
+    states["deploy-demo"].update({"outputs.deploy": "true", "outputs.ai-attempted": "true"})
+    states["live-preflight"].update({"outputs." + key: str(value).lower() for key, value in selection.items()})
+    for name, enabled in selection.items():
+        states[name]["result"] = "success" if enabled else "skipped"
+    return states
+
+
+@pytest.mark.parametrize("enabled", list(product((False, True), repeat=3)))
+def test_every_optional_combination_runs_selected_stages_and_accepts_only_their_evidence(tmp_path, monkeypatch, enabled):
+    selection = dict(zip(acceptance.LIVE_FLAGS, enabled, strict=True))
+    jobs = workflows()[1]["jobs"]
+    states = successful_states(selection)
+    for name in acceptance.LIVE_FLAGS:
+        assert selected(jobs[name], states) is selection[name]
+        assert not selected(jobs[name], states, cancelled=True)
+    assert selected(jobs["live-acceptance"], states)
+    agents, _, _ = evidence(tmp_path)
+    if not selection["live"]:
+        shutil.rmtree(agents)
+    for job, filename in (("fairness", "fairness.json"), ("security-live", "promptfoo-live.json")):
+        if not selection[job]:
+            (tmp_path / filename).unlink()
+    assess = acceptance.assess
+    monkeypatch.setattr(acceptance, "OUTPUT", tmp_path)
+    monkeypatch.setattr(acceptance, "assess", lambda directory, sha, **kwargs: assess(directory, sha, agent_root=agents, **kwargs))
+    monkeypatch.setenv("RELEASE_SHA", SHA)
+    monkeypatch.setenv("RELEASE_LIVE_SELECTION", json.dumps(selection))
+    # Later variable edits cannot change the preflight snapshot used by the gate.
+    for flag in acceptance.LIVE_FLAGS.values():
+        monkeypatch.setenv(flag, "false")
+    monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps(states))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    assert acceptance.main(["--mode", "gate"]) == 0
+    report = json.loads((tmp_path / "acceptance.json").read_text())
+    assert report["live_selection"] == selection and report["passed"]
+    assert report["live_evidence_complete"] is all(enabled)
+    for row in report["checks"]:
+        if not row["required"]:
+            assert row["passed"] is None and row["status"].startswith("SKIPPED")
+    states["live-acceptance"] = {"result": "success"}
+    assert not selected(jobs["rollback"], states)
+    for failure, requested in selection.items():
+        if not requested:
+            continue
+        failed_states = successful_states(selection)
+        failed_states[failure]["result"] = "failure"
+        for later in list(acceptance.LIVE_FLAGS)[list(acceptance.LIVE_FLAGS).index(failure) + 1:]:
+            assert not selected(jobs[later], failed_states)
+        assert not acceptance.passed_checks(acceptance.assess_jobs(json.dumps(failed_states), selection))
+        failed_states["live-acceptance"] = {"result": "failure"}
+        assert selected(jobs["rollback"], failed_states)
+
+
+@pytest.mark.parametrize("job", acceptance.LIVE_FLAGS)
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", None])
+def test_enabled_stage_never_becomes_advisory_even_if_other_stages_disabled(job, result):
+    selection = {name: name == job for name in acceptance.LIVE_FLAGS}
+    states = successful_states(selection)
+    if result is None:
+        del states[job]
+    else:
+        states[job]["result"] = result
+    assert not acceptance.passed_checks(acceptance.assess_jobs(json.dumps(states), selection))
+    states["live-acceptance"] = {"result": "failure"}
+    assert selected(workflows()[1]["jobs"]["rollback"], states)
+
+
+@pytest.mark.parametrize("job", acceptance.LIVE_FLAGS)
+def test_enabled_stage_still_requires_its_complete_live_evidence(tmp_path, job):
+    selection = {name: name == job for name in acceptance.LIVE_FLAGS}
+    report = acceptance.assess(tmp_path, SHA, agent_root=tmp_path, selection=selection)
+    assert not report["passed"]
+    assert any(row["required"] and row["passed"] is False for row in report["checks"])
+
+
+@pytest.mark.parametrize("job", acceptance.REQUIRED_JOBS)
+def test_mandatory_failure_still_rejects_release_with_every_live_stage_off(job):
+    selection = dict.fromkeys(acceptance.LIVE_FLAGS, False)
+    states = successful_states(selection)
+    states[job]["result"] = "failure"
+    assert not acceptance.passed_checks(acceptance.assess_jobs(json.dumps(states), selection))
+    for name in acceptance.LIVE_FLAGS:
+        assert not selected(workflows()[1]["jobs"][name], states)
+
+
+@pytest.mark.parametrize("raw", [None, "", "null", "{}", '{"live": false}',
+                                json.dumps({**ALL_LIVE, "live": "false"}),
+                                json.dumps({**ALL_LIVE, "unexpected": False})])
+def test_missing_or_malformed_selection_cannot_silently_disable_live_gate(tmp_path, monkeypatch, raw):
+    agents, _, _ = evidence(tmp_path)
+    assess = acceptance.assess
+    monkeypatch.setattr(acceptance, "OUTPUT", tmp_path)
+    monkeypatch.setattr(acceptance, "assess", lambda directory, sha, **kwargs: assess(directory, sha, agent_root=agents, **kwargs))
+    monkeypatch.setenv("RELEASE_SHA", SHA)
+    monkeypatch.setenv("RELEASE_JOB_RESULTS", json.dumps(successful_states(ALL_LIVE)))
+    if raw is None:
+        monkeypatch.delenv("RELEASE_LIVE_SELECTION", raising=False)
+    else:
+        monkeypatch.setenv("RELEASE_LIVE_SELECTION", raw)
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    assert acceptance.main(["--mode", "gate"]) == 1
+    report = json.loads((tmp_path / "acceptance.json").read_text())
+    assert not next(row for row in report["checks"] if row["check"] == "live-selection")["passed"]
+    assert report["selection_valid"] is False and report["live_selection"] is None
+
+
+def test_live_settings_are_only_required_for_their_enabled_stage():
+    env = {key: value for key, value in context().items()
+           if key.startswith(("GITHUB_", "RELEASE_")) or key in ("SMOKE_BACKEND_API_KEY", "COACH_SMOKE_URL")}
+    assert acceptance.validate_config(env) == dict.fromkeys(acceptance.LIVE_FLAGS, False)
+    assert acceptance.validate_config({**env, "RUN_LIVE_AGENT_RAG": "true"})["live"]
+    with pytest.raises(ValueError, match="SECURITY_TEST_ROLE"):
+        acceptance.validate_config({**env, "RUN_LIVE_SECURITY": "true"})
+    with pytest.raises(ValueError, match="LIVE_MODEL_INPUT_USD_PER_MILLION"):
+        acceptance.validate_config({**env, "RUN_LIVE_FAIRNESS": "true"})
+    for flag in acceptance.LIVE_FLAGS.values():
+        with pytest.raises(ValueError, match=flag):
+            acceptance.validate_config({**env, flag: "tru"})
+
+
+@pytest.mark.parametrize("key", ["SMOKE_BACKEND_API_KEY", "COACH_SMOKE_URL"])
+def test_smoke_configuration_is_required_even_when_all_live_stages_off(key):
+    env = {**context(), **dict.fromkeys(acceptance.LIVE_FLAGS.values(), "false"), key: ""}
+    with pytest.raises(ValueError, match=key):
+        acceptance.validate_config(env)
+
+
+def test_initialize_marks_disabled_matrix_reports_skipped_without_answers(tmp_path, monkeypatch):
+    monkeypatch.setattr(acceptance, "ROOT", tmp_path)
+    monkeypatch.setattr(acceptance, "OUTPUT", tmp_path / "post-deploy")
+    monkeypatch.setenv("RELEASE_SHA", SHA)
+    monkeypatch.setenv("RELEASE_LIVE_SELECTION", json.dumps(dict.fromkeys(acceptance.LIVE_FLAGS, False)))
+    assert acceptance.main(["--mode", "initialize"]) == 0
+    for suite in acceptance.SUITES:
+        report = json.loads((tmp_path / "artifacts/agent-live" / suite / "report.json").read_text())
+        assert report["status"] == "SKIPPED" and report["gate"] == report["stage"] == "not_selected"
+        assert report["records"] == []
+
+
+def test_preflight_snapshots_flags_and_skips_secret_access_if_security_disabled(tmp_path, monkeypatch):
+    output = tmp_path / "outputs"
+    for key, value in context().items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("RUN_LIVE_SECURITY", "false")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert acceptance.main(["--mode", "validate-config"]) == 0
+    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert values["security-live"] == "false" and values["fairness"] == values["live"] == "true"
+    assert json.loads(values["live-selection"]) == {**ALL_LIVE, "security-live": False}
+    jobs = workflows()[1]["jobs"]
+    preflight = jobs["live-preflight"]
+    for flag in acceptance.LIVE_FLAGS.values():
+        assert preflight["env"][flag] == "${{ vars." + flag + " || 'false' }}"
+    credential_steps = [s for s in preflight["steps"] if s.get("id") == "security-preflight-credentials"
+                        or s.get("name") == "Verify live security secret access before deployment"]
+    assert len(credential_steps) == 2
+    assert all(s["if"] == "steps.selection.outputs.security-live == 'true'" for s in credential_steps)
+    for step in jobs["live-acceptance"]["steps"]:
+        if step.get("uses", "").startswith("actions/download-artifact"):
+            assert "needs.live-preflight.outputs." in step["if"]
+
+
+def test_disabled_stage_cannot_execute_unnoticed():
+    selection = dict.fromkeys(acceptance.LIVE_FLAGS, False)
+    states = successful_states(selection)
+    states["fairness"]["result"] = "success"
+    checks = acceptance.assess_jobs(json.dumps(states), selection)
+    assert not acceptance.passed_checks(checks)
+    assert next(row for row in checks if row["check"] == "job:fairness")["status"] == "FAIL / unexpected execution"
 
 
 @pytest.mark.parametrize("failure", ["smoke", "fairness", "live", "security-live", "deploy-demo"])
@@ -266,10 +451,7 @@ def selected(job, states):
 def test_failed_stage_stops_later_paid_jobs_and_still_selects_gate_and_rollback(failure, result):
     _, release = workflows()
     jobs = release["jobs"]
-    states = {name: {"result": "success"} for name in acceptance.REQUIRED_JOBS}
-    states["release-gate"]["outputs.deploy"] = "true"
-    states["corpus"]["outputs.deploy"] = "true"
-    states["deploy-demo"].update({"outputs.deploy": "true", "outputs.ai-attempted": "true"})
+    states = successful_states(ALL_LIVE)
     states[failure]["result"] = result
     if failure == "smoke":
         assert not selected(jobs["security-live"], states)
@@ -287,7 +469,7 @@ def test_failed_stage_stops_later_paid_jobs_and_still_selects_gate_and_rollback(
 @pytest.mark.parametrize("reason", ["accepted", "predeployment-failure", "stale-corpus", "stale-deploy"])
 def test_success_and_no_service_change_never_select_rollback(reason):
     _, release = workflows()
-    states = {name: {"result": "success"} for name in acceptance.REQUIRED_JOBS}
+    states = {name: {"result": "success"} for name in acceptance.RELEASE_JOBS}
     states["release-gate"]["outputs.deploy"] = "true"
     states["corpus"]["outputs.deploy"] = "true"
     states["deploy-demo"].update({"outputs.deploy": "true", "outputs.ai-attempted": "true"})

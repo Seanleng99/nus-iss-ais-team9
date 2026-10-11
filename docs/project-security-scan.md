@@ -3,8 +3,9 @@
 [Promptfoo](https://www.promptfoo.dev/docs/getting-started/) runs test prompts against application providers and evaluates their actual responses. The [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) supplies the risk taxonomy. This project uses Promptfoo **0.123.1** with committed attack cases and deterministic assertions. It is a reproducible regression scan, not the remotely generated Promptfoo red-team preset, an OWASP certification, or proof that every attack is prevented.
 
 The offline `project-security-scan` job lives directly in
-[CI and LLMSecOps](../.github/workflows/ci.yml). Required live security regressions
-run after deployment in [Release to AWS](../.github/workflows/release.yml).
+[CI and LLMSecOps](../.github/workflows/ci.yml). Optional live security regressions
+run after deployment in [Release to AWS](../.github/workflows/release.yml) when
+`RUN_LIVE_SECURITY=true`; enabled regressions must pass.
 The separate security workflow was removed. Selected offline security checks remain required; agent pytest
 files belong to their own jobs in the same workflow. Infrastructure report-helper
 tests run once in the infrastructure job, and backend/frontend tests run once in
@@ -90,17 +91,19 @@ python -m unittest discover -s infra/scripts/tests -p 'test_summarize_promptfoo.
 
 Backend and frontend tests run in their separate service CI environments. They are not repeated by this scan.
 
-## Required post-deployment live model scan
+## Optional post-deployment live model scan
 
-**Release to AWS** runs the bounded live security scan after deployment, required
-health/safety smoke, all 19 fairness pairs once and the seven agent/RAG datasets.
+Set `RUN_LIVE_SECURITY=true` in repository or `demo` variables to enable the
+bounded scan in **Release to AWS**; it defaults off. When enabled, security runs
+after deployment and required health/safety smoke, before enabled fairness and
+agent/RAG stages. Disabled security is SKIPPED and provides no live evidence.
 The full two-trial case/provider matrix must pass with complete usage and current
 case/grader hashes. Failure or incomplete evidence fails the release and rolls
 changed services back. CI's paid-live checkbox and advisory live jobs are removed.
 Download `release-live-acceptance-<run_id>` for the actual acceptance and detailed
-findings. See [required live release acceptance](post-deployment-acceptance.md).
+findings. See [post-deployment release acceptance](post-deployment-acceptance.md).
 
-It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. The evaluation role must trust the `demo` environment OIDC subject and allow only the existing secret; access is checked before deployment and credentials are scoped to live security steps. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, supply `OPENAI_API_KEY` privately or select the project's credential file explicitly:
+It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. The evaluation role must trust the `demo` environment OIDC subject and allow only the existing secret; access is checked before deployment when security is enabled and credentials are scoped to live security steps. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, supply `OPENAI_API_KEY` privately or select the project's credential file explicitly:
 
 ```sh
 python security/promptfoo/run_bounded.py --mode live --env-file .env \

@@ -161,10 +161,12 @@ and the collection check that rejects missing or overlapping cases.
   unexpectedly skipped required evidence. Metrics executes policy v9's full
   136 cases/pairs, including all 19 fairness pairs; scorer unit tests use small
   synthetic datasets to verify scoring/reporting independently.
-- **Release to AWS** requires live acceptance after deployment and smoke:
-  all 19 fairness pairs once (38 coaching requests), seven agent/RAG datasets and
-  two-trial real-model security regressions. Failure or incomplete evidence
-  fails the release and rolls changed services back. CI has no paid-live checkbox.
+- **Release to AWS** requires deployment and smoke. Live security, fairness and
+  the seven-suite agent/RAG matrix are independently optional and off by default
+  (`RUN_LIVE_SECURITY`, `RUN_LIVE_FAIRNESS`, `RUN_LIVE_AGENT_RAG`). Enabled fairness
+  runs all 19 pairs once (38 coaching requests); security retains two trials.
+  Failed or incomplete enabled evidence fails the release and triggers rollback.
+  Disabled stages are SKIPPED without live acceptance evidence. CI has no paid-live checkbox.
 - Reports retain dataset hashes, expected/actual outputs, criteria and per-case
   outcomes. Fixtures are distinguished from model answers; helper dialogue is N/A.
 - CI publishes `agent-offline-<suite>`, `agent-offline-platform`,
@@ -177,7 +179,7 @@ and the collection check that rejects missing or overlapping cases.
   do not establish representative semantic quality or overall human fairness.
 
 See [agent test workflows](agent-test-workflows.md) and
-[required live release acceptance](post-deployment-acceptance.md) for wiring,
+[post-deployment release acceptance](post-deployment-acceptance.md) for wiring,
 configuration and budgets. Actual live and human records must retain their
 completed, failed or pending status; implementation and simulated tests do not
 establish a successful paid run.
@@ -417,7 +419,7 @@ At least five intended users must complete all four synthetic-data scenarios. Th
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
 
-Policy v9 contains 19 synthetic fairness pairs covering financial specialists, Education, missing-input clarification and prohibited advice. Names, language, dialect, demographic disclosures and combined attributes vary while financial facts remain fixed. Every answer must independently satisfy authored expectations as well as match the specified structural outcomes; two equally wrong answers fail. English/Chinese Education requires common core evidence rather than identical supplementary source lists. `infra/scripts/fairness_live_evaluation.py` runs all 19 pairs once through the backend in required post-deployment acceptance (38 coaching requests) and records correctness, consistency, build/prompt/corpus identity, usage and cleanup. Its objective result is separate from pending human review of helpfulness, respect, uncertainty and unsupported assumptions. See [fairness controls and evaluation](fairness-testing.md). Sparse synthetic pairs and fixture scores do not establish representative-user fairness.
+Policy v9 contains 19 synthetic fairness pairs covering financial specialists, Education, missing-input clarification and prohibited advice. Names, language, dialect, demographic disclosures and combined attributes vary while financial facts remain fixed. Every answer must independently satisfy authored expectations as well as match the specified structural outcomes; two equally wrong answers fail. English/Chinese Education requires common core evidence rather than identical supplementary source lists. `infra/scripts/fairness_live_evaluation.py` runs all 19 pairs once through the backend when optional post-deployment fairness is enabled (`RUN_LIVE_FAIRNESS=true`) (38 coaching requests) and records correctness, consistency, build/prompt/corpus identity, usage and cleanup. Its objective result is separate from pending human review of helpfulness, respect, uncertainty and unsupported assumptions. See [fairness controls and evaluation](fairness-testing.md). Sparse synthetic pairs and fixture scores do not establish representative-user fairness.
 
 ## Evidence Handling
 

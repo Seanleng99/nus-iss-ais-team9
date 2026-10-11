@@ -30,6 +30,26 @@ def deployed_steps():
 
 
 class DeploymentBaselineTests(unittest.TestCase):
+    def test_optional_live_skips_advance_baseline_after_mandatory_acceptance(self):
+        jobs = [
+            {"name": "Deploy demo environment", "conclusion": "success", "steps": [deployed_steps()[0]]},
+            {"name": "Health and AI safety smoke", "conclusion": "success", "steps": [deployed_steps()[1]]},
+            {"name": "Final release acceptance", "conclusion": "success", "steps": [
+                {"name": "Require mandatory jobs and selected live evidence", "conclusion": "success"}]},
+            *[{"name": name, "conclusion": "skipped", "steps": []} for name in
+              ("Promptfoo — optional live security", "Live fairness testing", "Live: budget")],
+        ]
+        self.assertTrue(baseline.accepted_deployment(jobs))
+        for index in range(3):
+            for status in ("failure", "cancelled", "skipped"):
+                with self.subTest(job=index, status=status):
+                    changed = [{**job, "conclusion": status} if position == index else job
+                               for position, job in enumerate(jobs)]
+                    self.assertFalse(baseline.accepted_deployment(changed))
+                    changed = [{**job, "steps": [{**step, "conclusion": status} for step in job["steps"]]}
+                               if position == index else job for position, job in enumerate(jobs)]
+                    self.assertFalse(baseline.accepted_deployment(changed))
+
     def test_split_deployment_advances_baseline_only_after_smoke_and_acceptance(self):
         jobs = [
             {"name": "Deploy demo environment", "conclusion": "success", "steps": [deployed_steps()[0]]},

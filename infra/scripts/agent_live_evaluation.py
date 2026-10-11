@@ -1,7 +1,7 @@
 """Bounded synthetic evaluations of the deployed API and AWS RAG.
 
 This is a test client, not an alternative agent implementation. No production
-configuration is changed. Required post-deployment failures block release
+configuration is changed. Enabled post-deployment stages must pass or block release
 acceptance. Only explicitly synthetic dialogue is retained.
 """
 import argparse
@@ -91,7 +91,7 @@ def write_report(report, directory, *, publish=False):
         "<!doctype html><meta charset='utf-8'><title>Live agent evaluation</title>"
         "<style>body{max-width:1100px;margin:30px auto;font:16px system-ui}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>"
         f"<h1>{html.escape(report['suite'])}: {html.escape(report['status'])}</h1>"
-        "<p>Post-deployment release acceptance requires passing automated contracts. Synthetic data only. Human review pending.</p>"
+        "<p>Live stages are optional; when enabled, release acceptance requires passing automated contracts. Skipped stages provide no live evidence. Synthetic data only. Human review pending.</p>"
         "<pre>" + html.escape(json.dumps(report, indent=2, ensure_ascii=False)) + "</pre>")
     if publish and os.getenv("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:

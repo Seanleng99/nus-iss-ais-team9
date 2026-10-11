@@ -1,11 +1,13 @@
 # Investment Agent evaluation and CI reports
 
 **Current workflow:** [CI and LLMSecOps](agent-test-workflows.md).
-Investment, Orchestrator and RAG have offline CI jobs and required live stages
-in **Release to AWS** after deployment. Failed or incomplete live evidence fails
+Investment, Orchestrator and RAG have required offline CI jobs and optional live
+stages in **Release to AWS** after deployment. Set `RUN_LIVE_AGENT_RAG=true` in
+repository or `demo` variables to enable all seven suites; it defaults off. Failed
+or incomplete enabled live evidence fails
 the release and rolls changed services back. Former `investment-*` IDs below
 name retained scenario groups; use `investment`, `orchestrator` and `rag` as CLI
-suite IDs. See [required live release acceptance](post-deployment-acceptance.md).
+suite IDs. See [post-deployment release acceptance](post-deployment-acceptance.md).
 
 
 The consolidated evaluation workflow retains the existing Investment

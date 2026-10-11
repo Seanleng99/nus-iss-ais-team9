@@ -1,6 +1,6 @@
 # Spending Agent evaluation and CI reports
 
-**Current entry point:** **CI and LLMSecOps** → `spending` offline tests; **Release to AWS** → required `spending` live acceptance.
+**Current entry point:** **CI and LLMSecOps** → `spending` offline tests; **Release to AWS** → optional `spending` live acceptance when `RUN_LIVE_AGENT_RAG=true`.
 The former four suite IDs below describe retained scenario groups, now executed
 inside one `spending` offline job. They are not separate workflow or CLI names.
 Use [the consolidated workflow guide](agent-test-workflows.md) for the complete
@@ -41,17 +41,18 @@ or proof that a pattern generalizes to a user's future behavior.
 
 ## Execution and finding evidence
 
-Automatic CI runs these offline jobs; Release owns required paid live acceptance. Open
+Automatic CI runs these offline jobs; Release owns optional paid live acceptance (required to pass when enabled). Open
 its **spending — offline regression tests** job and download `agent-offline-spending`.
 It contains JUnit, dataset hashes, expected outputs, metrics, acceptance criteria,
 full synthetic example responses and every case outcome, retained for 90 days.
 The combined `agent-evaluation-report` artifact includes HTML, JSON and Markdown.
 
-Live integration runs automatically in **Release to AWS** after deployment
-and required smoke. Every planned live contract must pass; failure or incomplete
+Live integration runs in **Release to AWS** after deployment and required smoke
+when `RUN_LIVE_AGENT_RAG=true` in repository or `demo` variables. It defaults off;
+disabled suites are SKIPPED without live acceptance evidence. Every planned live contract must pass; failure or incomplete
 evidence fails the release and rolls changed services back. Download
 `release-live-acceptance-<run_id>` for full evidence (90 days). See
-[required live release acceptance](post-deployment-acceptance.md).
+[post-deployment release acceptance](post-deployment-acceptance.md).
 
 ## Local reproduction
 

@@ -33,7 +33,7 @@ seeding, model execution or verification fails.
 Documentation and service README edits do not select deployment on their own. Every push still runs change detection, so a documentation-only successor cannot strand pending application changes. Governed RAG Markdown and runtime prompt files remain deployable inputs.
 
 Main pushes classify all changes since the last accepted application release
-(successful service updates, smoke and the required live gate), rather than just
+(successful service updates, smoke and final release acceptance), rather than just
 the newest push. Failed CI or deployment leaves application
 changes pending; a successful release with a skipped deployment does not advance
 the baseline. This lets a later security or pipeline fix release the pending
@@ -105,7 +105,7 @@ and `security/promptfoo`. Each update arrives as a pull request that must pass C
 before merging, so pinned tool upgrades are reviewed instead of arriving with
 a new upstream release.
 
-`Release to AWS` has separate jobs for live preflight, image build/scan, corpus governance, deployment, smoke, security, fairness, the seven-entry live agent/RAG matrix, aggregate acceptance and rollback. The workflow lock covers them all. After deployment, the required order is smoke → two-trial live security regressions → all 19 live fairness pairs once (38 coaching requests) → seven serial deployed-model/AWS datasets → final acceptance. Failed, cancelled, skipped or incomplete required checks fail acceptance and restore attempted service updates to their previous task revisions. CI has no paid-live input. See [required live release acceptance](post-deployment-acceptance.md) for the job graph, rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
+`Release to AWS` has separate jobs for live preflight, image build/scan, corpus governance, deployment, smoke, security, fairness, the seven-entry live agent/RAG matrix, aggregate acceptance and rollback. The workflow lock covers them all. Smoke and final acceptance are mandatory. Live security, fairness and the agent/RAG matrix default off and are enabled independently by `RUN_LIVE_SECURITY`, `RUN_LIVE_FAIRNESS` and `RUN_LIVE_AGENT_RAG` in repository or `demo` variables. Enabled stages retain the order smoke → live security → all 19 fairness pairs once (38 coaching requests) → seven serial agent/RAG datasets → final acceptance, bypassing disabled predecessors. Enabled stages must pass; deliberate optional skips provide no live acceptance evidence. Failed, cancelled, skipped or incomplete required checks fail acceptance and restore attempted service updates to their previous task revisions. CI has no paid-live input. See [post-deployment release acceptance](post-deployment-acceptance.md) for the job graph, rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
 
@@ -114,7 +114,7 @@ The workflow audit keeps the following responsibilities:
 | Workflow | Purpose and trigger |
 | --- | --- |
 | CI and LLMSecOps | Required pre-release service, offline agent/RAG, platform/shared, metrics and security checks; PR/main/weekly/manual |
-| Release to AWS | Image build/scan and deployment after successful push CI for current main; required live acceptance with rollback on failure |
+| Release to AWS | Image build/scan and deployment after successful push CI for current main; required smoke/final acceptance; optional live stages must pass when enabled, with rollback on failure |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
 | AWS Operational Validation | Weekly/manual deployed-model, lifecycle, load and operational evidence |
 | Model Drift Monitoring | Opt-in weekly/manual rubric-scored live capture and human-calibrated baseline comparison; current policy uses GPT-6 Luna for generation and grading, with GitHub reports and optional SNS alerts/input checks |
@@ -128,11 +128,11 @@ policy evidence and the combined governance workflow.
 
 ## GitHub configuration
 
-`infra/scripts/configure_github.ps1` populates the OIDC role ARNs, ECS cluster/service/task names, ECR repositories, public health and coach URLs, corpus versions, dashboard and alarm identifiers, and bounded validation thresholds. It also sets `SMOKE_BACKEND_API_KEY` in the `demo` environment. The workflow assumes short-lived GitHub OIDC credentials; it does not store AWS access keys. Live release acceptance additionally requires the token-rate variables and demo-scoped evaluation role/secret access listed in [post-deployment acceptance](post-deployment-acceptance.md); the setup helper does not invent those rates.
+`infra/scripts/configure_github.ps1` populates the OIDC role ARNs, ECS cluster/service/task names, ECR repositories, public health and coach URLs, corpus versions, dashboard and alarm identifiers, and bounded validation thresholds. It also sets `SMOKE_BACKEND_API_KEY` in the `demo` environment. The workflow assumes short-lived GitHub OIDC credentials; it does not store AWS access keys. Enabled fairness additionally requires token-rate variables; enabled security requires demo-scoped evaluation role/secret access listed in [post-deployment acceptance](post-deployment-acceptance.md); the setup helper does not invent those rates.
 
 The OIDC deployment role has scoped Bedrock and S3 permissions for the two approved corpora: it can inspect and retrieve from the configured Education and Policy knowledge bases, read/list only their governed S3 prefixes, and start ingestion or publish objects within those prefixes. The separate RAG governance role is read-only for corpus and knowledge-base access. The deployment policy permits task/service inspection and task-definition registration, updates the three configured ECS services, and limits `iam:PassRole` to the configured ECS roles. Keep the `demo` environment restricted to `main`. Branch protection and native required reviewers depend on the repository plan.
 
-Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update, safety-smoke and required live acceptance steps, so a green superseded run cannot hide pending code.
+Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update, safety-smoke and final release acceptance steps, so a green superseded run cannot hide pending code.
 
 ## Change and acceptance gates
 
