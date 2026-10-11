@@ -51,7 +51,8 @@ def passed_checks(checks):
 
 def require_release_context(env):
     if (env.get("GITHUB_EVENT_NAME") != "workflow_run" or env.get("GITHUB_REF") != "refs/heads/main"
-            or env.get("RELEASE_SOURCE_EVENT") != "push" or env.get("RELEASE_SOURCE_CONCLUSION") != "success"
+            or env.get("RELEASE_SOURCE_EVENT") not in ("push", "workflow_dispatch")
+            or env.get("RELEASE_SOURCE_CONCLUSION") != "success"
             or not re.fullmatch(r"[a-f0-9]{40}", env.get("RELEASE_SHA", ""))):
         raise ValueError("LIVE_REQUIRES_SUCCESSFUL_MAIN_RELEASE")
     if env.get("GITHUB_RUN_ATTEMPT") != "1":

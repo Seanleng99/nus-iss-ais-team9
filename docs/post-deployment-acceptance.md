@@ -7,6 +7,13 @@ When enabled, each live stage must pass with complete evidence. A mandatory or
 enabled-stage failure fails the release and restores attempted ECS service updates
 to their captured previous task revisions. The workflow lock spans acceptance and rollback.
 
+Release starts automatically after successful push or manually dispatched
+**CI and LLMSecOps** on the current `main` commit. To redeploy all three services,
+use **Actions → CI and LLMSecOps → Run workflow** with branch `main`. Manual CI
+selects all services; Release builds or reuses their immutable images, runs migrations and
+deploys them after the required checks pass. Failed CI, PR/scheduled runs, other
+branches and superseded commits cannot unlock deployment.
+
 ## Enabling optional live stages
 
 Set repository variables or variables in **Settings → Environments → demo**:
@@ -20,7 +27,7 @@ Set repository variables or variables in **Settings → Environments → demo**:
 Use the literal value `true` to enable a stage and `false` to disable it. Unset
 variables default to `false`; malformed values fail configuration validation.
 Environment variables take precedence over repository variables. Set the flags
-before the next successful current-main push CI starts the release. Flags are
+before the next successful current-main push or manual CI starts the release. Flags are
 snapshotted once by `live-preflight`; later variable edits cannot change which
 stages the current release runs or requires. The choices persist until changed.
 
@@ -37,7 +44,7 @@ Subsequent paid stages stop after an enabled predecessor fails. No live stage us
 
 ## Order and mandatory gates
 
-1. Require successful push CI for current `main`; snapshot live selections and
+1. Require successful push or manual CI for current `main`; snapshot live selections and
    validate smoke configuration plus configuration for enabled live stages.
 2. Build/publish immutable images and pass ECR/Inspector findings gates. Reject
    stale releases before corpus ingestion and immediately before deployment.
@@ -53,7 +60,7 @@ Each stage is a separate job in [release.yml](../.github/workflows/release.yml):
 
 | Job ID | Work and requirement |
 |---|---|
-| `release-gate` | Mandatory successful current-main push CI and coherent release selection |
+| `release-gate` | Mandatory successful current-main push or manual CI and coherent release selection |
 | `live-preflight` | Mandatory first-attempt context and smoke configuration; snapshot live flags and validate selected-stage settings |
 | `build-images` | Mandatory immutable images and ECR/Inspector findings gate |
 | `corpus` | Mandatory freshness check and approved Bedrock ingestion/governance |

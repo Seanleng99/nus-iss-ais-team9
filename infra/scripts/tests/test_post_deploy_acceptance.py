@@ -29,16 +29,23 @@ def context():
             **dict.fromkeys(acceptance.LIVE_FLAGS.values(), "true")}
 
 
+@pytest.mark.parametrize("source_event", ["push", "workflow_dispatch"])
+def test_push_and_manual_ci_allow_release_preflight(source_event):
+    assert acceptance.validate_config({**context(), "RELEASE_SOURCE_EVENT": source_event}) == ALL_LIVE
+
+
+@pytest.mark.parametrize("source_event", ["push", "workflow_dispatch"])
 @pytest.mark.parametrize("key,value", [
     ("GITHUB_EVENT_NAME", "push"), ("GITHUB_REF", "refs/heads/feature"), ("GITHUB_RUN_ATTEMPT", "2"),
-    ("RELEASE_SOURCE_EVENT", "pull_request"), ("RELEASE_SOURCE_CONCLUSION", "failure"), ("RELEASE_SHA", ""),
+    ("RELEASE_SOURCE_EVENT", "pull_request"), ("RELEASE_SOURCE_EVENT", "schedule"),
+    ("RELEASE_SOURCE_EVENT", ""), ("RELEASE_SOURCE_CONCLUSION", "failure"), ("RELEASE_SHA", ""),
     ("SMOKE_BACKEND_API_KEY", ""), ("SECURITY_TEST_ROLE", ""), ("LIVE_MODEL_INPUT_USD_PER_MILLION", ""),
     ("LIVE_MODEL_INPUT_USD_PER_MILLION", "nan"), ("LIVE_MODEL_OUTPUT_USD_PER_MILLION", "inf"),
     ("FAIRNESS_LIVE_MAX_COST_USD", "0"), ("FAIRNESS_LIVE_MAX_COST_USD", "-1"),
 ])
-def test_invalid_release_context_or_budget_fails_before_deployment(key, value):
+def test_invalid_release_context_or_budget_fails_before_deployment(source_event, key, value):
     with pytest.raises(ValueError):
-        acceptance.validate_config({**context(), key: value})
+        acceptance.validate_config({**context(), "RELEASE_SOURCE_EVENT": source_event, key: value})
 
 
 def evidence(tmp_path):
@@ -233,9 +240,10 @@ def test_malformed_job_results_fail_closed(raw):
     assert not any(row["passed"] for row in acceptance.assess_jobs(raw))
 
 
+@pytest.mark.parametrize("source_event", ["push", "workflow_dispatch"])
 @pytest.mark.parametrize("attempt", ["1", "2"])
-def test_per_job_context_cli_prevents_paid_or_mutating_reruns(monkeypatch, attempt):
-    for key, value in {**context(), "GITHUB_RUN_ATTEMPT": attempt}.items():
+def test_per_job_context_cli_prevents_paid_or_mutating_reruns(monkeypatch, source_event, attempt):
+    for key, value in {**context(), "RELEASE_SOURCE_EVENT": source_event, "GITHUB_RUN_ATTEMPT": attempt}.items():
         monkeypatch.setenv(key, value)
     if attempt == "1":
         assert acceptance.main(["--mode", "validate-context"]) == 0
@@ -244,10 +252,12 @@ def test_per_job_context_cli_prevents_paid_or_mutating_reruns(monkeypatch, attem
             acceptance.main(["--mode", "validate-context"])
 
 
-def selected(job, states, *, cancelled=False):
+def selected(job, states, *, cancelled=False, workflow_run=None):
     """Evaluate only Boolean/equality expressions from the actual job guards."""
+    text = re.sub(r"github\.event\.workflow_run\.(\w+)",
+                  lambda m: repr((workflow_run or {}).get(m[1], "")), job["if"])
     text = re.sub(r"needs\.([\w-]+)\.(outputs\.[\w-]+|result)",
-                  lambda m: repr(states.get(m[1], {}).get(m[2], "")), job["if"])
+                  lambda m: repr(states.get(m[1], {}).get(m[2], "")), text)
     text = (text.replace("always()", "True").replace("cancelled()", str(cancelled))
             .replace("&&", " and ").replace("||", " or "))
     text = re.sub(r"!(?!=)", " not ", text)
@@ -268,7 +278,20 @@ def selected(job, states, *, cancelled=False):
 
     allowed = evaluate(ast.parse("(" + text.strip() + ")", mode="eval").body)
     # GitHub implicitly adds success() unless a guard contains a status function.
-    return allowed and ("always()" in job["if"] or all(states[name].get("result") == "success" for name in job["needs"]))
+    return allowed and ("always()" in job["if"] or all(states[name].get("result") == "success" for name in job.get("needs", [])))
+
+
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch", "schedule", "pull_request", ""])
+@pytest.mark.parametrize("conclusion", ["success", "failure", "cancelled", "skipped"])
+@pytest.mark.parametrize("branch", ["main", "feature"])
+def test_release_gate_only_accepts_successful_push_or_manual_main_ci(event, conclusion, branch):
+    _, release = workflows()
+    assert release["on"] == {"workflow_run": {
+        "workflows": ["CI and LLMSecOps"], "branches": ["main"], "types": ["completed"],
+    }}
+    source = {"event": event, "conclusion": conclusion, "head_branch": branch}
+    expected = event in ("push", "workflow_dispatch") and conclusion == "success" and branch == "main"
+    assert selected(release["jobs"]["release-gate"], {}, workflow_run=source) is expected
 
 
 def successful_states(selection):

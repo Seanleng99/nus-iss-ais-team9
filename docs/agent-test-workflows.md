@@ -9,16 +9,23 @@ dispatch use the same required pre-release checks. CI has no paid-live input.
 The former separate agent and security workflow entry points are removed;
 historical runs retain their original results.
 
-Successful push CI for current `main` starts **Release to AWS**. After immutable
+Successful push or manually dispatched CI for current `main` starts **Release to AWS**. After immutable
 image builds/scans, deployment and required health/safety smoke, Release can run
 optional live security, all 19 fairness pairs once (38 coaching requests) and the
 seven serial agent/RAG datasets. These stages default off; set `RUN_LIVE_SECURITY`,
 `RUN_LIVE_FAIRNESS` and/or `RUN_LIVE_AGENT_RAG` to `true` in repository or `demo`
 variables to enable them independently. Any failure or incomplete enabled evidence
 fails the release and restores changed services' previous task definitions.
-Manual CI does not deploy. Documentation-only/no-op releases have no deployment
+PR and scheduled CI do not deploy. Documentation-only pushes/no-op releases have no deployment
 to evaluate. See [post-deployment release acceptance](post-deployment-acceptance.md)
 for configuration, budgets, evidence and rollback limits.
+
+To redeploy all three services, open **Actions → CI and LLMSecOps → Run workflow**,
+select `main`, and run CI. Manual CI selects all services even when no application
+paths have changed. After it passes, Release starts automatically and builds or
+reuses immutable images for the frontend, backend and AI service from that tested
+SHA, then deploys all three with backend migrations. A run superseded by a newer
+`main` commit skips deployment.
 
 ## Jobs inside ci.yml
 
@@ -59,7 +66,7 @@ There are **five repository workflow files**, plus GitHub-managed Dependabot:
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | CI and LLMSecOps | PR, main push, weekly, manual | Required assessment inventory, pre-release service, offline agent/RAG, metrics and security checks |
-| Release to AWS | Successful push CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke and final acceptance; live security, fairness and agent/RAG are optional but must pass when enabled; roll back failed releases |
+| Release to AWS | Successful push or manual CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke and final acceptance; live security, fairness and agent/RAG are optional but must pass when enabled; roll back failed releases |
 | RAG Source Governance | Weekly, manual | Read-only corpus approval, checksum, freshness and deployed KB audit |
 | AWS Operational Validation | Weekly when enabled, manual | ECS/autoscaling, CloudWatch and edge controls; independent retention cleanup job |
 | Model Drift Monitoring | Weekly when enabled, manual | Quality capture/baseline comparison and optional operational alerts |
@@ -81,7 +88,7 @@ flowchart TD
     Start[PR / push / scheduled / manual CI] --> Tests[Service + offline agent/RAG + platform/shared + metrics + security]
     Tests --> Gate[Required CI checks]
     Gate --> PRBuild[PR / manual / scheduled build validation]
-    Gate --> Push[Successful push CI for current main]
+    Gate --> Push[Successful push or manual CI for current main]
     Push --> Preflight[Snapshot live flags + validate selected configuration]
     Preflight --> Build[Release builds + scans immutable images]
     Build --> Fresh{Still current main?}

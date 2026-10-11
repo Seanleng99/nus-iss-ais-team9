@@ -2,7 +2,7 @@
 
 ## Current delivery path
 
-A push to `main` runs CI and starts `Release to AWS` only after CI succeeds for the current commit. Application releases build and scan all three service images from that tested SHA so recovery also includes earlier fixes. The backend deployment runs Alembic before the service update. Post-deployment smoke requires successful live model execution for all five agents and verifies unauthenticated denial, scoped automation access, Education citations, independent Policy evidence, corpus pins, and persisted trace provenance. Failed checks restore the task definitions that were updated during the release; ECS deployment circuit breakers cover failed service starts.
+A push to `main` runs CI and starts `Release to AWS` only after CI succeeds for the current commit. Manually dispatching `CI and LLMSecOps` on `main` also starts Release after successful CI and selects all three services, even without new application changes. Application releases build and scan all three service images from that tested SHA so recovery also includes earlier fixes. The backend deployment runs Alembic before the service update. Post-deployment smoke requires successful live model execution for all five agents and verifies unauthenticated denial, scoped automation access, Education citations, independent Policy evidence, corpus pins, and persisted trace provenance. Failed checks restore the task definitions that were updated during the release; ECS deployment circuit breakers cover failed service starts.
 
 Every deployment runs the following required probes through the deployed coaching API:
 
@@ -114,7 +114,7 @@ The workflow audit keeps the following responsibilities:
 | Workflow | Purpose and trigger |
 | --- | --- |
 | CI and LLMSecOps | Required assessment inventory, pre-release service, offline agent/RAG, platform/shared, metrics and security checks; PR/main/weekly/manual |
-| Release to AWS | Image build/scan and deployment after successful push CI for current main; required smoke/final acceptance; optional live stages must pass when enabled, with rollback on failure |
+| Release to AWS | Image build/scan and deployment after successful push or manual CI for current main; required smoke/final acceptance; optional live stages must pass when enabled, with rollback on failure |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
 | AWS Operational Validation | Weekly/manual ECS, autoscaling, CloudWatch and edge checks, and independent lifecycle retention enforcement |
 | Model Drift Monitoring | Opt-in weekly/manual rubric-scored live capture and human-calibrated baseline comparison; current policy uses GPT-6 Luna for generation and grading, with GitHub reports and optional SNS alerts/input checks |
@@ -136,7 +136,7 @@ jobs supply the assessment evidence described in the demonstration runbook.
 
 The OIDC deployment role has scoped Bedrock and S3 permissions for the two approved corpora: it can inspect and retrieve from the configured Education and Policy knowledge bases, read/list only their governed S3 prefixes, and start ingestion or publish objects within those prefixes. The separate RAG governance role is read-only for corpus and knowledge-base access. The deployment policy permits task/service inspection and task-definition registration, updates the three configured ECS services, and limits `iam:PassRole` to the configured ECS roles. Keep the `demo` environment restricted to `main`. Branch protection and native required reviewers depend on the repository plan.
 
-Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update, safety-smoke and final release acceptance steps, so a green superseded run cannot hide pending code.
+Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. Successful manual main CI additionally starts Release, which builds or reuses the immutable images for the tested commit. PR and scheduled CI never unlock deployment. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update, safety-smoke and final release acceptance steps, so a green superseded run cannot hide pending code.
 
 ## Change and acceptance gates
 

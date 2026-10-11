@@ -208,8 +208,9 @@ def test_live_cli_cannot_bypass_manual_main_first_attempt_gate(tmp_path, monkeyp
     assert report["status"] == "FAIL" and report["error_code"]
 
 
+@pytest.mark.parametrize("source_event", ["push", "workflow_dispatch"])
 @pytest.mark.parametrize("fault", [None, "wrong-source-event", "wrong-sha", "rerun"])
-def test_post_deployment_cli_only_executes_fresh_successful_main_release(tmp_path, monkeypatch, fault):
+def test_post_deployment_cli_only_executes_fresh_successful_main_release(tmp_path, monkeypatch, source_event, fault):
     import boto3
 
     monkeypatch.setenv("RELEASE_SHA", "a" * 40)
@@ -219,7 +220,7 @@ def test_post_deployment_cli_only_executes_fresh_successful_main_release(tmp_pat
     monkeypatch.setattr(live, "ROOT", tmp_path)
     monkeypatch.setattr(live, "initial_report", lambda suite: deepcopy(template))
     for key, value in {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_REF": "refs/heads/main",
-                       "GITHUB_RUN_ATTEMPT": "1", "RELEASE_SOURCE_EVENT": "push",
+                       "GITHUB_RUN_ATTEMPT": "1", "RELEASE_SOURCE_EVENT": source_event,
                        "RELEASE_SOURCE_CONCLUSION": "success", "AWS_REGION": "test-region"}.items():
         monkeypatch.setenv(key, value)
     if fault == "wrong-source-event": monkeypatch.setenv("RELEASE_SOURCE_EVENT", "pull_request")
