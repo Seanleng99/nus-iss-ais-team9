@@ -1,4 +1,4 @@
-"""Offline contracts for optional live jobs: no credentials or provider calls."""
+"""Offline contracts for release live checks: no credentials or provider calls."""
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -22,23 +22,21 @@ def workflow():
     return yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
 
 
-def test_seven_offline_and_seven_live_jobs_default_to_no_paid_calls():
+def test_ci_has_seven_offline_suites_and_release_owns_paid_live_checks():
     config = workflow()
-    for event in ("workflow_dispatch",):
-        assert config["on"][event]["inputs"]["run_live"]["type"] == "boolean"
-        assert config["on"][event]["inputs"]["run_live"]["default"] == "false"
+    assert not config["on"]["workflow_dispatch"]
     assert set(config["jobs"]["offline"]["strategy"]["matrix"]["suite"]) == set(live.SUITES)
-    assert set(config["jobs"]["live"]["strategy"]["matrix"]["suite"]) == set(live.SUITES)
+    assert "live" not in config["jobs"] and "security-live" not in config["jobs"]
     assert "environment" not in config["jobs"]["offline"]
     assert set(config["jobs"]["offline"]["env"].values()) == {"local_fixture", "${{ matrix.suite }}"}
-    assert config["jobs"]["live"]["continue-on-error"] == "true"
     assert config["jobs"]["report"]["continue-on-error"] == "true"
-    assert config["jobs"]["agent-test-gate"]["needs"] == ["changes", "offline", "metrics"]
-    assert "agent-test-gate" in config["jobs"]["live"]["needs"]
+    assert config["jobs"]["agent-test-gate"]["needs"] == ["changes", "offline", "metrics", "ai-service"]
+    release = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
+    assert release["jobs"]["deploy-demo"]["environment"]["name"] == "demo"
     ci = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
     assert "agent-evaluations" not in ci["jobs"]
     assert "secrets" not in ci["jobs"]["offline"]
-    assert set(ci["jobs"]["agent-test-gate"]["needs"]) == {"changes", "offline", "metrics"}
+    assert set(ci["jobs"]["agent-test-gate"]["needs"]) == {"changes", "offline", "metrics", "ai-service"}
     assert "live" not in ci["jobs"]["agent-test-gate"]["env"]
 
 
@@ -99,10 +97,18 @@ def test_wrong_arithmetic_and_failed_build_or_usage_are_rejected():
 @pytest.mark.parametrize("requested,result", [(False, "skipped"), (True, "failure"), (True, "success")])
 def test_missing_live_artifact_cannot_be_presented_as_pass(tmp_path, requested, result):
     rows = combined.collect(tmp_path, live_requested=requested, live_job_result=result)
-    assert len(rows) == 14
+    assert len(rows) == 16
     assert all(row["status"] != "PASS" for row in rows)
     live_rows = [row for row in rows if row["mode"] == "live"]
     assert all(row["status"].startswith("NOT RUN" if requested else "SKIPPED") for row in live_rows)
+
+
+def test_pre_deployment_report_marks_all_live_suites_required_and_pending(tmp_path):
+    rows = combined.collect(tmp_path, live_requested=False, live_job_result="not_run", phase="pre_deployment")
+    live_rows = [row for row in rows if row["mode"] == "live"]
+    assert len(live_rows) == 7
+    assert all(row["status"] == "PENDING — required after deployment in Release to AWS" for row in live_rows)
+    assert "Release to AWS requires" in combined.render(rows)
 
 
 def test_failed_live_artifact_survives_advisory_success(tmp_path):
@@ -199,6 +205,35 @@ def test_live_cli_cannot_bypass_manual_main_first_attempt_gate(tmp_path, monkeyp
     assert live.main(["--suite", "budget"]) == 1
     report = json.loads((tmp_path / "artifacts/agent-live/budget/report.json").read_text())
     assert report["status"] == "FAIL" and report["error_code"]
+
+
+@pytest.mark.parametrize("fault", [None, "wrong-source-event", "wrong-sha", "rerun"])
+def test_post_deployment_cli_only_executes_fresh_successful_main_release(tmp_path, monkeypatch, fault):
+    import boto3
+
+    monkeypatch.setenv("RELEASE_SHA", "a" * 40)
+    template = live.initial_report("budget")
+    planned_questions = list(live.questions(template))
+    monkeypatch.setattr(live, "questions", lambda report: iter(planned_questions))
+    monkeypatch.setattr(live, "ROOT", tmp_path)
+    monkeypatch.setattr(live, "initial_report", lambda suite: deepcopy(template))
+    for key, value in {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_REF": "refs/heads/main",
+                       "GITHUB_RUN_ATTEMPT": "1", "RELEASE_SOURCE_EVENT": "push",
+                       "RELEASE_SOURCE_CONCLUSION": "success", "AWS_REGION": "test-region"}.items():
+        monkeypatch.setenv(key, value)
+    if fault == "wrong-source-event": monkeypatch.setenv("RELEASE_SOURCE_EVENT", "pull_request")
+    elif fault == "wrong-sha": monkeypatch.setenv("RELEASE_SHA", "invalid")
+    elif fault == "rerun": monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    calls = []
+    monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: object())
+
+    def executed(report, *args):
+        calls.append(report["test_commit"])
+        report["status"] = "PASS"
+
+    monkeypatch.setattr(live, "execute", executed)
+    assert live.main(["--suite", "budget", "--post-deployment"]) == (0 if fault is None else 1)
+    assert calls == (["a" * 40] if fault is None else [])
 
 
 def test_combined_html_retains_full_synthetic_answers_and_escapes_markup(tmp_path):

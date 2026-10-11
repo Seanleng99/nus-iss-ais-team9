@@ -1,62 +1,53 @@
 # CI, agent and RAG evaluations
 
-## One entry point
+## CI and release entry points
 
-Use **Actions → CI and LLMSecOps → Run workflow → main**. All pre-release
-service tests, the seven agent/RAG suites, evaluation metrics and security scans
-are defined directly in [ci.yml](../.github/workflows/ci.yml). The former
-`agent-evaluations.yml` and `project-security-scan.yml` entry points are removed.
-Historical runs remain visible in GitHub.
+**CI and LLMSecOps** runs service tests, the seven offline agent/RAG suites,
+platform/shared contracts, evaluation metrics and security scans directly in
+[ci.yml](../.github/workflows/ci.yml). PRs, main pushes, schedules and manual
+dispatch use the same required pre-release checks. CI has no paid-live input.
+The former separate agent and security workflow entry points are removed;
+historical runs retain their original results.
 
-The **Run paid live evaluations** checkbox defaults to **No**:
-
-| Choice | Execution | Effect |
-|---|---|---|
-| No | Required offline/fixture tests, security scans and CI validation | No optional paid model or AWS integration evaluations; CI can succeed |
-| Yes, manual dispatch on main | The same required checks, then seven bounded live suites and the bounded live security scan | Live failures remain visible but advisory; they do not block deployment |
-
-Automatic PR, push and scheduled CI cannot enable paid evaluation jobs. A new
-manual dispatch is required to repeat paid evaluations; rerunning an old job
-cannot generate again. Agent live jobs retain the existing `demo` environment
-and AWS OIDC role. The security live job retains its separately scoped existing
-model-secret role. No new IAM access is added.
-
-This checkbox controls CI's optional evaluations. Required post-deployment smoke
-checks and separately invoked operational/monitoring workflows retain their
-own controls. Manual CI never triggers AWS release.
+Successful push CI for current `main` starts **Release to AWS**. After immutable
+image builds/scans, deployment and health/safety smoke, Release requires all
+19 fairness pairs once (38 coaching requests), seven serial agent/RAG datasets and
+two-trial live security regressions. Any failure or incomplete required evidence
+fails the release and restores changed services' previous task definitions.
+Manual CI does not deploy. Documentation-only/no-op releases have no deployment
+to evaluate. See [required live release acceptance](post-deployment-acceptance.md)
+for configuration, budgets, evidence and rollback limits.
 
 ## Jobs inside ci.yml
 
 | Job | Responsibility and dependencies |
 |---|---|
-| `changes` | Test the classifier/baseline helper, inventory language data, then classify changes since the last actual successful deployment |
+| `changes` | Test classifier/baseline helpers, inventory language data, then classify changes since the last actual successful deployment |
 | `offline` ×7 | Orchestrator, Spending, Budget, Goal, Investment, Risk & Compliance and RAG; selected after change detection |
-| `metrics` | Required LLMSecOps thresholds and 100-case full-document RAG evidence evaluation |
-| `agent-test-gate` | Require all selected offline suites and metrics to pass; reject missing/skipped required results |
+| `metrics` | Required LLMSecOps thresholds, including all 19 frozen fairness pairs, and 100-case full-document RAG evidence evaluation |
+| `agent-test-gate` | Require selected offline suites, platform/shared contracts, ownership validation and metrics; reject missing/skipped required results |
 | `project-security-scan` | Required offline Promptfoo attack/benign controls and provider/grader tests |
-| `ai-service` | Remaining AI tests, conversational contracts, shared tests and lint; excludes files owned by agent jobs |
+| `ai-service` | Explicit platform/shared contracts, complete/disjoint pytest ownership validation and lint |
 | `frontend`, `backend` | Each service's own unit/API tests |
-| `infrastructure` | Remaining infrastructure/helper/report tests, CloudFormation and Compose validation |
+| `infrastructure` | Infrastructure/helper/report tests, CloudFormation and Compose validation |
 | `service-integration` | PostgreSQL-backed backend-to-AI safety and bounded load checks after service tests |
 | `dependency-review`, `python-sast` | Resolved dependency audit and Bandit source scan |
-| `container-build` | Build validation for PRs, schedules and manual CI; skipped on main pushes because Release builds those images |
-| `live` ×7 | Optional deployed agent/model/Bedrock contracts, after required CI checks; serial matrix |
-| `security-live` | Optional bounded Promptfoo model scan after the live matrix; actual acceptance retained independently of advisory job status |
-| `report` | Always assemble job conclusions, all retained evidence, and per-agent questions/expected/actual results in one artifact |
+| `container-build` | Build validation for PRs, schedules and manual CI; main pushes build in Release |
+| `report` | Always assemble CI conclusions and offline evidence; live acceptance is PENDING until the required release gate runs |
 
-There is one owner for each selected AI pytest function. The two classifier and
-baseline tests run early in `changes` and are excluded from `infrastructure`.
-Test ownership and report-helper tests run only in `infrastructure`; provider and
-JavaScript grader tests run only in `project-security-scan`. Functional metrics
-and adversarial cases intentionally exercise related behavior with different
-acceptance criteria; they are not duplicate executions of the same pytest suite.
+Each selected AI pytest function has one owner. Classifier/baseline tests run in
+`changes`; remaining helper/report tests run in `infrastructure`. Provider and
+JavaScript grader tests run in `project-security-scan`. Functional metrics and
+adversarial cases exercise related behavior with different acceptance criteria.
 
-Documentation-only changes still start change detection, which selects no
-application deployment when the deployed code is current. README/security guides
-are excluded from runtime classification; governed RAG Markdown and prompt
-runtime files still trigger appropriate checks and deployment. Comparing against
-the deployed baseline preserves pending application fixes even when a newer
-commit only updates documentation.
+All 101 AI modules and six shared modules have explicit selectors. There is no
+remaining-tests fallback. See [test organization](test-organization.md) for the
+owner map and collection checks. Metrics owns full frozen dataset execution;
+scorer pytest contracts use small synthetic datasets.
+
+Documentation-only changes still start classification against the deployed
+baseline, preserving pending application fixes. Governed RAG Markdown and prompt
+runtime changes still select deployment and their required checks.
 
 ## Remaining workflows
 
@@ -64,41 +55,40 @@ There are **six repository workflow files**, plus GitHub-managed Dependabot:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| CI and LLMSecOps | PR, main push, weekly, manual | All pre-release testing and the optional live evaluations described above |
-| Release to AWS | Successful push CI for current main | Build/publish/scan immutable images, ingest/audit corpora, migrate, deploy and require live safety smoke |
+| CI and LLMSecOps | PR, main push, weekly, manual | Required pre-release service, offline agent/RAG, metrics and security checks |
+| Release to AWS | Successful push CI for current main | Build/publish/scan images, ingest/audit corpora, migrate, deploy; require smoke, live fairness, agent/RAG and security acceptance; roll back failed releases |
 | RAG Source Governance | Weekly, manual | Read-only corpus approval, checksum, freshness and deployed KB audit |
 | AWS Operational Validation | Weekly when enabled, manual, reusable | Live service, load, retention, edge and operational controls |
 | Model Drift Monitoring | Weekly when enabled, manual | Quality capture/baseline comparison and optional operational alerts |
 | Final Assessment | Manual | Repository evidence inventory, then reuse AWS Operational Validation |
-| Dependabot Updates | GitHub-managed weekly dependency checks | Propose dependency-update PRs, which still pass through CI |
+| Dependabot Updates | GitHub-managed weekly dependency checks | Propose dependency PRs that still pass CI |
 
 Release checks freshness before building and immediately before deployment.
-A superseded release skips deployment and reports that reason. A green no-op
-cannot advance the deployed baseline: successful service-update and safety-smoke
-steps are required. Authentication/configuration/API failures still fail closed.
+A superseded release skips deployment. A green no-op cannot advance the deployed
+baseline: actual successful service updates, smoke and the required live gate
+must complete. Authentication/configuration/API failures fail closed.
 
 ```mermaid
 flowchart TD
-    Start[PR / push / scheduled / manual CI] --> Changes[Classify changes]
-    Changes --> Tests[Service + seven agent suites + metrics + security + infrastructure]
-    Tests --> Gate[Required checks]
-    Gate --> PRBuild[PR / manual / scheduled container build]
-    Gate --> PushCI[Successful push CI]
-    PushCI --> Release[Release builds + scans immutable images]
-    Release --> Fresh{Still current main?}
-    Fresh -->|Yes| Deploy[Deploy + required health and safety smoke]
+    Start[PR / push / scheduled / manual CI] --> Tests[Service + offline agent/RAG + platform/shared + metrics + security]
+    Tests --> Gate[Required CI checks]
+    Gate --> PRBuild[PR / manual / scheduled build validation]
+    Gate --> Push[Successful push CI for current main]
+    Push --> Build[Release builds + scans immutable images]
+    Build --> Fresh{Still current main?}
     Fresh -->|No| Skip[Skip superseded deployment]
-    PRBuild --> Choice{Manual main + live Yes?}
-    Choice -->|Yes| Live[Seven advisory live suites + live security]
-    Choice -->|No| NoLive[No optional paid calls]
-    Tests --> Report[One combined CI and evaluation report]
-    Live --> Report
-    NoLive --> Report
+    Fresh -->|Yes| Deploy[Deploy + health and safety smoke]
+    Deploy --> Fairness[19 live fairness pairs once]
+    Fairness --> Agents[Seven serial live agent/RAG datasets]
+    Agents --> Security[Two-trial live security regressions]
+    Security --> Acceptance{Complete live acceptance?}
+    Acceptance -->|Pass| Success[Release accepted]
+    Acceptance -->|Fail or incomplete| Rollback[Fail release + restore previous services]
 ```
 
-The seven offline jobs can run in parallel. Live agent jobs run serially
-(`max-parallel: 1`); live security runs afterward. Deployments preserve their
-existing required safety checks and rollback behavior.
+Offline suites run in parallel. Paid stages run serially within the deployment
+job, retaining the release lock through acceptance and rollback. No live stage
+uses `continue-on-error`; the final gate and evidence upload also run on failure.
 
 ## Evaluation definitions and acceptance
 
@@ -143,32 +133,27 @@ request may cross the budget; these are stop-before-next-request bounds, not
 currency caps. Missing usage stops further generation. No claim about account
 credit balance or exact dollar cost is made.
 
-**The tested deployment SHA and workflow/test SHA are separate fields.** Tests
-against the existing deployed app do not prove an undeployed commit works. A
-small synthetic sample and passing structural contracts also do not establish
-99% answer quality; semantic clarity/correctness still needs lecturer review.
+**The release gate requires the test SHA and deployed SHA to equal `RELEASE_SHA`.**
+The runner checks deployment identity before making model calls and retains stable
+build evidence. A small synthetic sample and passing structural contracts do not
+establish 99% answer quality; semantic clarity/correctness still needs review.
 
 ## Where to review results
 
-Every offline/live job has its own GitHub **Summary** and artifact. The combined
-job uploads **`agent-evaluation-report`**, containing:
+CI publishes **`agent-evaluation-report`** with Markdown, full JSON and HTML,
+plus per-suite JUnit and evaluation artifacts. Offline/platform/shared evidence
+is retained for 90 days; `investment-evaluation-metrics` retains 30 days. CI's
+live status is **PENDING — required after deployment in Release to AWS**.
 
-- `summary.md`: component status, definitions, questions, expected/actual answers.
-- `report.json`: full unabridged evidence, individual outcomes and dataset hashes.
-- `index.html`: downloadable evidence view for the presentation.
+Release publishes **`release-live-acceptance-<run_id>`** for 90 days, including
+the aggregate acceptance result, seven full agent reports, fairness answers and
+blinded review CSV, live security results and frozen definitions. Inspect the
+**Require complete live release acceptance** step and its summary. Missing,
+failed, fixture or partial evidence cannot pass or produce a successful release.
 
-Per-component artifacts include JUnit XML (offline), JSON, Markdown and live AWS/
-model evidence. Retention is **90 days**; the existing numeric metrics artifact
-retains its 30-day setting. GitHub summary cells shorten long answers for
-readability; full responses stay in JSON. Only explicit synthetic test questions
-and responses are captured. Existing non-opted-in evaluation clients continue to
-record metadata only. No secret, actual-user history or full ECS environment is
-included.
-
-A green manual workflow with a red **live FAIL** in the report is intentional:
-offline acceptance passed and optional live evaluation failed. **SKIPPED** means
-No was selected; **NOT RUN / INCOMPLETE** means requested evidence was not obtained.
-Neither is a live pass.
+Summaries shorten long answers; JSON retains full synthetic responses. No secret,
+actual-user history or full ECS environment is retained. Automation passes
+structural contracts; human semantic/fairness review remains separately pending.
 
 ## Local verification
 
@@ -180,8 +165,9 @@ MODEL_PROVIDER=local_fixture RAG_PROVIDER=local_fixture POLICY_RAG_PROVIDER=loca
 python -m pytest infra/scripts/tests
 ```
 
-Replace `orchestrator` with any of the seven suite IDs. Ownership tests ensure
-all old selected functions remain covered once and remaining CI tests are not
+Replace `orchestrator` with any of the seven suite IDs, `platform`, or `shared`.
+Actual pytest collection validates that every case has one explicit owner.
+All selected functions remain covered once and other CI tests are not
 lost. Harness tests simulate provider/credential failures, failed live artifacts,
 real-role proof, budgets, missing evidence and the required offline gate without
 making paid calls.

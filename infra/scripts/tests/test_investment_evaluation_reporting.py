@@ -45,10 +45,18 @@ def test_every_owned_agent_suite_has_complete_versioned_evaluation_definition():
         for item in definition["datasets"]:
             assert (ROOT / item["path"]).is_file()
             assert item["expected_outputs"]
+    assert catalog["shared"]["test_selection"] == ownership["shared"]
+    assert {item["path"] for item in catalog["shared"]["datasets"]} == {
+        "apps/shared/" + path for path in ownership["shared"]["test_paths"]
+    }
+    orchestrator_inputs = {item["path"] for item in catalog["suites"]["orchestrator"]["datasets"]}
+    assert "apps/ai-service/app/evals/datasets/orchestrator_routing.jsonl" not in orchestrator_inputs
+    assert "apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl" in orchestrator_inputs
 
 
 @pytest.mark.parametrize("suite", [
     "orchestrator", "spending", "budget", "goal", "investment", "risk-compliance", "rag",
+    "platform", "shared",
 ])
 @pytest.mark.parametrize("outcomes,accepted,rate", [
     (["passed", "passed"], True, 1),
@@ -173,7 +181,7 @@ def test_metrics_summary_shows_actual_thresholds_routing_and_limitations():
     for text in ("routing_precision", "TP / (TP + FP)", "route-1", "automatic",
                  "passage_recall_at_3", "scope_accuracy", "not measured",
                  "Create a monthly budget", "An unsaved budget draft", "Investor money is pooled",
-                 "all seven offline pytest suites", "optional live evaluation job is selected separately"):
+                 "seven agent suites and platform/shared contracts", "optional live evaluation job is selected separately"):
         assert text in markdown
     assert "1,200" in markdown
 

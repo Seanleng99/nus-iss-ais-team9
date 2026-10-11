@@ -1,6 +1,7 @@
 """Execution ownership and cost boundaries for the single CI entry point."""
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -39,17 +40,55 @@ def test_infrastructure_tests_have_one_owner_and_bootstrap_tests_are_excluded():
                 command in run for command in ("pytest", "unittest")))
 
 
-def test_main_push_builds_only_in_release_and_live_is_opt_in_advisory():
+def test_platform_job_has_explicit_ownership_and_separate_shared_evidence():
+    jobs = workflow()["jobs"]
+    job = jobs["ai-service"]
+    commands = "\n".join(step.get("run", "") for step in job["steps"])
+    assert "check_test_ownership.py" in commands
+    assert "--suite platform" in commands and "--suite shared" in commands
+    assert "--suite remaining" not in commands and "test_conversational_pipeline.py" not in commands
+    assert "needs.changes.outputs.deploy == 'true'" in job["if"]
+    assert "ai-service" in jobs["agent-test-gate"]["needs"]
+    assert "PLATFORM_RESULT" in jobs["agent-test-gate"]["env"]
+    artifacts = {step["with"]["name"] for step in job["steps"]
+                 if step.get("uses", "").startswith("actions/upload-artifact")}
+    assert artifacts == {"agent-offline-platform", "shared-library-contracts"}
+
+
+def test_metrics_artifact_retains_every_required_dataset_including_fairness():
+    policy = json.loads((ROOT / "infra/llmsecops/evaluation-policy.json").read_text())
+    artifact = next(step["with"] for step in workflow()["jobs"]["metrics"]["steps"]
+                    if step.get("uses", "").startswith("actions/upload-artifact"))
+    retained = set(artifact["path"].splitlines())
+    assert {suite["dataset"] for suite in policy["suites"]} <= retained
+    assert "apps/ai-service/app/evals/datasets/fairness_consistency.jsonl" in retained
+
+
+@pytest.mark.parametrize("suite,artifact,accepted", [
+    ("platform", "agent-offline-platform", True),
+    ("shared", "shared-library-contracts", False),
+])
+def test_common_contract_reports_are_visible_and_failed_acceptance_stays_failed(tmp_path, suite, artifact, accepted):
+    from infra.scripts.summarize_agent_evaluations import collect, render, render_html
+    directory = tmp_path / artifact
+    directory.mkdir()
+    evidence = {"accepted": accepted, "measurement": "offline", "datasets": [], "metrics": [],
+                "acceptance_criteria": [], "limitations": "synthetic", "results": {"cases": []}}
+    (directory / f"{suite}-evaluation.json").write_text(json.dumps(evidence))
+    reports = collect(tmp_path, live_requested=False, live_job_result="skipped")
+    row = next(row for row in reports if row["suite"] == suite)
+    assert row["status"] == ("PASS" if accepted else "FAIL")
+    assert f"{suite} contracts" in render(reports)
+    assert f"{suite}-offline" in render_html(reports)
+
+
+def test_main_push_builds_in_release_and_live_acceptance_is_in_release():
     jobs = workflow()["jobs"]
     assert "github.event_name != 'push'" in jobs["container-build"]["if"]
-    for name in ("live", "security-live"):
-        job = jobs[name]
-        assert "workflow_dispatch" in job["if"] and "inputs.run_live" in job["if"]
-        assert "refs/heads/main" in job["if"]
-        assert job["continue-on-error"] == "true"
-    assert workflow()["on"]["workflow_dispatch"]["inputs"]["run_live"]["default"] == "false"
+    assert "live" not in jobs and "security-live" not in jobs
+    assert not workflow()["on"]["workflow_dispatch"]
     assert "live" not in jobs["agent-test-gate"]["needs"]
-    assert "security-live" in jobs["report"]["needs"]
+    assert "security-live" not in jobs["report"]["needs"]
 
 
 def test_stale_release_skips_every_mutating_or_acceptance_step():
@@ -63,16 +102,25 @@ def test_stale_release_skips_every_mutating_or_acceptance_step():
 
 @pytest.mark.parametrize("latest,exit_code,expected", [("a" * 40, 0, "true"), ("b" * 40, 0, "false"), ("", 1, None)])
 def test_final_release_guard_executes_safely(tmp_path, latest, exit_code, expected):
+    bash = shutil.which("bash")
+    if os.name == "nt":
+        git = shutil.which("git")
+        candidate = Path(git).parents[1] / "bin/bash.exe" if git else None
+        if candidate is None or not candidate.is_file():
+            pytest.skip("CI shell guard requires Git Bash on Windows")
+        bash = str(candidate)
+    if not bash:
+        pytest.skip("CI shell guard requires bash")
     script = next(s["run"] for s in workflow("release")["jobs"]["deploy-demo"]["steps"] if s.get("id") == "current")
     gh = tmp_path / "gh"
     gh.write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_SHA"\nexit "$TEST_EXIT"\n')
     gh.chmod(0o700)
     output = tmp_path / "outputs"
-    result = subprocess.run(["bash", "-eu", "-c", script], capture_output=True, text=True, timeout=5, check=False,
+    result = subprocess.run([bash, "-eu", "-c", script], capture_output=True, text=True, timeout=10, check=False,
                             env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
                                  "TEST_SHA": latest, "TEST_EXIT": str(exit_code), "RELEASE_SHA": "a" * 40,
-                                 "GITHUB_REPOSITORY": "test/repo", "GITHUB_OUTPUT": str(output),
-                                 "GITHUB_STEP_SUMMARY": str(tmp_path / "summary")})
+                                 "GITHUB_REPOSITORY": "test/repo", "GITHUB_OUTPUT": output.as_posix(),
+                                 "GITHUB_STEP_SUMMARY": (tmp_path / "summary").as_posix()})
     assert result.returncode == exit_code, result.stderr
     assert (output.read_text().strip() if output.exists() else None) == (f"deploy={expected}" if expected else None)
 
@@ -85,7 +133,7 @@ def test_combined_index_keeps_failed_status_and_links_all_evidence(tmp_path):
     markdown, page = ci_overview([{"job": "security-live", "result": "failure"}], tmp_path)
     assert "failure" in markdown and "failure" in page
     assert "evidence/security/failed%20scan.json" in page
-    assert "Advisory live jobs can be green despite failing cases" in page
+    assert "Failed or missing case evidence cannot establish acceptance" in page
 
 
 def test_advisory_security_job_success_does_not_hide_failed_acceptance(tmp_path):

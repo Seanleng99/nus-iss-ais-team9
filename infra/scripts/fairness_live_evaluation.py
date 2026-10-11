@@ -191,7 +191,7 @@ def main():
     parser.add_argument("--cases", type=Path, default=Path("apps/ai-service/app/evals/datasets/fairness_consistency.jsonl"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--review-output", type=Path, required=True)
-    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--timeout-seconds", type=float, default=180)
     parser.add_argument("--expected-model-provider", choices=["openai", "local_fixture"], default="openai")
     parser.add_argument("--expected-model-id", required=True)

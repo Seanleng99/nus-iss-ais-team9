@@ -49,6 +49,7 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
         "POLICY_CORPUS_VERSION": "financial-coach-policy-sg@next",
     }
     values.update(EDUCATION_KNOWLEDGE_BASE_ID="EDUCATKB12", POLICY_KNOWLEDGE_BASE_ID="POLICYKB12")
+    release_sha = "0123456789abcdef0123456789abcdef01234567"
     environment = {**dict.fromkeys(values, "stale-corpus@old"), "MAX_MODEL_TOKENS_PER_RUN": "40000",
                    "MODEL_READ_TIMEOUT_SECONDS": "15", "AGENT_TIMEOUT_SECONDS": "20",
                    "WORKFLOW_TIMEOUT_SECONDS": "40"}
@@ -59,7 +60,7 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     environment["MODEL_ROLE_OVERRIDES"] = '{}'
     rendered = STEPS["Render AI service task definition"]["with"]["environment-variables"]
     rendered = rendered.replace("${{ github.sha }}", "0123456789abcdef0123456789abcdef01234567")
-    rendered = re.sub(r"\$\{\{ env\.(\w+) \}\}", lambda match: values[match[1]], rendered)
+    rendered = re.sub(r"\$\{\{ env\.(\w+) \}\}", lambda match: {**values, "RELEASE_SHA": release_sha}[match[1]], rendered)
     environment.update(line.split("=", 1) for line in rendered.strip().splitlines())
     assert environment["MAX_MODEL_TOKENS_PER_RUN"] == "80000"
     assert environment["PROMPT_SET_VERSION"] == values["PROMPT_SET_VERSION"]
@@ -73,12 +74,12 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
     }]}
     path = tmp_path / "task.json"
     path.write_text(json.dumps(task))
-    env = {**values, "RENDERED_AI_TASK": str(path), "AI_CONTAINER_NAME": "ai-service"}
+    env = {**values, "RELEASE_SHA": release_sha, "RENDERED_AI_TASK": str(path), "AI_CONTAINER_NAME": "ai-service"}
     verified = run_step("Verify AI runtime configuration has not drifted", ROOT, env)
     assert verified.returncode == 0, verified.stderr + verified.stdout
     for pin in [*values, "MAX_MODEL_TOKENS_PER_RUN", "MODEL_REASONING_EFFORT",
                 "MODEL_MAX_TOKENS", "PROMPT_SET_VERSION", "MODEL_READ_TIMEOUT_SECONDS",
-                "AGENT_TIMEOUT_SECONDS", "WORKFLOW_TIMEOUT_SECONDS"]:
+                "AGENT_TIMEOUT_SECONDS", "WORKFLOW_TIMEOUT_SECONDS", "BUILD_COMMIT"]:
         item = next(item for item in task["containerDefinitions"][0]["environment"] if item["name"] == pin)
         expected_value = item["value"]
         item["value"] = ("40000" if pin == "MAX_MODEL_TOKENS_PER_RUN" else

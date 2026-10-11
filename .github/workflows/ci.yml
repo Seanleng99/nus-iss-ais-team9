@@ -5,12 +5,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      run_live:
-        description: "Run paid live evaluations (seven agent/RAG suites plus security)? No = offline only"
-        type: boolean
-        default: false
-        required: true
   schedule:
     - cron: "0 2 * * 1"
 
@@ -100,7 +94,7 @@ jobs:
           retention-days: 7
 
   offline:
-    name: ${{ matrix.suite }} — offline unit tests
+    name: ${{ matrix.suite }} — offline regression tests
     needs: changes
     if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
@@ -202,9 +196,15 @@ jobs:
             infra/llmsecops/agent-evaluation-specs.json
             infra/llmsecops/evaluation-policy.json
             apps/ai-service/app/evals/datasets/orchestrator_routing.jsonl
+            apps/ai-service/app/evals/datasets/budget_calculation.jsonl
             apps/ai-service/app/evals/datasets/rag_retrieval.jsonl
             apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl
             apps/ai-service/app/evals/datasets/rag_integration.jsonl
+            apps/ai-service/app/evals/datasets/security_guardrails.jsonl
+            apps/ai-service/app/evals/datasets/policy_retrieval.jsonl
+            apps/ai-service/app/evals/datasets/dynamic_dependencies.jsonl
+            apps/ai-service/app/evals/datasets/safety_behavior.jsonl
+            apps/ai-service/app/evals/datasets/fairness_consistency.jsonl
             apps/ai-service/app/evals/datasets/beginner_investment_questions.jsonl
           if-no-files-found: error
           retention-days: 30
@@ -274,7 +274,7 @@ jobs:
 
   agent-test-gate:
     name: Required agent test gate
-    needs: [changes, offline, metrics]
+    needs: [changes, offline, metrics, ai-service]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -284,23 +284,28 @@ jobs:
       DEPLOY: ${{ needs.changes.outputs.deploy }}
       OFFLINE_RESULT: ${{ needs.offline.result }}
       METRICS_RESULT: ${{ needs.metrics.result }}
+      PLATFORM_RESULT: ${{ needs.ai-service.result }}
     steps:
       - name: Require every selected agent suite to pass
         run: |
           [[ "$CHANGES_RESULT" == "success" ]] || exit 1
           if [[ "$AI_CI" == "true" || "$DEPLOY" == "true" ]]; then
-            [[ "$OFFLINE_RESULT" == "success" && "$METRICS_RESULT" == "success" ]] || { echo "Agent suites or metrics did not pass." >&2; exit 1; }
-            echo "All seven offline suites and required metrics passed. Optional live evaluations are advisory." >> "$GITHUB_STEP_SUMMARY"
+            [[ "$OFFLINE_RESULT" == "success" && "$METRICS_RESULT" == "success" && "$PLATFORM_RESULT" == "success" ]] || { echo "Agent suites, platform/shared contracts or metrics did not pass." >&2; exit 1; }
+            echo "All seven offline suites, platform/shared contracts, ownership validation and required metrics passed. Live acceptance is required after deployment in Release to AWS." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Agent suites are not required for this change." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   ai-service:
-    name: FastAPI tests and AI evals
+    name: AI platform and shared contracts
     needs: changes
-    if: needs.changes.outputs.ai_ci == 'true'
+    if: needs.changes.outputs.ai_ci == 'true' || needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      MODEL_PROVIDER: local_fixture
+      RAG_PROVIDER: local_fixture
+      POLICY_RAG_PROVIDER: local_fixture
     steps:
       - uses: actions/checkout@v6
         with:
@@ -314,32 +319,55 @@ jobs:
         run: python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
       - name: Lint
         run: ruff check apps/ai-service apps/shared infra/scripts
-      - name: Remaining unit and API tests
+      - name: Require complete and disjoint test ownership
+        run: python infra/scripts/check_test_ownership.py --output artifacts/test-ownership.json
+      - name: AI platform contracts
         run: >-
-          python infra/scripts/run_agent_tests.py --suite remaining
-          --junitxml=artifacts/remaining-ai-tests.xml
-      - name: Upload remaining AI test evidence
+          python infra/scripts/run_agent_tests.py --suite platform
+          --junitxml=artifacts/platform.xml
+      - name: Publish platform contract acceptance
+        if: always()
+        run: >-
+          python infra/scripts/summarize_pytest_junit.py artifacts/platform.xml
+          --output artifacts/platform-summary.md --title "AI platform offline contracts"
+          --suite platform --evaluation-output artifacts/platform-evaluation.json
+      - name: Upload platform and ownership evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: remaining-ai-tests
-          path: artifacts/remaining-ai-tests.xml
+          name: agent-offline-platform
+          path: |
+            artifacts/platform.xml
+            artifacts/platform-summary.md
+            artifacts/platform-evaluation.json
+            artifacts/test-ownership.json
+            infra/llmsecops/agent-test-suites.json
+            infra/llmsecops/agent-evaluation-specs.json
           if-no-files-found: error
-          retention-days: 30
-      - name: Coach conversational regression contracts (offline)
+          retention-days: 90
+      - name: Shared library contracts
+        if: ${{ !cancelled() }}
         run: >-
-          pytest apps/ai-service/tests/test_conversational_pipeline.py
-          --junitxml=artifacts/conversational-contract-results.xml
-      - name: Upload conversational contract evidence
+          python infra/scripts/run_agent_tests.py --suite shared
+          --junitxml=artifacts/shared.xml
+      - name: Publish shared library acceptance
+        if: always()
+        run: >-
+          python infra/scripts/summarize_pytest_junit.py artifacts/shared.xml
+          --output artifacts/shared-summary.md --title "Shared library offline contracts"
+          --suite shared --evaluation-output artifacts/shared-evaluation.json
+      - name: Upload shared library evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: conversational-contract-results
-          path: artifacts/conversational-contract-results.xml
+          name: shared-library-contracts
+          path: |
+            artifacts/shared.xml
+            artifacts/shared-summary.md
+            artifacts/shared-evaluation.json
+            infra/llmsecops/agent-evaluation-specs.json
           if-no-files-found: error
-          retention-days: 30
-      - name: Shared language tests
-        run: pytest apps/shared/tests
+          retention-days: 90
 
   frontend:
     name: Streamlit tests
@@ -653,180 +681,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  live:
-    name: ${{ matrix.suite }} — live integration (optional, advisory)
-    # Paid evaluations require a fresh explicit manual opt-in on main.
-    if: inputs.run_live && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: [agent-test-gate, project-security-scan, ai-service, frontend, backend, infrastructure, service-integration, dependency-review, python-sast, container-build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    continue-on-error: true
-    environment: demo
-    permissions:
-      contents: read
-      id-token: write
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        suite: [orchestrator, spending, budget, goal, investment, risk-compliance, rag]
-    env:
-      SUITE: ${{ matrix.suite }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
-      DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-      AI_SERVICE: ${{ vars.ECS_AI_SERVICE }}
-      BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE }}
-      FRONTEND_SERVICE: ${{ vars.ECS_FRONTEND_SERVICE }}
-      COACH_URL: ${{ vars.COACH_SMOKE_URL }}
-      SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Install AWS SDK
-        run: python -m pip install 'boto3>=1.34,<2'
-      - name: Initialize live report before credentials or provider calls
-        run: python infra/scripts/agent_live_evaluation.py --suite "$SUITE" --initialize
-      - name: Validate live settings
-        run: |
-          for name in DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE COACH_URL SMOKE_BACKEND_API_KEY; do
-            [[ -n "${!name}" ]] || { echo "Missing setting: $name"; exit 1; }
-          done
-      - name: Use existing short-lived AWS role
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ env.DEPLOY_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-          mask-aws-account-id: true
-      - name: Run one bounded live dataset with no generation retries
-        run: python infra/scripts/agent_live_evaluation.py --suite "$SUITE"
-      - name: Publish actual PASS, FAIL or NOT RUN (advisory)
-        if: always()
-        run: python infra/scripts/agent_live_evaluation.py --suite "$SUITE" --summarize
-      - name: Retain questions, expected results, answers and provider evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: agent-live-${{ matrix.suite }}
-          path: |
-            artifacts/agent-live/${{ matrix.suite }}/
-            infra/llmsecops/agent-live-evaluation-cases.jsonl
-            infra/llmsecops/agent-live-evaluation-specs.json
-            infra/llmsecops/investment-live-*.jsonl
-          if-no-files-found: error
-          retention-days: 90
-
-
-  security-live:
-    name: Promptfoo — live security (optional, advisory)
-    needs: live
-    continue-on-error: true
-    if: github.event_name == 'workflow_dispatch' && inputs.run_live == true && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      id-token: write
-    concurrency:
-      group: live-investment-model-evaluation
-      cancel-in-progress: false
-    env:
-      PROMPTFOO_DISABLE_TELEMETRY: "1"
-      PROMPTFOO_DISABLE_UPDATE: "1"
-      PROMPTFOO_DISABLE_REMOTE_GENERATION: "true"
-      PROMPTFOO_MODEL_MODE: live
-      RUN_LIVE_INVESTMENT_TESTS: "1"
-      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: security/promptfoo/package-lock.json
-      - name: Validate live credentials configuration
-        env:
-          AWS_ROLE_ARN: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
-        run: |
-          if [[ -z "$AWS_ROLE_ARN" || -z "$INVESTMENT_TEST_OPENAI_SECRET_ID" ]]; then
-            echo "Set AWS_INVESTMENT_TEST_ROLE_ARN and INVESTMENT_TEST_OPENAI_SECRET_ID repository variables."
-            exit 1
-          fi
-      - name: Install scan dependencies
-        run: |
-          npm install --global npm@11.6.2
-          python -m pip install -e "apps/shared" -e "apps/ai-service[dev]"
-          npm ci --prefix security/promptfoo
-      - name: Obtain model secret access through AWS OIDC
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
-          mask-aws-account-id: true
-      - name: Reject paid job reruns without a new opt-in dispatch
-        run: test "$GITHUB_RUN_ATTEMPT" = 1
-      - name: Run paid model scan
-        id: scan
-        env:
-          PROMPTFOO_CONFIG_DIR: ${{ runner.temp }}/promptfoo
-        run: |
-          mkdir -p artifacts
-          python security/promptfoo/run_bounded.py --mode live --repeats 2 \
-            --max-model-tokens 1000000 --output artifacts/promptfoo-live.json \
-            > artifacts/promptfoo-live-cli.log 2>&1
-      - name: Show live methods, questions, responses and results
-        id: summary
-        if: always()
-        run: >-
-          python infra/scripts/summarize_promptfoo.py artifacts/promptfoo-live.json
-          --output artifacts/promptfoo-live-summary.md
-          --title "Project Promptfoo results — live GPT-6 Luna"
-      - name: Record actual live security acceptance
-        if: always()
-        env:
-          SCAN_OUTCOME: ${{ steps.scan.outcome }}
-          SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
-        run: |
-          python - <<'PY_STATUS'
-          import json
-          import os
-          from pathlib import Path
-          scan, summary = os.environ['SCAN_OUTCOME'], os.environ['SUMMARY_OUTCOME']
-          status = 'PASS' if scan == summary == 'success' else 'FAIL' if scan in ('success', 'failure') else 'NOT RUN / INCOMPLETE'
-          target = Path('artifacts/promptfoo-live-status.json')
-          target.parent.mkdir(parents=True, exist_ok=True)
-          target.write_text(json.dumps({'status': status, 'scan': scan, 'summary': summary}) + '\n')
-          PY_STATUS
-      - name: Upload live scan evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: project-promptfoo-live
-          path: artifacts/promptfoo-live*
-          if-no-files-found: error
-          retention-days: 7
-
   report:
     name: Combined CI and evaluation report
     if: always()
-    needs: [changes, offline, metrics, agent-test-gate, ai-service, frontend, backend, infrastructure, service-integration, container-build, dependency-review, python-sast, project-security-scan, live, security-live]
+    needs: [changes, offline, metrics, agent-test-gate, ai-service, frontend, backend, infrastructure, service-integration, container-build, dependency-review, python-sast, project-security-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Reporting/live service availability cannot turn advisory live tests into a release gate.
+    # Reporting preserves CI evidence; release performs mandatory live acceptance.
     continue-on-error: true
     env:
-      LIVE_REQUESTED: ${{ inputs.run_live }}
+      EVALUATION_PHASE: pre_deployment
       CI_JOB_RESULTS: ${{ toJSON(needs) }}
-      LIVE_JOB_RESULT: ${{ needs.live.result }}
     steps:
       - uses: actions/checkout@v6
         with:

@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "validation_date": "2026-10-11",
+  "validation_type": "local_offline",
+  "base_commit": "8138b5135cb7ac717efdc50d70e161f1356d0969",
+  "working_tree_changes": true,
+  "source_sha256_utf8_lf": {
+    ".github/workflows/ci.yml": "40400210ae94cf16d9a5ca8727ba365ae1f8b657a3363b5763d192a5e96c026c",
+    ".github/workflows/release.yml": "d0392a8bb70126b936cbd9c1b351fe94bf0c2a6079de9d2e5b7697a8ac0564ac",
+    "infra/scripts/post_deploy_acceptance.py": "700135fe4239a08ff166a5ba05993cb761b428a4a4379c993c490fd20446637a",
+    "infra/scripts/fairness_live_evaluation.py": "18594ca936a3f71febea932e0f1fecc40f8f3d49a9a73bc8b2356088ed8f3f73",
+    "infra/scripts/agent_live_evaluation.py": "ce879022987e30efed57e981dc9fdca681e83c51b8a3491ddaf4f5f1f293dcb4",
+    "infra/scripts/summarize_agent_evaluations.py": "054c53818f0bcf5f04ea52a08fea658c3a3a8a7d0c0c696be39e3b26d9c6e06e",
+    "security/promptfoo/run_bounded.py": "1fc052b266ac855018791fdbfe75b3782691b393d18061be6cd12790fec2ddd2"
+  },
+  "pytest": {
+    "total": 760,
+    "passed": 755,
+    "failed": 0,
+    "error": 0,
+    "skipped": 5,
+    "method": "Full infrastructure/provider run; corrected Investment module and final acceptance module rerun; latest module evidence replaces earlier results.",
+    "reports": [
+      "release-acceptance-tests-20261011.xml",
+      "release-investment-recheck-20261011.xml",
+      "release-gate-final-20261011.xml"
+    ],
+    "skips": [
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services0]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services1]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_recovery_releases_earlier_fixes_even_if_the_new_push_changed_one_service[services2]",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_non_application_change_still_does_not_deploy",
+        "reason": "Release gate requires bash and jq"
+      },
+      {
+        "test": "infra.scripts.tests.test_release_recovery_selection::test_stale_run_cannot_trigger_recovery_deployment",
+        "reason": "Release gate requires bash and jq"
+      }
+    ]
+  },
+  "javascript_graders": {
+    "passed": 12,
+    "failed": 0
+  },
+  "offline_security_matrix": {
+    "completed": 204,
+    "passed": 204,
+    "repeats": 2,
+    "release_sha_metadata_verified": true,
+    "mode": "offline"
+  },
+  "workflow_bash_syntax": {
+    "passed_steps": 80
+  },
+  "documentation_links": {
+    "valid_local_targets": 134
+  },
+  "fairness_release_policy": {
+    "pairs": 19,
+    "repeats": 1,
+    "planned_coaching_requests": 38,
+    "required_pair_pass_rate": 1.0,
+    "duplicate_missing_extra_or_failed_pairs_rejected": true
+  },
+  "release_failure_policy": "Fail release and restore each changed ECS service's captured previous task definition",
+  "paid_live_acceptance": "NOT RUN",
+  "deployed_acceptance": "NOT RUN",
+  "limitations": [
+    "No paid model calls, remote deployment, IAM changes or GitHub Actions run performed for this wiring.",
+    "Five existing release-selection shell tests require jq, unavailable locally; their CI checks remain intact.",
+    "Workflow syntax, synthetic reports, offline providers and a stubbed rollback shell do not establish deployed or semantic/fairness acceptance.",
+    "Release requires configured positive input/output token rates and demo OIDC trust/secret access for the evaluation role."
+  ]
+}

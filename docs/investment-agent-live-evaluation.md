@@ -1,17 +1,18 @@
 # Investment Education live integration
 
-Use **CI and LLMSecOps** → **Run workflow** → **main** → check
-**Run live integration tests?**. The workflow runs its offline suites first,
-then the optional live jobs behind the existing demo environment approval.
+**Release to AWS** runs Investment and RAG contracts after deploying the tested
+current main SHA and passing health/safety smoke. Both stages are required;
+failed or incomplete evidence fails the release and rolls changed services back.
+The deployment job retains the existing `demo` environment and release lock.
 
-The Investment live job runs six synthetic conversations / seven turns against
-the deployed backend: four asset definitions, ETF followed by simpler explanation,
-diversification, Chinese education, friendly brokerage refusal and prompt injection.
+Investment runs six synthetic conversations / seven turns against the deployed
+backend: four asset definitions, ETF followed by a simpler explanation,
+diversification, Chinese education, brokerage refusal and prompt injection.
 It verifies real Investment model calls for normal answers, current manifest
 citations, labelled hybrid content, persisted chat answers/citations and cleanup.
-The separate RAG live job makes three real Bedrock Retrieve requests and checks
-expected-source hit@5 and approved/current passage provenance. Stable ECS evidence
-and deployed SHA are recorded before and after each job.
+RAG makes three real Bedrock Retrieve requests and checks expected-source hit@5
+and approved/current passage provenance. Test/deployed SHA must match the release;
+stable ECS evidence is recorded before and after execution.
 
 Definitions and datasets:
 
@@ -19,18 +20,19 @@ Definitions and datasets:
 - `infra/llmsecops/investment-live-evaluation-cases.jsonl`
 - `infra/llmsecops/investment-live-rag-cases.jsonl`
 
-All planned contracts must pass for a live PASS. Failed or missing evidence remains
-FAIL/NOT RUN, while the optional job cannot block deployment. No generations are
-retried by the harness; rerunning an old workflow attempt is rejected. A fresh
-manual Yes selection permits a new bounded run. Automatic CI always selects No.
+Every planned contract must pass. Each dataset runs once without harness
+generation retries, retaining its existing token limits. Rerunning an old paid
+release attempt is rejected; fresh successful main CI is required for a new run.
+PR/manual/scheduled CI executes offline checks without paid-live inputs.
 
-Download `agent-live-investment`, `agent-live-rag` or the combined
-`agent-evaluation-report` for full synthetic Q&A, metrics and acceptance evidence
-(retained 90 days). These are real-provider integration contracts, not a 99%
-answer-quality claim, semantic review or authenticated browser UI test.
+Download **`release-live-acceptance-<run_id>`** from Release for full synthetic
+Q&A, source hashes, usage and aggregate acceptance evidence (90 days). These
+real-provider contracts do not establish 99% answer quality, semantic review or
+authenticated browser UI acceptance.
 
-The old self-disabling `investment-agent-live.yml` entry point has been removed.
-Its tested Investment/AWS helper functions are reused by the consolidated runner.
-Existing post-deployment smoke remains a separate required release check.
+The old `investment-agent-live.yml` entry point is removed. Its tested helper
+functions remain reused by the consolidated runner. Release additionally requires
+all 19 fairness pairs once, all other agent datasets and live security regressions.
 
-See [all jobs, workflow dependencies and execution instructions](agent-test-workflows.md).
+See [workflow ownership](agent-test-workflows.md) and
+[required live release acceptance](post-deployment-acceptance.md).

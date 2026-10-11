@@ -1,14 +1,33 @@
 {
-  "ci_only_test_paths": [
-    "tests/test_conversational_pipeline.py"
-  ],
   "suites": {
     "orchestrator": {
       "test_paths": [
         "tests/test_orchestrator.py",
         "tests/test_education_routing_coverage.py",
         "tests/test_evaluation_runner.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_action_composition.py",
+        "tests/test_agent_deadline.py",
+        "tests/test_conditional_education_dependencies.py",
+        "tests/test_conditional_semantic_education.py",
+        "tests/test_conversation_replies.py",
+        "tests/test_conversational_pipeline.py",
+        "tests/test_current_prompt_contract.py",
+        "tests/test_decision_events.py",
+        "tests/test_follow_up.py",
+        "tests/test_income_memory.py",
+        "tests/test_language_selection.py",
+        "tests/test_latest_live_failures.py",
+        "tests/test_orchestration_acceptance.py",
+        "tests/test_post_retest_recovery.py",
+        "tests/test_reasoning_recovery_contracts.py",
+        "tests/test_router_failure_diagnostics.py",
+        "tests/test_router_search_term_recovery.py",
+        "tests/test_scoped_provider_contracts.py",
+        "tests/test_semantic_session_context.py",
+        "tests/test_session_context.py",
+        "tests/test_synthesis_citation_contract.py",
+        "tests/test_task_assignments.py"
       ],
       "name_prefix": "test_example_orchestrator",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -20,7 +39,9 @@
         "tests/test_spending_coverage.py",
         "tests/test_spending_integration.py",
         "tests/test_risk_spending_coverage.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_recurring_capture.py",
+        "tests/test_spending_period_scope.py"
       ],
       "name_prefix": "test_example_spending",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -35,7 +56,8 @@
         "tests/test_budget_reasoning.py",
         "tests/test_budget_review.py",
         "tests/test_edge_budget_regressions.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_budget_missing_input.py"
       ],
       "name_prefix": "test_example_budget",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -48,7 +70,9 @@
         "tests/test_dynamic_dependencies.py",
         "tests/test_conditional_financial_dependencies.py",
         "tests/test_goal_education_recovery.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_goal_currency.py",
+        "tests/test_risk_goal_draft.py"
       ],
       "name_prefix": "test_example_goal",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -60,7 +84,15 @@
         "tests/test_beginner_investment_questions.py",
         "tests/test_investment_education_agent.py",
         "tests/test_hybrid_investment_education.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_current_response_contract.py",
+        "tests/test_education_access.py",
+        "tests/test_education_answerability.py",
+        "tests/test_education_contract_recovery.py",
+        "tests/test_education_grounding_reuse.py",
+        "tests/test_education_repair_diagnostics.py",
+        "tests/test_education_repair_window.py",
+        "tests/test_education_semantic_coverage.py"
       ],
       "name_prefix": "test_example_investment",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -72,7 +104,18 @@
         "tests/test_risk_review_explanations.py",
         "tests/test_guardrails.py",
         "tests/test_risk_compliance_functional.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_advice_language.py",
+        "tests/test_chinese_safety_explanations.py",
+        "tests/test_financial_review_repair.py",
+        "tests/test_live_review_recovery.py",
+        "tests/test_located_claim_recovery.py",
+        "tests/test_narrative_citation_correction.py",
+        "tests/test_outbound_privacy.py",
+        "tests/test_qualification_repair_safety.py",
+        "tests/test_review_evidence_compaction.py",
+        "tests/test_review_followup.py",
+        "tests/test_scoped_education_review.py"
       ],
       "name_prefix": "test_example_risk_compliance",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -84,10 +127,42 @@
         "tests/test_retrieval_boundaries.py",
         "tests/test_request_retrieval_cache.py",
         "tests/test_rag_integration.py",
-        "tests/test_agent_evaluation_examples.py"
+        "tests/test_agent_evaluation_examples.py",
+        "tests/test_bedrock_openai_configuration.py",
+        "tests/test_coach_retrieval_flexibility.py",
+        "tests/test_ingestion.py",
+        "tests/test_local_policy.py",
+        "tests/test_passage_ranking.py",
+        "tests/test_policy_retriever.py",
+        "tests/test_rag_answer_review.py"
       ],
       "name_prefix": "test_example_rag",
       "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
+    },
+    "platform": {
+      "test_paths": [
+        "tests/test_api.py",
+        "tests/test_call_telemetry.py",
+        "tests/test_drift_observation.py",
+        "tests/test_model_contracts.py",
+        "tests/test_model_gateway.py",
+        "tests/test_model_token_reservations.py",
+        "tests/test_openai_error_classification.py",
+        "tests/test_structured.py",
+        "tests/test_token_count_recovery.py",
+        "tests/test_trace_stream.py"
+      ]
     }
+  },
+  "version": 2,
+  "shared": {
+    "test_paths": [
+      "tests/test_budget_baseline.py",
+      "tests/test_budget_scope.py",
+      "tests/test_entry_logging.py",
+      "tests/test_language.py",
+      "tests/test_review_metadata.py",
+      "tests/test_trace_contract.py"
+    ]
   }
 }

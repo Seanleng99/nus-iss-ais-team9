@@ -1,4 +1,4 @@
-"""Combine offline and optional live evidence without disguising missing results."""
+"""Combine evaluation evidence and mark required release acceptance as pending in CI."""
 import argparse
 import html
 import json
@@ -12,8 +12,10 @@ try:
 except ImportError:
     from agent_live_evaluation import SUITES, initial_report, questions, table_cell
 
+OFFLINE_CONTRACT_ARTIFACTS = {"platform": "agent-offline-platform", "shared": "shared-library-contracts"}
 
-def collect(directory, *, live_requested, live_job_result):
+
+def collect(directory, *, live_requested, live_job_result, phase=None):
     reports = []
     for suite in SUITES:
         offline_path = directory / f"agent-offline-{suite}/artifacts/{suite}-evaluation.json"
@@ -27,24 +29,35 @@ def collect(directory, *, live_requested, live_job_result):
                         "evidence": offline})
         candidates = list((directory / f"agent-live-{suite}").rglob("report.json"))
         live = json.loads(candidates[0].read_text()) if len(candidates) == 1 else None
-        if not live_requested:
+        if phase == "pre_deployment":
+            status = "PENDING — required after deployment in Release to AWS"
+        elif not live_requested:
             status = "SKIPPED — live not selected"
         elif live is None or live.get("status") == "NOT RUN":
             status = "NOT RUN / INCOMPLETE"
         else:
             status = live["status"]
         reports.append({"suite": suite, "mode": "live", "status": status, "live_job_conclusion": live_job_result, "evidence": live})
+    for suite, artifact in OFFLINE_CONTRACT_ARTIFACTS.items():
+        candidates = list((directory / artifact).rglob(f"{suite}-evaluation.json"))
+        evidence = json.loads(candidates[0].read_text(encoding="utf-8")) if len(candidates) == 1 else None
+        reports.append({"suite": suite, "mode": "offline",
+                        "status": "NOT RUN / MISSING EVIDENCE" if evidence is None else "PASS" if evidence.get("accepted") else "FAIL",
+                        "evidence": evidence})
     return reports
 
 
 def render(reports):
     lines = ["# Agent and RAG evaluation report", "",
-             "Offline acceptance is required. Live evaluations are optional and advisory; a successful workflow does not mean a failed or skipped live evaluation passed.",
+             "Offline acceptance precedes deployment. Release to AWS requires live agent/RAG, fairness and security acceptance; missing evidence cannot pass.",
              "Full synthetic questions, expected outputs, actual answers, checks and dataset definitions follow in report.json and index.html.", "",
              "| Component | Offline | Live |", "|---|---|---|"]
     for suite in SUITES:
         selected = {r["mode"]: r["status"] for r in reports if r["suite"] == suite}
         lines.append(f"| {suite} | {selected['offline']} | {selected['live']} |")
+    for row in reports:
+        if row["suite"] in OFFLINE_CONTRACT_ARTIFACTS:
+            lines.append(f"| {row['suite']} contracts | {row['status']} | N/A — offline contracts |")
     for row in reports:
         lines += ["", f"## {row['suite']} — {row['mode']}", ""]
         report = row["evidence"]
@@ -77,11 +90,15 @@ def render(reports):
 def render_html(reports):
     parts = ["<!doctype html><html lang='en'><meta charset='utf-8'><title>Agent evaluation report</title>",
              "<style>body{max-width:1180px;margin:36px auto;padding:0 24px;font:16px/1.55 system-ui;color:#182d40;background:#f8fafc}h1{font-size:32px}section{background:white;border:1px solid #dbe3ea;border-radius:10px;padding:22px;margin:24px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;border-bottom:1px solid #dbe3ea;padding:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f5f9;padding:14px}summary{cursor:pointer;padding:10px}details{border-bottom:1px solid #dbe3ea}a{color:#165ca2}.note{background:#eaf2fb;padding:14px}</style>",
-             "<h1>Agent and RAG evaluations</h1><p class='note'>Offline acceptance is required. Live evaluations are optional and advisory. A green workflow is not proof that a skipped or failed live evaluation passed. Synthetic test data only.</p>",
+             "<h1>Agent and RAG evaluations</h1><p class='note'>Offline acceptance precedes deployment. Release to AWS requires live agent/RAG, fairness and security acceptance. Missing evidence cannot pass. Synthetic test data only.</p>",
              "<table><tr><th>Component</th><th>Offline</th><th>Live</th></tr>"]
     for suite in SUITES:
         modes = {row["mode"]: row["status"] for row in reports if row["suite"] == suite}
         parts.append(f"<tr><td><a href='#{suite}-offline'>{suite}</a></td><td>{html.escape(modes['offline'])}</td><td><a href='#{suite}-live'>{html.escape(modes['live'])}</a></td></tr>")
+    for row in reports:
+        if row["suite"] in OFFLINE_CONTRACT_ARTIFACTS:
+            parts.append(f"<tr><td><a href='#{row['suite']}-offline'>{row['suite']} contracts</a></td>"
+                         f"<td>{html.escape(row['status'])}</td><td>N/A — offline contracts</td></tr>")
     parts.append("</table>")
     for row in reports:
         suite, mode = row["suite"], row["mode"]
@@ -116,7 +133,8 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     reports = collect(args.input, live_requested=os.getenv("LIVE_REQUESTED") == "true",
-                      live_job_result=os.getenv("LIVE_JOB_RESULT", "unknown"))
+                      live_job_result=os.getenv("LIVE_JOB_RESULT", "unknown"),
+                      phase=os.getenv("EVALUATION_PHASE"))
     args.output.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(reports, indent=2, ensure_ascii=False)
     (args.output / "report.json").write_text(payload + "\n")
@@ -140,7 +158,7 @@ def main():
 
 def ci_overview(jobs, evidence_directory):
     """One index for CI outcomes and retained detailed reports; never infer test passes."""
-    note = "Job conclusions are separate from test acceptance. Advisory live jobs can be green despite failing cases; inspect their detailed reports below."
+    note = "Job conclusions are separate from test acceptance. Failed or missing case evidence cannot establish acceptance; inspect the detailed reports below."
     lines = ["# CI and LLMSecOps report", "", note, "", "| Job | Conclusion |", "|---|---|"]
     parts = ["<h1>CI and LLMSecOps report</h1><p>" + note + "</p><table><tr><th>Job</th><th>Conclusion</th></tr>"]
     for row in jobs:

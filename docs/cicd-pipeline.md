@@ -73,9 +73,9 @@ quota tests separately verify rejection and `Retry-After` above the limit.
 
 One [ci.yml](../.github/workflows/ci.yml) defines service tests, seven owned
 agent/RAG offline suites, required metrics, Promptfoo security scans, infrastructure
-checks and optional live evaluations. No reusable test workflow is called.
-Infrastructure/helper tests have one owner; agent selections exclude their files
-from the remaining AI suite. The required Agent gate and offline OWASP scan still
+checks. No reusable test workflow is called. Every AI/shared pytest case has
+one explicit owner across the agent/RAG, platform and shared suites; there is
+no remaining-tests fallback. The required Agent gate and offline OWASP scan still
 block releases. See [all jobs and test ownership](agent-test-workflows.md) and
 [security coverage](project-security-scan.md).
 
@@ -104,7 +104,7 @@ and `security/promptfoo`. Each update arrives as a pull request that must pass C
 before merging, so pinned tool upgrades are reviewed instead of arriving with
 a new upstream release.
 
-`CI and LLMSecOps` offers a default-off Yes/No checkbox for seven advisory deployed-model/AWS evaluations followed by the bounded live security scan. It replaces the separate Budget and one-time Investment live workflow definitions. These optional failures cannot block CI or release; existing mandatory release smoke checks remain required. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
+`Release to AWS` requires all 19 live fairness pairs once (38 coaching requests), seven serial deployed-model/AWS datasets and two-trial live security regressions after deployment and smoke. Failed or incomplete evidence fails the release and restores changed services' previous task definitions. CI has no paid-live input. See [required live release acceptance](post-deployment-acceptance.md) for rates, scoped role/secret configuration, bounds, retained evidence and rollback limits. `Final Assessment` remains a manual academic evidence inventory that requires successful main CI and calls `AWS Operational Validation`; it is not part of every release.
 
 ## Workflow inventory
 
@@ -112,8 +112,8 @@ The workflow audit keeps the following responsibilities:
 
 | Workflow | Purpose and trigger |
 | --- | --- |
-| CI and LLMSecOps | All service, agent/RAG and security jobs; PR/main/weekly checks and manual optional live evaluations |
-| Release to AWS | Deployment after successful push CI at the current main SHA |
+| CI and LLMSecOps | Required pre-release service, offline agent/RAG, platform/shared, metrics and security checks; PR/main/weekly/manual |
+| Release to AWS | Image build/scan and deployment after successful push CI for current main; required live acceptance with rollback on failure |
 | RAG Source Governance | Weekly/manual freshness and integrity checks for both packaged corpora |
 | AWS Operational Validation | Weekly/manual deployed-model, lifecycle, load and operational evidence |
 | Model Drift Monitoring | Opt-in weekly/manual rubric-scored live capture and human-calibrated baseline comparison; current policy uses GPT-6 Luna for generation and grading, with GitHub reports and optional SNS alerts/input checks |
@@ -127,11 +127,11 @@ policy evidence and the combined governance workflow.
 
 ## GitHub configuration
 
-`infra/scripts/configure_github.ps1` populates the OIDC role ARNs, ECS cluster/service/task names, ECR repositories, public health and coach URLs, corpus versions, dashboard and alarm identifiers, and bounded validation thresholds. It also sets `SMOKE_BACKEND_API_KEY` in the `demo` environment. The workflow assumes short-lived GitHub OIDC credentials; it does not store AWS access keys.
+`infra/scripts/configure_github.ps1` populates the OIDC role ARNs, ECS cluster/service/task names, ECR repositories, public health and coach URLs, corpus versions, dashboard and alarm identifiers, and bounded validation thresholds. It also sets `SMOKE_BACKEND_API_KEY` in the `demo` environment. The workflow assumes short-lived GitHub OIDC credentials; it does not store AWS access keys. Live release acceptance additionally requires the token-rate variables and demo-scoped evaluation role/secret access listed in [post-deployment acceptance](post-deployment-acceptance.md); the setup helper does not invent those rates.
 
 The OIDC deployment role has scoped Bedrock and S3 permissions for the two approved corpora: it can inspect and retrieve from the configured Education and Policy knowledge bases, read/list only their governed S3 prefixes, and start ingestion or publish objects within those prefixes. The separate RAG governance role is read-only for corpus and knowledge-base access. The deployment policy permits task/service inspection and task-definition registration, updates the three configured ECS services, and limits `iam:PassRole` to the configured ECS roles. Keep the `demo` environment restricted to `main`. Branch protection and native required reviewers depend on the repository plan.
 
-Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update and safety-smoke steps, so a green superseded run cannot hide pending code.
+Main pushes build images once in Release; PR/manual/scheduled CI retains build validation. A release superseded during image building skips all deployment steps and records the reason. Deployment-baseline selection requires actual successful service-update, safety-smoke and required live acceptance steps, so a green superseded run cannot hide pending code.
 
 ## Change and acceptance gates
 

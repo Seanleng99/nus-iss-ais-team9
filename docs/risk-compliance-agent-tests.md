@@ -33,7 +33,7 @@ evidence; see the [evaluation guide](risk-compliance-agent-evaluation.md) and
 ## Finding the results
 
 In GitHub Actions, open **CI and LLMSecOps** and the
-**risk-compliance — offline unit tests** job. Its job summary reports the
+**risk-compliance — offline regression tests** job. Its job summary reports the
 definition, selected tests, hashes, expected outputs, measured cases, and
 acceptance. Download `agent-offline-risk-compliance` for JUnit XML, Markdown,
 and the complete JSON evaluation report. The combined

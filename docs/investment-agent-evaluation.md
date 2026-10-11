@@ -1,10 +1,11 @@
 # Investment Agent evaluation and CI reports
 
 **Current workflow:** [CI and LLMSecOps](agent-test-workflows.md).
-Investment, Orchestrator and RAG now have their own offline and optional live jobs.
-Former `investment-*` IDs below name the retained scenario groups; use `investment`,
-`orchestrator` and `rag` as current CLI suite IDs. Live Yes/No is chosen before
-manual dispatch; live failure is advisory.
+Investment, Orchestrator and RAG have offline CI jobs and required live stages
+in **Release to AWS** after deployment. Failed or incomplete live evidence fails
+the release and rolls changed services back. Former `investment-*` IDs below
+name retained scenario groups; use `investment`, `orchestrator` and `rag` as CLI
+suite IDs. See [required live release acceptance](post-deployment-acceptance.md).
 
 
 The consolidated evaluation workflow retains the existing Investment
@@ -199,9 +200,9 @@ Integration tests run the real application components with deterministic model o
 Local-document scenarios load the real Markdown corpus. Bedrock scenarios use the real
 adapter but stub the AWS transport response; they test wiring, filters and provenance,
 not AWS availability or semantic ranking. No credentials or paid calls are needed.
-Optional real OpenAI and Bedrock testing uses the same workflow's Investment and
-RAG live jobs. Each manual opt-in runs the bounded dataset once and retains full
-synthetic questions/answers. See [live evaluation](investment-agent-live-evaluation.md).
+Required real OpenAI and Bedrock testing runs after deployment in Release's
+Investment and RAG stages. Each dataset runs once and retains full synthetic
+questions/answers in `release-live-acceptance-<run_id>` for 90 days. See [live evaluation](investment-agent-live-evaluation.md).
 
 ## Finding the report in GitHub Actions
 

@@ -577,17 +577,20 @@ def test_datasets_have_bounded_scenario_turn_and_retrieval_counts():
     assert sum("diversification" in case["query"].casefold() for case in rag_cases) == 1
 
 
-def test_live_workflow_is_optional_advisory_with_demo_environment_and_retains_90_days():
+def test_investment_live_release_is_required_with_demo_environment_and_retains_90_days():
     workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(),
                          Loader=yaml.BaseLoader)
     assert set(workflow["on"]) == {"workflow_dispatch", "push", "pull_request", "schedule"}
-    assert workflow["on"]["workflow_dispatch"]["inputs"]["run_live"]["default"] == "false"
-    live_job = workflow["jobs"]["live"]
-    assert "inputs.run_live" in live_job["if"]
-    assert "workflow_dispatch" in live_job["if"]
-    assert "refs/heads/main" in live_job["if"]
-    assert live_job["continue-on-error"] == "true"
-    assert live_job["environment"] == "demo"
+    assert not workflow["on"]["workflow_dispatch"]
+    assert "live" not in workflow["jobs"]
+    release = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
+    live_job = release["jobs"]["deploy-demo"]
+    assert live_job["environment"]["name"] == "demo"
+    assert "continue-on-error" not in live_job
     assert live_job["env"].get("OPENAI_API_KEY") is None
-    artifact = next(step for step in live_job["steps"] if step.get("uses", "").startswith("actions/upload-artifact"))
+    run = next(step["run"] for step in live_job["steps"] if step.get("id") == "agents-live")
+    assert "investment" in run and "--post-deployment" in run
+    artifact = next(step for step in live_job["steps"]
+                    if step.get("with", {}).get("name", "").startswith("release-live-acceptance-"))
     assert artifact["with"]["retention-days"] == "90"
+    assert "investment-live-*.jsonl" in artifact["with"]["path"]

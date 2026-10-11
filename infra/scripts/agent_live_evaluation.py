@@ -1,8 +1,8 @@
-"""Optional, bounded synthetic evaluations of the deployed API and AWS RAG.
+"""Bounded synthetic evaluations of the deployed API and AWS RAG.
 
 This is a test client, not an alternative agent implementation. No production
-configuration is changed. Provider failures remain failed evidence even when the
-GitHub job is advisory. Only explicitly synthetic dialogue is retained.
+configuration is changed. Required post-deployment failures block release
+acceptance. Only explicitly synthetic dialogue is retained.
 """
 import argparse
 import hashlib
@@ -31,7 +31,8 @@ def initial_report(suite):
     return {
         "schema_version": 1, "suite": suite, "mode": "live", "status": "NOT RUN",
         "stage": "awaiting_credentials", "specification": specification,
-        "test_commit": os.getenv("GITHUB_SHA"), "workflow_run_id": os.getenv("GITHUB_RUN_ID"),
+        "test_commit": os.getenv("RELEASE_SHA") or os.getenv("GITHUB_SHA"), "workflow_run_id": os.getenv("GITHUB_RUN_ID"),
+        "gate": "required_post_deployment" if os.getenv("RELEASE_SHA") else "manual_evaluation",
         "started_at": datetime.now(UTC).isoformat(), "human_semantic_review": "pending",
         "dataset_hashes": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
         "records": [],
@@ -71,7 +72,7 @@ def write_report(report, directory, *, publish=False):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     spec = report["specification"]
-    lines = [f"## {report['suite']} live integration — {report['status']} (advisory)", "",
+    lines = [f"## {report['suite']} live integration — {report['status']} ({report.get('gate', 'manual_evaluation')})", "",
              f"- Stage: {report['stage']}; test SHA: {report.get('test_commit')}; deployed SHA: {report.get('deployed_commit', 'not verified')}.",
              "- Dataset: " + ", ".join(spec["datasets"]),
              "- Expected outputs: " + spec["expected_outputs"],
@@ -90,7 +91,7 @@ def write_report(report, directory, *, publish=False):
         "<!doctype html><meta charset='utf-8'><title>Live agent evaluation</title>"
         "<style>body{max-width:1100px;margin:30px auto;font:16px system-ui}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>"
         f"<h1>{html.escape(report['suite'])}: {html.escape(report['status'])}</h1>"
-        "<p>Optional evaluation; failure does not block deployment. Synthetic data only. Human review pending.</p>"
+        "<p>Post-deployment release acceptance requires passing automated contracts. Synthetic data only. Human review pending.</p>"
         "<pre>" + html.escape(json.dumps(report, indent=2, ensure_ascii=False)) + "</pre>")
     if publish and os.getenv("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
@@ -137,6 +138,8 @@ def execute(report, ecs, bedrock, environ):
     ai = report["aws_before"]["ai"]["config"]
     report["deployed_commit"] = ai["BUILD_COMMIT"]
     report["test_commit_matches_deployment"] = report.get("test_commit") == report["deployed_commit"]
+    if environ.get("RELEASE_SHA") and not report["test_commit_matches_deployment"]:
+        raise ValueError("DEPLOYED_BUILD_DIFFERS_FROM_RELEASE")
     manifest = json.loads(investment.MANIFEST.read_text())
     if ai["EDUCATION_CORPUS_VERSION"] != manifest["corpus_version"]:
         raise ValueError("DEPLOYED_CORPUS_DIFFERS_FROM_TEST_MANIFEST")
@@ -209,6 +212,7 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--initialize", action="store_true")
     mode.add_argument("--summarize", action="store_true")
+    parser.add_argument("--post-deployment", action="store_true")
     args = parser.parse_args(argv)
     directory = ROOT / "artifacts/agent-live" / args.suite
     path = directory / "report.json"
@@ -220,7 +224,10 @@ def main(argv=None):
         raise ValueError("REFUSE_TO_OVERWRITE_EVIDENCE")
     from botocore.exceptions import BotoCoreError, ClientError
     try:
-        if os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch" or os.getenv("GITHUB_REF") != "refs/heads/main":
+        if args.post_deployment:
+            from infra.scripts.post_deploy_acceptance import require_release_context
+            require_release_context(os.environ)
+        elif os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch" or os.getenv("GITHUB_REF") != "refs/heads/main":
             raise ValueError("LIVE_REQUIRES_MANUAL_MAIN_DISPATCH")
         if os.getenv("GITHUB_RUN_ATTEMPT") != "1":
             raise ValueError("RERUN_REQUIRES_NEW_OPT_IN_DISPATCH")

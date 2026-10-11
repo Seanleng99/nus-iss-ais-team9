@@ -1,5 +1,6 @@
 import copy
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -90,3 +91,33 @@ def test_invalid_datasets_fail_before_endpoint_calls(tmp_path, change):
     path.write_text(json.dumps({**pair(), **change}), encoding="utf-8")
     with pytest.raises(ValueError):
         fairness.load_pairs(path)
+
+
+def test_cli_defaults_to_all_19_pairs_once_and_plans_38_requests(monkeypatch, tmp_path):
+    planned = {}
+
+    def incomplete_execution(**kwargs):
+        planned.update(kwargs)
+        return {"records": [], "repeats": kwargs["repeats"],
+                "requested_runs": len(kwargs["cases"]) * kwargs["repeats"],
+                "measurement": "live_generated_contract_checks", "generated_at": "synthetic",
+                "completed_requested_runs": False, "usage_unknown": False,
+                "token_usage_complete": False, "pass_rate": 0,
+                "token_usage": {"total": 0}, "cost_estimate": {"estimated_total": 0}}
+
+    monkeypatch.setattr(fairness, "run_live_evaluation", incomplete_execution)
+    monkeypatch.setenv("BACKEND_API_KEY", "synthetic-key")
+    output = tmp_path / "fairness.json"
+    monkeypatch.setattr(sys, "argv", ["fairness", "--url", "https://example.test/api/coach",
+        "--expected-model-id", "gpt-6-luna", "--input-cost-per-million", "1",
+        "--output-cost-per-million", "1", "--output", str(output),
+        "--review-output", str(tmp_path / "review.csv")])
+    with pytest.raises(SystemExit) as error:
+        fairness.main()
+    assert error.value.code == 1  # Missing actual responses still fail correctness.
+    assert planned["repeats"] == 1 and len(planned["cases"]) == 38
+    assert len({case["id"] for case in planned["cases"]}) == 38
+    report = json.loads(output.read_text())
+    assert report["requested_pairs"] == 19 and report["execution"]["requested_runs"] == 38
+    assert len({(row["pair_id"], row["repeat"]) for row in report["pairs"]}) == 19
+    assert {row["repeat"] for row in report["pairs"]} == {1}

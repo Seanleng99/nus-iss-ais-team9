@@ -1,7 +1,7 @@
 name: Release to AWS
 
 on:
-  # CI calls the unified agent evaluation workflow and enforces its offline gate.
+  # CI enforces offline gates; release requires live acceptance before completion.
   # Only a successful CI push for the tested current main SHA can release.
   workflow_run:
     workflows: [CI and LLMSecOps]
@@ -243,7 +243,7 @@ jobs:
     name: Deploy demo environment
     needs: [release-gate, build-images]
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 180
     environment:
       name: demo
       url: ${{ vars.FRONTEND_URL }}
@@ -273,6 +273,13 @@ jobs:
       SMOKE_BACKEND_API_KEY: ${{ secrets.SMOKE_BACKEND_API_KEY }}
       EDUCATION_KNOWLEDGE_BASE_ID: ${{ vars.EDUCATION_KNOWLEDGE_BASE_ID }}
       POLICY_KNOWLEDGE_BASE_ID: ${{ vars.POLICY_KNOWLEDGE_BASE_ID }}
+      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      SECURITY_TEST_ROLE: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
+      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
+      LIVE_MODEL_INPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_INPUT_USD_PER_MILLION }}
+      LIVE_MODEL_OUTPUT_USD_PER_MILLION: ${{ vars.LIVE_MODEL_OUTPUT_USD_PER_MILLION }}
+      FAIRNESS_LIVE_MAX_COST_USD: ${{ vars.FAIRNESS_LIVE_MAX_COST_USD || '1' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -293,6 +300,15 @@ jobs:
             exit 0
           fi
           echo "deploy=true" >> "$GITHUB_OUTPUT"
+      - name: Install release acceptance dependencies
+        if: steps.current.outputs.deploy == 'true'
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Initialize required live evidence
+        if: steps.current.outputs.deploy == 'true'
+        run: python -m infra.scripts.post_deploy_acceptance --mode initialize
+      - name: Validate required live acceptance configuration
+        if: steps.current.outputs.deploy == 'true'
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-config
       - name: Load packaged corpus versions
         if: steps.current.outputs.deploy == 'true'
         run: |
@@ -349,6 +365,24 @@ jobs:
               exit 1
             fi
           done
+      - name: Preflight isolated live security credentials
+        id: security-preflight-credentials
+        if: steps.current.outputs.deploy == 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          output-credentials: true
+          output-env-credentials: false
+          mask-aws-account-id: true
+      - name: Verify live security secret access before deployment
+        if: steps.current.outputs.deploy == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.security-preflight-credentials.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.security-preflight-credentials.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.security-preflight-credentials.outputs.aws-session-token }}
+        run: >-
+          python -c "from security.promptfoo.model_support import live_settings; live_settings()"
       - name: Configure short-lived AWS credentials
         if: steps.current.outputs.deploy == 'true'
         uses: aws-actions/configure-aws-credentials@v6
@@ -442,7 +476,7 @@ jobs:
             AGENT_TIMEOUT_SECONDS=45
             WORKFLOW_TIMEOUT_SECONDS=85
             PROMPT_SET_VERSION=${{ env.PROMPT_SET_VERSION }}
-            BUILD_COMMIT=${{ github.sha }}
+            BUILD_COMMIT=${{ env.RELEASE_SHA }}
             RAG_PROVIDER=bedrock
             POLICY_RAG_PROVIDER=bedrock
             EDUCATION_KNOWLEDGE_BASE_ID=${{ env.EDUCATION_KNOWLEDGE_BASE_ID }}
@@ -471,7 +505,7 @@ jobs:
           --expect AGENT_TIMEOUT_SECONDS=45
           --expect WORKFLOW_TIMEOUT_SECONDS=85
           --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION"
-          --expect "BUILD_COMMIT=${{ github.sha }}"
+          --expect "BUILD_COMMIT=$RELEASE_SHA"
           --expect RAG_PROVIDER=bedrock
           --expect POLICY_RAG_PROVIDER=bedrock
           --expect "EDUCATION_KNOWLEDGE_BASE_ID=$EDUCATION_KNOWLEDGE_BASE_ID"
@@ -603,6 +637,91 @@ jobs:
           --expected-policy-corpus-version "$POLICY_CORPUS_VERSION"
           --persistence-base-url "${COACH_SMOKE_URL%/coach}"
           --api-key "$SMOKE_BACKEND_API_KEY"
+      - name: Live fairness — all 19 pairs once
+        id: fairness-live
+        if: steps.current.outputs.deploy == 'true'
+        timeout-minutes: 45
+        run: >-
+          python -m infra.scripts.fairness_live_evaluation
+          --url "$COACH_SMOKE_URL" --api-key-env SMOKE_BACKEND_API_KEY
+          --expected-model-provider openai --expected-model-id gpt-6-luna
+          --commit-sha "$RELEASE_SHA" --repeats 1 --timeout-seconds 120
+          --input-cost-per-million "$LIVE_MODEL_INPUT_USD_PER_MILLION"
+          --output-cost-per-million "$LIVE_MODEL_OUTPUT_USD_PER_MILLION"
+          --maximum-estimated-cost-usd "$FAIRNESS_LIVE_MAX_COST_USD"
+          --maximum-total-tokens 1000000
+          --output artifacts/post-deploy/fairness.json
+          --review-output artifacts/post-deploy/fairness-human-review.csv
+      - name: Live agent and RAG release contracts
+        id: agents-live
+        if: steps.current.outputs.deploy == 'true'
+        timeout-minutes: 45
+        env:
+          COACH_URL: ${{ vars.COACH_SMOKE_URL }}
+        run: |
+          for suite in orchestrator spending budget goal investment risk-compliance rag; do
+            python -m infra.scripts.agent_live_evaluation --suite "$suite" --post-deployment
+            python -m infra.scripts.agent_live_evaluation --suite "$suite" --summarize
+          done
+      - name: Prepare live security runtime
+        if: steps.current.outputs.deploy == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Obtain isolated live security credentials
+        id: security-credentials
+        if: steps.current.outputs.deploy == 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          output-credentials: true
+          output-env-credentials: false
+          mask-aws-account-id: true
+      - name: Promptfoo — required live security regressions
+        id: security-live
+        if: steps.current.outputs.deploy == 'true'
+        timeout-minutes: 45
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.security-credentials.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.security-credentials.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.security-credentials.outputs.aws-session-token }}
+        run: >-
+          python security/promptfoo/run_bounded.py --mode live --repeats 2
+          --max-model-tokens 1000000 --output artifacts/post-deploy/promptfoo-live.json
+      - name: Publish live security evidence
+        if: steps.current.outputs.deploy == 'true' && always()
+        run: >-
+          python infra/scripts/summarize_promptfoo.py artifacts/post-deploy/promptfoo-live.json
+          --output artifacts/post-deploy/promptfoo-live-summary.md
+          --title "Required release live security — real model, release source"
+      - name: Require complete live release acceptance
+        id: live-acceptance
+        if: steps.current.outputs.deploy == 'true' && always()
+        run: python -m infra.scripts.post_deploy_acceptance --mode gate
+      - name: Retain live release acceptance and review forms
+        if: steps.current.outputs.deploy == 'true' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-live-acceptance-${{ github.run_id }}
+          path: |
+            artifacts/post-deploy/
+            artifacts/agent-live/
+            infra/llmsecops/agent-live-evaluation-specs.json
+            infra/llmsecops/agent-live-evaluation-cases.jsonl
+            infra/llmsecops/investment-live-*.jsonl
+            apps/ai-service/app/evals/datasets/fairness_consistency.jsonl
+            security/promptfoo/cases.json
+            security/promptfoo/assertions.cjs
+          if-no-files-found: error
+          retention-days: 90
+      - name: Refresh deployment credentials for rollback
+        if: steps.current.outputs.deploy == 'true' && failure() && (env.AI_DEPLOYED == 'true' || env.BACKEND_DEPLOYED == 'true' || env.FRONTEND_DEPLOYED == 'true')
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
       - name: Roll back services when post-deploy checks fail
         if: >-
           steps.current.outputs.deploy == 'true' && (failure() && (env.AI_DEPLOYED == 'true' || env.BACKEND_DEPLOYED == 'true' || env.FRONTEND_DEPLOYED == 'true'))

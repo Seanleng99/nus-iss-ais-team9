@@ -41,7 +41,7 @@ def render(evaluation: dict, retrieval: dict) -> str:
         ("**Offline evidence only.** Routing uses LocalFixtureModelGateway. Passage relevance uses actual "
         "governed Markdown and the local retriever. Neither measures deployed OpenAI routing/answer quality "
         "or live AWS availability. API/Bedrock-adapter integration has its own JUnit report with stubbed transport."),
-        "", ("Definitions for all seven offline pytest suites are in `infra/llmsecops/agent-evaluation-specs.json`; "
+        "", ("Definitions for the seven agent suites and platform/shared contracts are in `infra/llmsecops/agent-evaluation-specs.json`; "
         "each suite publishes its dataset hashes, expected outputs, measured assertion rate and acceptance result."), "",
     ]
     for suite in evaluation["datasets"]:

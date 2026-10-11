@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-RESULTS = ("OFFLINE_RESULT", "METRICS_RESULT")
+RESULTS = ("OFFLINE_RESULT", "METRICS_RESULT", "PLATFORM_RESULT")
 
 
 def run_gate(tmp_path, *, ai_ci="true", deploy="false", changes="success", **results):
@@ -49,7 +49,7 @@ def run_gate(tmp_path, *, ai_ci="true", deploy="false", changes="success", **res
 def test_required_suite_must_pass(tmp_path, agent, result):
     outcome = run_gate(tmp_path, **{agent: result})
     assert outcome.returncode != 0
-    assert "Agent suites or metrics did not pass" in outcome.stderr
+    assert "platform/shared contracts or metrics did not pass" in outcome.stderr
 
 
 def test_all_successful_suites_pass(tmp_path):

@@ -2,9 +2,10 @@
 
 [Promptfoo](https://www.promptfoo.dev/docs/getting-started/) runs test prompts against application providers and evaluates their actual responses. The [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) supplies the risk taxonomy. This project uses Promptfoo **0.123.1** with committed attack cases and deterministic assertions. It is a reproducible regression scan, not the remotely generated Promptfoo red-team preset, an OWASP certification, or proof that every attack is prevented.
 
-The `project-security-scan` and `security-live` jobs now live directly in
-[CI and LLMSecOps](../.github/workflows/ci.yml). The separate security workflow
-was removed. Selected offline security checks remain required; agent pytest
+The offline `project-security-scan` job lives directly in
+[CI and LLMSecOps](../.github/workflows/ci.yml). Required live security regressions
+run after deployment in [Release to AWS](../.github/workflows/release.yml).
+The separate security workflow was removed. Selected offline security checks remain required; agent pytest
 files belong to their own jobs in the same workflow. Infrastructure report-helper
 tests run once in the infrastructure job, and backend/frontend tests run once in
 their service jobs.
@@ -26,7 +27,7 @@ security cases run. This dependency pin does not change the attack cases or grad
 | Investment Education | Orchestrator with Investment Education selected | Education, citations and injected retrieval cases |
 | Risk & Compliance | Actual `RiskComplianceAgent.validate` with controlled candidate drafts | Independent refusal/approval decisions; the report includes the draft input |
 
-The report shows each test method, target, question, actual response, result, grading reason and OWASP mapping, with totals and separate target sections. It also separates benign usefulness, false refusals, adversarial checks and runtime errors. Risk & Compliance returns a review decision rather than a chat answer. Offline Promptfoo produces JSON and HTML; the bounded live runner produces JSON and Markdown. CI artifacts are retained for seven days.
+The report shows each test method, target, question, actual response, result, grading reason and OWASP mapping, with totals and separate target sections. It also separates benign usefulness, false refusals, adversarial checks and runtime errors. Risk & Compliance returns a review decision rather than a chat answer. Offline Promptfoo produces JSON and HTML; the bounded live runner produces JSON and Markdown. Offline CI security artifacts are retained for seven days; release live acceptance evidence is retained for 90 days.
 
 The clean reviewer control uses the application's Education renderer to supply
 the required model-knowledge disclosure and section provenance. A neutral
@@ -89,17 +90,17 @@ python -m unittest discover -s infra/scripts/tests -p 'test_summarize_promptfoo.
 
 Backend and frontend tests run in their separate service CI environments. They are not repeated by this scan.
 
-## Optional live model scan
+## Required post-deployment live model scan
 
-Open **Actions → CI and LLMSecOps → Run workflow**, select `main`, and enable
-`run_live`. This opts into both the seven deployed agent/RAG suites and the bounded
-live security scan. Offline CI must pass first; the security scan runs after the
-agent live matrix. Automatic events and other branches cannot execute paid jobs.
-Live scan failure is advisory to CI and never replaces mandatory release safety
-smoke. Its actual PASS/FAIL/NOT RUN status and detailed findings remain in the
-combined report, independently of GitHub's advisory job conclusion.
+**Release to AWS** runs the bounded live security scan after deployment, required
+health/safety smoke, all 19 fairness pairs once and the seven agent/RAG datasets.
+The full two-trial case/provider matrix must pass with complete usage and current
+case/grader hashes. Failure or incomplete evidence fails the release and rolls
+changed services back. CI's paid-live checkbox and advisory live jobs are removed.
+Download `release-live-acceptance-<run_id>` for the actual acceptance and detailed
+findings. See [required live release acceptance](post-deployment-acceptance.md).
 
-It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. AWS OIDC grants secret retrieval only in the gated live job. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, supply `OPENAI_API_KEY` privately or select the project's credential file explicitly:
+It reuses the existing evaluation role and secret configuration: `AWS_INVESTMENT_TEST_ROLE_ARN`, `INVESTMENT_TEST_OPENAI_SECRET_ID`, and `AWS_REGION`. The evaluation role must trust the `demo` environment OIDC subject and allow only the existing secret; access is checked before deployment and credentials are scoped to live security steps. No keys belong in YAML or fixtures. Missing credentials fail the scan; there is no fallback to fixture responses. Locally, supply `OPENAI_API_KEY` privately or select the project's credential file explicitly:
 
 ```sh
 python security/promptfoo/run_bounded.py --mode live --env-file .env \

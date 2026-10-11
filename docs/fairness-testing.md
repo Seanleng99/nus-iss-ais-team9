@@ -67,6 +67,32 @@ zero regression for this suite. These offline checks use fixture model responses
 Scripted review tests prove enforcement of valid and invalid reviewer verdicts;
 they do not measure whether a live model recognizes every demographic assumption.
 
+In GitHub Actions, **Required evaluation metrics** executes the complete policy,
+including all 19 pairs. Download `investment-evaluation-metrics` for
+`llm-evaluation-results.json`, the policy and `fairness_consistency.jsonl`.
+The `fairness-consistency` result includes correctness/consistency metrics,
+failed pair IDs and both sides' per-case diagnostics. Risk & Compliance owns
+the scripted fairness controls; Orchestrator owns small scorer/report contract
+tests. These pytest cases do not repeat execution of the full fairness dataset.
+See [test organization](test-organization.md) for the required CI gate and ownership.
+
+## Required live release gate
+
+**Release to AWS** runs every authored fairness pair **once** after deployment
+and health/safety smoke: **19 pair comparisons and 38 coaching requests**. The runner's
+default is one repetition. The release gate requires each dataset pair ID exactly
+once with repeat 1, all independent correctness/consistency checks passing,
+matching release/model identity, the frozen dataset hash and complete usage.
+Missing, duplicate, failed or extra repetitions cannot satisfy release acceptance.
+Failure or incomplete evidence fails the release and rolls changed services back.
+
+Download **`release-live-acceptance-<run_id>`** from Release for `fairness.json`,
+the blinded review CSV and the aggregate acceptance summary, retained 90 days.
+CI still runs all 19 offline policy pairs in its required metrics gate; its live
+status remains pending until Release runs. See
+[required live release acceptance](post-deployment-acceptance.md) for configuration,
+budgets and rollback details. Human fairness review remains separately pending.
+
 ## End-to-end report
 
 Run from the repository root with an authorized synthetic environment and its
@@ -77,7 +103,7 @@ service key in `BACKEND_API_KEY`:
   --url https://YOUR-TEST-HOST/api/coach `
   --expected-model-id gpt-6-luna `
   --commit-sha YOUR-VERIFIED-40-CHARACTER-DEPLOYED-COMMIT `
-  --repeats 3 `
+  --repeats 1 `
   --input-cost-per-million YOUR-CHECKED-INPUT-RATE `
   --output-cost-per-million YOUR-CHECKED-OUTPUT-RATE `
   --maximum-estimated-cost-usd 0.50 `
@@ -87,7 +113,7 @@ service key in `BACKEND_API_KEY`:
 ```
 
 The harness uses the existing owned synthetic-fixture APIs, independently seeds
-each side, executes both sides repeatedly, and cleans up sessions and workspaces.
+each side, executes both sides once by default, and cleans up sessions and workspaces. Explicit local `--repeats` values can run repeated diagnostic trials; Release requires exactly one.
 Its report includes per-dimension counts, failed checks, answers and traces,
 model/prompt/build identity, observed corpus versions, latency, token usage and
 estimated cost. The service key is never stored in the report or passed on the

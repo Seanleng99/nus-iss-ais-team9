@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from infra.scripts.check_test_ownership import validate_ownership
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location(
     "run_agent_tests", REPOSITORY_ROOT / "infra/scripts/run_agent_tests.py",
@@ -18,26 +20,30 @@ SPEC.loader.exec_module(runner)
 MANIFEST = json.loads(runner.MANIFEST_PATH.read_text(encoding="utf-8"))
 EXPECTED_SUITES = {
     "orchestrator", "spending", "budget", "goal", "investment", "risk-compliance", "rag",
+    "platform",
 }
 
 
-def test_manifest_exposes_exactly_the_seven_offline_jobs():
+def test_manifest_exposes_agent_platform_and_shared_ownership():
     assert set(MANIFEST["suites"]) == EXPECTED_SUITES
     catalog = json.loads(runner.REPOSITORY_ROOT.joinpath(
         "infra/llmsecops/agent-evaluation-specs.json",
     ).read_text(encoding="utf-8"))
     assert set(catalog["suites"]) == EXPECTED_SUITES
-    assert set(MANIFEST["ci_only_test_paths"]) == {"tests/test_conversational_pipeline.py"}
+    assert "ci_only_test_paths" not in MANIFEST
+    assert catalog["shared"]["test_selection"] == MANIFEST["shared"]
+    assert "tests/test_conversational_pipeline.py" in MANIFEST["suites"]["orchestrator"]["test_paths"]
 
 
-def test_remaining_tests_exclude_exactly_the_paths_owned_by_other_jobs():
-    owned = set(MANIFEST["ci_only_test_paths"])
-    for selection in MANIFEST["suites"].values():
-        owned.update(selection["test_paths"])
-    args = runner.pytest_arguments("remaining", MANIFEST)
-    assert args[0] == "tests"
-    assert set(args[1:]) == {f"--ignore={path}" for path in owned}
-    assert len(args[1:]) == len(owned)
+def test_every_test_module_has_explicit_package_ownership():
+    for package, selections in (("ai-service", MANIFEST["suites"].values()), ("shared", [MANIFEST["shared"]])):
+        root = REPOSITORY_ROOT / "apps" / package
+        discovered = {path.relative_to(root).as_posix() for pattern in ("test_*.py", "*_test.py")
+                      for path in (root / "tests").rglob(pattern)}
+        declared = {path for selection in selections for path in selection["test_paths"]}
+        assert declared == discovered
+    with pytest.raises(KeyError):
+        runner.pytest_arguments("remaining", MANIFEST)
 
 
 def test_shared_files_have_one_full_owner_or_exhaustive_disjoint_prefix_groups():
@@ -50,7 +56,6 @@ def test_shared_files_have_one_full_owner_or_exhaustive_disjoint_prefix_groups()
             assert ".." not in Path(path).parts
             prefix = selection.get("name_prefix", "") if path == prefix_path else ""
             selections_by_path[path].append((suite, prefix))
-    assert not set(MANIFEST["ci_only_test_paths"]) & selections_by_path.keys()
     for path, owners in selections_by_path.items():
         source = (REPOSITORY_ROOT / "apps/ai-service" / path).read_text(encoding="utf-8")
         names = [node.name for node in ast.walk(ast.parse(source))
@@ -69,8 +74,9 @@ def test_offline_example_functions_have_one_suite_owner_each():
     source = (REPOSITORY_ROOT / "apps/ai-service" / path).read_text(encoding="utf-8")
     names = {node.name for node in ast.walk(ast.parse(source))
              if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")}
-    prefixes = [MANIFEST["suites"][suite]["name_prefix"] for suite in EXPECTED_SUITES]
-    assert len(prefixes) == len(set(prefixes)) == len(EXPECTED_SUITES)
+    prefixes = [selection["name_prefix"] for selection in MANIFEST["suites"].values()
+                if "name_prefix" in selection]
+    assert len(prefixes) == len(set(prefixes)) == 7
     assert {name for name in names if any(prefix in name for prefix in prefixes)} == names
     assert all(sum(prefix in name for prefix in prefixes) == 1 for name in names)
 
@@ -91,3 +97,31 @@ def test_agent_command_uses_its_owned_selection(suite):
 def test_unknown_suite_cannot_silently_run_the_remaining_tests():
     with pytest.raises(KeyError):
         runner.pytest_arguments("unknown-agent", MANIFEST)
+
+
+def test_collected_parameterized_cases_have_disjoint_exact_function_owners():
+    nodes = ["tests/test_examples.py::test_budget[x]", "tests/test_examples.py::test_goal[y]"]
+    report = validate_ownership(nodes, {
+        "budget": ["tests/test_examples.py::test_budget"],
+        "goal": ["tests/test_examples.py::test_goal"],
+    }, {"tests/test_examples.py"})
+    assert report["passed"] and report["owner_counts"] == {"budget": 1, "goal": 1}
+
+
+@pytest.mark.parametrize("nodes,selections,files", [
+    (["tests/test_a.py::test_one"], {"budget": ["tests/test_b.py"]}, {"tests/test_a.py"}),
+    (["tests/test_a.py::test_one"], {"budget": ["tests/test_a.py"], "goal": ["tests/test_a.py::test_one"]}, {"tests/test_a.py"}),
+    (["tests/test_a.py::test_one"], {"budget": ["tests/test_a.py", "tests/test_a.py"]}, {"tests/test_a.py"}),
+    (["tests/test_a.py::test_one_extra"], {"budget": ["tests/test_a.py::test_one"]}, {"tests/test_a.py"}),
+    (["tests/test_a.py::test_one"], {"budget": ["tests/test_a.py"]}, {"tests/test_a.py", "tests/test_empty.py"}),
+    (["tests/test_a.py::test_one"] * 2, {"budget": ["tests/test_a.py"]}, {"tests/test_a.py"}),
+    ([], {"budget": []}, set()),
+    (["tests/test_a.py::test_one"], {"budget": ["tests/../test_a.py"]}, {"tests/test_a.py"}),
+])
+def test_new_missing_overlapping_or_empty_ownership_fails(nodes, selections, files):
+    report = validate_ownership(nodes, selections, files)
+    assert not report["passed"] and report["errors"]
+
+
+def test_shared_runner_selects_explicit_library_files():
+    assert runner.pytest_arguments("shared", MANIFEST) == MANIFEST["shared"]["test_paths"]

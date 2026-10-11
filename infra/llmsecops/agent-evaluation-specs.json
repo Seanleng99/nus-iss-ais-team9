@@ -1,12 +1,12 @@
 {
-  "version": 3,
+  "version": 4,
   "suites": {
     "orchestrator": {
       "measurement": "offline fixture routing and orchestration contracts",
       "datasets": [
         {
-          "path": "apps/ai-service/app/evals/datasets/orchestrator_routing.jsonl",
-          "expected_outputs": "Each row specifies selected agent labels and/or block outcome. Automatic routes and explicit user selection are reported separately. Critical injection must be blocked."
+          "path": "apps/ai-service/app/evals/datasets/rag_evidence_v1.jsonl",
+          "expected_outputs": "The scorer's single-row RAG report check retains required quotes, retrieved passages, question and pass outcome. Full-dataset RAG acceptance is measured by the required metrics job."
         },
         {
           "path": "apps/ai-service/tests/test_orchestrator.py",
@@ -18,7 +18,7 @@
         },
         {
           "path": "apps/ai-service/tests/test_evaluation_runner.py",
-          "expected_outputs": "Scoring detects wrong routes, failed safety invariants, missing/extra labels and regression gate failures; metric aggregation cannot hide failed cases."
+          "expected_outputs": "Small synthetic scorer cases detect wrong routes, failed safety invariants, missing/extra labels and regression gate failures; routing, guardrail, fairness and RAG diagnostics retain individual outcomes. Full-policy acceptance belongs to the required metrics job."
         },
         {
           "path": "apps/ai-service/app/evals/datasets/agent_offline_examples.jsonl",
@@ -27,6 +27,94 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_orchestrator examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_action_composition.py",
+          "expected_outputs": "Action composition receives the same owned specialist, sanitized preferences and verified facts; failed evidence, policy or review preserves the validated backend result. Deadlines, private endpoint authentication and content-free streaming remain bounded."
+        },
+        {
+          "path": "apps/ai-service/tests/test_agent_deadline.py",
+          "expected_outputs": "Late specialist results cannot pass the workflow deadline or start further calls; the normal multicall workflow succeeds while an explicitly shorter deadline exhausts."
+        },
+        {
+          "path": "apps/ai-service/tests/test_conditional_education_dependencies.py",
+          "expected_outputs": "Education tools are scheduled only for the assigned supported scope, reused within one request and bounded on failures; calculation-only or unavailable optional Education preserves deterministic financial answers."
+        },
+        {
+          "path": "apps/ai-service/tests/test_conditional_semantic_education.py",
+          "expected_outputs": "Conditional consumers share quote-backed coverage once; unsupported keyword hits and invalid semantic support cannot become evidence, while a bounded failed correction preserves valid financial calculations."
+        },
+        {
+          "path": "apps/ai-service/tests/test_conversation_replies.py",
+          "expected_outputs": "Follow-up context reaches the writer and final response; fresh chats retain no prior dialogue, and untrusted history cannot replace verified financial grounding."
+        },
+        {
+          "path": "apps/ai-service/tests/test_conversational_pipeline.py",
+          "expected_outputs": "Synthetic conversations preserve current intent, attributable references, missing-field clarification, date/currency scope and unsaved arithmetic; credential requests and investment advice remain blocked while legitimate education stays available."
+        },
+        {
+          "path": "apps/ai-service/tests/test_current_prompt_contract.py",
+          "expected_outputs": "The packaged catalog has one identity; effective instruction changes alter its hash and invalidate captured repair authority, while request audit and safe traces retain build and prompt identity."
+        },
+        {
+          "path": "apps/ai-service/tests/test_decision_events.py",
+          "expected_outputs": "Safe decision records link generation, validation, routing overrides and correction acceptance; concurrent completion/retry events are captured without rejected content or misleading execution timing."
+        },
+        {
+          "path": "apps/ai-service/tests/test_follow_up.py",
+          "expected_outputs": "Current and attributable prior subjects, displayed options and named goals resolve only within the correct conversation boundary; ambiguous references, intervening new topics and write requests cannot inherit invented scope."
+        },
+        {
+          "path": "apps/ai-service/tests/test_income_memory.py",
+          "expected_outputs": "Explicit chat income is acknowledged or recalled as user-reported without profile substitution or writes; missing/uncertain facts clarify, and unrelated pending drafts do not hijack income recall."
+        },
+        {
+          "path": "apps/ai-service/tests/test_language_selection.py",
+          "expected_outputs": "The current explicit language request wins over saved/history preferences and reaches specialist, Compliance, audit and disclaimers; actual answer language is checked independently of metadata."
+        },
+        {
+          "path": "apps/ai-service/tests/test_latest_live_failures.py",
+          "expected_outputs": "Scripted regressions preserve optional dependency planning, dated Spending coverage, public query schema, owned claim locations and bounded independent review. These incident-derived tests measure contracts rather than live-model accuracy."
+        },
+        {
+          "path": "apps/ai-service/tests/test_orchestration_acceptance.py",
+          "expected_outputs": "Frozen orchestration scenarios require approved routing, exact dependency arithmetic and parallel evidence; overrides, withheld answers, unknown owners and fixture semantic-quality claims cannot pass acceptance."
+        },
+        {
+          "path": "apps/ai-service/tests/test_post_retest_recovery.py",
+          "expected_outputs": "Scripted follow-up/dependency/composition regressions preserve attributable scope and grounded amounts; located claim patches, corrected drafts and actual token/call limits retain bounded fresh review."
+        },
+        {
+          "path": "apps/ai-service/tests/test_reasoning_recovery_contracts.py",
+          "expected_outputs": "Read-only financial reconciliation and recurring forecasts use owned aggregates without forcing foreign scope; mixed safety categories and unavailable correction usage cannot bypass independent review or duplicate payment schedules."
+        },
+        {
+          "path": "apps/ai-service/tests/test_router_failure_diagnostics.py",
+          "expected_outputs": "Semantic routing failures expose static safe diagnostics; a named-subject correction preserves only the attributed selected task without broadening provenance."
+        },
+        {
+          "path": "apps/ai-service/tests/test_router_search_term_recovery.py",
+          "expected_outputs": "Exact public aliases precede router privacy screening; rejected retrieval terms receive at most one correction and never reach a provider after exhausted rejection."
+        },
+        {
+          "path": "apps/ai-service/tests/test_scoped_provider_contracts.py",
+          "expected_outputs": "Explicit selection keeps task/provider scopes distinct; verified saved-budget capacity can serve Goal without raw income, and conceptual Budget tasks remain conceptual beside arithmetic dependencies."
+        },
+        {
+          "path": "apps/ai-service/tests/test_semantic_session_context.py",
+          "expected_outputs": "Bounded attributable observations/preferences/referents reach only permitted roles; fabricated quotes, write intents and blocked answers cannot publish semantic memory, and exhausted contracts remain bounded."
+        },
+        {
+          "path": "apps/ai-service/tests/test_session_context.py",
+          "expected_outputs": "Known user-reported facts are recalled without promotion to confirmed calculations; pending fields and summaries retain attributable bounded scope, sanitized text and valid source positions."
+        },
+        {
+          "path": "apps/ai-service/tests/test_synthesis_citation_contract.py",
+          "expected_outputs": "Synthesis uses the actual approved source allowlist and handoff facts; one citation correction preserves numbers and exact missing questions, and repeated citation/safety failures never publish an answer."
+        },
+        {
+          "path": "apps/ai-service/tests/test_task_assignments.py",
+          "expected_outputs": "Model-selected tasks preserve attributed questions and explicit dataflow; independent work can decline dependencies, while incomplete or unattributed assignments fail the structured contract."
         }
       ],
       "metrics": [
@@ -45,7 +133,29 @@
           "tests/test_orchestrator.py",
           "tests/test_education_routing_coverage.py",
           "tests/test_evaluation_runner.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_action_composition.py",
+          "tests/test_agent_deadline.py",
+          "tests/test_conditional_education_dependencies.py",
+          "tests/test_conditional_semantic_education.py",
+          "tests/test_conversation_replies.py",
+          "tests/test_conversational_pipeline.py",
+          "tests/test_current_prompt_contract.py",
+          "tests/test_decision_events.py",
+          "tests/test_follow_up.py",
+          "tests/test_income_memory.py",
+          "tests/test_language_selection.py",
+          "tests/test_latest_live_failures.py",
+          "tests/test_orchestration_acceptance.py",
+          "tests/test_post_retest_recovery.py",
+          "tests/test_reasoning_recovery_contracts.py",
+          "tests/test_router_failure_diagnostics.py",
+          "tests/test_router_search_term_recovery.py",
+          "tests/test_scoped_provider_contracts.py",
+          "tests/test_semantic_session_context.py",
+          "tests/test_session_context.py",
+          "tests/test_synthesis_citation_contract.py",
+          "tests/test_task_assignments.py"
         ],
         "name_prefix": "test_example_orchestrator",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -81,6 +191,14 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_spending examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_recurring_capture.py",
+          "expected_outputs": "Only explicit cadence/date range can create recurrence or forecast scope; merchant names alone do not establish frequency, and read-only forecast requests do not become writes."
+        },
+        {
+          "path": "apps/ai-service/tests/test_spending_period_scope.py",
+          "expected_outputs": "Requested missing-month Spending remains primary while independent Budget context stays separate; raw records are partitioned to the requested period rather than silently using another month."
         }
       ],
       "metrics": [
@@ -101,7 +219,9 @@
           "tests/test_spending_coverage.py",
           "tests/test_spending_integration.py",
           "tests/test_risk_spending_coverage.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_recurring_capture.py",
+          "tests/test_spending_period_scope.py"
         ],
         "name_prefix": "test_example_spending",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -149,6 +269,10 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_budget examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_budget_missing_input.py",
+          "expected_outputs": "Missing income requests take-home pay and only unknown commitments; supplied financial context is retained instead of repeatedly asking known fields."
         }
       ],
       "metrics": [
@@ -172,7 +296,8 @@
           "tests/test_budget_reasoning.py",
           "tests/test_budget_review.py",
           "tests/test_edge_budget_regressions.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_budget_missing_input.py"
         ],
         "name_prefix": "test_example_budget",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -212,6 +337,14 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_goal examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_goal_currency.py",
+          "expected_outputs": "Goal projections and narrative checks preserve the owned currency and current arithmetic; ambiguous/wrong currencies receive one bounded correction without changing financial grounding."
+        },
+        {
+          "path": "apps/ai-service/tests/test_risk_goal_draft.py",
+          "expected_outputs": "Goal proposals and their stated financial facts reach Risk review unchanged; either independent verdict is respected and an unsafe proposal stays withheld."
         }
       ],
       "metrics": [
@@ -233,7 +366,9 @@
           "tests/test_dynamic_dependencies.py",
           "tests/test_conditional_financial_dependencies.py",
           "tests/test_goal_education_recovery.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_goal_currency.py",
+          "tests/test_risk_goal_draft.py"
         ],
         "name_prefix": "test_example_goal",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -273,6 +408,38 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_investment examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_current_response_contract.py",
+          "expected_outputs": "A missing summary citation receives one scoped correction with Chinese language preserved through review; an unsuccessful second citation validation remains withheld."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_access.py",
+          "expected_outputs": "Supported educational intents normalize to canonical public concepts across paraphrases and language boundaries; unsupported topics do not invent generic retrieval, and public queries exclude personal financial values."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_answerability.py",
+          "expected_outputs": "Requested subquestions receive supported definitions and explicit limitations; partial answers preserve scope and cited evidence, safe repair is bounded and independently reviewed, and prohibited intent cannot be masked by educational framing."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_contract_recovery.py",
+          "expected_outputs": "Public aliases normalize before privacy screening; exhausted semantic contracts remain uncited and transparent, while runtime/provider/budget failures are not misreported as missing evidence."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_grounding_reuse.py",
+          "expected_outputs": "Education corrections reuse unchanged private grounding without repeating assessment; changed corpus/task/scope, unknown usage or insufficient token/call reserve cannot authorize release without new independent review."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_repair_diagnostics.py",
+          "expected_outputs": "One Education contract correction receives exact safe field/provenance diagnostics without rejected content; ambiguous options, unsupported source IDs and invalid topics remain rejected after the bounded attempt."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_repair_window.py",
+          "expected_outputs": "Observed writer/reviewer latency governs correction admission; a feasible correction gets fresh review, while unsafe requests and corrections that cannot fit remaining time stay withheld."
+        },
+        {
+          "path": "apps/ai-service/tests/test_education_semantic_coverage.py",
+          "expected_outputs": "Semantic plans resolve public concepts and exact server-owned passages; keyword hits, invented quotes and metadata cannot manufacture financial support, and model layout/language are preserved within validated scope."
         }
       ],
       "metrics": [
@@ -293,7 +460,15 @@
           "tests/test_beginner_investment_questions.py",
           "tests/test_investment_education_agent.py",
           "tests/test_hybrid_investment_education.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_current_response_contract.py",
+          "tests/test_education_access.py",
+          "tests/test_education_answerability.py",
+          "tests/test_education_contract_recovery.py",
+          "tests/test_education_grounding_reuse.py",
+          "tests/test_education_repair_diagnostics.py",
+          "tests/test_education_repair_window.py",
+          "tests/test_education_semantic_coverage.py"
         ],
         "name_prefix": "test_example_investment",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -329,6 +504,50 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_risk_compliance examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_advice_language.py",
+          "expected_outputs": "Positive transaction recommendations and guarantees are blocked across authored wording variants; negated warnings, definitions and approved execution descriptions remain allowed. A safe prefix cannot hide a later unsafe clause."
+        },
+        {
+          "path": "apps/ai-service/tests/test_chinese_safety_explanations.py",
+          "expected_outputs": "Chinese refusals, evidence gaps and missing-input explanations are localized without exposing withheld prose or changing safe metadata, verified calculations, source titles or educational disclaimers."
+        },
+        {
+          "path": "apps/ai-service/tests/test_financial_review_repair.py",
+          "expected_outputs": "Owned financial qualification correction reuses the same sealed calculations and requires fresh review; unsafe verdicts, changed authority and rejected corrections remain withheld, with private diagnostics redacted."
+        },
+        {
+          "path": "apps/ai-service/tests/test_live_review_recovery.py",
+          "expected_outputs": "Scripted review recovery retains authoritative goal progress and immutable financial evidence; targeted mixed-owner claims receive only their authorized correction, with fresh review and bounded workflow state."
+        },
+        {
+          "path": "apps/ai-service/tests/test_located_claim_recovery.py",
+          "expected_outputs": "Replacement-only corrections touch located owned ranges, preserve unaffected amounts/options and pass independent review; overlapping edits, prohibited requests and insufficient review budgets remain withheld."
+        },
+        {
+          "path": "apps/ai-service/tests/test_narrative_citation_correction.py",
+          "expected_outputs": "Specialist and Compliance citation defects receive one bounded correction before publication; a twice-invalid narrative cannot be released."
+        },
+        {
+          "path": "apps/ai-service/tests/test_outbound_privacy.py",
+          "expected_outputs": "All outbound model context removes identifiers and persisted instructions while preserving distinct obligations and verified monetary inputs; sanitized preference lists/scalars remain bounded."
+        },
+        {
+          "path": "apps/ai-service/tests/test_qualification_repair_safety.py",
+          "expected_outputs": "Typed qualification repair preserves the original veto until review; mixed unsafe categories, prohibited requests and unclassified completeness feedback cannot make a financial rejection repairable."
+        },
+        {
+          "path": "apps/ai-service/tests/test_review_evidence_compaction.py",
+          "expected_outputs": "Review compaction removes exact duplicate passages and duplicated summaries while preserving complete distinct claims, coverage quotes and audit evidence; unmatched/metadata evidence remains distinguishable."
+        },
+        {
+          "path": "apps/ai-service/tests/test_review_followup.py",
+          "expected_outputs": "Every generated auxiliary explanation obeys advice and citation boundaries; Policy quarantine preserves valid chunks, Education scope gaps remain explicit, and trace/model budget lifecycle is bounded under concurrency and late completion."
+        },
+        {
+          "path": "apps/ai-service/tests/test_scoped_education_review.py",
+          "expected_outputs": "Review issues must identify valid owned sections and exact ranges; mixed financial/education defects cannot be reassigned, and only the affected specialist can correct before one fresh full review."
         }
       ],
       "metrics": [
@@ -349,7 +568,18 @@
           "tests/test_risk_review_explanations.py",
           "tests/test_guardrails.py",
           "tests/test_risk_compliance_functional.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_advice_language.py",
+          "tests/test_chinese_safety_explanations.py",
+          "tests/test_financial_review_repair.py",
+          "tests/test_live_review_recovery.py",
+          "tests/test_located_claim_recovery.py",
+          "tests/test_narrative_citation_correction.py",
+          "tests/test_outbound_privacy.py",
+          "tests/test_qualification_repair_safety.py",
+          "tests/test_review_evidence_compaction.py",
+          "tests/test_review_followup.py",
+          "tests/test_scoped_education_review.py"
         ],
         "name_prefix": "test_example_risk_compliance",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
@@ -393,6 +623,34 @@
         {
           "path": "apps/ai-service/tests/test_agent_evaluation_examples.py",
           "expected_outputs": "Only test_example_rag examples are selected for this suite; questions, dataset expectations and full actual answers are attached as JUnit properties."
+        },
+        {
+          "path": "apps/ai-service/tests/test_bedrock_openai_configuration.py",
+          "expected_outputs": "Governed Bedrock retrieval factories retain direct OpenAI generation; deployed IDs/pins are validated and every required Policy control is fetched without personal drafts in AWS queries."
+        },
+        {
+          "path": "apps/ai-service/tests/test_coach_retrieval_flexibility.py",
+          "expected_outputs": "All supported subjects can receive bounded context; public detail queries exclude personal values, document windows retain list/table structure, and ordinary brackets do not weaken citation provenance checks."
+        },
+        {
+          "path": "apps/ai-service/tests/test_ingestion.py",
+          "expected_outputs": "Only approved, current governed documents produce pinned Bedrock sidecars; checksum/review expiry and source withdrawal are validated for Education and Policy manifests."
+        },
+        {
+          "path": "apps/ai-service/tests/test_local_policy.py",
+          "expected_outputs": "Packaged Policy controls remain complete and pinned; fixture and governed documents preserve the same required policy meaning."
+        },
+        {
+          "path": "apps/ai-service/tests/test_passage_ranking.py",
+          "expected_outputs": "Specific relevant passages beyond the first returned positions can rank without lowering score gates; unmatched passages remain empty and oversized managed retrieval requests fail before AWS."
+        },
+        {
+          "path": "apps/ai-service/tests/test_policy_retriever.py",
+          "expected_outputs": "Local/Bedrock Policy retrieval accepts only governed pinned provenance, deduplicates valid evidence and rejects weak or injected chunks without hiding surviving controls or leaking provider failures."
+        },
+        {
+          "path": "apps/ai-service/tests/test_rag_answer_review.py",
+          "expected_outputs": "Capture/review tooling binds real-provider profiles, dataset/response digests, role policies, corpus/build identity and named reviewers; missing repeats/languages, failed captures and fixture substitutions cannot establish answer-quality acceptance."
         }
       ],
       "metrics": [
@@ -413,11 +671,136 @@
           "tests/test_retrieval_boundaries.py",
           "tests/test_request_retrieval_cache.py",
           "tests/test_rag_integration.py",
-          "tests/test_agent_evaluation_examples.py"
+          "tests/test_agent_evaluation_examples.py",
+          "tests/test_bedrock_openai_configuration.py",
+          "tests/test_coach_retrieval_flexibility.py",
+          "tests/test_ingestion.py",
+          "tests/test_local_policy.py",
+          "tests/test_passage_ranking.py",
+          "tests/test_policy_retriever.py",
+          "tests/test_rag_answer_review.py"
         ],
         "name_prefix": "test_example_rag",
         "name_prefix_test_path": "tests/test_agent_evaluation_examples.py"
       }
+    },
+    "platform": {
+      "measurement": "offline AI API, transport, model runtime and telemetry contracts",
+      "datasets": [
+        {
+          "path": "apps/ai-service/tests/test_api.py",
+          "expected_outputs": "Public health and authenticated Coach boundaries preserve safe correlation handling; deployed weak/fixture configurations and provider/retrieval failures return sanitized envelopes without leaking private details."
+        },
+        {
+          "path": "apps/ai-service/tests/test_call_telemetry.py",
+          "expected_outputs": "Nested/threaded/async method spans retain linked isolated request identity; real local API paths and provider failures log bounded metadata without questions, credentials, payloads or user-selected URL paths."
+        },
+        {
+          "path": "apps/ai-service/tests/test_drift_observation.py",
+          "expected_outputs": "Runtime drift observations retain only fixed bounded intent/length/category buckets rather than financial values or identifying text."
+        },
+        {
+          "path": "apps/ai-service/tests/test_model_contracts.py",
+          "expected_outputs": "Provider requests carry closed role-scoped structured schemas, explicit defaults and inference controls; malformed contracts, role overrides and reasoning usage remain separately validated."
+        },
+        {
+          "path": "apps/ai-service/tests/test_model_gateway.py",
+          "expected_outputs": "Stubbed provider adapters use approved API/inference controls and sanitized errors; token/unknown-usage ceilings stop further spending before provider invocation."
+        },
+        {
+          "path": "apps/ai-service/tests/test_model_token_reservations.py",
+          "expected_outputs": "Oversized or uncountable input is refused before generation; concurrent calls cannot reserve the same remaining token budget."
+        },
+        {
+          "path": "apps/ai-service/tests/test_openai_error_classification.py",
+          "expected_outputs": "Typed SDK status/transport failures map to safe diagnostic classes without private provider messages; only transient/generic eligible failures retry."
+        },
+        {
+          "path": "apps/ai-service/tests/test_structured.py",
+          "expected_outputs": "Structured generation performs at most one schema correction with safe validation diagnostics; invalid contracts fail without echoing rejected model output."
+        },
+        {
+          "path": "apps/ai-service/tests/test_token_count_recovery.py",
+          "expected_outputs": "Transient count failures retry within recomputed deadlines before a single generation; authentication/permission failures and exhausted count budgets never infer or leak provider content."
+        },
+        {
+          "path": "apps/ai-service/tests/test_trace_stream.py",
+          "expected_outputs": "Authenticated local streaming links content-free workflow events and terminal frames; disconnect, late events and concurrency bounds release workers and refuse invalid identities."
+        }
+      ],
+      "metrics": [
+        "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+        "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+        "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+      ],
+      "acceptance_criteria": [
+        "At least one pytest case must execute.",
+        "100% of selected cases must pass; zero failures, errors, skips or xpasses."
+      ],
+      "limitations": "Stubbed provider and local_fixture application tests; no paid calls, live AWS availability or semantic model acceptance is measured.",
+      "test_selection": {
+        "test_paths": [
+          "tests/test_api.py",
+          "tests/test_call_telemetry.py",
+          "tests/test_drift_observation.py",
+          "tests/test_model_contracts.py",
+          "tests/test_model_gateway.py",
+          "tests/test_model_token_reservations.py",
+          "tests/test_openai_error_classification.py",
+          "tests/test_structured.py",
+          "tests/test_token_count_recovery.py",
+          "tests/test_trace_stream.py"
+        ]
+      }
+    }
+  },
+  "shared": {
+    "measurement": "offline shared arithmetic, locale, trace and review contracts",
+    "datasets": [
+      {
+        "path": "apps/shared/tests/test_budget_baseline.py",
+        "expected_outputs": "Shared deterministic allocations preserve confirmed income, expense cadence and fixed currency; unavailable inputs and conflicting baselines remain explicit."
+      },
+      {
+        "path": "apps/shared/tests/test_budget_scope.py",
+        "expected_outputs": "Budget period/currency scope retains owned current and historical records without combining unsupported currencies or substituting another period."
+      },
+      {
+        "path": "apps/shared/tests/test_entry_logging.py",
+        "expected_outputs": "Every inventoried method starts with a literal safe entry event; all three service loggers keep privacy filtering and entry events do not populate durable semantic audits."
+      },
+      {
+        "path": "apps/shared/tests/test_language.py",
+        "expected_outputs": "Locale selection, reviewed translations and structured explanation localization remain consistent across supported languages and preserve safe metadata."
+      },
+      {
+        "path": "apps/shared/tests/test_review_metadata.py",
+        "expected_outputs": "Shared review categories, issue ranges and repair summaries retain only bounded safe typed metadata; malformed values cannot become correction authority."
+      },
+      {
+        "path": "apps/shared/tests/test_trace_contract.py",
+        "expected_outputs": "Trace event serialization admits only bounded safe codes, component fields and approved task scopes; private content and malformed task modes are rejected."
+      }
+    ],
+    "metrics": [
+      "assertion_pass_rate = passed pytest JUnit cases / all reported JUnit test cases, including failures, errors, skips and xpasses; parameterized examples are separate cases.",
+      "Report every JUnit case with test ID, outcome, question, expected output, full response and failure reason; non-conversation helper cases use N/A for question, expected output and response.",
+      "actual_test_count is the number of JUnit test-case rows; failed, errored, skipped and xpassed case IDs remain individually visible."
+    ],
+    "acceptance_criteria": [
+      "At least one pytest case must execute.",
+      "100% of selected cases must pass; zero failures, errors, skips or xpasses."
+    ],
+    "limitations": "Local shared-library and local_fixture service logger contracts; no live provider or deployed acceptance is measured.",
+    "test_selection": {
+      "test_paths": [
+        "tests/test_budget_baseline.py",
+        "tests/test_budget_scope.py",
+        "tests/test_entry_logging.py",
+        "tests/test_language.py",
+        "tests/test_review_metadata.py",
+        "tests/test_trace_contract.py"
+      ]
     }
   }
 }

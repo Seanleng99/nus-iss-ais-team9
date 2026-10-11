@@ -150,35 +150,37 @@ the separate review in [RAG quality acceptance](rag-quality.md).
 
 ## Specialist Execution And Evidence
 
-**CI and LLMSecOps** now directly contains the former agent-evaluation and
-security workflows, as well as service and infrastructure checks. It owns seven offline
-jobs (including Orchestrator and RAG), required numeric gates and seven optional
-live jobs. The earlier group IDs in the scenario tables remain descriptions of
-the tests now combined into those jobs; use the seven current suite IDs in
-`agent-test-suites.json` for execution.
+**CI and LLMSecOps** owns seven offline agent/RAG jobs, explicit platform/shared
+contracts, ownership validation, numeric gates and offline security scans.
+The scenario-group IDs below describe the retained tests; use the seven agent
+IDs, `platform` or `shared` in `agent-test-suites.json` for execution.
+The [test organization guide](test-organization.md) records primary ownership
+and the collection check that rejects missing or overlapping cases.
 
-- Relevant push/PR/scheduled CI selects the required offline jobs. The required
-  gate rejects failed, cancelled or unexpectedly skipped offline tests.
-- Manual **Run workflow** exposes the default-off **Run live integration tests?**
-  checkbox. Yes enables bounded real model/AWS datasets after demo approval and then the bounded live security scan;
-  No skips them without failing the pipeline. Live failure is advisory and remains
-  explicitly FAIL/NOT RUN in the report.
-- Per-job and combined reports show dataset/hashes, expected outputs, metrics,
-  acceptance, case results and actual synthetic answers. Offline fixture outputs
-  are distinguished from real model answers. Helper cases have N/A dialogue.
-- Artifacts are `agent-offline-<suite>`, `agent-live-<suite>` and
-  `agent-evaluation-report`, retained for 90 days. Required numeric evidence stays
-  in `investment-evaluation-metrics` for 30 days, now with full per-case diagnostics.
-- Existing deployment smoke, OWASP live scanning, AWS Operational Validation and
-  corpus governance retain their separate purpose and controls. The checkbox
-  governs the new evaluation jobs, not those workflows.
+- Relevant CI selects required offline jobs and rejects failed, cancelled or
+  unexpectedly skipped required evidence. Metrics executes policy v9's full
+  136 cases/pairs, including all 19 fairness pairs; scorer unit tests use small
+  synthetic datasets to verify scoring/reporting independently.
+- **Release to AWS** requires live acceptance after deployment and smoke:
+  all 19 fairness pairs once (38 coaching requests), seven agent/RAG datasets and
+  two-trial real-model security regressions. Failure or incomplete evidence
+  fails the release and rolls changed services back. CI has no paid-live checkbox.
+- Reports retain dataset hashes, expected/actual outputs, criteria and per-case
+  outcomes. Fixtures are distinguished from model answers; helper dialogue is N/A.
+- CI publishes `agent-offline-<suite>`, `agent-offline-platform`,
+  `shared-library-contracts` and `agent-evaluation-report` for 90 days;
+  `investment-evaluation-metrics` retains full numeric diagnostics for 30 days.
+  Release publishes `release-live-acceptance-<run_id>` for 90 days, including
+  full responses, security evidence and fairness review forms.
+- Operational validation, monitoring, corpus governance and representative human
+  review retain their separate purposes. Required automated release contracts
+  do not establish representative semantic quality or overall human fairness.
 
-See [agent test workflows](agent-test-workflows.md) for ownership and release wiring.
-The tabled definitions establish offline acceptance for every specialist; they do
-not assert that every live quality gate has passed. The separate Investment live
-record, generated-answer review and representative-user study must retain their
-actual completed, failed or pending status. Spending/Budget/Goal/Compliance still
-need representative live semantic review beyond structural smoke/regression checks.
+See [agent test workflows](agent-test-workflows.md) and
+[required live release acceptance](post-deployment-acceptance.md) for wiring,
+configuration and budgets. Actual live and human records must retain their
+completed, failed or pending status; implementation and simulated tests do not
+establish a successful paid run.
 
 ## Detailed Agent Evaluation References
 
@@ -415,7 +417,7 @@ At least five intended users must complete all four synthetic-data scenarios. Th
 
 Create paired cases with identical financial facts and varied names, writing styles, and irrelevant profile details. Agent routing, calculations, block decisions, confidence calibration, and educational depth should remain materially equivalent. Protected attributes must not be requested or inferred for recommendation logic.
 
-Policy v9 contains 19 synthetic fairness pairs covering financial specialists, Education, missing-input clarification and prohibited advice. Names, language, dialect, demographic disclosures and combined attributes vary while financial facts remain fixed. Every answer must independently satisfy authored expectations as well as match the specified structural outcomes; two equally wrong answers fail. English/Chinese Education requires common core evidence rather than identical supplementary source lists. `infra/scripts/fairness_live_evaluation.py` runs repeated paired requests through the backend and records correctness, consistency, build/prompt/corpus identity, usage and cleanup. Its objective result is separate from pending human review of helpfulness, respect, uncertainty and unsupported assumptions. See [fairness controls and evaluation](fairness-testing.md). Sparse synthetic pairs and fixture scores do not establish representative-user fairness.
+Policy v9 contains 19 synthetic fairness pairs covering financial specialists, Education, missing-input clarification and prohibited advice. Names, language, dialect, demographic disclosures and combined attributes vary while financial facts remain fixed. Every answer must independently satisfy authored expectations as well as match the specified structural outcomes; two equally wrong answers fail. English/Chinese Education requires common core evidence rather than identical supplementary source lists. `infra/scripts/fairness_live_evaluation.py` runs all 19 pairs once through the backend in required post-deployment acceptance (38 coaching requests) and records correctness, consistency, build/prompt/corpus identity, usage and cleanup. Its objective result is separate from pending human review of helpfulness, respect, uncertainty and unsupported assumptions. See [fairness controls and evaluation](fairness-testing.md). Sparse synthetic pairs and fixture scores do not establish representative-user fairness.
 
 ## Evidence Handling
 

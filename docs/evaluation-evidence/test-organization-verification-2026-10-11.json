@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "validation_date": "2026-10-11",
+  "validation_type": "local_offline",
+  "base_commit": "8138b5135cb7ac717efdc50d70e161f1356d0969",
+  "working_tree_changes": true,
+  "source_sha256_utf8_lf": {
+    ".github/workflows/ci.yml": "33390efcf252440bd1979a14c8d0ca86f0f3996403b9dedd2ee5e603c10ef5a4",
+    "infra/llmsecops/agent-test-suites.json": "825c189073046c82d56690ec422de1ab5a52758f63910a4ddc30a86baaf329a4",
+    "infra/llmsecops/agent-evaluation-specs.json": "0f5a29ddc55ef4a2eb91a4c82d895627b45c69f1e9a4296086b1f51a37f43961",
+    "infra/scripts/check_test_ownership.py": "354112f769e01b8e76caa530bef3cd7f498fe5329e05c47dec6fd888572b5724",
+    "infra/scripts/run_agent_tests.py": "0b9977a786df083a1adc0f9a2d3df4bd2b7686e33a5743150d1e8924221f34cf",
+    "apps/ai-service/tests/test_evaluation_runner.py": "4c2d61521185b7febcb4527eb7d0b960683031799c774b0010c122830727916e"
+  },
+  "ownership": "complete/disjoint",
+  "execution": "every inventoried node reported once; one scorer test renamed",
+  "suites": {
+    "orchestrator": {
+      "total": 445,
+      "accepted": true,
+      "passed": 445,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "spending": {
+      "total": 52,
+      "accepted": true,
+      "passed": 52,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "budget": {
+      "total": 66,
+      "accepted": true,
+      "passed": 66,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "goal": {
+      "total": 89,
+      "accepted": true,
+      "passed": 89,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "investment": {
+      "total": 460,
+      "accepted": true,
+      "passed": 460,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "risk-compliance": {
+      "total": 660,
+      "accepted": true,
+      "passed": 660,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "rag": {
+      "total": 166,
+      "accepted": false,
+      "passed": 165,
+      "failed": 0,
+      "error": 0,
+      "skipped": 1,
+      "xpassed": 0
+    },
+    "platform": {
+      "total": 92,
+      "accepted": true,
+      "passed": 92,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    },
+    "shared": {
+      "total": 69,
+      "accepted": true,
+      "passed": 69,
+      "failed": 0,
+      "error": 0,
+      "skipped": 0,
+      "xpassed": 0
+    }
+  },
+  "skipped": [
+    {
+      "suite": "rag",
+      "node": "tests/test_local_documents.py::test_unapproved_local_corpus_cannot_be_loaded[symlink]",
+      "reason": "Windows account lacks symlink creation privilege"
+    }
+  ],
+  "policy": {
+    "passed": true,
+    "total": 136,
+    "fairness_pairs": 19,
+    "fairness_correct": 19,
+    "fairness_consistency_rate": 1.0
+  },
+  "rag_evidence": {
+    "cases": 100,
+    "passed_cases": 100,
+    "retrieval_gate_passed": true
+  },
+  "ci_gate_report_checks": {
+    "passed": 158,
+    "failed": 0,
+    "skipped": 0
+  },
+  "limitations": [
+    "Local Windows run; GitHub Actions was not run for these changes.",
+    "RAG pytest acceptance remains incomplete because the symlink case skipped; CI still rejects skips.",
+    "Fixture/stub evidence does not establish live-model quality or deployed acceptance.",
+    "This record captures the earlier test-organization phase before live release wiring; source hashes identify that earlier snapshot. See release-live-acceptance-wiring-2026-10-11.json for the subsequent workflow/harness validation."
+  ]
+}

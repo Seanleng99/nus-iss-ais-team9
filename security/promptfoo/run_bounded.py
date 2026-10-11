@@ -63,6 +63,7 @@ def main():
     budget = EvaluationBudget(args.max_model_tokens) if args.mode == "live" else None
     results = []
     payload = {"evaluation": {"started_at": datetime.now(UTC).isoformat(), "mode": args.mode,
+        "test_commit": os.getenv("RELEASE_SHA") or os.getenv("GITHUB_SHA"),
         "repeats": args.repeats, "planned_cases": planned, "complete": False,
         "case_sha256": hashlib.sha256(cases_bytes).hexdigest(),
         "case_pattern": args.case_pattern,

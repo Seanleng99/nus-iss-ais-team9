@@ -96,7 +96,7 @@ def render(title: str, cases: list[CaseResult]) -> str:
 def evaluation_summary(suite: str, cases: list[CaseResult]) -> tuple[str, dict | None]:
     """Attach the versioned evaluation contract; missing evidence never passes."""
     catalog = json.loads(EVALUATION_SPEC.read_text(encoding="utf-8"))
-    definition = catalog["suites"].get(suite)
+    definition = catalog.get("shared") if suite == "shared" else catalog["suites"].get(suite)
     if definition is None:
         raise ValueError(f"Missing evaluation definition for {suite}")
     root = EVALUATION_SPEC.parents[2]
