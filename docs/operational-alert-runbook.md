@@ -2,7 +2,7 @@
 
 ## Ownership And Response Targets
 
-The Team 9 operations owner is the primary owner of the shared operational-alert mailbox and the CloudWatch dashboard. The owner confirms receipt, classifies the alert, opens the incident record, and coordinates the specialist owner. Access to the mailbox must be limited to current Team 9 operators and reviewed when membership changes.
+The Team 9 operations owner reviews AWS Operational Validation and Model Drift Monitoring failures in GitHub Actions, retained evidence, and the CloudWatch dashboard. Both workflows currently use GitHub Actions reporting; operational validation records this scope in `notification-scope.json` and does not require an email subscription. GitHub reporting covers workflow outcomes and does not forward CloudWatch alarm events. The owner classifies the alert, opens the incident record, and coordinates the specialist owner. If email alerts are restored, the owner also manages the shared operational-alert mailbox and confirms receipt; mailbox access must be limited to current Team 9 operators and reviewed when membership changes.
 
 | Severity | Example signals | Acknowledge target | Primary action owner |
 |---|---|---:|---|
@@ -22,7 +22,7 @@ The targets are demo operating objectives, not a staffed 24-hour support commitm
 6. Confirm recovery through service health, the affected alarm returning to `OK`, and the relevant smoke or evaluation gate. Do not infer recovery from an email alone.
 7. Record impact, root cause, control effectiveness, owner, follow-up date, and a regression test or monitoring correction before closing the incident.
 
-If the email notification is not received, inspect the SNS subscription state and topic delivery metrics, re-confirm the subscription from the team mailbox, and use the AWS console/dashboard as the temporary observation path. A failed notification test is itself a P2 operational incident.
+When email alerts are enabled, a missing notification requires inspection of the SNS subscription state and topic delivery metrics, re-confirmation from the team mailbox, and review of the AWS console/dashboard. A failed notification test is itself a P2 operational incident. In the current GitHub Actions reporting mode, inspect failed runs and their artifacts directly; current email delivery is not claimed.
 
 ## Drift Response
 
@@ -58,7 +58,7 @@ for the baseline and scoring contract. Safety or ownership failures remain P1.
 
 ## Controlled Notification Test
 
-After the AWS confirmation email has been accepted, run:
+This optional procedure applies when email alerts are restored. After the AWS confirmation email has been accepted, run:
 
 ```powershell
 .\infra\scripts\test_operational_alert.ps1 `
@@ -68,4 +68,4 @@ After the AWS confirmation email has been accepted, run:
 
 The script refuses to run without a confirmed email subscription, refuses to override an alarm that is already genuinely in `ALARM`, verifies that the alarm targets the managed SNS topic, temporarily exercises the CloudWatch alarm action, verifies the successful SNS action in alarm history, restores the original state, and writes a privacy-safe artifact under `artifacts/`. It deliberately cannot assert inbox delivery. A recipient must acknowledge the received test message before governance records describe delivery as verified.
 
-Repeat the controlled test after changing the topic, subscription, alarm action, or operational owner, and at least once before a formally assessed demonstration.
+When email delivery is in scope, repeat the controlled test after changing the topic, subscription, alarm action, or operational owner, and at least once before a formally assessed demonstration that claims email delivery.

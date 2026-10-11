@@ -87,7 +87,7 @@ From GitHub Actions on `main`, dispatch **AWS Operational Validation** with the 
 - load concurrency: `2`; and
 - backend task replacement: disabled, because retained replacement evidence already exists.
 
-The validation job verifies live OpenAI generation and both Bedrock RAG paths, bounded load and cleanup, ECS/autoscaling state, the five required application alarms and confirmed notification path, custom-domain TLS, and direct-origin denial. It uploads `aws-operational-evidence-<run-id>`. The independent retention job enforces governed lifecycle expiry and uploads `aws-retention-evidence-<run-id>` even if validation fails; retention failures still fail the workflow.
+The validation job verifies live OpenAI generation and both Bedrock RAG paths, bounded load and cleanup, ECS/autoscaling state, the five required application alarms, custom-domain TLS, and direct-origin denial. It uploads `aws-operational-evidence-<run-id>`, including `notification-scope.json` declaring GitHub Actions reporting. Email delivery is not required or validated, and CloudWatch alarm events are not forwarded to GitHub. The independent retention job enforces governed lifecycle expiry and uploads `aws-retention-evidence-<run-id>` even if validation fails; retention failures still fail the workflow.
 
 Expected result: CI and both operational jobs pass, all three privacy-safe artifacts are retained for 90 days, and both run URLs are added to `docs/operational-evidence.md`. A transient failure remains visible; investigate it and rerun only after recording whether the cause was code, configuration, test data, or provider availability.
 

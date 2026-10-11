@@ -48,7 +48,6 @@ env:
   EXPECTED_MODEL_ID: gpt-6-luna
   DASHBOARD_NAME: ${{ vars.OPERATIONAL_DASHBOARD_NAME || 'ai-financial-wellness-coach-demo-operational' }}
   ALARM_PREFIX: ${{ vars.OPERATIONAL_ALARM_PREFIX || 'ai-financial-wellness-coach-demo-' }}
-  OPERATIONAL_ALERTS_TOPIC_ARN: ${{ vars.OPERATIONAL_ALERTS_TOPIC_ARN }}
   REPEATS: ${{ inputs.repeats || '3' }}
   LOAD_REQUESTS: ${{ inputs.load_requests || '10' }}
   LOAD_CONCURRENCY: ${{ inputs.load_concurrency || '2' }}
@@ -134,12 +133,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Record GitHub Actions notification scope
+        run: |
+          mkdir -p artifacts
+          echo '{"mode":"github_actions_only","email_delivery_validated":false,"cloudwatch_events_forwarded_to_github":false}' \
+            > artifacts/notification-scope.json
+          {
+            echo "## Operational reporting"
+            echo
+            echo "Failures are reported through this GitHub Actions run and its retained artifacts."
+            echo "Email delivery is not validated; CloudWatch alarm events are not forwarded to GitHub."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Validate operational inputs and environment
         run: |
           required=(
             DEPLOY_ROLE ECS_CLUSTER AI_SERVICE BACKEND_SERVICE FRONTEND_SERVICE
             COACH_URL SMOKE_BACKEND_API_KEY
-            EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX OPERATIONAL_ALERTS_TOPIC_ARN
+            EXPECTED_MODEL_ID DASHBOARD_NAME ALARM_PREFIX
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
@@ -223,22 +234,6 @@ jobs:
               raise SystemExit("Missing required operational alarms: " + ", ".join(missing))
           PY
 
-      - name: Verify a confirmed human notification path
-        run: |
-          confirmed_count=$(aws sns list-subscriptions-by-topic \
-            --topic-arn "$OPERATIONAL_ALERTS_TOPIC_ARN" \
-            --query "length(Subscriptions[?Protocol=='email' && SubscriptionArn!='PendingConfirmation' && SubscriptionArn!='Deleted'])" \
-            --output text)
-          if [[ "$confirmed_count" -lt 1 ]]; then
-            echo "No confirmed operational email subscription is available" >&2
-            exit 1
-          fi
-          jq -n \
-            --arg topic_arn "$OPERATIONAL_ALERTS_TOPIC_ARN" \
-            --argjson confirmed_email_subscription_count "$confirmed_count" \
-            '{topic_arn: $topic_arn, confirmed_email_subscription_count: $confirmed_email_subscription_count}' \
-            > artifacts/confirmed-email-subscriptions.json
-
       - name: Verify CloudFront TLS and direct-origin denial
         if: env.EDGE_ORIGIN_RESTRICTION_ENABLED == 'true'
         run: |
@@ -312,7 +307,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce live evaluation and load results
-        if: always()
+        if: >-
+          always() &&
+          (steps.live_evaluation.outcome != 'skipped' || steps.load_validation.outcome != 'skipped')
         env:
           LIVE_EVALUATION_OUTCOME: ${{ steps.live_evaluation.outcome }}
           LOAD_VALIDATION_OUTCOME: ${{ steps.load_validation.outcome }}

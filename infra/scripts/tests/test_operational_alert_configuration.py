@@ -9,7 +9,6 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ALERT_TEST_SCRIPT = PROJECT_ROOT / "infra" / "scripts" / "test_operational_alert.ps1"
-OIDC_TEMPLATE = PROJECT_ROOT / "infra" / "aws" / "github-actions-oidc.yaml"
 APPLICATION_TEMPLATE = PROJECT_ROOT / "infra" / "aws" / "demo-application.yaml"
 OPERATIONAL_WORKFLOW = (
     PROJECT_ROOT / ".github" / "workflows" / "aws-operational-validation.yml"
@@ -42,15 +41,40 @@ def test_alert_exercise_requires_confirmation_and_uses_full_alarm_path() -> None
     assert "sns publish" not in script.lower()
 
 
-def test_operational_workflow_requires_a_confirmed_subscription() -> None:
-    template = OIDC_TEMPLATE.read_text(encoding="utf-8")
-    workflow = OPERATIONAL_WORKFLOW.read_text(encoding="utf-8")
+def test_operational_workflow_records_github_only_reporting_without_email_gate() -> None:
+    steps = operational_jobs()["validate"]["steps"]
+    workflow = "\n".join(step.get("run", "") for step in steps)
+    scope = next(
+        step for step in steps
+        if step.get("name") == "Record GitHub Actions notification scope"
+    )
+    record = json.loads(scope["run"].split("echo '", 1)[1].split("'", 1)[0])
 
-    assert "OperationalAlertsTopicArn" in template
-    assert "sns:ListSubscriptionsByTopic" in template
-    assert "OPERATIONAL_ALERTS_TOPIC_ARN" in workflow
-    assert "confirmed-email-subscriptions.json" in workflow
-    assert "PendingConfirmation" in workflow
+    assert record == {
+        "mode": "github_actions_only",
+        "email_delivery_validated": False,
+        "cloudwatch_events_forwarded_to_github": False,
+    }
+    assert "notification-scope.json" in scope["run"]
+    assert "GITHUB_STEP_SUMMARY" in scope["run"]
+    assert "list-subscriptions-by-topic" not in workflow
+    assert "OPERATIONAL_ALERTS_TOPIC_ARN" not in workflow
+    assert "sns publish" not in workflow.lower()
+    environment = OPERATIONAL_WORKFLOW.read_text(encoding="utf-8")
+    assert "OPERATIONAL_ALERTS_TOPIC_ARN:" not in environment
+
+
+def test_live_result_gate_does_not_mask_an_earlier_infrastructure_failure() -> None:
+    gate = next(
+        step for step in operational_jobs()["validate"]["steps"]
+        if step.get("name") == "Enforce live evaluation and load results"
+    )
+    assert "always()" in gate["if"]
+    assert "steps.live_evaluation.outcome != 'skipped'" in gate["if"]
+    assert "steps.load_validation.outcome != 'skipped'" in gate["if"]
+    assert "||" in gate["if"]
+    assert '"$LIVE_EVALUATION_OUTCOME" != "success"' in gate["run"]
+    assert '"$LOAD_VALIDATION_OUTCOME" != "success"' in gate["run"]
 
 
 def test_operational_workflow_enforces_the_complete_data_lifecycle() -> None:
