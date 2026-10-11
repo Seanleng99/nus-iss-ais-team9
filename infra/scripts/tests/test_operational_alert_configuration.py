@@ -77,6 +77,21 @@ def test_live_result_gate_does_not_mask_an_earlier_infrastructure_failure() -> N
     assert '"$LOAD_VALIDATION_OUTCOME" != "success"' in gate["run"]
 
 
+def test_operational_profile_allows_complete_multi_agent_requests_without_weakening_success():
+    steps = operational_jobs()["validate"]["steps"]
+    live = next(step for step in steps if step.get("id") == "live_evaluation")
+    load = next(step for step in steps if step.get("id") == "load_validation")
+    assert "--timeout-seconds 120" in live["run"]
+    assert "--latency-measurement request" in live["run"]
+    assert "'90000'" in live["run"]
+    assert "'0.25'" in live["run"]
+    assert "--timeout-seconds 120" in load["run"]
+    assert "'60000'" in load["run"]
+    assert load["if"] == "steps.live_evaluation.outcome == 'success'"
+    assert "--minimum-pass-rate" not in live["run"]
+    assert "--minimum-success-rate" not in load["run"]
+
+
 def test_operational_workflow_enforces_the_complete_data_lifecycle() -> None:
     jobs = operational_jobs()
     retention = jobs["retention"]

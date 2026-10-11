@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -8,13 +10,27 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.api.routes import get_ai_service_client
+from app.clients.ai_service import AIServiceUnavailableError
 from app.core.config import Settings, settings
+from app.core.run_trace import record_event
 from app.core.security import AuthenticatedPrincipal
 from app.domain.schemas import CoachResponse
 from app.infrastructure.database import Base
-from app.infrastructure.models import ChatSessionRecord, CoachQuotaLease, CoachQuotaRecord
+from app.infrastructure.models import (
+    ChatSessionRecord,
+    CoachQuotaLease,
+    CoachQuotaRecord,
+    OrchestrationTraceRecord,
+    UserRecord,
+)
 from app.main import app
-from app.services.coach_quota import CoachQuota, known_tokens, principal_key, purge_quota_records
+from app.services.coach_quota import (
+    CoachQuota,
+    known_tokens,
+    known_trace_tokens,
+    principal_key,
+    purge_quota_records,
+)
 
 NOW = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 PRINCIPAL = AuthenticatedPrincipal("oidc", "https://issuer.example", "synthetic-subject")
@@ -78,6 +94,102 @@ def test_unknown_transport_keeps_concurrency_lease_until_expiry(quota):
         quota.acquire(PRINCIPAL, now=NOW + timedelta(minutes=1))
     assert denied.value.headers["Retry-After"] == "5"
     assert quota.acquire(PRINCIPAL, now=NOW + timedelta(minutes=5))
+
+
+def failed_trace():
+    trace_id, call_id = str(uuid4()), str(uuid4())
+    return SimpleNamespace(trace_id=trace_id, status="failed", finished_at=NOW, audit={
+        "durable_events": [
+            {"event_type": "model.generation.started", "trace_id": trace_id,
+             "details": {"call_id": call_id}},
+            {"event_type": "model.generation.finished", "trace_id": trace_id,
+             "details": {"call_id": call_id, "status": "completed",
+                         "input_tokens": 190, "output_tokens": 10}},
+            {"event_type": "workflow.failed", "trace_id": trace_id,
+             "details": {"error_code": "REVIEW_FAILED"}},
+        ],
+    })
+
+
+def test_failed_workflow_with_proven_usage_releases_capacity_and_settles_once(quota):
+    trace = failed_trace()
+    with Session(quota.engine) as session, session.begin():
+        session.add(UserRecord(id="failed-user"))
+        session.flush()
+        session.add(ChatSessionRecord(id="failed-session", user_id="failed-user", title="Synthetic"))
+        session.flush()
+        session.add(OrchestrationTraceRecord(trace_id=trace.trace_id, session_id="failed-session",
+                                            status=trace.status, finished_at=NOW, audit=trace.audit))
+    lease = quota.acquire(PRINCIPAL, now=NOW)
+    quota.finish(lease, trace_id=trace.trace_id)
+    quota.finish(lease, trace_id=trace.trace_id)
+    with Session(quota.engine) as session:
+        assert session.get(CoachQuotaLease, lease) is None
+        assert session.get(CoachQuotaRecord, principal_key(PRINCIPAL)).charged_tokens == 200
+    assert quota.acquire(PRINCIPAL, now=NOW)
+
+
+@pytest.mark.parametrize("fault", ["inflight", "missing_terminal", "running", "failed_call",
+                                   "foreign_trace", "conflicting_replay", "unknown_tokens"])
+def test_failed_trace_settlement_requires_complete_trusted_generation_metadata(fault):
+    trace = failed_trace()
+    events = trace.audit["durable_events"]
+    if fault == "inflight":
+        events.insert(2, {"event_type": "model.generation.started", "trace_id": trace.trace_id,
+                          "details": {"call_id": str(uuid4())}})
+    elif fault == "missing_terminal":
+        events.pop()
+    elif fault == "running":
+        trace.status = "running"
+    elif fault == "failed_call":
+        events[1]["details"]["status"] = "failed"
+    elif fault == "foreign_trace":
+        events[1]["trace_id"] = str(uuid4())
+    elif fault == "conflicting_replay":
+        events.insert(2, {**events[1], "details": {**events[1]["details"], "output_tokens": 11}})
+    else:
+        events[1]["details"]["output_tokens"] = None
+    assert known_trace_tokens(trace) is None
+
+
+def test_identical_replayed_trace_events_are_charged_once():
+    trace = failed_trace()
+    trace.audit["durable_events"].insert(2, trace.audit["durable_events"][1])
+    assert known_trace_tokens(trace) == 200
+
+
+def test_http_completed_failure_does_not_hold_next_request_capacity(monkeypatch, db_session_factory):
+    class Client:
+        async def coach(self, _request):
+            call_id = str(uuid4())
+            record_event("model.generation.started", call_id=call_id)
+            record_event("model.generation.finished", call_id=call_id, status="completed",
+                         input_tokens=190, output_tokens=10)
+            record_event("workflow.failed", error_code="REVIEW_FAILED")
+            raise AIServiceUnavailableError()
+
+    monkeypatch.setattr(settings, "coach_concurrent_requests", 1)
+    monkeypatch.setattr(settings, "coach_requests_per_minute", 30)
+    previous = app.dependency_overrides.get(get_ai_service_client)
+    app.dependency_overrides[get_ai_service_client] = Client
+    try:
+        with TestClient(app) as client:
+            headers = {"X-API-Key": settings.api_key}
+            for session_id in ("failed-first", "failed-second"):
+                result = client.post("/api/coach", headers=headers, json={
+                    "user_id": "quota-test-failure", "session_id": session_id,
+                    "message": "Explain a budget",
+                })
+                assert result.status_code == 503
+                assert result.headers.get("X-Trace-ID")
+        with db_session_factory() as session:
+            assert session.scalars(select(CoachQuotaLease)).all() == []
+            assert session.scalar(select(CoachQuotaRecord)).charged_tokens == 400
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(get_ai_service_client, None)
+        else:
+            app.dependency_overrides[get_ai_service_client] = previous
 
 
 def test_expired_lease_frees_concurrency_without_refunding_unknown_tokens(quota):

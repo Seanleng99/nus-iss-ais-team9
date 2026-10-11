@@ -766,7 +766,10 @@ def run_live_evaluation(
     response_checks: Callable[[dict, dict], list[dict]] | None = None,
     response_observer: Callable | None = None,
     observer_stopped: Callable[[], bool] | None = None,
+    latency_measurement: str = "conversation",
 ) -> dict[str, Any]:
+    if latency_measurement not in {"conversation", "request"}:
+        raise ValueError("latency_measurement must be conversation or request")
     if maximum_total_tokens is not None and maximum_total_tokens < 1:
         raise ValueError("maximum_total_tokens must be positive")
     if repeats < 1:
@@ -779,6 +782,7 @@ def run_live_evaluation(
     records: list[dict[str, Any]] = []
     category_results: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     latencies: list[float] = []
+    request_latencies: list[float] = []
     total_input_tokens = 0
     total_output_tokens = 0
     spending_stopped = False
@@ -820,6 +824,7 @@ def run_live_evaluation(
             active_turn_index = None
             generation_attempted = False
             response_usage_processed = False
+            request_latency_recorded = False
             failure_stage = "fixture_setup"
             observer_duration = 0.0
             try:
@@ -847,9 +852,13 @@ def run_live_evaluation(
                     failure_stage = "generation_request"
                     generation_attempted = True
                     response_usage_processed = False
+                    request_latency_recorded = False
                     response, correlation_id = request_json(
                         url, api_key, payload, timeout_seconds,
                     )
+                    request_latency_ms = round((time.perf_counter() - turn_started) * 1000, 2)
+                    request_latencies.append(request_latency_ms)
+                    request_latency_recorded = True
                     audit = response.get("audit", {})
                     failure_stage = "response_validation"
                     if audit.get("composition_usage_complete") is False:
@@ -908,7 +917,7 @@ def run_live_evaluation(
                         "turn_index": turn_index,
                         "is_setup": turn_index < len(turns) - 1,
                         "passed": passed,
-                        "latency_ms": round((time.perf_counter() - turn_started) * 1000, 2),
+                        "latency_ms": request_latency_ms,
                         "correlation_id": correlation_id,
                         "trace_id": audit.get("trace_id"),
                         "input_tokens": input_tokens,
@@ -950,6 +959,8 @@ def run_live_evaluation(
                         # An invalid setup cannot establish the state under test.
                         break
             except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                if generation_attempted and not request_latency_recorded:
+                    request_latencies.append(round((time.perf_counter() - turn_started) * 1000, 2))
                 recovered = None
                 if isinstance(exc, LiveEndpointError) and exc.trace_id and active_turn_index is not None:
                     recovered = failed_turn_usage(
@@ -998,7 +1009,7 @@ def run_live_evaluation(
                         record["turns"].append({
                             "turn_index": active_turn_index, "is_setup": active_turn_index < len(turns) - 1,
                             "passed": False, "http_status": exc.status_code,
-                            "latency_ms": round((time.perf_counter() - turn_started) * 1000, 2),
+                            "latency_ms": request_latencies[-1],
                             "trace_id": exc.trace_id, "correlation_id": exc.correlation_id,
                             "input_tokens": recovered["input_tokens"] if recovered else 0,
                             "output_tokens": recovered["output_tokens"] if recovered else 0,
@@ -1044,7 +1055,8 @@ def run_live_evaluation(
             else "live_generated_contract_checks"
         ),
         "semantic_quality_review": "required" if any(case.get("rubric") for case in cases) else "not_requested",
-        "latency_unit": "complete_conversation_excluding_cleanup",
+        "latency_unit": ("coach_request" if latency_measurement == "request"
+                         else "complete_conversation_excluding_cleanup"),
         "generated_at": datetime.now(UTC).isoformat(),
         "commit_sha": commit_sha,
         "target_host": target.hostname,
@@ -1062,10 +1074,18 @@ def run_live_evaluation(
         "usage_unknown": usage_unknown,
         "category_pass_rates": category_metrics,
         "latency_ms": {
-            "p50": _percentile(latencies, 0.5),
-            "p95": _percentile(latencies, 0.95),
-            "p99": _percentile(latencies, 0.99),
+            name: _percentile(request_latencies if latency_measurement == "request" else latencies, fraction)
+            for name, fraction in (("p50", 0.5), ("p95", 0.95), ("p99", 0.99))
         },
+        "conversation_latency_ms": {
+            name: _percentile(latencies, fraction)
+            for name, fraction in (("p50", 0.5), ("p95", 0.95), ("p99", 0.99))
+        },
+        "request_latency_ms": {
+            name: _percentile(request_latencies, fraction)
+            for name, fraction in (("p50", 0.5), ("p95", 0.95), ("p99", 0.99))
+        },
+        "measured_requests": len(request_latencies),
         "token_usage": {
             "input": total_input_tokens,
             "output": total_output_tokens,
@@ -1121,6 +1141,7 @@ def write_job_summary(report: dict[str, Any], failures: list[str]) -> None:
         f"- Measurement: {report['measurement']}",
         f"- Semantic rubric review: {report['semantic_quality_review']}",
         f"- Contract pass rate: {report['pass_rate']:.1%}",
+        f"- Latency unit: {report.get('latency_unit', 'complete_conversation_excluding_cleanup')}",
         f"- Categories: {categories}",
         (
             f"- P50/P95/P99: {report['latency_ms']['p50']} / "
@@ -1145,6 +1166,7 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=float, default=60)
+    parser.add_argument("--latency-measurement", choices=("conversation", "request"), default="conversation")
     parser.add_argument("--expected-model-provider", default="openai")
     parser.add_argument("--expected-model-id", required=True)
     parser.add_argument("--expected-prompt-version", default=json.loads((Path(__file__).resolve().parents[2] / "apps/ai-service/prompts/current/manifest.json").read_text())["version"])
@@ -1174,6 +1196,7 @@ def main() -> None:
         output_cost_per_million=args.output_cost_per_million,
         commit_sha=args.commit_sha,
         maximum_estimated_cost_usd=args.maximum_estimated_cost_usd,
+        latency_measurement=args.latency_measurement,
     )
     failures = enforce_thresholds(
         report,
@@ -1182,6 +1205,12 @@ def main() -> None:
         maximum_estimated_cost_usd=args.maximum_estimated_cost_usd,
     )
     report["threshold_failures"] = failures
+    report["thresholds"] = {
+        "minimum_pass_rate": args.minimum_pass_rate,
+        "maximum_p95_ms": args.maximum_p95_ms,
+        "maximum_estimated_cost_usd": args.maximum_estimated_cost_usd,
+        "request_timeout_seconds": args.timeout_seconds,
+    }
     report["passed"] = not failures
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

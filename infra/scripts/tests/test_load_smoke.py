@@ -113,3 +113,20 @@ def test_http_quota_denial_still_fails_load_and_reports_its_status(monkeypatch, 
     assert report["passed"] is False
     assert report["successes"] == 0
     assert report["failure_types"] == ["HTTP 429"]
+
+
+@pytest.mark.parametrize("cleaned_up", [False, True])
+def test_failed_request_preserves_cleanup_outcome(monkeypatch, capsys, cleaned_up):
+    def denied(*_args, **_kwargs):
+        raise urllib.error.HTTPError("https://example.test/api/coach", 429,
+                                     "Too Many Requests", {}, None)
+
+    monkeypatch.setattr(load_smoke.urllib.request, "urlopen", denied)
+    monkeypatch.setattr(load_smoke, "cleanup_session", lambda *_args: cleaned_up)
+    monkeypatch.setattr("sys.argv", ["load_smoke.py", "--url", "https://example.test/api/coach",
+                                    "--api-key", "synthetic", "--requests", "1"])
+    with pytest.raises(SystemExit, match="success rate was below threshold"):
+        load_smoke.main()
+    report = json.loads(capsys.readouterr().out)
+    assert report["failure_types"] == ["HTTP 429"]
+    assert report["cleanup_failures"] == int(not cleaned_up)

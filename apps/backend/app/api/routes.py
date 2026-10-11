@@ -188,17 +188,18 @@ async def coach(
     quota = CoachQuota(session.get_bind(), settings)
     lease = quota.acquire(principal)
     response = None
+    usage_trace = {}
     try:
         response = await _execute_coach(request, http_response, ai_service, session, principal,
-                                        x_synthetic_log, context_snapshot)
+                                        x_synthetic_log, context_snapshot, usage_trace)
         return response
     finally:
         if response is None:
             session.rollback()
-        quota.finish(lease, response)
+        quota.finish(lease, response, trace_id=usage_trace.get("trace_id"))
 
 
-async def _execute_coach(request, http_response, ai_service, session, principal, x_synthetic_log, context_snapshot):
+async def _execute_coach(request, http_response, ai_service, session, principal, x_synthetic_log, context_snapshot, usage_trace):
     log_event("VV entering ", "app.api.routes", "_execute_coach")
     repository = SQLAlchemyChatRepository(session)
     existed, revision, context = context_snapshot
@@ -214,6 +215,7 @@ async def _execute_coach(request, http_response, ai_service, session, principal,
     elif len(chat.messages) != revision:
         raise HTTPException(status_code=409, detail="Conversation changed; please retry.")
     run = DurableRun(session, chat.id, settings.ai_service_timeout_seconds + settings.ai_service_composition_timeout_seconds)
+    usage_trace["trace_id"] = run.trace_id
     token = active_run.set(run)
     try:
         record_event("backend.authorization.accepted", authenticated=True)

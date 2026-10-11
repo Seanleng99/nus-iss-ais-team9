@@ -12,6 +12,15 @@ from pathlib import Path
 from uuid import uuid4
 
 
+class LoadRequestError(Exception):
+    """Preserve cleanup evidence when the generation request fails."""
+
+    def __init__(self, failure_type: str, cleaned_up: bool):
+        self.failure_type = failure_type
+        self.cleaned_up = cleaned_up
+        super().__init__(failure_type)
+
+
 def require_http_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -79,6 +88,7 @@ def send_request(
         method="POST",
     )
     started = time.perf_counter()
+    failure_type = None
     try:
         # B310 is contained by require_http_url before the request is constructed.
         with urllib.request.urlopen(  # nosec B310
@@ -87,10 +97,16 @@ def send_request(
             response.read()
             status = response.status
             latency_ms = (time.perf_counter() - started) * 1000
+    except urllib.error.HTTPError as error:
+        failure_type = f"HTTP {error.code}"
+    except (OSError, ValueError) as error:
+        failure_type = type(error).__name__
     finally:
         cleaned_up = cleanup_session(
             url, api_key, user_id, session_id, timeout_seconds
         )
+    if failure_type:
+        raise LoadRequestError(failure_type, cleaned_up) from None
     return status, latency_ms, cleaned_up
 
 
@@ -169,8 +185,13 @@ def main() -> None:
                 cleanup_failures += int(not cleaned_up)
             except urllib.error.HTTPError as error:
                 failures.append(f"HTTP {error.code}")
+                cleanup_failures += 1
+            except LoadRequestError as error:
+                failures.append(error.failure_type)
+                cleanup_failures += int(not error.cleaned_up)
             except (OSError, ValueError) as error:
                 failures.append(type(error).__name__)
+                cleanup_failures += 1
 
     report = build_report(
         url=args.url,
@@ -191,6 +212,11 @@ def main() -> None:
     if cleanup_failures:
         threshold_failures.append("one or more synthetic chat sessions were not deleted")
     report["threshold_failures"] = threshold_failures
+    report["thresholds"] = {
+        "minimum_success_rate": args.minimum_success_rate,
+        "maximum_p95_ms": args.maximum_p95_ms,
+        "request_timeout_seconds": args.timeout_seconds,
+    }
     report["passed"] = not threshold_failures
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

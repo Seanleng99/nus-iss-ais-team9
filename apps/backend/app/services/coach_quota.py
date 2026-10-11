@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 from datetime import UTC, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select
@@ -14,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.telemetry import log_event
-from app.infrastructure.models import CoachQuotaLease, CoachQuotaRecord
+from app.infrastructure.models import CoachQuotaLease, CoachQuotaRecord, OrchestrationTraceRecord
 
 
 def principal_key(principal):
@@ -86,10 +86,10 @@ class CoachQuota:
             raise HTTPException(status_code=503, detail="Coaching is temporarily unavailable.",
                                 headers={"Retry-After": "5"}) from None
 
-    def finish(self, lease_id, response=None):
+    def finish(self, lease_id, response=None, *, trace_id=None):
         log_event("VV entering ", "app.services.coach_quota.CoachQuota", "finish")
         actual = known_tokens(response)
-        if not completed_calls(response):
+        if not completed_calls(response) and not trace_id:
             # A timed-out/cancelled transport can leave AI calls running. Keep
             # their concurrency lease as well as their token reservation until
             # expiry, instead of immediately admitting replacement requests.
@@ -97,6 +97,11 @@ class CoachQuota:
             return
         try:
             with Session(self.engine) as session, session.begin():
+                if not completed_calls(response):
+                    actual = known_trace_tokens(session.get(OrchestrationTraceRecord, trace_id))
+                    if actual is None:
+                        log_event("coach.quota.pending", usage_complete=False)
+                        return
                 lease = session.get(CoachQuotaLease, lease_id)
                 if lease is None:
                     return
@@ -136,6 +141,50 @@ def known_tokens(response):
             return None
         total += numbers[2]
     return total
+
+
+def known_trace_tokens(trace):
+    """Settle a failed run only from paired, terminal, persisted model events."""
+    if (trace is None or trace.status not in {"failed", "timed_out", "abandoned"}
+            or trace.finished_at is None or not isinstance(trace.audit, dict)):
+        return None
+    events = trace.audit.get("durable_events")
+    if not isinstance(events, list) or len(events) >= 2000:
+        return None
+    started, finished = set(), {}
+    terminal_position = last_call_position = -1
+    for position, event in enumerate(events):
+        if not isinstance(event, dict):
+            return None
+        kind = event.get("event_type")
+        if kind not in {"model.generation.started", "model.generation.finished",
+                        "workflow.completed", "workflow.failed"}:
+            continue
+        details = event.get("details")
+        if event.get("trace_id") != trace.trace_id or not isinstance(details, dict):
+            return None
+        if kind in {"workflow.completed", "workflow.failed"}:
+            terminal_position = position
+            continue
+        last_call_position = position
+        call_id = details.get("call_id")
+        try:
+            UUID(call_id)
+        except (ValueError, TypeError, AttributeError):
+            return None
+        if kind == "model.generation.started":
+            started.add(call_id)
+            continue
+        numbers = (details.get("input_tokens"), details.get("output_tokens"))
+        if (details.get("status") != "completed" or details.get("error_code")
+                or any(type(number) is not int or number < 0 for number in numbers)):
+            return None
+        if call_id in finished and finished[call_id] != numbers:
+            return None
+        finished[call_id] = numbers
+    if not started or started != finished.keys() or terminal_position <= last_call_position:
+        return None
+    return sum(sum(numbers) for numbers in finished.values())
 
 
 def purge_quota_records(session, now):

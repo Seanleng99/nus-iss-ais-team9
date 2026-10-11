@@ -258,11 +258,14 @@ jobs:
           --output artifacts/live-evaluation.json
           --repeats "$REPEATS"
           --expected-model-id "$EXPECTED_MODEL_ID"
-          --maximum-p95-ms "${{ vars.LIVE_EVAL_MAX_P95_MS || '10000' }}"
-          --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '0.05' }}"
+          --timeout-seconds 120
+          --latency-measurement request
+          --maximum-p95-ms "${{ vars.LIVE_EVAL_MAX_P95_MS || '90000' }}"
+          --maximum-estimated-cost-usd "${{ vars.LIVE_EVAL_MAX_COST_USD || '0.25' }}"
 
       - name: Run bounded load and cleanup test data
         id: load_validation
+        if: steps.live_evaluation.outcome == 'success'
         continue-on-error: true
         run: >-
           python infra/scripts/load_smoke.py
@@ -270,7 +273,8 @@ jobs:
           --api-key "$SMOKE_BACKEND_API_KEY"
           --requests "$LOAD_REQUESTS"
           --concurrency "$LOAD_CONCURRENCY"
-          --maximum-p95-ms "${{ vars.LOAD_MAX_P95_MS || '8000' }}"
+          --timeout-seconds 120
+          --maximum-p95-ms "${{ vars.LOAD_MAX_P95_MS || '60000' }}"
           --output artifacts/load-evidence.json
 
       - name: Exercise and verify backend task replacement

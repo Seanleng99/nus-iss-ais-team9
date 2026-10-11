@@ -633,7 +633,7 @@ def test_budget_acceptance_checks_extraction_and_missing_inputs(fault):
     assert all(item["passed"] for item in budget_checks) is (fault is None)
 
 
-def conversation_run(monkeypatch, request, cases, provider="openai", cleanup=None):
+def conversation_run(monkeypatch, request, cases, provider="openai", cleanup=None, **options):
     monkeypatch.setattr(live_evaluation, "request_json", request)
     monkeypatch.setattr(live_evaluation, "cleanup_session", cleanup or (lambda *_args: True))
     return run_live_evaluation(
@@ -641,6 +641,7 @@ def conversation_run(monkeypatch, request, cases, provider="openai", cleanup=Non
         repeats=1, timeout_seconds=1, expected_model_provider=provider,
         expected_model_id="model", expected_prompt_version="v6",
         input_cost_per_million=1, output_cost_per_million=2, commit_sha="abc123",
+        **options,
     )
 
 
@@ -651,6 +652,48 @@ def turn_response(answer="Synthetic answer", *, blocked=False, input_tokens=10):
             "model_calls": [{"component": "router", "input_tokens": input_tokens, "output_tokens": 5}], "model_call_count": 1,
             "model_input_tokens": input_tokens, "model_output_tokens": 5},
     }
+
+
+def test_request_latency_measures_each_turn_and_excludes_fixture_and_cleanup(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(live_evaluation.time, "perf_counter", lambda: clock[0])
+
+    def request(*_args):
+        clock[0] += 2
+        return turn_response(), "correlation"
+
+    def cleanup(*_args):
+        clock[0] += 100
+        return True
+
+    report = conversation_run(monkeypatch, request, [{
+        "id": "three-turns", "category": "continuity",
+        "setup_turns": [{"message": "Setup one"}, {"message": "Setup two"}],
+        "request": {"message": "Final question"}, "expected": {"blocked": False},
+    }], cleanup=cleanup, latency_measurement="request")
+    assert report["latency_unit"] == "coach_request"
+    assert report["measured_requests"] == 3
+    assert report["latency_ms"]["p95"] == 2000
+    assert report["conversation_latency_ms"]["p95"] == 6000
+    assert report["records"][0]["latency_ms"] == 6000
+
+
+def test_failed_request_is_included_in_request_latency(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(live_evaluation.time, "perf_counter", lambda: clock[0])
+
+    def request(*_args):
+        clock[0] += 120
+        raise TimeoutError()
+
+    report = conversation_run(monkeypatch, request, [{
+        "id": "timeout", "category": "availability",
+        "request": {"message": "Synthetic question"}, "expected": {},
+    }], latency_measurement="request")
+    assert report["latency_ms"]["p95"] == 120000
+    assert report["measured_requests"] == 1
+    assert report["pass_rate"] == 0
+    assert report["token_usage_complete"] is False
 
 
 def test_multi_turn_live_evaluation_preserves_session_and_counts_every_turn(monkeypatch):
