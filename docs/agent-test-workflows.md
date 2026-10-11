@@ -81,16 +81,16 @@ flowchart TD
     Fresh -->|Yes| Corpus[Approved corpus ingestion + governance]
     Corpus --> Deploy[Capture revisions + migrate + deploy]
     Deploy --> Smoke[Health and AI safety smoke]
-    Smoke --> Fairness[19 live fairness pairs once]
+    Smoke --> Security[Two-trial live security regressions]
+    Security --> Fairness[19 live fairness pairs once]
     Fairness --> Agents[Seven serial live agent/RAG datasets]
-    Agents --> Security[Two-trial live security regressions]
-    Security --> Acceptance{Complete live acceptance?}
+    Agents --> Acceptance{Complete live acceptance?}
     Acceptance -->|Pass| Success[Release accepted]
     Acceptance -->|Fail or incomplete| Rollback[Fail release + restore previous services]
 ```
 
 Offline suites run in parallel. Release stages have separate jobs; the live
-matrix exposes all seven suites with one running at a time and stops queued
+matrix starts after live security and fairness pass, exposes all seven suites with one running at a time and stops queued
 work after failure. The workflow retains the release lock through acceptance
 and rollback. No live stage uses `continue-on-error`; the final gate and evidence
 upload also run on failure. That gate requires successful prerequisite jobs and

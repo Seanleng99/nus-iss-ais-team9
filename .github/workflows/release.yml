@@ -782,11 +782,79 @@ jobs:
       - name: Run health and AI safety smoke tests
         run: python infra/scripts/post_deploy_smoke.py --frontend-health-url "$FRONTEND_HEALTH_URL" --backend-health-url "$BACKEND_HEALTH_URL" --coach-url "$COACH_SMOKE_URL" --expected-model-provider openai --expected-corpus-version "$EDUCATION_CORPUS_VERSION" --expected-policy-corpus-version "$POLICY_CORPUS_VERSION" --persistence-base-url "${COACH_SMOKE_URL%/coach}" --api-key "$SMOKE_BACKEND_API_KEY"
 
+  security-live:
+    name: Promptfoo — required live security
+    needs:
+      - deploy-demo
+      - smoke
+    if: needs.deploy-demo.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: demo
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      SECURITY_TEST_ROLE: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
+      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install release acceptance dependencies
+        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
+      - name: Validate first-attempt release context
+        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
+      - name: Prepare live security runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Obtain isolated live security credentials
+        id: security-credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          output-credentials: true
+          output-env-credentials: false
+          mask-aws-account-id: true
+      - name: Promptfoo — required live security regressions
+        id: security-live
+        timeout-minutes: 45
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.security-credentials.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.security-credentials.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.security-credentials.outputs.aws-session-token }}
+        run: |
+          python security/promptfoo/run_bounded.py \
+            --mode live \
+            --repeats 2 \
+            --max-model-tokens 1000000 \
+            --output artifacts/post-deploy/promptfoo-live.json
+      - name: Publish live security evidence
+        run: python infra/scripts/summarize_promptfoo.py artifacts/post-deploy/promptfoo-live.json --output artifacts/post-deploy/promptfoo-live-summary.md --title "Required release live security — real model, release source"
+        if: always()
+      - name: Retain live security evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-security-${{ github.run_id }}
+          path: artifacts/post-deploy/
+          if-no-files-found: error
+          retention-days: 90
+
   fairness:
     name: Live fairness testing
     needs:
       - deploy-demo
-      - smoke
+      - security-live
     if: needs.deploy-demo.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -910,74 +978,6 @@ jobs:
           - investment
           - risk-compliance
           - rag
-
-  security-live:
-    name: Promptfoo — required live security
-    needs:
-      - deploy-demo
-      - live
-    if: needs.deploy-demo.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    environment:
-      name: demo
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
-      RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-      SECURITY_TEST_ROLE: ${{ vars.AWS_INVESTMENT_TEST_ROLE_ARN }}
-      INVESTMENT_TEST_OPENAI_SECRET_ID: ${{ vars.INVESTMENT_TEST_OPENAI_SECRET_ID }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.RELEASE_SHA }}
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Install release acceptance dependencies
-        run: python -m pip install -e "apps/shared" -e "apps/ai-service"
-      - name: Validate first-attempt release context
-        run: python -m infra.scripts.post_deploy_acceptance --mode validate-context
-      - name: Prepare live security runtime
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - name: Obtain isolated live security credentials
-        id: security-credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ env.SECURITY_TEST_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-          output-credentials: true
-          output-env-credentials: false
-          mask-aws-account-id: true
-      - name: Promptfoo — required live security regressions
-        id: security-live
-        timeout-minutes: 45
-        env:
-          AWS_ACCESS_KEY_ID: ${{ steps.security-credentials.outputs.aws-access-key-id }}
-          AWS_SECRET_ACCESS_KEY: ${{ steps.security-credentials.outputs.aws-secret-access-key }}
-          AWS_SESSION_TOKEN: ${{ steps.security-credentials.outputs.aws-session-token }}
-        run: |
-          python security/promptfoo/run_bounded.py \
-            --mode live \
-            --repeats 2 \
-            --max-model-tokens 1000000 \
-            --output artifacts/post-deploy/promptfoo-live.json
-      - name: Publish live security evidence
-        run: python infra/scripts/summarize_promptfoo.py artifacts/post-deploy/promptfoo-live.json --output artifacts/post-deploy/promptfoo-live-summary.md --title "Required release live security — real model, release source"
-        if: always()
-      - name: Retain live security evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-security-${{ github.run_id }}
-          path: artifacts/post-deploy/
-          if-no-files-found: error
-          retention-days: 90
 
   live-acceptance:
     name: Require complete live release acceptance

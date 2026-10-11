@@ -164,9 +164,9 @@ def test_split_release_requires_preflight_scan_smoke_and_all_live_stages():
     assert jobs["build-images"]["needs"] == ["release-gate", "live-preflight"]
     assert jobs["deploy-demo"]["needs"] == ["release-gate", "build-images", "corpus"]
     assert jobs["smoke"]["needs"] == ["deploy-demo"]
-    assert jobs["fairness"]["needs"] == ["deploy-demo", "smoke"]
+    assert jobs["security-live"]["needs"] == ["deploy-demo", "smoke"]
+    assert jobs["fairness"]["needs"] == ["deploy-demo", "security-live"]
     assert jobs["live"]["needs"] == ["deploy-demo", "fairness"]
-    assert jobs["security-live"]["needs"] == ["deploy-demo", "live"]
     assert set(jobs["live-acceptance"]["needs"]) == set(acceptance.REQUIRED_JOBS)
     assert jobs["rollback"]["needs"] == ["deploy-demo", "live-acceptance"]
     assert release["concurrency"] == {"group": "deploy-demo", "cancel-in-progress": "false"}
@@ -272,13 +272,13 @@ def test_failed_stage_stops_later_paid_jobs_and_still_selects_gate_and_rollback(
     states["deploy-demo"].update({"outputs.deploy": "true", "outputs.ai-attempted": "true"})
     states[failure]["result"] = result
     if failure == "smoke":
+        assert not selected(jobs["security-live"], states)
+        states["security-live"]["result"] = "skipped"
+    if failure in ("smoke", "security-live"):
         assert not selected(jobs["fairness"], states)
         states["fairness"]["result"] = "skipped"
-    if failure in ("smoke", "fairness"):
+    if failure in ("smoke", "security-live", "fairness"):
         assert not selected(jobs["live"], states)
-        states["live"]["result"] = "skipped"
-    if failure in ("smoke", "fairness", "live"):
-        assert not selected(jobs["security-live"], states)
     assert selected(jobs["live-acceptance"], states)
     states["live-acceptance"] = {"result": "failure"}
     assert selected(jobs["rollback"], states)

@@ -26,10 +26,11 @@ CI runs retain their original optional/skipped/advisory results.
 1. Successful push CI for current `main`; validate live configuration and secret
    access, then build/publish and scan release images.
 2. Reject stale releases before corpus ingestion and immediately before deployment.
-   Mutating and paid release-job reruns require fresh CI.
+   Ingestion, deployment and paid-test job reruns require fresh CI. Rollback can
+   be retried separately if recovery itself fails.
 3. Ingest/audit approved corpora, capture previous task revisions, deploy the
    coherent release, run migrations and existing health/authentication/persistence/AI smoke checks.
-4. Run all 19 fairness pairs once, then seven agent/RAG datasets, then live security.
+4. Run live security, then all 19 fairness pairs once, then seven agent/RAG datasets.
    A failed execution stops subsequent paid stages; their missing evidence remains
    incomplete. The final evidence gate always runs for a selected release.
 5. Retain detailed evidence and review forms even on failure. Refresh deployment
@@ -45,9 +46,9 @@ Each stage is a separate job in [release.yml](../.github/workflows/release.yml):
 | `corpus` | Freshness check and approved Bedrock corpus ingestion/governance |
 | `deploy-demo` | Freshness check, runtime configuration checks, circuit breaker, previous revisions, migration and ECS updates |
 | `smoke` | Required health, authentication, persistence and AI safety smoke |
-| `fairness` | All 19 pairs once, with 38 coaching requests |
-| `live` | Seven visible agent/RAG matrix jobs; `max-parallel: 1`, `fail-fast: true` |
 | `security-live` | Full two-trial live security regressions |
+| `fairness` | All 19 pairs once after security, with 38 coaching requests |
+| `live` | Seven visible agent/RAG matrix jobs after fairness; `max-parallel: 1`, `fail-fast: true` |
 | `live-acceptance` | Collect artifacts and require every prerequisite job and all objective evidence to pass |
 | `rollback` | Fresh deployment credentials; restore attempted services if deployment or acceptance failed |
 
@@ -88,8 +89,12 @@ environment variables before enabling a release with this wiring:
 | `INVESTMENT_TEST_OPENAI_SECRET_ID` | Existing secret containing `openai-api-key` |
 
 The security role's OIDC trust must accept the exact `demo` environment subject
-`repo:OWNER/REPOSITORY:environment:demo`, rather than only the former main-ref
-subject. Secret permissions remain scoped to the existing evaluation secret.
+issued by the repository. This repository uses immutable subjects:
+`repo:Seanleng99@73147011/nus-iss-ais-team9@1321857657:environment:demo`.
+Check `gh api repos/OWNER/REPOSITORY/actions/oidc/customization/sub` for its
+`sub_claim_prefix`; name-only subjects are insufficient when
+`use_immutable_subject` is true. See [GitHub's OIDC reference](https://docs.github.com/en/actions/reference/security/oidc).
+Secret permissions remain scoped to the existing evaluation secret.
 The workflow preflights role/secret access before changing services. Security
 credentials are confined to the preflight/scan steps in their separate jobs using the AWS action's
 [documented credential-output settings](https://github.com/aws-actions/configure-aws-credentials#retrieving-credentials-from-step-output);
@@ -161,7 +166,16 @@ The `demo` rates were subsequently configured to USD 0.10 input / USD 0.50 outpu
 per million tokens for standard short-context GPT-6 Luna, checked against
 [OpenAI pricing](https://developers.openai.com/api/docs/pricing) on 2026-10-11.
 These rates are cost-estimation settings, not a billing guarantee. The existing
-evaluation role's trust now includes the exact `demo` subject as well as its
-existing main-ref subject; its secret-read permission remains scoped to the
+evaluation role's trust now includes the exact immutable main and `demo` subjects
+as well as its existing name-only subjects; its secret-read permission remains scoped to the
 existing evaluation secret. Configuration and local tests do not establish live
 acceptance; the next release must pass all required jobs.
+
+The first split run's CI passed, but [release 38118021857](https://github.com/Seanleng99/nus-iss-ais-team9/actions/runs/38118021857)
+stopped in OIDC preflight because the initial trust repair used name-only
+subjects. No image publishing, corpus ingestion, ECS update or paid test started.
+The immutable subjects above were then added and verified against the
+repository's OIDC settings and numeric IDs. Existing trust and secret permissions
+were preserved. The required order is smoke → live security → fairness →
+agent/RAG matrix → final acceptance; all acceptance
+and rollback gates remain required.

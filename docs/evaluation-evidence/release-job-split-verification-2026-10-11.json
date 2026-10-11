@@ -2,12 +2,12 @@
   "schema_version": 1,
   "validation_date": "2026-10-11",
   "validation_type": "local_offline_and_remote_configuration_readback",
-  "base_commit": "9f883e03dc7d68ff0cf35906bc8dee35a47427a7",
+  "base_commit": "b6c1a35c8803c3841c7a08b81b56283aabd6981e",
   "source_sha256_utf8_lf": {
-    ".github/workflows/release.yml": "93769b99ec33029b6a5042fb309ce9af11b9f18f42d96228c93affafb0ba2cf4",
+    ".github/workflows/release.yml": "20e81dcf4ae55c43d897589da95e2ea6b1705ad73a184d2fca9620ccd09917a8",
     "infra/scripts/post_deploy_acceptance.py": "6aa5e1244a5d364c32514cdf285287361a0ae25b59c51bbd58c8cfb240e84fb3",
     "infra/scripts/deployment_baseline.py": "ae6f2bca790509c158ba4532ab077088e909b51c6bf34bc67e2dfb049bc52834",
-    "infra/scripts/tests/test_post_deploy_acceptance.py": "eabb5d07584901c60ee96ec78fdcf7a31cbaf416d04d676c8468bd16c493143d",
+    "infra/scripts/tests/test_post_deploy_acceptance.py": "5853400f22fcfd42ab2a0952ab9ae00261d8c3d3fc7cd722466da1359b440486",
     "infra/scripts/tests/test_deployment_baseline.py": "b34f353abb930f691e199e51494d2989b39fec99f696ab825bb01b2c60a4b3b1",
     "infra/scripts/tests/test_release_corpus_versions.py": "531b12cac134bf284fd0b5037b35e340507ac5cff8a79e67cb62ff8e5609404c",
     "infra/scripts/tests/test_investment_live_acceptance.py": "e97d873f27b4194aff6e6bb7328577ba98505786195e31872747e8812a646aee"
@@ -65,9 +65,9 @@
     "corpus",
     "deploy-demo",
     "smoke",
+    "security-live",
     "fairness",
     "live",
-    "security-live",
     "live-acceptance",
     "rollback"
   ],
@@ -85,6 +85,13 @@
     "max_parallel": 1,
     "fail_fast": true
   },
+  "required_post_deploy_order": [
+    "smoke",
+    "security-live",
+    "fairness",
+    "live",
+    "live-acceptance"
+  ],
   "fairness": {
     "pairs": 19,
     "repeats": 1,
@@ -94,7 +101,7 @@
     "all prerequisite conclusions and complete evidence required",
     "failed/cancelled/skipped/missing jobs fail closed",
     "stale/no-op releases skip acceptance and never advance deployment baseline",
-    "paid or mutating job reruns require fresh CI",
+    "ingestion, deployment and paid-test job reruns require fresh CI; rollback can be retried separately",
     "attempts recorded before ECS updates; partial failures select rollback",
     "rollback restores only attempted services and waits for stability",
     "captured family/revision outputs omit masked AWS account ID",
@@ -106,9 +113,31 @@
     "demo_live_model_output_usd_per_million": "0.50",
     "pricing_source": "https://developers.openai.com/api/docs/pricing",
     "pricing_assumption": "GPT-6 Luna standard short-context token estimates",
-    "evaluation_role_trust": "existing main subject retained; exact repository demo environment subject added and read back",
+    "evaluation_role_trust": "existing name-only main/demo subjects retained; verified immutable main/demo subjects added and read back",
+    "github_oidc": {
+      "use_default": true,
+      "use_immutable_subject": true,
+      "sub_claim_prefix": "repo:Seanleng99@73147011/nus-iss-ais-team9@1321857657",
+      "owner_id": 73147011,
+      "repository_id": 1321857657
+    },
+    "verified_immutable_subjects": [
+      "repo:Seanleng99@73147011/nus-iss-ais-team9@1321857657:ref:refs/heads/main",
+      "repo:Seanleng99@73147011/nus-iss-ais-team9@1321857657:environment:demo"
+    ],
     "secret_read_policy": "existing single evaluation secret only; permissions unchanged; IAM simulation returned allowed",
     "secret_values_printed": false
+  },
+  "prior_split_ci": {
+    "commit": "b6c1a35c8803c3841c7a08b81b56283aabd6981e",
+    "run_id": 38117841632,
+    "conclusion": "success"
+  },
+  "prior_split_release": {
+    "run_id": 38118021857,
+    "preflight": "failed before deployment or paid execution",
+    "root_cause": "evaluation role trusted name-only subjects; repository issues immutable subjects",
+    "fix": "exact immutable main/demo trust added; existing subjects and secret permissions preserved"
   },
   "paid_live_acceptance": "NOT RUN during local verification",
   "deployment": "NOT RUN during local verification",
