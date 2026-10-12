@@ -186,7 +186,7 @@ def test_approved_gcc_exception_is_limited_to_repositories_version_and_review_wi
         "id": cve,
         "attributes": {"package_name": "gcc-14", "package_version": "14.2.0-19"},
     }
-    active = ecr_scan_gate.load_exceptions(exception_file, date(2026, 10, 3))
+    active = ecr_scan_gate.load_exceptions(exception_file, date(2026, 10, 12))
     approved = ecr_scan_gate.excepted_finding(finding, "nus-iss-ais-team9-ai", active)
     assert approved is not None
     assert approved["expires_on"] == "2026-10-30"
@@ -210,6 +210,7 @@ def test_all_renewed_exceptions_stop_matching_after_october_30() -> None:
     assert {entry["id"] for entry in last_day} == {
         "CVE-2026-95619", "CVE-2026-102010", "CVE-2026-72897",
         "CVE-2026-84784", "CVE-2026-84782", "CVE-2026-85091",
+        "CVE-2026-5435", "CVE-2026-19499",
     }
     assert all(entry["expires_on"] == "2026-10-30" for entry in last_day)
     for entry in last_day:

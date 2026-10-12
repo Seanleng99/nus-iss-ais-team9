@@ -89,6 +89,36 @@
       "expires_on": "2026-10-30",
       "reason": "Renewal of the 2026-09-06 exception. The services do not call gzprintf or gzvprintf and do not use non-blocking gzwrite with externally managed buffers. Debian still lists the exact Trixie package as vulnerable with no fixed version available.",
       "source": "https://security-tracker.debian.org/tracker/CVE-2026-85091"
+    },
+    {
+      "id": "CVE-2026-5435",
+      "package_name": "glibc",
+      "package_version": "2.41-12+deb13u4",
+      "repositories": [
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
+      ],
+      "reviewed_on": "2026-10-12",
+      "reviewed_by": "Repository owner (explicit approval in OpenCode conversation on 2026-10-12)",
+      "expires_on": "2026-10-30",
+      "reason": "Temporary risk acceptance for the existing synthetic-data demo. The Debian tracker rates this a minor issue and marks trixie no-dsa; the exact Trixie package 2.41-12+deb13u4 has no fixed version, upstream fixed it in glibc 2.43. The out-of-bounds write is confined to the deprecated ns_printrrf/ns_printrr/fp_nquery DNS debugging functions when printing TSIG records, reachable only from DNS server or resolver tooling; no service runs such tooling and the AI service is private-subnet-only. Native dependency reachability remains unverified and is accepted residual risk. Applies only to this exact CVE, package name/version and listed repositories through 2026-10-30.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-5435"
+    },
+    {
+      "id": "CVE-2026-19499",
+      "package_name": "glibc",
+      "package_version": "2.41-12+deb13u4",
+      "repositories": [
+        "nus-iss-ais-team9-ai",
+        "nus-iss-ais-team9-backend",
+        "nus-iss-ais-team9-frontend"
+      ],
+      "reviewed_on": "2026-10-12",
+      "reviewed_by": "Repository owner (explicit approval in OpenCode conversation on 2026-10-12)",
+      "expires_on": "2026-10-30",
+      "reason": "Temporary risk acceptance for the existing synthetic-data demo. The Debian tracker rates this a minor issue and marks trixie no-dsa; the exact Trixie package 2.41-12+deb13u4 has no fixed version, upstream fixed it in glibc 2.43. Exploitation requires an application code path calling strfmon or strfmon_l with right-justified width padding; all three services format currency in Python, which does not use strfmon, and no network-facing application impact is known. Native dependency reachability remains unverified and is accepted residual risk. Applies only to this exact CVE, package name/version and listed repositories through 2026-10-30.",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-19499"
     }
   ]
 }
