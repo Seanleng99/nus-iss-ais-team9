@@ -988,7 +988,7 @@ def get_dashboard(
             analysis_result = analyze_spending_patterns(txn_list, period_start)
             
             # Generate insights
-            spending_insights = _generate_insights(analysis_result)
+            spending_insights = _generate_insights(analysis_result, period_start)
             spending_data_quality = analysis_result["data_quality"]
             spending_months_analyzed = analysis_result["months_analyzed"]
     except (KeyError, TypeError, ValueError) as insight_error:

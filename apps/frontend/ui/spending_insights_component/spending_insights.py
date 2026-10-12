@@ -2,9 +2,25 @@ from typing import Literal
 
 import streamlit as st
 
-from ui.i18n import ui_message, ui_text
+from ui.i18n import month_label, ui_message, ui_text
+from ui.state import get_period_start
 
 InsightType = Literal["trend", "pattern", "anomaly", "opportunity"]
+
+
+def build_insight_coach_question(insight: dict, period_label: str, prompt_text: str) -> str:
+    # The Coach router resolves calendar scope from the message text, so the
+    # question must name the concrete month instead of "the selected month".
+    question = (
+        f"I noticed this in my spending insights:\n\n"
+        f"**{insight.get('title', '')}**\n\n"
+        f"{insight.get('description', '')}\n\n"
+    )
+    if insight.get("category"):
+        question += f"This is about my {insight['category'].title()} spending for {period_label}.\n\n"
+    else:
+        question += f"This is about my spending for {period_label}.\n\n"
+    return question + prompt_text
 
 
 def _navigate_to_coach_with_question(question: str) -> None:
@@ -175,26 +191,9 @@ def render_insight_card(insight: dict) -> None:
                     use_container_width=True,
                     type="primary"
                 ):
-                    # Build context from the insight
-                    context = {
-                        "insight_type": insight.get("insight_type", "spending"),
-                        "title": insight.get("title", ""),
-                        "description": insight.get("description", ""),
-                        "category": insight.get("category", ""),
-                        "confidence": insight.get("confidence", 0),
-                    }
-                    
-                    # Format question naturally with context (no internal system details)
-                    full_question = (
-                        f"I noticed this in my spending insights:\n\n"
-                        f"**{context['title']}**\n\n"
-                        f"{context['description']}\n\n"
+                    full_question = build_insight_coach_question(
+                        insight, month_label(get_period_start()), prompt_text
                     )
-                    if context.get("category"):
-                        full_question += f"This is about my {context['category'].title()} spending.\n\n"
-                    full_question += prompt_text
-                    
-                    # Navigate to Coach with the question
                     _navigate_to_coach_with_question(full_question)
         
         # Section 3: Learn more (Educational context)

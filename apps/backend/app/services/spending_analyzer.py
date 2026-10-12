@@ -1,3 +1,5 @@
+from datetime import date
+
 from coach_math.spending_analysis import (  # noqa: F401
     AnomalyResult,
     TemporalPatternResult,
@@ -18,9 +20,15 @@ from coach_math.spending_analysis import (  # noqa: F401
 from app.api.financial_schemas import SpendingInsight
 
 
-def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
+def _month_label(value: date | str) -> str:
+    month = date.fromisoformat(value) if isinstance(value, str) else value
+    return f"{month:%B %Y}"
+
+
+def _generate_insights(analysis_result: dict, period_start: date) -> list[SpendingInsight]:
     """Describe recorded observations without inventing population statistics."""
     insights = []
+    selected_month = _month_label(period_start)
     quality = analysis_result.get("data_quality", "insufficient")
     support = {"insufficient": 0.0, "limited": 0.25, "good": 0.5, "excellent": 0.7}[quality]
     qualification = "These observations cover recorded expenses only; missing entries can change the comparison. The support score is a heuristic, not a calibrated probability."
@@ -32,7 +40,7 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
         insights.append(SpendingInsight(
             insight_id=f"trend_{trend['category']}_{trend['direction']}", insight_type="trend",
             title=f"{trend['category'].title()} spending {trend['direction']} {suffix}",
-            description=f"Recorded {trend['category']} expenses changed from SGD {trend['previous_amount']:.2f} to SGD {trend['current_amount']:.2f} for the selected month.",
+            description=f"Recorded {trend['category']} expenses changed from SGD {trend['previous_amount']:.2f} to SGD {trend['current_amount']:.2f} in {selected_month}.",
             category=trend["category"], confidence=support,
             data_refs=[f"category:{trend['category']}", f"change:{change}"],
             suggested_action="Check whether the comparison includes the same period and any one-off expenses before changing your budget.",
@@ -43,7 +51,7 @@ def _generate_insights(analysis_result: dict) -> list[SpendingInsight]:
         insights.append(SpendingInsight(
             insight_id=f"anomaly_{anomaly['category']}_{anomaly['occurred_on']}", insight_type="anomaly",
             title=f"Unusual recorded {anomaly['category']} monthly total",
-            description=f"The category total of SGD {anomaly['amount']:.2f} differs by {anomaly['deviation_percent']:.0f}% from the observed historical average of SGD {anomaly['expected_amount']:.2f}.",
+            description=f"In {_month_label(anomaly['occurred_on'])}, the category total of SGD {anomaly['amount']:.2f} differs by {anomaly['deviation_percent']:.0f}% from the observed historical average of SGD {anomaly['expected_amount']:.2f}.",
             category=anomaly["category"], confidence=support,
             data_refs=[f"category_month_total:{anomaly['amount']}", f"expected:{anomaly['expected_amount']}"],
             suggested_action="Review the month's category entries for planned bills, one-off purchases or missing records.",
