@@ -166,6 +166,7 @@ class Settings(BaseSettings):
 
     @property
     def knowledge_base_region(self) -> str:
+        log_event("VV entering ", "app.core.config.Settings", "knowledge_base_region")
         return self.bedrock_kb_region or self.aws_region
 
     @model_validator(mode="after")

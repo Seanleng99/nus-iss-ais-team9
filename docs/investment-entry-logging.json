@@ -49,7 +49,7 @@
     },
     {
       "path": "apps/ai-service/app/core/config.py",
-      "method_count": 3,
+      "method_count": 4,
       "excluded_methods": []
     },
     {

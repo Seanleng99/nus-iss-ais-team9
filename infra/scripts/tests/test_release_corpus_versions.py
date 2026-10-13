@@ -48,7 +48,8 @@ def test_release_replaces_stale_task_pins_and_checks_the_rendered_versions(tmp_p
         "EDUCATION_CORPUS_VERSION": "investment-education-sg@next",
         "POLICY_CORPUS_VERSION": "financial-coach-policy-sg@next",
     }
-    values.update(EDUCATION_KNOWLEDGE_BASE_ID="EDUCATKB12", POLICY_KNOWLEDGE_BASE_ID="POLICYKB12")
+    values.update(EDUCATION_KNOWLEDGE_BASE_ID="EDUCATKB12", POLICY_KNOWLEDGE_BASE_ID="POLICYKB12",
+                  BEDROCK_KB_REGION="ap-northeast-1")
     release_sha = "0123456789abcdef0123456789abcdef01234567"
     environment = {**dict.fromkeys(values, "stale-corpus@old"), "MAX_MODEL_TOKENS_PER_RUN": "40000",
                    "MODEL_READ_TIMEOUT_SECONDS": "15", "AGENT_TIMEOUT_SECONDS": "20",
