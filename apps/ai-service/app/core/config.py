@@ -52,6 +52,10 @@ class Settings(BaseSettings):
         alias="EMBEDDING_MODEL_ID",
     )
     aws_region: str = Field(default="ap-southeast-1", alias="AWS_REGION")
+    # Bedrock Knowledge Bases may live in another region than the service.
+    bedrock_kb_region: str | None = Field(
+        default=None, pattern=r"^[a-z]{2}(?:-[a-z]+)+-\d$", alias="BEDROCK_KB_REGION",
+    )
     prompt_set_version: str = Field(
         default=CURRENT_PROMPT_VERSION,
         alias="PROMPT_SET_VERSION",
@@ -159,6 +163,10 @@ class Settings(BaseSettings):
             reasoning_effort=override.reasoning_effort or self.model_reasoning_effort,
             max_tokens=override.max_tokens or max_tokens,
         )
+
+    @property
+    def knowledge_base_region(self) -> str:
+        return self.bedrock_kb_region or self.aws_region
 
     @model_validator(mode="after")
     def require_deployment_api_key(self) -> Self:

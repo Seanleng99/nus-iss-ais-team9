@@ -33,6 +33,25 @@ def test_both_bedrock_factories_keep_generation_on_direct_openai():
     assert len(policy.required_sources) == 3
 
 
+def test_knowledge_bases_default_to_the_service_region():
+    settings = deployed_settings(AWS_REGION="ap-southeast-1")
+    assert create_education_retriever(settings).aws_region == "ap-southeast-1"
+    assert create_policy_retriever(settings).aws_region == "ap-southeast-1"
+
+
+def test_knowledge_bases_can_use_a_separate_region():
+    settings = deployed_settings(AWS_REGION="ap-southeast-1", BEDROCK_KB_REGION="ap-northeast-1")
+    assert create_education_retriever(settings).aws_region == "ap-northeast-1"
+    assert create_policy_retriever(settings).aws_region == "ap-northeast-1"
+    assert settings.aws_region == "ap-southeast-1"
+
+
+@pytest.mark.parametrize("value", ["", "tokyo", "ap-northeast", "AP-NORTHEAST-1"])
+def test_knowledge_base_region_must_be_an_aws_region(value):
+    with pytest.raises(ValueError, match="BEDROCK_KB_REGION"):
+        deployed_settings(BEDROCK_KB_REGION=value)
+
+
 @pytest.mark.parametrize("field", ["EDUCATION_KNOWLEDGE_BASE_ID", "POLICY_KNOWLEDGE_BASE_ID"])
 @pytest.mark.parametrize("value", [None, "", "wrong-account/KB", "SHORT"])
 def test_deployed_bedrock_requires_valid_target_ids(field, value):

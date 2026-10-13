@@ -683,7 +683,7 @@ def create_education_retriever(settings: Settings) -> EducationRetriever:
     if provider == "bedrock" and settings.education_knowledge_base_id:
         return BedrockEducationRetriever(
             knowledge_base_id=settings.education_knowledge_base_id,
-            aws_region=settings.aws_region,
+            aws_region=settings.knowledge_base_region,
             expected_corpus_version=settings.education_corpus_version,
             minimum_score=settings.rag_minimum_score,
         )

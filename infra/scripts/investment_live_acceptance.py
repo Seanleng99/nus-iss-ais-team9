@@ -325,7 +325,8 @@ def main():
         ai = report["aws_before"]["ai"]["config"]
         if ai["EDUCATION_CORPUS_VERSION"] != manifest["corpus_version"]:
             raise ValueError("DEPLOYED_CORPUS_DIFFERS_FROM_TEST_MANIFEST")
-        bedrock = boto3.client("bedrock-agent-runtime", region_name=region, config=config)
+        kb_region = os.environ.get("BEDROCK_KB_REGION") or region
+        bedrock = boto3.client("bedrock-agent-runtime", region_name=kb_region, config=config)
         report["stage"] = "bedrock_retrieval"
         report["bedrock"] = bedrock_probe(bedrock, ai["EDUCATION_KNOWLEDGE_BASE_ID"], rag_cases, manifest)
         write_report(report, directory)

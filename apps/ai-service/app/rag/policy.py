@@ -280,7 +280,7 @@ def create_policy_retriever(settings: Settings) -> PolicyRetriever:
             raise ValueError("POLICY_CORPUS_VERSION must match the approved manifest")
         return BedrockPolicyRetriever(
             knowledge_base_id=settings.policy_knowledge_base_id,
-            aws_region=settings.aws_region,
+            aws_region=settings.knowledge_base_region,
             expected_corpus_version=settings.policy_corpus_version,
             minimum_score=settings.policy_rag_minimum_score,
             required_sources=tuple(source for source, _ in approved.documents),

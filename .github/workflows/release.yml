@@ -20,6 +20,7 @@ env:
   RELEASE_SOURCE_EVENT: ${{ github.event.workflow_run.event }}
   RELEASE_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+  BEDROCK_KB_REGION: ${{ vars.BEDROCK_KB_REGION || vars.AWS_REGION || 'ap-southeast-1' }}
 
 jobs:
   release-gate:
@@ -386,7 +387,7 @@ jobs:
           python infra/scripts/sync_bedrock_corpora.py \
             --education-kb "$EDUCATION_KNOWLEDGE_BASE_ID" \
             --policy-kb "$POLICY_KNOWLEDGE_BASE_ID" \
-            --region "$AWS_REGION"
+            --region "$BEDROCK_KB_REGION"
         if: steps.current.outputs.deploy == 'true'
       - name: Retain Bedrock ingestion and governance evidence
         uses: actions/upload-artifact@v7
@@ -609,6 +610,7 @@ jobs:
             POLICY_RAG_PROVIDER=bedrock
             EDUCATION_KNOWLEDGE_BASE_ID=${{ env.EDUCATION_KNOWLEDGE_BASE_ID }}
             POLICY_KNOWLEDGE_BASE_ID=${{ env.POLICY_KNOWLEDGE_BASE_ID }}
+            BEDROCK_KB_REGION=${{ env.BEDROCK_KB_REGION }}
             RAG_MINIMUM_SCORE=0.6
             POLICY_RAG_MINIMUM_SCORE=0.0
             EDUCATION_CORPUS_VERSION=${{ env.EDUCATION_CORPUS_VERSION }}
@@ -618,7 +620,7 @@ jobs:
         env:
           RENDERED_AI_TASK: ${{ steps.render-ai.outputs.task-definition }}
           MODEL_ROLE_OVERRIDES: ${{ env.MODEL_ROLE_OVERRIDES }}
-        run: python infra/scripts/verify_ecs_task_config.py --task-definition "$RENDERED_AI_TASK" --container "$AI_CONTAINER_NAME" --expect APP_ENV=demo --expect MODEL_PROVIDER=openai --expect MODEL_ID=gpt-6-luna --expect MODEL_REASONING_EFFORT=medium --expect MODEL_MAX_TOKENS=3200 --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES" --expect MAX_MODEL_TOKENS_PER_RUN=80000 --expect MODEL_READ_TIMEOUT_SECONDS=30 --expect AGENT_TIMEOUT_SECONDS=45 --expect WORKFLOW_TIMEOUT_SECONDS=85 --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION" --expect "BUILD_COMMIT=$RELEASE_SHA" --expect RAG_PROVIDER=bedrock --expect POLICY_RAG_PROVIDER=bedrock --expect "EDUCATION_KNOWLEDGE_BASE_ID=$EDUCATION_KNOWLEDGE_BASE_ID" --expect "POLICY_KNOWLEDGE_BASE_ID=$POLICY_KNOWLEDGE_BASE_ID" --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID --require-nonempty POLICY_KNOWLEDGE_BASE_ID --expect RAG_MINIMUM_SCORE=0.6 --expect POLICY_RAG_MINIMUM_SCORE=0.0 --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION" --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
+        run: python infra/scripts/verify_ecs_task_config.py --task-definition "$RENDERED_AI_TASK" --container "$AI_CONTAINER_NAME" --expect APP_ENV=demo --expect MODEL_PROVIDER=openai --expect MODEL_ID=gpt-6-luna --expect MODEL_REASONING_EFFORT=medium --expect MODEL_MAX_TOKENS=3200 --expect "MODEL_ROLE_OVERRIDES=$MODEL_ROLE_OVERRIDES" --expect MAX_MODEL_TOKENS_PER_RUN=80000 --expect MODEL_READ_TIMEOUT_SECONDS=30 --expect AGENT_TIMEOUT_SECONDS=45 --expect WORKFLOW_TIMEOUT_SECONDS=85 --expect "PROMPT_SET_VERSION=$PROMPT_SET_VERSION" --expect "BUILD_COMMIT=$RELEASE_SHA" --expect RAG_PROVIDER=bedrock --expect POLICY_RAG_PROVIDER=bedrock --expect "EDUCATION_KNOWLEDGE_BASE_ID=$EDUCATION_KNOWLEDGE_BASE_ID" --expect "POLICY_KNOWLEDGE_BASE_ID=$POLICY_KNOWLEDGE_BASE_ID" --expect "BEDROCK_KB_REGION=$BEDROCK_KB_REGION" --require-nonempty EDUCATION_KNOWLEDGE_BASE_ID --require-nonempty POLICY_KNOWLEDGE_BASE_ID --expect RAG_MINIMUM_SCORE=0.6 --expect POLICY_RAG_MINIMUM_SCORE=0.0 --expect "EDUCATION_CORPUS_VERSION=$EDUCATION_CORPUS_VERSION" --expect "POLICY_CORPUS_VERSION=$POLICY_CORPUS_VERSION"
           --require-secret OPENAI_API_KEY
       - name: Record ai deployment attempt
         if: steps.current.outputs.deploy == 'true' && (needs.release-gate.outputs.ai == 'true')

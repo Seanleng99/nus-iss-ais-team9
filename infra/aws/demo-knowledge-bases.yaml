@@ -13,6 +13,11 @@ Parameters:
   AiTaskRoleName:
     Type: String
     AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
+  ResourceNameSuffix:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^-[a-z0-9-]{1,20}$"
+    Description: Suffix for account-global IAM names when this stack is deployed in a second region, e.g. -ap-northeast-1.
 
 Conditions:
   CreateManagedCorpusBucket: !Equals [!Ref CreateCorpusBucket, "true"]
@@ -40,7 +45,7 @@ Resources:
   AiTaskRetrievalPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: GovernedKnowledgeBaseRetrieval
+      PolicyName: !Sub GovernedKnowledgeBaseRetrieval${ResourceNameSuffix}
       Roles: [!Ref AiTaskRoleName]
       PolicyDocument:
         Version: "2012-10-17"
@@ -98,7 +103,7 @@ Resources:
   EducationRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub nus-iss-ais-team9-education-kb-${AWS::AccountId}
+      RoleName: !Sub nus-iss-ais-team9-education-kb-${AWS::AccountId}${ResourceNameSuffix}
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -142,7 +147,7 @@ Resources:
   PolicyRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub nus-iss-ais-team9-policy-kb-${AWS::AccountId}
+      RoleName: !Sub nus-iss-ais-team9-policy-kb-${AWS::AccountId}${ResourceNameSuffix}
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:

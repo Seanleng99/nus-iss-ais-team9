@@ -54,6 +54,11 @@ Parameters:
   PolicySourcePrefix:
     Type: String
     Default: policy-controls/documents/
+  KnowledgeBaseRegion:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[a-z]{2}(-[a-z]+)+-[0-9]$"
+    Description: Region of the governed knowledge bases when it differs from this stack's region.
   OperationalAlertsTopicArn:
     Type: String
     AllowedPattern: "^arn:[a-z0-9-]+:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]{1,256}$"
@@ -65,6 +70,7 @@ Parameters:
 Conditions:
   HasBackendTaskRole: !Not [!Equals [!Ref EcsBackendTaskRoleArn, ""]]
   CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, ""]
+  HasKnowledgeBaseRegion: !Not [!Equals [!Ref KnowledgeBaseRegion, ""]]
 
 Resources:
   GitHubOidcProvider:
@@ -156,8 +162,12 @@ Resources:
               - bedrock:ListIngestionJobs
               - bedrock:Retrieve
             Resource:
-              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
-              - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+              - !Sub
+                - arn:${AWS::Partition}:bedrock:${KnowledgeBaseRegionName}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+                - KnowledgeBaseRegionName: !If [HasKnowledgeBaseRegion, !Ref KnowledgeBaseRegion, !Ref AWS::Region]
+              - !Sub
+                - arn:${AWS::Partition}:bedrock:${KnowledgeBaseRegionName}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+                - KnowledgeBaseRegionName: !If [HasKnowledgeBaseRegion, !Ref KnowledgeBaseRegion, !Ref AWS::Region]
           - Effect: Allow
             Action: s3:GetObject
             Resource:
@@ -203,8 +213,12 @@ Resources:
               - Effect: Allow
                 Action: bedrock:StartIngestionJob
                 Resource:
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+                  - !Sub
+                    - arn:${AWS::Partition}:bedrock:${KnowledgeBaseRegionName}:${AWS::AccountId}:knowledge-base/${EducationKnowledgeBaseId}
+                    - KnowledgeBaseRegionName: !If [HasKnowledgeBaseRegion, !Ref KnowledgeBaseRegion, !Ref AWS::Region]
+                  - !Sub
+                    - arn:${AWS::Partition}:bedrock:${KnowledgeBaseRegionName}:${AWS::AccountId}:knowledge-base/${PolicyKnowledgeBaseId}
+                    - KnowledgeBaseRegionName: !If [HasKnowledgeBaseRegion, !Ref KnowledgeBaseRegion, !Ref AWS::Region]
               - Effect: Allow
                 Action: s3:PutObject
                 Resource:

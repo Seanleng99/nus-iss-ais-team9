@@ -235,8 +235,9 @@ def main(argv=None):
         from botocore.config import Config
         config = Config(retries={"total_max_attempts": 1}, connect_timeout=10, read_timeout=30)
         region = os.environ["AWS_REGION"]
+        kb_region = os.environ.get("BEDROCK_KB_REGION") or region
         execute(report, boto3.client("ecs", region_name=region, config=config),
-                boto3.client("bedrock-agent-runtime", region_name=region, config=config), os.environ)
+                boto3.client("bedrock-agent-runtime", region_name=kb_region, config=config), os.environ)
     except (BotoCoreError, ClientError, OSError, ValueError, KeyError, TypeError) as error:
         # Do not log exception text, HTTP bodies, headers, task envs or credentials.
         report.update(status="FAIL", error_type=type(error).__name__)
