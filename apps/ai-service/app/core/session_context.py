@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.agents.education_access import education_model_question
 from app.core.guardrails import inspect_prompt
 from app.core.schemas import AgentName, SessionContext
-from app.core.telemetry import log_event
+from app.core.telemetry import log_event, quiet_calls
 
 COACHING_PREFERENCE_KEYS = {
     "financial_literacy", "accessibility_preferences", "income_frequency", "income_stability",
@@ -93,25 +93,28 @@ def sanitized_context(value):
 def sanitized_request(request):
     """One privacy boundary for both coaching and post-action composition."""
     log_event("VV entering ", "app.core.session_context", "sanitized_request")
-    context = sanitized_context(request.session_context)
-    # Only SessionContext's validated numeric/date facts may bypass text
-    # redaction. Observations and arbitrary dictionaries do not get this waiver.
-    context.facts = {
-        field: (fact if field != "goal_name" else sanitized_context(fact))
-        for field, fact in request.session_context.facts.items()
-        if field != "goal_name" or inspect_prompt(fact.value).allowed
-    }
-    context.older_summary = sanitized_summary(request.session_context.older_summary)
-    return request.model_copy(update={
-        "message": inspect_prompt(request.message, is_request=True).sanitized_text,
-        "snapshot": sanitized_context(request.snapshot),
-        "conversation_context": sanitized_context(request.conversation_context),
-        "session_context": context,
-        **{name: sanitized_context(getattr(request, name)) for name in (
-            "pending_goal", "pending_budget", "pending_transaction",
-            "budget_context", "saved_budget_capacity",
-        )},
-    })
+    # One guard call per snapshot string (thousands for a full profile); per-call
+    # logs here cost seconds in production without adding diagnostic value.
+    with quiet_calls():
+        context = sanitized_context(request.session_context)
+        # Only SessionContext's validated numeric/date facts may bypass text
+        # redaction. Observations and arbitrary dictionaries do not get this waiver.
+        context.facts = {
+            field: (fact if field != "goal_name" else sanitized_context(fact))
+            for field, fact in request.session_context.facts.items()
+            if field != "goal_name" or inspect_prompt(fact.value).allowed
+        }
+        context.older_summary = sanitized_summary(request.session_context.older_summary)
+        return request.model_copy(update={
+            "message": inspect_prompt(request.message, is_request=True).sanitized_text,
+            "snapshot": sanitized_context(request.snapshot),
+            "conversation_context": sanitized_context(request.conversation_context),
+            "session_context": context,
+            **{name: sanitized_context(getattr(request, name)) for name in (
+                "pending_goal", "pending_budget", "pending_transaction",
+                "budget_context", "saved_budget_capacity",
+            )},
+        })
 
 
 def attributed_turn_context(decision, request, message):

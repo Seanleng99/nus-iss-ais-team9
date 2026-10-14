@@ -1,6 +1,7 @@
 """Verify the actual model boundary, including secondary composition calls."""
 
 import json
+import logging
 
 import pytest
 
@@ -105,3 +106,15 @@ def test_redacted_identifiers_keep_distinct_obligations_and_matching_references(
     assert first != second
     assert safe.pending_transaction["obligation_id"] == first
     assert "@" not in first + second
+
+
+def test_sanitizing_a_large_snapshot_stays_quiet_and_still_redacts(caplog):
+    caplog.set_level(logging.INFO, logger="service.calls")
+    transactions = [{"description": f"Dinner {index} with a@example.com", "category": "food",
+                     "amount": {"amount": 10}, "occurred_on": "2026-09-13"} for index in range(200)]
+    request = CoachRequest.model_validate({"user_id": "synthetic", "session_id": "test", "message": "Explain budgets",
+        "snapshot": {"historical_transactions": transactions}})
+    safe = sanitized_request(request)
+    assert len(safe.snapshot.historical_transactions) == 200
+    assert "@" not in json.dumps(safe.model_dump(mode="json"))
+    assert len([record for record in caplog.records if record.name == "service.calls"]) <= 3

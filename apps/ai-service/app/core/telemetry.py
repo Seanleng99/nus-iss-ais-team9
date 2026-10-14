@@ -20,6 +20,7 @@ SERVICE_NAME = "ai-service"
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _journey_id: ContextVar[str | None] = ContextVar("journey_id", default=None)
 _span: ContextVar[dict | None] = ContextVar("call_span", default=None)
+_quiet: ContextVar[bool] = ContextVar("quiet_calls", default=False)
 logger = logging.getLogger("service.calls")
 
 def configure_logging(level: str = "INFO") -> None:
@@ -54,6 +55,8 @@ def log_event(
     """Log static entry identifiers or allowlisted metadata; never inspect arguments."""
     if event == ENTRY_EVENT and not logger.isEnabledFor(level):
         return
+    if _quiet.get() and level < logging.WARNING and not is_durable_event(event):
+        return
     safe = safe_details({**fields, "classname": classname, "methodname": methodname})
     durable = is_durable_event(event)
     timestamp = datetime.now(UTC).isoformat()
@@ -81,6 +84,16 @@ def log_event(
             **context_fields(), "details": safe,
         })
 
+
+
+@contextmanager
+def quiet_calls():
+    """Drop routine entry and call logs inside bulk loops; failures and durable audit events still log."""
+    token = _quiet.set(True)
+    try:
+        yield
+    finally:
+        _quiet.reset(token)
 
 
 @contextmanager

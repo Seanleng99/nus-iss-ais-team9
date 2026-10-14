@@ -14,6 +14,7 @@ from app.core.telemetry import (
     context_fields,
     log_event,
     outbound_headers,
+    quiet_calls,
     trace_context,
     trace_method,
 )
@@ -50,6 +51,32 @@ def test_nested_thread_calls_link_actual_methods_and_reset_after_failure(caplog)
     assert all(item["correlation_id"] == "test-chain" for item in records)
     assert all(item["journey_id"] == "a" * 32 for item in records)
     assert "PRIVATE_" not in caplog.text
+
+
+def test_quiet_calls_drop_routine_logs_but_keep_failures_and_durable_events(caplog):
+    caplog.set_level(logging.INFO, logger="service.calls")
+
+    @trace_method
+    def routine():
+        log_event("VV entering ", "tests", "routine")
+
+    @trace_method
+    def failing():
+        raise ValueError("boom")
+
+    with trace_context(correlation_id="quiet-scope"):
+        with quiet_calls():
+            routine()
+            log_event("model.generation.started")
+            with pytest.raises(ValueError):
+                failing()
+        routine()
+    events = [(item["event"], item.get("method", "")) for item in call_logs(caplog)]
+    assert ("model.generation.started", "") in events
+    assert any(event == "method.failed" and method.endswith(".failing") for event, method in events)
+    assert not any(event == "method.started" and method.endswith(".failing") for event, method in events)
+    assert [event for event, method in events if method.endswith(".routine")] == [
+        "method.started", "VV entering ", "method.completed"]
 
 
 def test_concurrent_async_requests_do_not_mix_context(caplog):
