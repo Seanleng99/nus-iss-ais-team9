@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "playwright": "1.63.0",
-    "promptfoo": "0.123.1"
+    "promptfoo": "0.124.1"
   },
   "overrides": {
     "get-uri": {
