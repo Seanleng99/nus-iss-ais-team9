@@ -4,6 +4,12 @@
 
 The deployed `BedrockPolicyRetriever` retrieves each of the three required Policy sources independently, using public titles and exact source-ID/version/approval filters. It checks returned source metadata against the checksum-verified manifest packaged at `knowledge/policy_controls` and fails retrieval when a required source has no matching chunk. It does not send personal draft text to Bedrock. `POLICY_CORPUS_VERSION` pins the reviewed version. Release ingests and audits the corpus before activating its pin; weekly **RAG Source Governance** audits both KBs and S3 prefixes through a read-only role. A Policy update requires review, a new version, successful ingestion and live compliance evaluation.
 
+## Availability fallback (14 October 2026)
+
+When Bedrock is unavailable — `ThrottlingException`, `ServiceUnavailableException`, `InternalServerException`, `DependencyFailedException`, `ServiceQuotaExceededException`, or a connection/read timeout — `BedrockPolicyRetriever` returns the three full documents from the packaged, checksum-verified manifest instead of failing every review. This is the same copy Bedrock results are already matched against, and it still enforces the pinned corpus version and review deadline. Each fallback logs `policy.retrieval.fallback` with the error code as `reason_code`.
+
+Missing or mismatched Bedrock evidence, access-denied, validation and not-found errors do not fall back; they still fail closed. Background: Cohere embedding throttling in `ap-southeast-1` from 13 October blocked every Coach answer ([Bedrock KB region](bedrock-kb-region-2026-10-13.md)).
+
 ## 9 October 2026 policy and review update
 
 The current source manifest pins `financial-coach-policy-sg@2026-10-09.1`. The

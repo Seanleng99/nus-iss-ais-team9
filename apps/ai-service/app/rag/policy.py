@@ -16,6 +16,11 @@ from app.rag.local_documents import _KNOWLEDGE_ROOT
 from app.rag.retriever import RetrievalError, RetrievedChunk
 
 LOCAL_POLICY_CORPUS_VERSION = "financial-coach-policy-sg@local-fixture-v1"
+# Bedrock outages, not wrong or missing evidence, may use the packaged approved copy.
+_UNAVAILABLE_ERROR_CODES = {
+    "ThrottlingException", "ServiceUnavailableException", "InternalServerException",
+    "DependencyFailedException", "ServiceQuotaExceededException",
+}
 
 
 class PolicyRetriever(Protocol):
@@ -105,6 +110,7 @@ class BedrockPolicyRetriever:
         minimum_score: float = 0.0,
         client: Any | None = None,
         required_sources: tuple[GovernedSource, ...] = (),
+        fallback: PolicyRetriever | None = None,
     ) -> None:
         log_event("VV entering ", "app.rag.policy.BedrockPolicyRetriever", "__init__")
         self.knowledge_base_id = knowledge_base_id
@@ -113,6 +119,7 @@ class BedrockPolicyRetriever:
         self.minimum_score = minimum_score
         self._client = client
         self.required_sources = required_sources
+        self.fallback = fallback
 
     @property
     def client(self) -> Any:
@@ -137,6 +144,12 @@ class BedrockPolicyRetriever:
         try:
             return self._retrieve(query, top_k)
         except Exception as exc:
+            reason = _unavailable_reason(exc)
+            if reason and self.fallback is not None:
+                # The packaged copy is the checksum-verified source the Bedrock
+                # results are matched against, so review evidence is unchanged.
+                log_event("policy.retrieval.fallback", component="policy_retriever", reason_code=reason)
+                return self.fallback.retrieve(query, top_k)
             raise RetrievalError(
                 "The approved policy knowledge base could not be queried.",
                 component="policy_retriever",
@@ -250,6 +263,19 @@ class BedrockPolicyRetriever:
         return results
 
 
+def _unavailable_reason(exc: Exception) -> str | None:
+    """Name a Bedrock availability failure; integrity, access and request errors return None."""
+    log_event("VV entering ", "app.rag.policy", "_unavailable_reason")
+    from botocore.exceptions import ClientError, ConnectionError, HTTPClientError
+
+    if isinstance(exc, ClientError):
+        code = exc.response.get("Error", {}).get("Code")
+        return code if code in _UNAVAILABLE_ERROR_CODES else None
+    if isinstance(exc, ConnectionError | HTTPClientError):
+        return type(exc).__name__
+    return None
+
+
 def create_policy_retriever(settings: Settings) -> PolicyRetriever:
     log_event("VV entering ", "app.rag.policy", "create_policy_retriever")
     provider = settings.policy_rag_provider.lower()
@@ -284,6 +310,7 @@ def create_policy_retriever(settings: Settings) -> PolicyRetriever:
             expected_corpus_version=settings.policy_corpus_version,
             minimum_score=settings.policy_rag_minimum_score,
             required_sources=tuple(source for source, _ in approved.documents),
+            fallback=approved,
         )
     raise ValueError(
         f"Unsupported POLICY_RAG_PROVIDER for APP_ENV={settings.app_env}: {provider}"

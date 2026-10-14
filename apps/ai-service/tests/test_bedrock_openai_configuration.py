@@ -1,8 +1,11 @@
 """Direct OpenAI generation with independently governed Bedrock retrieval."""
 
+import json
+import logging
 from datetime import UTC, datetime
 
 import pytest
+from botocore.exceptions import ClientError, ReadTimeoutError
 
 from app.core.config import Settings
 from app.models.gateway import OpenAIModelGateway, create_model_gateway
@@ -114,3 +117,41 @@ def test_policy_fails_closed_when_a_required_control_is_missing_or_changed(damag
 def test_bedrock_policy_pin_must_match_the_checked_in_approved_controls():
     with pytest.raises(ValueError, match="POLICY_CORPUS_VERSION"):
         create_policy_retriever(deployed_settings(POLICY_CORPUS_VERSION="policy@unreviewed"))
+
+
+class FailingClient:
+    def __init__(self, error):
+        self.error = error
+
+    def retrieve(self, **request):
+        raise self.error
+
+
+def client_error(code):
+    return ClientError({"Error": {"Code": code, "Message": "synthetic"}}, "Retrieve")
+
+
+@pytest.mark.parametrize("error", [
+    client_error("ThrottlingException"), client_error("ServiceUnavailableException"),
+    ReadTimeoutError(endpoint_url="https://bedrock-agent-runtime.invalid"),
+])
+def test_policy_falls_back_to_packaged_approved_controls_when_bedrock_is_unavailable(error, caplog):
+    caplog.set_level(logging.INFO, logger="service.calls")
+    policy = create_policy_retriever(deployed_settings())
+    policy._client = FailingClient(error)
+    results = policy.retrieve("Review a budget")
+    assert [(chunk.source_id, chunk.checksum) for chunk in results] == [
+        (source.source_id, source.checksum) for source in policy.required_sources]
+    assert {chunk.corpus_version for chunk in results} == {policy.expected_corpus_version}
+    fallback = [json.loads(record.message) for record in caplog.records
+                if record.name == "service.calls" and "policy.retrieval.fallback" in record.message]
+    assert len(fallback) == 1 and fallback[0]["reason_code"] in {
+        "ThrottlingException", "ServiceUnavailableException", "ReadTimeoutError"}
+
+
+@pytest.mark.parametrize("code", ["AccessDeniedException", "ValidationException", "ResourceNotFoundException"])
+def test_policy_does_not_fall_back_on_access_or_request_errors(code):
+    policy = create_policy_retriever(deployed_settings())
+    policy._client = FailingClient(client_error(code))
+    with pytest.raises(RetrievalError):
+        policy.retrieve("Review a budget")

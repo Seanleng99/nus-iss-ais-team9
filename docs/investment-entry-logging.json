@@ -189,7 +189,7 @@
     },
     {
       "path": "apps/ai-service/app/rag/policy.py",
-      "method_count": 7,
+      "method_count": 8,
       "excluded_methods": [
         {
           "method": "app.rag.policy.PolicyRetriever.retrieve",
