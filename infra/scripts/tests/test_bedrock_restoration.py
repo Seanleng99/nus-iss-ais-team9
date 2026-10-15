@@ -50,3 +50,46 @@ def test_both_local_corpora_pass_before_either_is_uploaded(monkeypatch, tmp_path
     with pytest.raises(ValueError, match="policy corpus failed"):
         sync.sync_corpora("EDUCATKB12", "POLICYKB12", "ap-southeast-1", tmp_path)
     assert writes == []
+
+
+THROTTLED = RuntimeError(
+    "ValidationException: Knowledge base role is not able to call specified bedrock embedding model: "
+    "Too many tokens, please wait before trying again. (Service: BedrockRuntime, Status Code: 429)")
+
+
+@pytest.mark.parametrize("audit_passes", [True, False])
+def test_throttled_ingestion_relies_on_remote_audit_of_the_pinned_corpus(monkeypatch, tmp_path, audit_passes):
+    import boto3
+
+    monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: object())
+    monkeypatch.setattr(sync, "resolve_target", lambda *args: ("DATASOURCE", "approved-bucket"))
+    monkeypatch.setattr(sync, "prepare_documents", lambda *args, **kwargs: {"passed": True})
+
+    def throttled(*args, **kwargs):
+        raise THROTTLED
+
+    audits = []
+    monkeypatch.setattr(sync, "apply_corpus", throttled)
+    monkeypatch.setattr(sync, "audit_aws_corpus", lambda *args, **kwargs: audits.append(kwargs) or {"passed": audit_passes})
+    if audit_passes:
+        sync.sync_corpora("EDUCATKB12", "POLICYKB12", "ap-southeast-1", tmp_path)
+        assert len(audits) == 2
+        assert "skipped_embedding_throttled" in (tmp_path / "education-ingestion.json").read_text()
+    else:
+        with pytest.raises(ValueError, match="education KB failed remote governance"):
+            sync.sync_corpora("EDUCATKB12", "POLICYKB12", "ap-southeast-1", tmp_path)
+
+
+def test_other_ingestion_errors_still_fail_the_release(monkeypatch, tmp_path):
+    import boto3
+
+    monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: object())
+    monkeypatch.setattr(sync, "resolve_target", lambda *args: ("DATASOURCE", "approved-bucket"))
+    monkeypatch.setattr(sync, "prepare_documents", lambda *args, **kwargs: {"passed": True})
+
+    def denied(*args, **kwargs):
+        raise RuntimeError("AccessDeniedException: not authorized to perform bedrock:StartIngestionJob")
+
+    monkeypatch.setattr(sync, "apply_corpus", denied)
+    with pytest.raises(RuntimeError, match="AccessDenied"):
+        sync.sync_corpora("EDUCATKB12", "POLICYKB12", "ap-southeast-1", tmp_path)

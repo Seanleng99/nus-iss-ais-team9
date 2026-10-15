@@ -32,6 +32,12 @@ def resolve_target(client, knowledge_base_id, manifest):
     return candidates[0]
 
 
+def embedding_throttled(error):
+    """True only when ingestion failed because Bedrock's embedding model was throttled (HTTP 429)."""
+    text = str(error)
+    return "Status Code: 429" in text or "ThrottlingException" in text
+
+
 def sync_corpora(education_kb, policy_kb, region, output_dir, *, audit_only=False):
     import boto3
 
@@ -61,10 +67,19 @@ def sync_corpora(education_kb, policy_kb, region, output_dir, *, audit_only=Fals
             "region": region, "as_of": today, "bedrock_client": client, "s3_client": s3,
         }
         if not audit_only:
-            report = apply_corpus(
-                manifest, documents_dir=root / "documents",
-                confirmation=manifest.corpus_version, **arguments,
-            )
+            try:
+                report = apply_corpus(
+                    manifest, documents_dir=root / "documents",
+                    confirmation=manifest.corpus_version, **arguments,
+                )
+            except Exception as error:
+                if not embedding_throttled(error):
+                    raise
+                # Ingestion re-embeds unchanged documents on every release. While the
+                # embedding model is throttled, the remote audit below must prove the
+                # pinned corpus is already in place, or the release still fails.
+                report = {"passed": True, "ingestion": "skipped_embedding_throttled", "error": str(error)[:500]}
+                print(json.dumps({"corpus": name, "warning": "ingestion skipped: embedding model throttled"}))
             (output_dir / f"{name}-ingestion.json").write_text(
                 json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8",
             )
