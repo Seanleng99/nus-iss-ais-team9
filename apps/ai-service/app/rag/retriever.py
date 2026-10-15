@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
+from time import monotonic
 from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
@@ -524,6 +525,27 @@ class LocalEducationRetriever:
         return results
 
 
+BEDROCK_COOLDOWN_SECONDS = 900
+# Bedrock outages, not wrong or missing evidence, may use the packaged approved copy.
+_UNAVAILABLE_ERROR_CODES = {
+    "ThrottlingException", "ServiceUnavailableException", "InternalServerException",
+    "DependencyFailedException", "ServiceQuotaExceededException",
+}
+
+
+def bedrock_unavailable_reason(exc: Exception) -> str | None:
+    """Name a Bedrock availability failure; integrity, access and request errors return None."""
+    log_event("VV entering ", "app.rag.retriever", "bedrock_unavailable_reason")
+    from botocore.exceptions import ClientError, ConnectionError, HTTPClientError
+
+    if isinstance(exc, ClientError):
+        code = exc.response.get("Error", {}).get("Code")
+        return code if code in _UNAVAILABLE_ERROR_CODES else None
+    if isinstance(exc, ConnectionError | HTTPClientError):
+        return type(exc).__name__
+    return None
+
+
 class BedrockEducationRetriever:
     def __init__(
         self,
@@ -533,6 +555,7 @@ class BedrockEducationRetriever:
         expected_corpus_version: str,
         minimum_score: float = 0.0,
         client: Any | None = None,
+        fallback: EducationRetriever | None = None,
     ) -> None:
         log_event("VV entering ", "app.rag.retriever.BedrockEducationRetriever", "__init__")
         self.knowledge_base_id = knowledge_base_id
@@ -540,6 +563,8 @@ class BedrockEducationRetriever:
         self.expected_corpus_version = expected_corpus_version
         self.minimum_score = minimum_score
         self._client = client
+        self.fallback = fallback
+        self._bedrock_paused_until = 0.0
 
     @property
     def client(self) -> Any:
@@ -563,9 +588,20 @@ class BedrockEducationRetriever:
         log_event("VV entering ", "app.rag.retriever.BedrockEducationRetriever", "retrieve")
         if not 1 <= top_k <= 20:
             raise ValueError("top_k must be between 1 and 20")
+        if self.fallback is not None and monotonic() < self._bedrock_paused_until:
+            # Each throttled Bedrock call costs seconds; skip it briefly after an outage.
+            log_event("education.retrieval.fallback", component="education_retriever", reason_code="BEDROCK_COOLDOWN")
+            return self.fallback.retrieve(query, top_k)
         try:
             return self._retrieve(query, top_k)
         except Exception as exc:
+            reason = bedrock_unavailable_reason(exc)
+            if reason and self.fallback is not None:
+                self._bedrock_paused_until = monotonic() + BEDROCK_COOLDOWN_SECONDS
+                # Same approved corpus version, packaged in the image and checksum-verified;
+                # lexical search replaces semantic search only while Bedrock is down.
+                log_event("education.retrieval.fallback", component="education_retriever", reason_code=reason)
+                return self.fallback.retrieve(query, top_k)
             raise RetrievalError(
                 "The approved education knowledge base could not be queried."
             ) from exc
@@ -681,11 +717,21 @@ def create_education_retriever(settings: Settings) -> EducationRetriever:
             raise ValueError("EDUCATION_CORPUS_VERSION must match the approved local manifest")
         return retriever
     if provider == "bedrock" and settings.education_knowledge_base_id:
+        from pathlib import Path
+
+        from app.rag.local_documents import DEFAULT_CORPUS_ROOT, LocalDocumentEducationRetriever
+
+        packaged = LocalDocumentEducationRetriever(
+            Path(settings.rag_manifest_path) if settings.rag_manifest_path else DEFAULT_CORPUS_ROOT / "source_manifest.json",
+            Path(settings.rag_documents_path) if settings.rag_documents_path else DEFAULT_CORPUS_ROOT / "documents",
+        )
         return BedrockEducationRetriever(
             knowledge_base_id=settings.education_knowledge_base_id,
             aws_region=settings.knowledge_base_region,
             expected_corpus_version=settings.education_corpus_version,
             minimum_score=settings.rag_minimum_score,
+            # Never substitute a different reviewed corpus for the pinned one.
+            fallback=packaged if packaged.expected_corpus_version == settings.education_corpus_version else None,
         )
     raise ValueError(
         f"Unsupported RAG_PROVIDER for APP_ENV={settings.app_env}: {provider}"

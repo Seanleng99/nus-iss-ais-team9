@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from math import isfinite
 from pathlib import Path
+from time import monotonic
 from typing import Any, Protocol
 
 from pydantic import ValidationError
@@ -13,14 +14,14 @@ from app.core.guardrails import sanitize_rag_document
 from app.core.telemetry import log_event, trace_method
 from app.rag.ingestion import ApprovedDocumentMetadata, GovernedSource
 from app.rag.local_documents import _KNOWLEDGE_ROOT
-from app.rag.retriever import RetrievalError, RetrievedChunk
+from app.rag.retriever import (
+    BEDROCK_COOLDOWN_SECONDS,
+    RetrievalError,
+    RetrievedChunk,
+    bedrock_unavailable_reason,
+)
 
 LOCAL_POLICY_CORPUS_VERSION = "financial-coach-policy-sg@local-fixture-v1"
-# Bedrock outages, not wrong or missing evidence, may use the packaged approved copy.
-_UNAVAILABLE_ERROR_CODES = {
-    "ThrottlingException", "ServiceUnavailableException", "InternalServerException",
-    "DependencyFailedException", "ServiceQuotaExceededException",
-}
 
 
 class PolicyRetriever(Protocol):
@@ -120,6 +121,7 @@ class BedrockPolicyRetriever:
         self._client = client
         self.required_sources = required_sources
         self.fallback = fallback
+        self._bedrock_paused_until = 0.0
 
     @property
     def client(self) -> Any:
@@ -141,11 +143,16 @@ class BedrockPolicyRetriever:
     @trace_method
     def retrieve(self, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         log_event("VV entering ", "app.rag.policy.BedrockPolicyRetriever", "retrieve")
+        if self.fallback is not None and monotonic() < self._bedrock_paused_until:
+            # Each throttled Bedrock call costs seconds; skip it briefly after an outage.
+            log_event("policy.retrieval.fallback", component="policy_retriever", reason_code="BEDROCK_COOLDOWN")
+            return self.fallback.retrieve(query, top_k)
         try:
             return self._retrieve(query, top_k)
         except Exception as exc:
-            reason = _unavailable_reason(exc)
+            reason = bedrock_unavailable_reason(exc)
             if reason and self.fallback is not None:
+                self._bedrock_paused_until = monotonic() + BEDROCK_COOLDOWN_SECONDS
                 # The packaged copy is the checksum-verified source the Bedrock
                 # results are matched against, so review evidence is unchanged.
                 log_event("policy.retrieval.fallback", component="policy_retriever", reason_code=reason)
@@ -261,19 +268,6 @@ class BedrockPolicyRetriever:
                 )
             )
         return results
-
-
-def _unavailable_reason(exc: Exception) -> str | None:
-    """Name a Bedrock availability failure; integrity, access and request errors return None."""
-    log_event("VV entering ", "app.rag.policy", "_unavailable_reason")
-    from botocore.exceptions import ClientError, ConnectionError, HTTPClientError
-
-    if isinstance(exc, ClientError):
-        code = exc.response.get("Error", {}).get("Code")
-        return code if code in _UNAVAILABLE_ERROR_CODES else None
-    if isinstance(exc, ConnectionError | HTTPClientError):
-        return type(exc).__name__
-    return None
 
 
 def create_policy_retriever(settings: Settings) -> PolicyRetriever:

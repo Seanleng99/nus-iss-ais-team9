@@ -189,7 +189,7 @@
     },
     {
       "path": "apps/ai-service/app/rag/policy.py",
-      "method_count": 8,
+      "method_count": 7,
       "excluded_methods": [
         {
           "method": "app.rag.policy.PolicyRetriever.retrieve",
@@ -209,7 +209,7 @@
     },
     {
       "path": "apps/ai-service/app/rag/retriever.py",
-      "method_count": 10,
+      "method_count": 11,
       "excluded_methods": [
         {
           "method": "app.rag.retriever.EducationRetriever.retrieve",

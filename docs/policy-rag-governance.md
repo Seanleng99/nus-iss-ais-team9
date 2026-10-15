@@ -10,6 +10,8 @@ When Bedrock is unavailable — `ThrottlingException`, `ServiceUnavailableExcept
 
 Missing or mismatched Bedrock evidence, access-denied, validation and not-found errors do not fall back; they still fail closed. Background: Cohere embedding throttling in `ap-southeast-1` from 13 October blocked every Coach answer ([Bedrock KB region](bedrock-kb-region-2026-10-13.md)).
 
+`BedrockEducationRetriever` follows the same rule (15 October 2026): on an availability error it searches the packaged `investment_education` corpus with the local lexical retriever and logs `education.retrieval.fallback`. It only falls back when the packaged manifest's corpus version equals `EDUCATION_CORPUS_VERSION`. After any fallback, both retrievers skip Bedrock for 15 minutes (`reason_code: BEDROCK_COOLDOWN`), because each throttled call costs about seven seconds, then try Bedrock again.
+
 ## 9 October 2026 policy and review update
 
 The current source manifest pins `financial-coach-policy-sg@2026-10-09.1`. The

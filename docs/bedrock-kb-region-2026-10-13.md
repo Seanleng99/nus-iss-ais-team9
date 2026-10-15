@@ -27,6 +27,10 @@ Both governed knowledge bases now run in `ap-northeast-1`. Generation (OpenAI) a
 
 Before the switch, the application's own retrievers were run against the Tokyo knowledge bases: 19 paced Compliance reviews (three governed policy lookups each), 5 concurrent reviews and 8 education searches all succeeded. Both corpora passed `sync_bedrock_corpora.py` governance at the pinned versions.
 
+## 15 October 2026: throttling follows the account
+
+By 15 October UTC, single `cohere.embed-multilingual-v3` calls from this account were throttled in `ap-northeast-1` and `us-east-1` as well (and Titan Text Embeddings v2 in `ap-northeast-1`); `us-west-2` still answered. The pattern points to an account-level restriction rather than regional capacity, so both retrievers now fall back to the packaged approved corpora during Bedrock outages ([Policy RAG governance](policy-rag-governance.md#availability-fallback-14-october-2026)).
+
 ## Switching back
 
 When AWS restores `ap-southeast-1`:

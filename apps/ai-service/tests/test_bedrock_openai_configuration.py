@@ -155,3 +155,58 @@ def test_policy_does_not_fall_back_on_access_or_request_errors(code):
     policy._client = FailingClient(client_error(code))
     with pytest.raises(RetrievalError):
         policy.retrieve("Review a budget")
+
+
+@pytest.mark.parametrize("error", [
+    client_error("ThrottlingException"), ReadTimeoutError(endpoint_url="https://bedrock-agent-runtime.invalid"),
+])
+def test_education_falls_back_to_packaged_corpus_when_bedrock_is_unavailable(error, caplog):
+    caplog.set_level(logging.INFO, logger="service.calls")
+    education = create_education_retriever(deployed_settings())
+    education._client = FailingClient(error)
+    results = education.retrieve("What is diversification?", top_k=3)
+    assert results and {chunk.corpus_version for chunk in results} == {"investment-education-sg@2026-09-27.2"}
+    assert all(chunk.checksum.startswith("sha256:") for chunk in results)
+    assert sum("education.retrieval.fallback" in record.message for record in caplog.records) == 1
+
+
+@pytest.mark.parametrize("code", ["AccessDeniedException", "ValidationException", "ResourceNotFoundException"])
+def test_education_does_not_fall_back_on_access_or_request_errors(code):
+    education = create_education_retriever(deployed_settings())
+    education._client = FailingClient(client_error(code))
+    with pytest.raises(RetrievalError):
+        education.retrieve("What is diversification?")
+
+
+def test_education_never_falls_back_to_a_different_corpus_version():
+    education = create_education_retriever(deployed_settings(EDUCATION_CORPUS_VERSION="investment-education-sg@2099-01-01.1"))
+    assert education.fallback is None
+    education._client = FailingClient(client_error("ThrottlingException"))
+    with pytest.raises(RetrievalError):
+        education.retrieve("What is diversification?")
+
+
+class CountingFailingClient(FailingClient):
+    calls = 0
+
+    def retrieve(self, **request):
+        self.calls += 1
+        raise self.error
+
+
+@pytest.mark.parametrize("factory", [create_policy_retriever, create_education_retriever])
+def test_bedrock_is_skipped_briefly_after_an_outage_then_retried(factory, monkeypatch):
+    import app.rag.policy as policy_module
+    import app.rag.retriever as retriever_module
+
+    now = [1000.0]
+    for module in (policy_module, retriever_module):
+        monkeypatch.setattr(module, "monotonic", lambda: now[0])
+    retriever = factory(deployed_settings())
+    client = CountingFailingClient(client_error("ThrottlingException"))
+    retriever._client = client
+    assert retriever.retrieve("What is diversification?")
+    first = client.calls
+    assert retriever.retrieve("What is diversification?") and client.calls == first
+    now[0] += retriever_module.BEDROCK_COOLDOWN_SECONDS + 1
+    assert retriever.retrieve("What is diversification?") and client.calls > first
