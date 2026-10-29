@@ -2,8 +2,6 @@ name: AWS Operational Validation
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 2 * * 0"
 
 concurrency:
   group: operational-validation-demo

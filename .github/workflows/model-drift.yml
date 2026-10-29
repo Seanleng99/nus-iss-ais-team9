@@ -7,8 +7,6 @@ on:
         description: Capture a candidate and private synthetic review packet instead of monitoring
         type: boolean
         default: false
-  schedule:
-    - cron: "15 2 * * 0"
 
 permissions:
   contents: read
